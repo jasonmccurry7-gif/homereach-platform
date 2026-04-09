@@ -1,0 +1,443 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// HomeReach Automation Engine
+//
+// Multi-channel conversational automation.
+// Detects intent, generates human-like responses, and persists conversations.
+//
+// Design:
+//   • Static pure methods (detectIntent, generateResponse, etc.) — sync, no DB
+//   • Instance async methods (processInbound, sendAutoReply, etc.) — use repo
+//
+// Usage (with repository injected — preferred):
+//   const engine = new AutomationEngine(getConversationRepository());
+//   const reply  = await engine.processInbound(conversationId, inboundBody);
+//
+// TODO: Replace keyword detection with OpenAI call for production:
+//   const completion = await openai.chat.completions.create({ ... })
+// TODO: Replace sendSms/sendEmail stubs with Twilio / Resend calls.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type {
+  IntentType,
+  DetectedIntent,
+  ConversationContext,
+  AutomationMessage,
+  AutomationMode,
+  MessageChannel,
+} from "./types";
+import type { IConversationRepository, UpsertConversationInput } from "./db/interfaces";
+import { getConversationRepository } from "./db/factory";
+
+// ── Intent Detection Config ───────────────────────────────────────────────────
+// TODO: Replace with OpenAI intent classification in production
+
+interface IntentRule {
+  type: IntentType;
+  keywords: string[];
+  weight: number;
+}
+
+const INTENT_RULES: IntentRule[] = [
+  {
+    type: "ready_to_buy",
+    keywords: ["let's do it", "lets do it", "sign me up", "send the link", "ready", "send it over", "i'm in", "im in", "yes let's", "yes lets", "do it", "sign up", "lock it in"],
+    weight: 10,
+  },
+  {
+    type: "interested",
+    keywords: ["sounds good", "interested", "tell me more", "how much", "pricing", "price", "what's included", "whats included", "how does it work", "tell me", "more info", "looks good", "that's cool", "thats cool"],
+    weight: 8,
+  },
+  {
+    type: "objection",
+    keywords: ["too expensive", "too much", "can't afford", "cant afford", "not sure", "need to think", "maybe later", "have to think", "too busy", "not a good time", "already have", "don't need", "dont need", "tight budget"],
+    weight: 7,
+  },
+  {
+    type: "asking_questions",
+    keywords: ["how many", "what cities", "which areas", "who else", "how long", "cancel", "contract", "commitment", "when", "how soon", "minimum", "how does", "explain", "what is", "what are"],
+    weight: 5,
+  },
+  {
+    type: "not_interested",
+    keywords: ["not interested", "no thanks", "stop", "unsubscribe", "remove me", "don't contact", "dont contact", "leave me alone", "never mind", "nevermind", "no thank you"],
+    weight: 9,
+  },
+];
+
+// ── Response Templates ────────────────────────────────────────────────────────
+// All responses are short, natural, and conversational.
+// Placeholders: {{firstName}}, {{city}}, {{category}}, {{intakeLink}}
+// TODO: Extend with A/B variants per template for performance tracking.
+
+interface ResponseTemplate {
+  intent: IntentType;
+  channel: MessageChannel;
+  templates: string[];
+}
+
+const RESPONSE_TEMPLATES: ResponseTemplate[] = [
+  // ── ready_to_buy ────────────────────────────────────────────────────────────
+  {
+    intent: "ready_to_buy",
+    channel: "sms",
+    templates: [
+      "Let's lock it in! Here's your intake link: {{intakeLink}}\n\nTakes about 3 minutes. I'll have your spot secured same day. 🎯",
+      "Perfect — sending your intake link now: {{intakeLink}}\n\nOnce you fill it out I'll confirm everything and lock in your {{category}} spot in {{city}}.",
+    ],
+  },
+  {
+    intent: "ready_to_buy",
+    channel: "email",
+    templates: [
+      "Hi {{firstName}},\n\nExcited to get this going! Here's your intake link to lock in your exclusive {{category}} spot in {{city}}:\n\n{{intakeLink}}\n\nTakes about 3 minutes. I'll confirm everything same day and you'll be set for your first mailing.\n\nTalk soon,\nJason",
+    ],
+  },
+
+  // ── interested ──────────────────────────────────────────────────────────────
+  {
+    intent: "interested",
+    channel: "sms",
+    templates: [
+      "Here's the deal — you get the exclusive {{category}} spot in {{city}}. No other {{category}} can advertise in that area. 15,000 homeowners see your name every month.\n\nStarts at $299/mo. Want me to hold the spot while you look it over?",
+      "Awesome! So it's pretty simple — one business per category, per city. You'd be the only {{category}} on the postcard for {{city}}. Homeowners keep it on their fridge.\n\nPricing starts at $299/mo. Want the full breakdown?",
+    ],
+  },
+  {
+    intent: "interested",
+    channel: "email",
+    templates: [
+      "Hi {{firstName}},\n\nThanks for your interest! Here's how it works:\n\n• You get the exclusive {{category}} spot in {{city}} — no competitors allowed\n• 15,000 homeowners receive the postcard every month\n• Starts at $299/month, no long-term contract required\n\nWant me to hold your spot while you review? I can send over the full details.\n\nJason",
+    ],
+  },
+
+  // ── objection ───────────────────────────────────────────────────────────────
+  {
+    intent: "objection",
+    channel: "sms",
+    templates: [
+      "Totally fair — I get it. Here's how most of our clients think about it: one new customer from a postcard pays for 3+ months. Most see their first call within 2–3 weeks.\n\nNo contract either — you can cancel after 3 months if it's not working. Worth trying?",
+      "Makes sense. What if I told you most clients break even on the first new customer they get? No long-term commitment, and your spot is exclusive while you're in.\n\nWhat's holding you back — is it timing, budget, or something else?",
+    ],
+  },
+  {
+    intent: "objection",
+    channel: "email",
+    templates: [
+      "Hi {{firstName}},\n\nCompletely understand the hesitation — here's what I'd say:\n\n• No long-term contract. You can cancel after 3 months.\n• Most clients break even on their first new customer.\n• Your {{category}} spot in {{city}} is exclusive while you're in — no competitors.\n\nWhat's the main concern? I'm happy to address it directly.\n\nJason",
+    ],
+  },
+
+  // ── asking_questions ────────────────────────────────────────────────────────
+  {
+    intent: "asking_questions",
+    channel: "sms",
+    templates: [
+      "Great question. Here's the short version: one spot per category, per city. Exclusive. 15,000 homes/month. Starting at $299/mo, cancel anytime after 3 months.\n\nWhat else do you want to know?",
+      "Happy to answer! What specifically are you wondering about — the pricing, the postcard design, how we track results, or something else?",
+    ],
+  },
+  {
+    intent: "asking_questions",
+    channel: "email",
+    templates: [
+      "Hi {{firstName}},\n\nHappy to answer your questions! Quick overview:\n\n• One business per category in {{city}} — fully exclusive\n• 15,000 homeowners reached every month\n• Postcard design included, no design experience needed\n• Starts at $299/mo, cancel after 3 months\n\nWhat else can I clarify for you?\n\nJason",
+    ],
+  },
+
+  // ── not_interested ──────────────────────────────────────────────────────────
+  {
+    intent: "not_interested",
+    channel: "sms",
+    templates: [
+      "No problem at all, {{firstName}}! I'll take you off the list. If you ever want to revisit the {{city}} area, just shoot me a text. Take care! 👋",
+    ],
+  },
+  {
+    intent: "not_interested",
+    channel: "email",
+    templates: [
+      "Hi {{firstName}},\n\nAbsolutely no problem — I'll remove you from our list right away. If you ever want to revisit the {{category}} spot in {{city}}, just reach out.\n\nTake care,\nJason",
+    ],
+  },
+
+  // ── unknown (fallback) ──────────────────────────────────────────────────────
+  {
+    intent: "unknown",
+    channel: "sms",
+    templates: [
+      "Hey {{firstName}}! Just checking in — still interested in the {{category}} spot in {{city}}? Happy to answer any questions.",
+    ],
+  },
+  {
+    intent: "unknown",
+    channel: "email",
+    templates: [
+      "Hi {{firstName}},\n\nJust wanted to follow up and see if you had any questions about the {{category}} opportunity in {{city}}. Happy to jump on a quick call too.\n\nJason",
+    ],
+  },
+];
+
+// ── Engine ────────────────────────────────────────────────────────────────────
+
+export class AutomationEngine {
+  private repo: IConversationRepository;
+
+  constructor(repo?: IConversationRepository) {
+    this.repo = repo ?? getConversationRepository();
+  }
+
+  // ── Instance methods (async, repo-backed) ─────────────────────────────────
+
+  /**
+   * Persist an inbound message, update intent, and optionally auto-reply.
+   * Returns the saved message and a suggested auto-reply body (if applicable).
+   */
+  async processInbound(
+    conversationId: string,
+    body: string,
+    channel: MessageChannel,
+    sentAt?: string
+  ): Promise<{ message: AutomationMessage; autoReply?: string }> {
+    const detected = AutomationEngine.detectIntent(body);
+
+    // Save the inbound message
+    const message = await this.repo.addMessage(conversationId, {
+      direction: "inbound",
+      channel,
+      body,
+      intent: detected.type,
+      isAutoGenerated: false,
+      sentAt,
+    });
+
+    // Persist detected intent on the conversation
+    await this.repo.setLastIntent(conversationId, detected.type);
+
+    // Fetch conversation to check if auto-mode is active
+    const ctx = await this.repo.getById(conversationId);
+    let autoReply: string | undefined;
+
+    if (ctx?.automationMode === "auto") {
+      const firstName = ctx.leadName?.split(" ")[0] ?? "";
+      autoReply = AutomationEngine.generateResponse(detected.type, channel, {
+        firstName,
+        city:       ctx.city,
+        category:   ctx.category,
+      });
+    }
+
+    return { message, autoReply };
+  }
+
+  /**
+   * Persist an outbound message (manual reply or auto-generated).
+   */
+  async sendReply(
+    conversationId: string,
+    body: string,
+    channel: MessageChannel,
+    isAutoGenerated = false
+  ): Promise<AutomationMessage> {
+    return this.repo.addMessage(conversationId, {
+      direction: "outbound",
+      channel,
+      body,
+      isAutoGenerated,
+    });
+  }
+
+  /**
+   * Create or update a conversation record.
+   */
+  async upsertConversation(input: UpsertConversationInput): Promise<ConversationContext> {
+    return this.repo.upsert(input);
+  }
+
+  /** Fetch a single conversation by ID. */
+  async getConversation(conversationId: string): Promise<ConversationContext | null> {
+    return this.repo.getById(conversationId);
+  }
+
+  /** Fetch all conversations, sorted newest-message first. */
+  async getAllConversations(): Promise<ConversationContext[]> {
+    return this.repo.getAll();
+  }
+
+  /** Fetch all conversations for a lead. */
+  async getConversationsByLead(leadId: string): Promise<ConversationContext[]> {
+    return this.repo.getByLeadId(leadId);
+  }
+
+  /** Toggle automation mode for a conversation. */
+  async setAutomationMode(conversationId: string, mode: AutomationMode): Promise<void> {
+    return this.repo.setAutomationMode(conversationId, mode);
+  }
+
+  /** Mark all inbound messages in a conversation as read. */
+  async markRead(conversationId: string): Promise<void> {
+    return this.repo.markRead(conversationId);
+  }
+
+  /** Total unread inbound message count across all conversations. */
+  async getUnreadCount(): Promise<number> {
+    return this.repo.getUnreadCount();
+  }
+
+  // ── Static pure methods (sync, no repo) ──────────────────────────────────
+
+  /**
+   * Detect the intent of an inbound message.
+   * TODO: Replace with OpenAI API call for production accuracy.
+   */
+  static detectIntent(messageBody: string): DetectedIntent {
+    const lower = messageBody.toLowerCase();
+    let topMatch: IntentRule | null = null;
+    let topScore = 0;
+    const matchedKeywords: string[] = [];
+
+    for (const rule of INTENT_RULES) {
+      const hits = rule.keywords.filter((kw) => lower.includes(kw));
+      if (hits.length > 0) {
+        const score = hits.length * rule.weight;
+        if (score > topScore) {
+          topScore = score;
+          topMatch = rule;
+          matchedKeywords.splice(0, matchedKeywords.length, ...hits);
+        }
+      }
+    }
+
+    const intent: IntentType = topMatch?.type ?? "unknown";
+    const confidence = topScore > 0 ? Math.min(1, topScore / 20) : 0.1;
+
+    return {
+      type: intent,
+      confidence,
+      keywords: matchedKeywords,
+      suggestedResponse: AutomationEngine.getTemplateResponse(intent, "sms", {
+        firstName: "",
+        city: "",
+        category: "",
+        intakeLink: (process.env.NEXT_PUBLIC_APP_URL ?? "") + "/get-started",
+      }),
+    };
+  }
+
+  /**
+   * Generate a personalized response from a template.
+   */
+  static generateResponse(
+    intent: IntentType,
+    channel: MessageChannel,
+    vars: {
+      firstName: string;
+      city: string;
+      category: string;
+      intakeLink?: string;
+    }
+  ): string {
+    const link = vars.intakeLink ?? (process.env.NEXT_PUBLIC_APP_URL ?? "") + "/get-started";
+    return AutomationEngine.getTemplateResponse(intent, channel, { ...vars, intakeLink: link });
+  }
+
+  /**
+   * Decide whether to hand off a conversation to a human.
+   * Triggers when: ready_to_buy, not_interested, or 5+ auto outbound messages.
+   */
+  static shouldHandoff(ctx: ConversationContext): boolean {
+    if (ctx.lastIntent === "ready_to_buy")   return true;
+    if (ctx.lastIntent === "not_interested") return true;
+    const outboundCount = ctx.messages.filter(
+      (m) => m.direction === "outbound" && m.isAutoGenerated
+    ).length;
+    return outboundCount >= 5;
+  }
+
+  /**
+   * Whether the intake link should be triggered (ready_to_buy and not already sent).
+   */
+  static shouldTriggerIntake(ctx: ConversationContext): boolean {
+    return (
+      ctx.lastIntent === "ready_to_buy" &&
+      !ctx.messages.some((m) => m.body.includes("/get-started"))
+    );
+  }
+
+  /** Intent badge label + Tailwind color class for UI display */
+  static getIntentBadge(intent: IntentType): { label: string; color: string } {
+    const BADGES: Record<IntentType, { label: string; color: string }> = {
+      ready_to_buy:     { label: "🟢 Ready to buy",  color: "bg-green-100 text-green-800" },
+      interested:       { label: "🔵 Interested",     color: "bg-blue-100 text-blue-800" },
+      asking_questions: { label: "🟡 Has questions",  color: "bg-yellow-100 text-yellow-800" },
+      objection:        { label: "🟠 Has objection",  color: "bg-orange-100 text-orange-800" },
+      not_interested:   { label: "🔴 Not interested", color: "bg-red-100 text-red-800" },
+      unknown:          { label: "⚪ Unknown",         color: "bg-gray-100 text-gray-600" },
+    };
+    return BADGES[intent] ?? BADGES.unknown;
+  }
+
+  /**
+   * Send SMS via Twilio (real send).
+   */
+  static async sendSms(to: string, body: string): Promise<{ success: boolean; sid?: string }> {
+    try {
+      const { sendSms } = await import("@homereach/services/outreach");
+      const result = await sendSms({ to, body });
+      if (!result.success) {
+        console.error(`[AutomationEngine] SMS to ${to} failed: ${result.error}`);
+      }
+      return { success: result.success, sid: result.externalId };
+    } catch (err) {
+      console.error("[AutomationEngine] sendSms error:", err);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Send email via Mailgun (real send).
+   */
+  static async sendEmail(
+    to: string,
+    subject: string,
+    body: string
+  ): Promise<{ success: boolean; id?: string }> {
+    try {
+      const { sendEmail } = await import("@homereach/services/outreach");
+      const result = await sendEmail({
+        to,
+        subject,
+        html: `<p>${body.replace(/\n/g, "<br/>")}</p>`,
+        text: body,
+      });
+      if (!result.success) {
+        console.error(`[AutomationEngine] Email to ${to} failed: ${result.error}`);
+      }
+      return { success: result.success, id: result.externalId };
+    } catch (err) {
+      console.error("[AutomationEngine] sendEmail error:", err);
+      return { success: false };
+    }
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────────────
+
+  private static getTemplateResponse(
+    intent: IntentType,
+    channel: MessageChannel,
+    vars: { firstName: string; city: string; category: string; intakeLink: string }
+  ): string {
+    const match =
+      RESPONSE_TEMPLATES.find((t) => t.intent === intent && t.channel === channel) ??
+      RESPONSE_TEMPLATES.find((t) => t.intent === "unknown" && t.channel === channel);
+
+    if (!match) return "Hey — just following up! Let me know if you have any questions.";
+
+    const template = match.templates[Math.floor(Math.random() * match.templates.length)];
+    return template
+      .replace(/\{\{firstName\}\}/g, vars.firstName)
+      .replace(/\{\{city\}\}/g,      vars.city)
+      .replace(/\{\{category\}\}/g,  vars.category)
+      .replace(/\{\{intakeLink\}\}/g, vars.intakeLink);
+  }
+}

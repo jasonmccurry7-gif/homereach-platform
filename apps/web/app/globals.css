@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* HomeReach Brand Colors */
+    --color-brand-primary: #1a56db;   /* Blue */
+    --color-brand-accent: #f59e0b;    /* Amber */
+    --color-brand-dark: #111827;
+    --color-brand-light: #f9fafb;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
