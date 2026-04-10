@@ -15,10 +15,27 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // Ensure Stripe webhook raw body is available
-  // (handled via route config in the webhook handler)
-  // serverComponentsExternalPackages moved out of experimental in Next.js 15
+  // Server-only packages — excluded from client bundle
   serverExternalPackages: ["postgres", "twilio"],
+
+  // Webpack: stub out Node.js built-ins when bundling for the browser.
+  // Twilio and postgres import net/tls/fs which only exist in Node.
+  // Client components that import these through server modules won't
+  // actually call the code at runtime — we just need the build to succeed.
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        net: false,
+        tls: false,
+        fs: false,
+        dns: false,
+        child_process: false,
+        dgram: false,
+      };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
