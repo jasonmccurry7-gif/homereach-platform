@@ -639,14 +639,14 @@ function ApprovedPanel({ ad, onNew }: { ad: GeneratedAd; onNew: () => void }) {
     border: 2px dashed #ccc;
     padding: 24px;
     text-align: center;
-    background: ${inp.colorPalette?.background ?? "#fff"};
-    color: ${inp.colorPalette?.primary ?? "#111"};
+    background: ${exportData.colorPalette?.primary ?? "#fff"};
+    color: ${exportData.colorPalette?.primaryText ?? "#111"};
     margin-top: 12px;
   }
   .ad-headline { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
   .ad-sub      { font-size: 15px; margin-bottom: 6px; }
   .ad-cta      { display: inline-block; margin-top: 12px; padding: 8px 20px;
-                 background: ${inp.colorPalette?.accent ?? "#2563eb"};
+                 background: ${exportData.colorPalette?.secondary ?? "#2563eb"};
                  color: #fff; font-weight: bold; font-size: 14px; }
   @media print {
     body { padding: 0; }
