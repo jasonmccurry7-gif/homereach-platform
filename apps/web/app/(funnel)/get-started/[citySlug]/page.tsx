@@ -5,7 +5,7 @@ import { getCityBySlug, getCategoriesForCity } from "@/lib/funnel/queries";
 import { FunnelProgress } from "@/components/funnel/funnel-progress";
 import { cn } from "@/lib/utils";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ citySlug: string }>;

@@ -10,7 +10,7 @@ import { FunnelProgress } from "@/components/funnel/funnel-progress";
 import { CheckoutButton } from "./checkout-button";
 import { cn } from "@/lib/utils";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ citySlug: string; categorySlug: string }>;

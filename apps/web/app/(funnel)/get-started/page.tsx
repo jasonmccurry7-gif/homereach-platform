@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   description: "Select your city to see available advertising spots in your neighborhood.",
 };
 
-// Revalidate every 60s — spots change but not constantly
-export const revalidate = 60;
+// Always render at request time — requires live DB
+export const dynamic = "force-dynamic";
 
 export default async function CitySelectionPage() {
   const cities = await getActiveCities();
