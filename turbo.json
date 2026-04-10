@@ -1,6 +1,28 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "DATABASE_URL",
+    "DATABASE_URL_POOLED",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_PHONE_NUMBER",
+    "MAILGUN_API_KEY",
+    "MAILGUN_DOMAIN",
+    "MAILGUN_FROM_EMAIL",
+    "NEXT_PUBLIC_APP_URL",
+    "NEXT_PUBLIC_APP_NAME",
+    "USE_MOCK_DB",
+    "ADMIN_DEV_BYPASS",
+    "ADMIN_SYSTEM_USER_ID",
+    "NODE_ENV"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

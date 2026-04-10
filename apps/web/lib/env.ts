@@ -69,17 +69,17 @@ const ENV_SPECS: EnvSpec[] = [
   {
     key: "MAILGUN_API_KEY",
     required: true,
-    productionOnly: false,
+    productionOnly: true,
   },
   {
     key: "MAILGUN_DOMAIN",
     required: true,
-    productionOnly: false,
+    productionOnly: true,
   },
   {
     key: "MAILGUN_FROM_EMAIL",
     required: true,
-    productionOnly: false,
+    productionOnly: true,
   },
 
   // ── App ──────────────────────────────────────────────────────────────────────
