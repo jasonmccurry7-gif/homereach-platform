@@ -17,9 +17,8 @@ const nextConfig: NextConfig = {
 
   // Ensure Stripe webhook raw body is available
   // (handled via route config in the webhook handler)
-  experimental: {
-    serverComponentsExternalPackages: ["postgres"],
-  },
+  // serverComponentsExternalPackages moved out of experimental in Next.js 15
+  serverExternalPackages: ["postgres"],
 };
 
 export default nextConfig;
