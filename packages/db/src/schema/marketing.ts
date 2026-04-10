@@ -19,7 +19,7 @@ import { profiles } from "./users";
 // Enums
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const campaignStatusEnum = pgEnum("marketing_campaign_status", [
+export const marketingCampaignStatusEnum = pgEnum("marketing_campaign_status", [
   "upcoming",    // paid, not yet live
   "active",      // currently mailing
   "completed",   // campaign period ended
@@ -46,7 +46,7 @@ export const marketingCampaigns = pgTable("marketing_campaigns", {
   categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
   bundleId: uuid("bundle_id").references(() => bundles.id, { onDelete: "set null" }),
 
-  status: campaignStatusEnum("status").notNull().default("upcoming"),
+  status: marketingCampaignStatusEnum("status").notNull().default("upcoming"),
 
   // Campaign period
   startDate: timestamp("start_date", { withTimezone: true }),

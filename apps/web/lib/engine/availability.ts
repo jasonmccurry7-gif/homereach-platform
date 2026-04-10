@@ -15,6 +15,19 @@ import type { Spot, SpotStatus, CityAvailability, CategoryAvailability } from ".
 import type { ISpotRepository } from "./db/interfaces";
 import { getSpotRepository } from "./db/factory";
 
+// ── Mock seed data (used by MockSpotRepository in dev) ────────────────────────
+export const MOCK_SPOTS: Spot[] = [
+  { id: "spot-medina-restaurant",   cityId: "city-medina",  cityName: "Medina, OH",     categoryId: "cat-restaurant",   categoryName: "Restaurant",      status: "available",    businessId: null, businessName: null, reservedUntil: null, basePrice: 499, isFullCard: false },
+  { id: "spot-medina-salon",        cityId: "city-medina",  cityName: "Medina, OH",     categoryId: "cat-salon",        categoryName: "Salon & Spa",     status: "sold",         businessId: "biz-1", businessName: "Luxe Salon", reservedUntil: null, basePrice: 499, isFullCard: false },
+  { id: "spot-medina-auto",         cityId: "city-medina",  cityName: "Medina, OH",     categoryId: "cat-auto",         categoryName: "Auto Service",    status: "reserved",     businessId: null, businessName: null, reservedUntil: new Date(Date.now() + 4 * 3600000).toISOString(), basePrice: 499, isFullCard: false },
+  { id: "spot-medina-dental",       cityId: "city-medina",  cityName: "Medina, OH",     categoryId: "cat-dental",       categoryName: "Dental",          status: "available",    businessId: null, businessName: null, reservedUntil: null, basePrice: 499, isFullCard: false },
+  { id: "spot-medina-fitness",      cityId: "city-medina",  cityName: "Medina, OH",     categoryId: "cat-fitness",      categoryName: "Fitness",         status: "available",    businessId: null, businessName: null, reservedUntil: null, basePrice: 499, isFullCard: false },
+  { id: "spot-medina-realtor",      cityId: "city-medina",  cityName: "Medina, OH",     categoryId: "cat-realtor",      categoryName: "Real Estate",     status: "in-progress",  businessId: null, businessName: null, reservedUntil: new Date(Date.now() + 2 * 3600000).toISOString(), basePrice: 499, isFullCard: false },
+  { id: "spot-brunswick-restaurant",cityId: "city-brunswick",cityName: "Brunswick, OH", categoryId: "cat-restaurant",   categoryName: "Restaurant",      status: "available",    businessId: null, businessName: null, reservedUntil: null, basePrice: 449, isFullCard: false },
+  { id: "spot-brunswick-salon",     cityId: "city-brunswick",cityName: "Brunswick, OH", categoryId: "cat-salon",        categoryName: "Salon & Spa",     status: "available",    businessId: null, businessName: null, reservedUntil: null, basePrice: 449, isFullCard: false },
+  { id: "spot-brunswick-auto",      cityId: "city-brunswick",cityName: "Brunswick, OH", categoryId: "cat-auto",         categoryName: "Auto Service",    status: "available",    businessId: null, businessName: null, reservedUntil: null, basePrice: 449, isFullCard: false },
+];
+
 // ── Status priority for sorting ───────────────────────────────────────────────
 const STATUS_SORT: Record<SpotStatus, number> = {
   "in-progress": 0,
