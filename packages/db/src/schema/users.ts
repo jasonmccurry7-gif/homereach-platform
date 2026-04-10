@@ -46,4 +46,4 @@ export const profilesRelations = relations(profiles, ({ many }) => ({
 }));
 
 // Circular ref resolved via lazy import in index
-import { businesses } from "./businesses.js";
+import { businesses } from "./businesses";

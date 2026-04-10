@@ -10,7 +10,7 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { cities } from "./cities.js";
+import { cities } from "./cities";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -119,4 +119,4 @@ export const bundleProductsRelations = relations(bundleProducts, ({ one }) => ({
 }));
 
 // Circular refs
-import { orderItems, orders } from "./orders.js";
+import { orderItems, orders } from "./orders";

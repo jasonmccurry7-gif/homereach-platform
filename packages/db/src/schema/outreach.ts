@@ -7,7 +7,7 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { businesses } from "./businesses.js";
+import { businesses } from "./businesses";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums

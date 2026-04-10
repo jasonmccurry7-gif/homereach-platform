@@ -55,6 +55,6 @@ export const categoriesRelations = relations(categories, ({ many }) => ({
 }));
 
 // Circular refs resolved in index
-import { businesses } from "./businesses.js";
-import { bundles } from "./products.js";
-import { waitlistEntries } from "./misc.js";
+import { businesses } from "./businesses";
+import { bundles } from "./products";
+import { waitlistEntries } from "./misc";

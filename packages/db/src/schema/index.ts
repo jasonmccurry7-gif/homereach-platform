@@ -5,25 +5,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Users & Auth
-export * from "./users.js";
+export * from "./users";
 
 // Geography
-export * from "./cities.js";
+export * from "./cities";
 
 // Catalog
-export * from "./products.js";
+export * from "./products";
 
 // Core entities
-export * from "./businesses.js";
+export * from "./businesses";
 
 // Transactions
-export * from "./orders.js";
+export * from "./orders";
 
 // Outreach engine
-export * from "./outreach.js";
+export * from "./outreach";
 
 // Waitlist, nonprofit, sponsorship
-export * from "./misc.js";
+export * from "./misc";
 
 // Marketing campaigns + metrics (Phase 3)
-export * from "./marketing.js";
+export * from "./marketing";

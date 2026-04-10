@@ -8,8 +8,8 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { businesses } from "./businesses.js";
-import { bundles, products } from "./products.js";
+import { businesses } from "./businesses";
+import { bundles, products } from "./products";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums

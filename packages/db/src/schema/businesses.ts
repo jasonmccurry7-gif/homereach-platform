@@ -7,8 +7,8 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { profiles } from "./users.js";
-import { cities, categories } from "./cities.js";
+import { profiles } from "./users";
+import { cities, categories } from "./cities";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -83,6 +83,6 @@ export const businessesRelations = relations(businesses, ({ one, many }) => ({
 }));
 
 // Circular refs
-import { orders } from "./orders.js";
-import { campaigns, outreachContacts, outreachReplies } from "./outreach.js";
-import { nonprofitApplications } from "./misc.js";
+import { orders } from "./orders";
+import { campaigns, outreachContacts, outreachReplies } from "./outreach";
+import { nonprofitApplications } from "./misc";
