@@ -24,14 +24,46 @@ const nextConfig: NextConfig = {
   // actually call the code at runtime — we just need the build to succeed.
   webpack: (config, { isServer }) => {
     if (!isServer) {
+      // Stub all Node.js built-ins for the browser bundle.
+      // Twilio, postgres, and other server packages import these at module
+      // load time even though they're never called on the client.
       config.resolve.fallback = {
         ...config.resolve.fallback,
         net: false,
         tls: false,
         fs: false,
         dns: false,
-        child_process: false,
         dgram: false,
+        child_process: false,
+        cluster: false,
+        http2: false,
+        perf_hooks: false,
+        async_hooks: false,
+        worker_threads: false,
+        readline: false,
+        repl: false,
+        inspector: false,
+        trace_events: false,
+        v8: false,
+        vm: false,
+        wasi: false,
+        crypto: false,
+        stream: false,
+        os: false,
+        path: false,
+        zlib: false,
+        string_decoder: false,
+        events: false,
+        assert: false,
+        constants: false,
+        domain: false,
+        punycode: false,
+        querystring: false,
+        timers: false,
+        tty: false,
+        url: false,
+        util: false,
+        sys: false,
       };
     }
     return config;
