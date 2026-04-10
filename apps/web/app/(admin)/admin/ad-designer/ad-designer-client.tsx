@@ -610,10 +610,10 @@ function ApprovedPanel({ ad, onNew }: { ad: GeneratedAd; onNew: () => void }) {
     // Pull text elements for the print sheet
     const textEls = exportData.elements
       .filter((e: { type: string }) => e.type === "text")
-      .map((e: { value?: string; role?: string; fontSize?: number; fontWeight?: string }) =>
+      .map((e) =>
         `<tr>
-          <td style="padding:4px 8px;color:#888;font-size:11px">${e.role ?? "text"}</td>
-          <td style="padding:4px 8px;font-size:13px;font-weight:${e.fontWeight ?? "normal"}">${e.value ?? ""}</td>
+          <td style="padding:4px 8px;color:#888;font-size:11px">${(e as any).role ?? "text"}</td>
+          <td style="padding:4px 8px;font-size:13px;font-weight:${(e as any).fontWeight ?? "normal"}">${(e as any).value ?? ""}</td>
         </tr>`
       ).join("");
 
