@@ -683,7 +683,7 @@ function ApprovedPanel({ ad, onNew }: { ad: GeneratedAd; onNew: () => void }) {
     <div class="ad-box">
       <div class="ad-headline">${ad.copy?.headline ?? inp.businessName}</div>
       <div class="ad-sub">${ad.copy?.subheadline ?? ""}</div>
-      <div class="ad-sub">${ad.copy?.body ?? ""}</div>
+      <div class="ad-sub">${ad.copy?.offer ?? ""}</div>
       <div class="ad-cta">${ad.copy?.cta ?? "Learn More"}</div>
     </div>
     <p style="font-size:11px;color:#aaa;margin-top:6px">
