@@ -109,6 +109,49 @@ export const sponsorships = pgTable("sponsorships", {
     .defaultNow(),
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Public Nonprofit Applications (Migration 18)
+//
+// Stores open registration form submissions — no business record required.
+// Admin reviews and links to a business after verification.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const publicNonprofitApplicationStatusEnum = pgEnum(
+  "public_nonprofit_application_status",
+  ["pending", "approved", "rejected"]
+);
+
+export const publicNonprofitApplications = pgTable("public_nonprofit_applications", {
+  id:          uuid("id").primaryKey().defaultRandom(),
+
+  // Organization
+  orgName:     text("org_name").notNull(),
+  ein:         text("ein"),
+  website:     text("website"),
+  mission:     text("mission"),
+
+  // Contact
+  contactName: text("contact_name").notNull(),
+  email:       text("email").notNull(),
+  phone:       text("phone"),
+  city:        text("city"),
+
+  // Pipeline
+  status: text("status").notNull().default("pending"),
+
+  // Optional link after admin verification
+  linkedBusinessId: uuid("linked_business_id").references(() => businesses.id, {
+    onDelete: "set null",
+  }),
+
+  // Admin
+  adminNotes:  text("admin_notes"),
+  reviewedAt:  timestamp("reviewed_at", { withTimezone: true }),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const waitlistEntriesRelations = relations(

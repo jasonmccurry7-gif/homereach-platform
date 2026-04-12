@@ -214,7 +214,7 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
         id: "m1-3",
         direction: "outbound",
         channel: "sms",
-        body: "We lock in one business per category per zip code — so if you grab the plumber spot in Medina, no other plumber can get in. 15,000 homes get your postcard every month. Starting at $299/mo. Want me to send you the full breakdown?",
+        body: "We lock in one business per category per zip code — so if you grab the plumber spot in Medina, no other plumber can get in. 2,500+ homes get your postcard every month. Starting at $299/mo. Want me to send you the full breakdown?",
         sentAt: "2026-04-07T11:35:00Z",
         read: true,
       },

@@ -21,8 +21,14 @@ import { buildHotLeadSummary } from "./hot-lead-detector";
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ALERT_PHONE_NUMBER env var must be set in Vercel / .env.local
+// e.g. ALERT_PHONE_NUMBER=+13302069639
+if (!process.env.ALERT_PHONE_NUMBER && process.env.NODE_ENV === "production") {
+  console.warn("[alert-engine] ALERT_PHONE_NUMBER is not set — hot lead SMS alerts are disabled");
+}
+
 export const ALERT_CONFIG = {
-  recipientPhone: "+13302069639",   // Jason's number
+  recipientPhone: process.env.ALERT_PHONE_NUMBER ?? "",   // Set via env var
   fromNumber:     process.env.TWILIO_PHONE_NUMBER ?? "+1XXXXXXXXXX",
   dedupeWindowMs: 30 * 60 * 1000,  // 30 min — don't re-alert same lead within window
   maxAlertsPerLead: 3,              // hard cap on alerts per lead

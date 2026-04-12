@@ -52,6 +52,25 @@ export const businesses = pgTable("businesses", {
   }),
   // Internal admin notes
   notes: text("notes"),
+  // ── Discount eligibility — SERVER-CONTROLLED ONLY ────────────────────────
+  // These fields are set by admin only and are never trusted from client input.
+  // The checkout route reads these from the DB to determine discount eligibility.
+
+  // Military: admin-set after proof of service verification
+  isMilitary: boolean("is_military").notNull().default(false),
+  militaryVerifiedAt: timestamp("military_verified_at", { withTimezone: true }),
+
+  // ── Stripe ────────────────────────────────────────────────────────────────
+  // Stripe customer ID — one business = one Stripe customer (Task 20)
+  // All subscription checkout sessions use this. Created on first checkout if null.
+  stripeCustomerId: text("stripe_customer_id").unique(),
+
+  // ── Supabase Auth ─────────────────────────────────────────────────────────
+  // Set by the subscription.created webhook after supabase.auth.admin.inviteUserByEmail().
+  // Used by the client dashboard to look up this business from auth.uid().
+  // NULL until the business completes their Supabase sign-up via the invite email.
+  supabaseUserId: text("supabase_user_id").unique(),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -3,39 +3,35 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { CityAvailability, Reservation } from "@/lib/engine/types";
-import type { Lead, Conversation } from "@/lib/admin/mock-data";
 import { AvailabilityEngine } from "@/lib/engine/availability";
 import { ReservationEngine }  from "@/lib/engine/reservation";
 import { cn } from "@/lib/utils";
-import { MockDataBanner } from "@/components/admin/mock-data-banner";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeReach OS Hub — Control Center
+// All data is live from the database via hub/page.tsx server component.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Snapshot {
-  activeCities: number;
-  totalCities: number;
-  spotsFilled: number;
-  totalSpots: number;
-  estimatedMRR: number;
-  totalLeads: number;
-  conversionRate: number;
-  activeAgents: number;
-  migratedClients: number;
-  activeCampaigns: number;
-  pendingCampaigns: number;
-  campaignReach: number;
+  activeCities:     number;
+  totalCities:      number;
+  spotsFilled:      number;
+  totalSpots:       number;
+  estimatedMRR:     number;
+  totalLeads:       number;
+  newLeadsThisWeek: number;
+  activeClients:    number;
+  activeCampaigns:  number;
+  upcomingCampaigns: number;
+  unreadReplies:    number;
+  waitlistCount:    number;
+  conversionRate:   number;
 }
 
 interface Props {
-  cities: CityAvailability[];
+  cities:             CityAvailability[];
   activeReservations: Reservation[];
-  hotLeads: Lead[];
-  awaitingIntake: Lead[];
-  recentlyClosed: Lead[];
-  activeConversations: Conversation[];
-  snapshot: Snapshot;
+  snapshot:           Snapshot;
 }
 
 const STATUS_URGENCY_COLOR: Record<string, string> = {
@@ -63,24 +59,7 @@ function fillBar(filled: number, total: number) {
   );
 }
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const hours = Math.floor(diff / 3_600_000);
-  if (hours < 1) return "< 1h ago";
-  if (hours < 24) return `${hours}h ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-const LEAD_STATUS_STYLES: Record<string, string> = {
-  lead:       "bg-gray-700 text-gray-300",
-  interested: "bg-amber-900/50 text-amber-300",
-  sold:       "bg-green-900/50 text-green-300",
-  closed_won: "bg-emerald-900/50 text-emerald-300",
-};
-
-// ── Quick Action Modal ──────────────────────────────────────────────────────
+// ── Quick Action Button ────────────────────────────────────────────────────
 
 function QuickActionButton({
   icon, label, sublabel, onClick, href, color = "gray",
@@ -117,15 +96,7 @@ function QuickActionButton({
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export function HubClient({
-  cities,
-  activeReservations,
-  hotLeads,
-  awaitingIntake,
-  recentlyClosed,
-  activeConversations,
-  snapshot,
-}: Props) {
+export function HubClient({ cities, activeReservations, snapshot }: Props) {
   const [actionToast, setActionToast] = useState<string | null>(null);
 
   function showToast(msg: string) {
@@ -157,9 +128,6 @@ export function HubClient({
 
       <div className="p-6 space-y-8 max-w-[1400px] mx-auto">
 
-        {/* ── Mock Data Warning ─────────────────────────────────────── */}
-        <MockDataBanner items={["Lead pipeline", "Conversion stats", "MRR estimate", "Active agents", "Campaign data"]} />
-
         {/* ── Toast ─────────────────────────────────────────────────── */}
         {actionToast && (
           <div className="fixed bottom-6 right-6 z-50 bg-gray-800 border border-gray-700 text-white text-sm px-4 py-3 rounded-xl shadow-lg">
@@ -174,7 +142,7 @@ export function HubClient({
             <div className="col-span-2 md:col-span-3 xl:col-span-1 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5">
               <p className="text-xs font-semibold text-blue-200 uppercase tracking-wide">Est. MRR</p>
               <p className="text-3xl font-bold text-white mt-1">${snapshot.estimatedMRR.toLocaleString()}</p>
-              <p className="text-xs text-blue-200 mt-1">{snapshot.migratedClients} legacy + new clients</p>
+              <p className="text-xs text-blue-200 mt-1">{snapshot.activeClients} active clients</p>
             </div>
 
             <SnapshotCard icon="🏙️" label="Active Cities"
@@ -186,33 +154,34 @@ export function HubClient({
             <SnapshotCard icon="🎯" label="Total Leads"
               value={String(snapshot.totalLeads)}
               sub={`${snapshot.conversionRate}% conversion rate`} />
-            <SnapshotCard icon="👥" label="Active Agents"
-              value={String(snapshot.activeAgents)}
-              sub={`${snapshot.migratedClients} migrated clients`} />
+            <SnapshotCard icon="📋" label="Waitlist"
+              value={String(snapshot.waitlistCount)}
+              sub={`+${snapshot.newLeadsThisWeek} this week`} />
             <SnapshotCard icon="📬" label="Campaigns"
               value={String(snapshot.activeCampaigns)}
               sub={
-                snapshot.pendingCampaigns > 0
-                  ? `${snapshot.pendingCampaigns} pending review`
-                  : snapshot.campaignReach >= 1000
-                    ? `${(snapshot.campaignReach / 1000).toFixed(1)}k homes reached`
-                    : `${snapshot.campaignReach} homes reached`
+                snapshot.upcomingCampaigns > 0
+                  ? `${snapshot.upcomingCampaigns} upcoming`
+                  : "All campaigns live"
               } />
           </div>
         </section>
 
         {/* ── B: Quick Access Panel ─────────────────────────────────── */}
         <section>
-          <SectionHeader label="Quick Access" sub="Jump anywhere in the system" />
+          <div className="mb-3">
+            <h2 className="text-sm font-bold text-white">Quick Access</h2>
+            <p className="text-xs text-gray-500">Jump anywhere in the system</p>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             <QuickAccessCard icon="🌐" label="Website"       href="/"                  />
             <QuickAccessCard icon="📝" label="Intake Form"   href="/get-started"        />
             <QuickAccessCard icon="📊" label="ROI Dashboard" href="/admin/roi-preview"  />
             <QuickAccessCard icon="💬" label="Inbox"         href="/admin/inbox"
-              badge={activeConversations.length > 0 ? String(activeConversations.length) : undefined} />
+              badge={snapshot.unreadReplies > 0 ? String(snapshot.unreadReplies) : undefined} />
             <QuickAccessCard icon="📍" label="Availability"  href="/admin/availability" />
             <QuickAccessCard icon="📬" label="Campaigns"     href="/admin/campaigns"
-              badge={snapshot.pendingCampaigns > 0 ? String(snapshot.pendingCampaigns) : undefined} />
+              badge={snapshot.upcomingCampaigns > 0 ? String(snapshot.upcomingCampaigns) : undefined} />
             <QuickAccessCard icon="🎨" label="Ad Designer"   href="/admin/ad-designer"  />
             <QuickAccessCard icon="🔄" label="Migration"     href="/admin/migration"    />
           </div>
@@ -227,13 +196,15 @@ export function HubClient({
             {/* ── C: City Control ───────────────────────────────────── */}
             <Panel title="City Control" sub="Spot fill rate & campaign status per market">
               <div className="divide-y divide-gray-800">
-                {cities.map((city) => {
+                {cities.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-2">No cities configured yet.</p>
+                ) : cities.map((city) => {
                   const urgency = AvailabilityEngine.getUrgencyLevel(city.availableSpots, city.totalSpots);
                   return (
                     <div key={city.cityId} className="py-3 flex items-center gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={cn("text-sm font-semibold text-white")}>{city.cityName}</span>
+                          <span className="text-sm font-semibold text-white">{city.cityName}</span>
                           <span className={cn("text-xs font-medium", STATUS_URGENCY_COLOR[urgency])}>
                             {urgency === "critical" ? "🔴 Critical" :
                              urgency === "high"     ? "🟠 High"     :
@@ -262,103 +233,94 @@ export function HubClient({
               </div>
             </Panel>
 
-            {/* ── D: Sales Command ──────────────────────────────────── */}
+            {/* ── D: Pipeline Overview ──────────────────────────────── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
 
-              {/* Hot Leads */}
-              <Panel title="🔥 Hot Leads" sub="Interested, no spot yet">
-                {hotLeads.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-2">No hot leads right now</p>
-                ) : (
-                  <div className="space-y-2">
-                    {hotLeads.map((lead) => (
-                      <div key={lead.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{lead.name}</p>
-                          <p className="text-xs text-gray-400">{lead.city} · {lead.category}</p>
-                        </div>
-                        <span className="text-xs font-semibold text-amber-400">${lead.monthlyValue}/mo</span>
-                      </div>
-                    ))}
+              {/* Leads Summary */}
+              <Panel title="🎯 Lead Pipeline" sub="All leads from waitlist & outreach">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                    <p className="text-sm text-gray-300">Total Leads</p>
+                    <span className="text-lg font-bold text-white">{snapshot.totalLeads}</span>
                   </div>
-                )}
+                  <div className="flex items-center justify-between p-3 bg-amber-900/20 border border-amber-800/30 rounded-lg">
+                    <p className="text-sm text-gray-300">New This Week</p>
+                    <span className="text-lg font-bold text-amber-400">+{snapshot.newLeadsThisWeek}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-green-900/20 border border-green-800/30 rounded-lg">
+                    <p className="text-sm text-gray-300">Active Clients</p>
+                    <span className="text-lg font-bold text-green-400">{snapshot.activeClients}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+                    <p className="text-sm text-gray-300">Conversion Rate</p>
+                    <span className="text-lg font-bold text-blue-400">{snapshot.conversionRate}%</span>
+                  </div>
+                </div>
                 <Link href="/admin/leads" className="mt-3 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
                   View all leads →
                 </Link>
               </Panel>
 
-              {/* Awaiting Intake */}
-              <Panel title="📋 Awaiting Intake" sub="Interested but form not sent">
-                {awaitingIntake.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-2">All intakes sent</p>
-                ) : (
-                  <div className="space-y-2">
-                    {awaitingIntake.map((lead) => (
-                      <div key={lead.id} className="flex items-center justify-between p-3 bg-amber-900/20 border border-amber-800/30 rounded-lg">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{lead.name}</p>
-                          <p className="text-xs text-gray-400">{lead.category} · {lead.city}</p>
-                        </div>
-                        <button
-                          onClick={() => showToast(`Intake link sent to ${lead.name}`)}
-                          className="text-xs px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition shrink-0"
-                        >
-                          Send
-                        </button>
-                      </div>
-                    ))}
+              {/* Waitlist */}
+              <Panel title="📋 Waitlist" sub="Prospects not yet converted">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                    <p className="text-sm text-gray-300">On Waitlist</p>
+                    <span className="text-lg font-bold text-white">{snapshot.waitlistCount}</span>
                   </div>
-                )}
+                  <div className="flex items-center justify-between p-3 bg-purple-900/20 border border-purple-800/30 rounded-lg">
+                    <p className="text-sm text-gray-300">Joined This Week</p>
+                    <span className="text-lg font-bold text-purple-400">+{snapshot.newLeadsThisWeek}</span>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-gray-500">
+                  These are prospects who signed up but haven't purchased a spot yet.
+                </p>
+                <Link href="/admin/leads" className="mt-2 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                  View leads →
+                </Link>
               </Panel>
 
-              {/* Active Conversations */}
-              <Panel title="💬 Unread Conversations" sub="Need your reply">
-                {activeConversations.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-2">Inbox clear</p>
-                ) : (
-                  <div className="space-y-2">
-                    {activeConversations.map((conv) => (
-                      <Link
-                        key={conv.id}
-                        href="/admin/inbox"
-                        className="flex items-center gap-3 p-3 bg-gray-800/50 hover:bg-gray-800 rounded-lg transition"
-                      >
-                        <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-                          {conv.leadName[0]}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{conv.leadName}</p>
-                          <p className="text-xs text-gray-400 truncate">{conv.lastMessage}</p>
-                        </div>
-                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold shrink-0">
-                          {conv.unreadCount}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
+              {/* Unread Inbox */}
+              <Panel title="💬 Unread Replies" sub="SMS & email responses needing attention">
+                <div className="flex items-center justify-center py-4">
+                  {snapshot.unreadReplies === 0 ? (
+                    <div className="text-center">
+                      <p className="text-3xl mb-2">✅</p>
+                      <p className="text-sm text-gray-400">Inbox clear</p>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <p className={cn(
+                        "text-5xl font-bold mb-2",
+                        snapshot.unreadReplies > 10 ? "text-red-400" : "text-amber-400"
+                      )}>
+                        {snapshot.unreadReplies}
+                      </p>
+                      <p className="text-sm text-gray-400">unread {snapshot.unreadReplies === 1 ? "reply" : "replies"}</p>
+                    </div>
+                  )}
+                </div>
                 <Link href="/admin/inbox" className="mt-3 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
                   Open inbox →
                 </Link>
               </Panel>
 
-              {/* Recently Closed */}
-              <Panel title="✅ Recently Closed" sub="Deals won">
-                {recentlyClosed.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-2">No closed deals yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {recentlyClosed.map((lead) => (
-                      <div key={lead.id} className="flex items-center justify-between p-3 bg-green-900/20 border border-green-800/30 rounded-lg">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{lead.businessName}</p>
-                          <p className="text-xs text-gray-400">{lead.category} · {lead.city}</p>
-                        </div>
-                        <span className="text-xs font-semibold text-green-400">${lead.monthlyValue}/mo</span>
-                      </div>
-                    ))}
+              {/* Campaign Summary */}
+              <Panel title="📬 Campaign Status" sub="Active & upcoming postcard runs">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-green-900/20 border border-green-800/30 rounded-lg">
+                    <p className="text-sm text-gray-300">Active Campaigns</p>
+                    <span className="text-lg font-bold text-green-400">{snapshot.activeCampaigns}</span>
                   </div>
-                )}
+                  <div className="flex items-center justify-between p-3 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+                    <p className="text-sm text-gray-300">Upcoming</p>
+                    <span className="text-lg font-bold text-blue-400">{snapshot.upcomingCampaigns}</span>
+                  </div>
+                </div>
+                <Link href="/admin/campaigns" className="mt-3 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                  View all campaigns →
+                </Link>
               </Panel>
             </div>
           </div>
@@ -370,15 +332,15 @@ export function HubClient({
             <Panel title="⚡ Quick Actions" sub="One-click system operations">
               <div className="grid grid-cols-2 gap-2.5">
                 <QuickActionButton icon="📝" label="Send Intake" sublabel="to a lead"
-                  color="blue" onClick={() => showToast("Choose a lead to send intake")} />
+                  color="blue" onClick={() => showToast("Navigate to Leads to send intake")} />
                 <QuickActionButton icon="🏙️" label="New City"    sublabel="add market"
                   color="green" href="/admin/availability" />
                 <QuickActionButton icon="🔒" label="Lock Spot"   sublabel="category lock"
                   color="amber" onClick={() => showToast("Navigate to Availability to lock/unlock")} />
                 <QuickActionButton icon="✅" label="Close Deal"  sublabel="mark as sold"
-                  color="purple" onClick={() => showToast("Choose a lead to mark closed")} />
-                <QuickActionButton icon="📬" label="Campaign"    sublabel="new targeted"
-                  color="blue" href="/targeted" />
+                  color="purple" onClick={() => showToast("Navigate to Leads to mark closed")} />
+                <QuickActionButton icon="📬" label="Campaign"    sublabel="view campaigns"
+                  color="blue" href="/admin/campaigns" />
                 <QuickActionButton icon="🔄" label="Migration"   sublabel="add legacy client"
                   color="gray" href="/admin/migration" />
                 <QuickActionButton icon="👤" label="Agent View"  sublabel="preview dashboard"
@@ -386,7 +348,7 @@ export function HubClient({
               </div>
             </Panel>
 
-            {/* ── Reservations Expiring ─────────────────────────────── */}
+            {/* ── Reservations ─────────────────────────────────────── */}
             <Panel title="⏱️ Active Reservations" sub="Spots on hold">
               {activeReservations.length === 0 ? (
                 <p className="text-sm text-gray-500 py-2">No active reservations</p>
@@ -422,20 +384,21 @@ export function HubClient({
             </Panel>
 
             {/* ── System Links ──────────────────────────────────────── */}
-            <Panel title="🔗 System Links" sub="External tools & portals">
+            <Panel title="🔗 System Links" sub="All admin sections">
               <div className="space-y-1.5">
                 {[
-                  { label: "Admin Panel",     href: "/admin",                icon: "🏠" },
-                  { label: "Sales Engine",    href: "/admin/sales-engine",   icon: "⚡" },
-                  { label: "Sales Dashboard", href: "/admin/agent-view",     icon: "🎯" },
-                  { label: "ROI Dashboard",   href: "/admin/roi-preview",    icon: "📊" },
+                  { label: "Admin Home",      href: "/admin",                icon: "🏠" },
+                  { label: "Leads",           href: "/admin/leads",          icon: "📋" },
+                  { label: "Inbox",           href: "/admin/inbox",          icon: "💬" },
                   { label: "Campaigns",       href: "/admin/campaigns",      icon: "📬" },
-                  { label: "Profit Center",   href: "/admin/profit-center",  icon: "💰" },
+                  { label: "Availability",    href: "/admin/availability",   icon: "📍" },
+                  { label: "Businesses",      href: "/admin/businesses",     icon: "🏢" },
+                  { label: "ROI Dashboard",   href: "/admin/roi-preview",    icon: "📊" },
+                  { label: "Sales Engine",    href: "/admin/sales-engine",   icon: "⚡" },
+                  { label: "Agent View",      href: "/admin/agent-view",     icon: "🎯" },
                   { label: "Reviews",         href: "/admin/reviews",        icon: "⭐" },
-                  { label: "Legacy Import",   href: "/admin/legacy-import",  icon: "🗄️" },
                   { label: "Client Migration",href: "/admin/migration",      icon: "🔄" },
                   { label: "Agents",          href: "/admin/agents",         icon: "👥" },
-                  { label: "Leads",           href: "/admin/leads",          icon: "📋" },
                 ].map((link) => (
                   <Link
                     key={link.href}
@@ -457,15 +420,6 @@ export function HubClient({
 }
 
 // ── Shared Sub-components ─────────────────────────────────────────────────
-
-function SectionHeader({ label, sub }: { label: string; sub: string }) {
-  return (
-    <div className="mb-3">
-      <h2 className="text-sm font-bold text-white">{label}</h2>
-      <p className="text-xs text-gray-500">{sub}</p>
-    </div>
-  );
-}
 
 function SnapshotCard({ icon, label, value, sub }: {
   icon: string; label: string; value: string; sub: string;

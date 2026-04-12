@@ -24,6 +24,17 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "HomeReach",
   },
+  // PWA support — enables "Add to Home Screen" on iOS and Android
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "HomeReach OS",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "msapplication-TileColor": "#2563eb",
+  },
 };
 
 export default function RootLayout({
@@ -33,6 +44,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+        <meta name="theme-color" content="#2563eb" />
+      </head>
       <body className="min-h-screen bg-white font-sans antialiased">
         {children}
       </body>

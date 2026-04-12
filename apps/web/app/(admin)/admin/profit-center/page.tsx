@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
-import { MOCK_TARGETED_CAMPAIGNS } from "@/lib/admin/mock-routes";
-import { MOCK_MIGRATED_CLIENTS }   from "@/lib/admin/mock-clients";
+import {
+  db,
+  targetedRouteCampaigns,
+  spotAssignments,
+  businesses,
+} from "@homereach/db";
+import { inArray, eq } from "drizzle-orm";
 import {
   ProfitAwarePricingEngine,
   PostagePricingProvider,
@@ -10,6 +15,7 @@ import {
 import type { ProfitRow, ProductPricingResult } from "@/lib/pricing";
 import { ProfitClient } from "./profit-client";
 
+export const dynamic  = "force-dynamic";
 export const metadata: Metadata = { title: "Profit Center — HomeReach Admin" };
 
 export default async function ProfitCenterPage() {
@@ -20,27 +26,47 @@ export default async function ProfitCenterPage() {
 
   const config = ProfitAwarePricingEngine.getConfig();
 
-  // ── Build campaign profit rows ──────────────────────────────────────────────
+  // ── Build targeted-campaign profit rows (real DB) ───────────────────────────
+  const liveCampaigns = await db
+    .select({
+      id:          targetedRouteCampaigns.id,
+      businessName: targetedRouteCampaigns.businessName,
+      homesCount:  targetedRouteCampaigns.homesCount,
+      priceCents:  targetedRouteCampaigns.priceCents,
+      status:      targetedRouteCampaigns.status,
+    })
+    .from(targetedRouteCampaigns)
+    .where(
+      inArray(targetedRouteCampaigns.status, [
+        "paid", "design_queued", "design_in_progress",
+        "design_ready", "approved", "mailed", "complete",
+      ])
+    )
+    .catch(() => [] as typeof liveCampaigns);
+
   const campaignRows: ProfitRow[] = await Promise.all(
-    MOCK_TARGETED_CAMPAIGNS.map(async (c) => {
+    liveCampaigns.map(async (c) => {
       const result = await ProfitAwarePricingEngine.calculateCampaign({
-        totalHouseholds:      c.totalHouseholds,
-        productType:          "postcard_6x9",
-        monthsCommitted:      1,
-        campaignId:           c.id,
-        campaignProductType:  "targeted_campaign",
+        totalHouseholds:     c.homesCount,
+        productType:         "postcard_6x9",
+        monthsCommitted:     1,
+        campaignId:          c.id,
+        campaignProductType: "targeted_campaign",
       });
+      const sellPrice = c.priceCents / 100; // authoritative price from DB
       return {
         id:               c.id,
-        name:             c.businessId, // future: join to business name
+        name:             c.businessName,
         productType:      "targeted_campaign" as const,
-        quantity:         c.totalHouseholds,
+        quantity:         c.homesCount,
         vendorCost:       result.vendorCost,
         postageCost:      result.postageCost,
         totalCost:        result.totalCost,
-        sellPrice:        result.finalPrice,
-        grossProfit:      result.grossProfit,
-        marginPercent:    result.grossMarginPercent,
+        sellPrice,
+        grossProfit:      sellPrice - result.totalCost,
+        marginPercent:    sellPrice > 0
+          ? Math.round(((sellPrice - result.totalCost) / sellPrice) * 100)
+          : 0,
         pricingSource:    result.pricingSource,
         pricingTimestamp: result.pricingTimestamp,
         status:           c.status,
@@ -48,34 +74,62 @@ export default async function ProfitCenterPage() {
     })
   );
 
-  // ── Build shared-postcard profit rows (legacy / migrated clients) ───────────
+  // ── Build shared-postcard profit rows (real DB: active spot assignments) ─────
+  const activeSpots = await db
+    .select({
+      id:               spotAssignments.id,
+      businessId:       spotAssignments.businessId,
+      monthlyValueCents: spotAssignments.monthlyValueCents,
+      status:           spotAssignments.status,
+    })
+    .from(spotAssignments)
+    .where(inArray(spotAssignments.status, ["active", "paused"]))
+    .catch(() => [] as typeof activeSpots);
+
+  // Look up business names for display
+  const bizIds = activeSpots
+    .map((s) => s.businessId)
+    .filter(Boolean) as string[];
+  const bizNameMap: Record<string, string> = {};
+  if (bizIds.length > 0) {
+    const bizRows = await db
+      .select({ id: businesses.id, name: businesses.name })
+      .from(businesses)
+      .where(inArray(businesses.id, bizIds))
+      .catch(() => []);
+    for (const b of bizRows) bizNameMap[b.id] = b.name ?? b.id;
+  }
+
+  // Shared-postcard standard print quantity per city per drop
+  const SHARED_POSTCARD_HOMES = 2500;
+
   const sharedRows: ProfitRow[] = await Promise.all(
-    MOCK_MIGRATED_CLIENTS
-      .filter((mc) => mc.migrationStatus !== "legacy_pending")
-      .map(async (mc) => {
-        const qty     = 3000; // typical shared postcard EDDM route size
-        const result  = await ProfitAwarePricingEngine.calculateCampaign({
-          totalHouseholds:     qty,
-          productType:         "postcard_6x9",
-          monthsCommitted:     1,
-          campaignProductType: "shared_postcard",
-        });
-        return {
-          id:               mc.id,
-          name:             mc.businessName,
-          productType:      "shared_postcard" as const,
-          quantity:         qty,
-          vendorCost:       result.vendorCost,
-          postageCost:      result.postageCost,
-          totalCost:        result.totalCost,
-          sellPrice:        mc.monthlyPrice, // actual contract price (what we charge them)
-          grossProfit:      mc.monthlyPrice - result.totalCost,
-          marginPercent:    Math.round(((mc.monthlyPrice - result.totalCost) / mc.monthlyPrice) * 100),
-          pricingSource:    result.pricingSource,
-          pricingTimestamp: result.pricingTimestamp,
-          status:           mc.migrationStatus,
-        };
-      })
+    activeSpots.map(async (spot) => {
+      const result = await ProfitAwarePricingEngine.calculateCampaign({
+        totalHouseholds:     SHARED_POSTCARD_HOMES,
+        productType:         "postcard_6x9",
+        monthsCommitted:     1,
+        campaignProductType: "shared_postcard",
+      });
+      const sellPrice = spot.monthlyValueCents / 100;
+      return {
+        id:               spot.id,
+        name:             spot.businessId ? (bizNameMap[spot.businessId] ?? spot.businessId) : "Unknown",
+        productType:      "shared_postcard" as const,
+        quantity:         SHARED_POSTCARD_HOMES,
+        vendorCost:       result.vendorCost,
+        postageCost:      result.postageCost,
+        totalCost:        result.totalCost,
+        sellPrice,
+        grossProfit:      sellPrice - result.totalCost,
+        marginPercent:    sellPrice > 0
+          ? Math.round(((sellPrice - result.totalCost) / sellPrice) * 100)
+          : 0,
+        pricingSource:    result.pricingSource,
+        pricingTimestamp: result.pricingTimestamp,
+        status:           spot.status,
+      };
+    })
   );
 
   // ── Build product reference rows for all print products ────────────────────

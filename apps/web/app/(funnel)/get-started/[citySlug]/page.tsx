@@ -44,8 +44,18 @@ export default async function CategorySelectionPage({ params }: Props) {
           What type of business are you?
         </h1>
         <p className="mt-3 text-lg text-gray-500">
-          Each category has limited spots per mailer — one business per slot.
+          One business per category. Choose yours before a competitor does.
         </p>
+
+        {/* Trust signal — show how many spots are already taken */}
+        {full.length > 0 && (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-4 py-1.5">
+            <span className="flex h-1.5 w-1.5 rounded-full bg-green-500" />
+            <p className="text-sm font-medium text-green-700">
+              {full.length} categor{full.length === 1 ? "y" : "ies"} already claimed by local businesses in {city.name}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Available categories */}
@@ -61,11 +71,11 @@ export default async function CategorySelectionPage({ params }: Props) {
         </div>
       )}
 
-      {/* Full / sold-out categories */}
+      {/* Full / sold-out categories — also serves as social proof */}
       {full.length > 0 && (
         <div className="mt-10">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Sold out in {city.name}
+            Already claimed — these spots are taken
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {full.map((cat) => (

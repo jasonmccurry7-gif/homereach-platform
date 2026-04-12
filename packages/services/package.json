@@ -7,8 +7,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./stripe": "./src/stripe/index.ts",
+    "./pricing": "./src/pricing/index.ts",
     "./outreach": "./src/outreach/index.ts",
-    "./auth": "./src/auth/index.ts"
+    "./auth": "./src/auth/index.ts",
+    "./targeted": "./src/targeted/index.ts"
   },
   "scripts": {
     "type-check": "tsc --noEmit"

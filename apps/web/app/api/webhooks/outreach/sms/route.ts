@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import twilio from "twilio";
 import { db, outreachContacts, outreachReplies, outreachMessages } from "@homereach/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/outreach/sms
@@ -8,23 +9,68 @@ import { eq, and } from "drizzle-orm";
 // Receives replies from contacts and stores them as outreach_replies.
 // Also handles STOP/HELP keywords for compliance.
 //
+// Security: Validates Twilio request signature on every request.
 // Twilio sends as application/x-www-form-urlencoded.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OPT_OUT_KEYWORDS = ["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"];
-const OPT_IN_KEYWORDS = ["START", "YES", "UNSTOP"];
+const OPT_IN_KEYWORDS  = ["START", "YES", "UNSTOP"];
+
+const EMPTY_TWIML = new Response("<Response/>", {
+  headers: { "Content-Type": "text/xml" },
+});
 
 export async function POST(req: Request) {
-  const formData = await req.formData();
+  // ── Twilio signature validation ────────────────────────────────────────────
+  // Skip validation only in development when no auth token is set.
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const isProduction = process.env.NODE_ENV === "production";
 
-  const from = formData.get("From") as string | null;
-  const body = formData.get("Body") as string | null;
-  const messageSid = formData.get("MessageSid") as string | null;
+  if (authToken) {
+    const twilioSignature = req.headers.get("X-Twilio-Signature") ?? "";
+    const url = process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/outreach/sms`
+      : req.url;
+
+    // Parse body for signature validation (Twilio signs the form params)
+    const rawText = await req.text();
+    const params: Record<string, string> = {};
+    for (const [k, v] of new URLSearchParams(rawText)) {
+      params[k] = v;
+    }
+
+    const isValid = twilio.validateRequest(authToken, twilioSignature, url, params);
+
+    if (!isValid) {
+      // In production: reject outright. In dev: log a warning but continue.
+      if (isProduction) {
+        console.error("[sms/webhook] REJECTED — invalid Twilio signature");
+        return new Response("Forbidden", { status: 403 });
+      } else {
+        console.warn("[sms/webhook] WARNING — invalid Twilio signature (ignored in dev)");
+      }
+    }
+
+    // Re-parse from already-read body
+    return await handleSmsPayload(params);
+  }
+
+  // No auth token set — parse normally (unsafe, will warn in prod env validation)
+  const formData = await req.formData();
+  const params: Record<string, string> = {};
+  for (const [k, v] of formData) {
+    params[k] = String(v);
+  }
+  return await handleSmsPayload(params);
+}
+
+async function handleSmsPayload(params: Record<string, string>): Promise<Response> {
+  const from       = params["From"]      ?? null;
+  const body       = params["Body"]      ?? null;
+  const messageSid = params["MessageSid"] ?? null;
 
   if (!from || !body) {
-    return new Response("<Response/>", {
-      headers: { "Content-Type": "text/xml" },
-    });
+    return EMPTY_TWIML;
   }
 
   const normalizedBody = body.trim().toUpperCase();
@@ -36,10 +82,7 @@ export async function POST(req: Request) {
       .set({ optedOut: true, optedOutAt: new Date() })
       .where(eq(outreachContacts.phone, from));
 
-    // Twilio expects empty TwiML response — do not send confirmation (Twilio sends its own)
-    return new Response("<Response/>", {
-      headers: { "Content-Type": "text/xml" },
-    });
+    return EMPTY_TWIML;
   }
 
   // ── Opt-in handling ────────────────────────────────────────────────────────
@@ -49,13 +92,10 @@ export async function POST(req: Request) {
       .set({ optedOut: false, optedOutAt: null })
       .where(eq(outreachContacts.phone, from));
 
-    return new Response("<Response/>", {
-      headers: { "Content-Type": "text/xml" },
-    });
+    return EMPTY_TWIML;
   }
 
   // ── Store reply ────────────────────────────────────────────────────────────
-  // Find contact by phone number
   const [contact] = await db
     .select()
     .from(outreachContacts)
@@ -63,14 +103,10 @@ export async function POST(req: Request) {
     .limit(1);
 
   if (!contact) {
-    // Unknown number — log and ignore
     console.log(`[sms/webhook] reply from unknown number: ${from}`);
-    return new Response("<Response/>", {
-      headers: { "Content-Type": "text/xml" },
-    });
+    return EMPTY_TWIML;
   }
 
-  // Find the most recent outreach message to this contact for correlation
   const [matchedMessage] = messageSid
     ? await db
         .select()
@@ -80,17 +116,14 @@ export async function POST(req: Request) {
     : [undefined];
 
   await db.insert(outreachReplies).values({
-    messageId: matchedMessage?.id ?? null,
-    contactId: contact.id,
+    messageId:  matchedMessage?.id ?? null,
+    contactId:  contact.id,
     businessId: contact.businessId,
-    channel: "sms",
-    body: body,
+    channel:    "sms",
+    body:       body,
     receivedAt: new Date(),
-    isRead: false,
+    isRead:     false,
   });
 
-  // TwiML empty response — do not auto-reply
-  return new Response("<Response/>", {
-    headers: { "Content-Type": "text/xml" },
-  });
+  return EMPTY_TWIML;
 }

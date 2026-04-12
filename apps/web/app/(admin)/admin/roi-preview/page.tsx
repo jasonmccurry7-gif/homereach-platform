@@ -13,7 +13,7 @@ const MOCK_BUSINESS = {
   ownerName: "Mike Harrington",
   city: "Medina, OH",
   category: "Plumber",
-  homesPerMonth: 15000,
+  homesPerMonth: 2500,
   startDate: "2026-02-01",
   nextDrop: "2026-05-01",
   bundleName: "Visibility",
@@ -21,9 +21,9 @@ const MOCK_BUSINESS = {
 };
 
 const MOCK_METRICS: (CampaignMetrics & { monthLabel: string })[] = [
-  { businessId: "biz-1", month: "2026-02", monthLabel: "Feb",  homesReached: 15000, qrScans: 47,  calls: 12, formLeads: 4,  estimatedRevenue: 0 },
-  { businessId: "biz-1", month: "2026-03", monthLabel: "Mar",  homesReached: 15000, qrScans: 61,  calls: 18, formLeads: 6,  estimatedRevenue: 0 },
-  { businessId: "biz-1", month: "2026-04", monthLabel: "Apr",  homesReached: 15000, qrScans: 58,  calls: 21, formLeads: 8,  estimatedRevenue: 0 },
+  { businessId: "biz-1", month: "2026-02", monthLabel: "Feb",  homesReached: 2500, qrScans: 47,  calls: 12, formLeads: 4,  estimatedRevenue: 0 },
+  { businessId: "biz-1", month: "2026-03", monthLabel: "Mar",  homesReached: 2500, qrScans: 61,  calls: 18, formLeads: 6,  estimatedRevenue: 0 },
+  { businessId: "biz-1", month: "2026-04", monthLabel: "Apr",  homesReached: 2500, qrScans: 58,  calls: 21, formLeads: 8,  estimatedRevenue: 0 },
 ];
 
 const CURRENT = MOCK_METRICS[MOCK_METRICS.length - 1];

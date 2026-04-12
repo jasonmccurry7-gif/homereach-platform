@@ -63,6 +63,7 @@ export default async function AdminBundlesPage() {
                   <td className="px-4 py-4 font-mono text-xs text-gray-500">
                     {bundle.slug}
                   </td>
+                  {/* Admin reference only — display of DB alignment value, not billing source */}
                   <td className="px-4 py-4 text-right font-mono font-bold text-gray-900">
                     ${Number(bundle.price).toLocaleString("en-US", {
                       minimumFractionDigits: 0,

@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { type Lead, type LeadStatus, MOCK_LEADS } from "@/lib/admin/mock-data";
-import { MockDataBanner } from "@/components/admin/mock-data-banner";
+import type { Lead, LeadStatus } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Leads Client Component
@@ -127,14 +126,11 @@ export function LeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
 
   return (
     <div className="max-w-6xl space-y-6">
-      {/* Mock Data Warning */}
-      <MockDataBanner items={["All leads"]} />
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-          <p className="mt-1 text-sm text-gray-500">{leads.length} total leads · mock data</p>
+          <p className="mt-1 text-sm text-gray-500">{leads.length} total leads</p>
         </div>
         <Link
           href="/admin/inbox"
@@ -268,9 +264,9 @@ export function LeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
         </table>
       </div>
 
-      {/* Notes tooltip area */}
+      {/* Notes */}
       <p className="text-xs text-gray-400 text-center">
-        Status changes are local only · connect Supabase to persist
+        Data sourced live from waitlist entries and businesses table
       </p>
     </div>
   );

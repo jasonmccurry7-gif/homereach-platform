@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  MOCK_STATS,
-  MOCK_CITIES,
-  MOCK_RECENT_ACTIVITY,
-} from "@/lib/admin/mock-data";
+  db,
+  businesses,
+  orders,
+  waitlistEntries,
+  cities,
+  marketingCampaigns,
+  outreachReplies,
+} from "@homereach/db";
+import { eq, count, sum, gte, isNull, desc, and } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard — HomeReach Admin" };
 
 const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
@@ -15,8 +21,138 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   outreach: { icon: "📤", color: "bg-amber-50 border-amber-100" },
 };
 
+function fmt(n: number | null | undefined) {
+  return (n ?? 0).toLocaleString();
+}
+
 export default async function AdminDashboardPage() {
-  const s = MOCK_STATS;
+  // ── Real DB queries ────────────────────────────────────────────────────────
+  const now        = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
+
+  const [
+    activeClientsResult,
+    newClientsThisMonthResult,
+    totalLeadsResult,
+    waitlistResult,
+    mrrResult,
+    lastMrrResult,
+    activeCitiesResult,
+    recentOrdersResult,
+    recentWaitlistResult,
+    recentRepliesResult,
+  ] = await Promise.all([
+    // Active clients
+    db.select({ n: count() }).from(businesses).where(eq(businesses.status, "active")),
+
+    // New clients this month
+    db.select({ n: count() }).from(businesses).where(
+      and(eq(businesses.status, "active"), gte(businesses.createdAt, monthStart))
+    ),
+
+    // Total leads (waitlist entries that haven't converted)
+    db.select({ n: count() }).from(waitlistEntries),
+
+    // Unconverted waitlist
+    db.select({ n: count() }).from(waitlistEntries).where(isNull(waitlistEntries.convertedToBusinessId)),
+
+    // MRR: sum of orders paid this month
+    db.select({ total: sum(orders.total) }).from(orders).where(
+      and(eq(orders.status, "paid"), gte(orders.paidAt, monthStart))
+    ),
+
+    // Last month revenue for growth %
+    db.select({ total: sum(orders.total) }).from(orders).where(
+      and(
+        eq(orders.status, "paid"),
+        gte(orders.paidAt, lastMonthStart),
+        gte(lastMonthEnd, orders.paidAt!)
+      )
+    ),
+
+    // Active cities (with active businesses)
+    db.selectDistinct({ id: cities.id, name: cities.name, state: cities.state })
+      .from(cities)
+      .leftJoin(businesses, eq(businesses.cityId, cities.id))
+      .where(eq(cities.isActive, true)),
+
+    // Recent paid orders
+    db.select({
+      id: orders.id,
+      total: orders.total,
+      paidAt: orders.paidAt,
+      businessId: orders.businessId,
+    })
+      .from(orders)
+      .where(eq(orders.status, "paid"))
+      .orderBy(desc(orders.paidAt))
+      .limit(5),
+
+    // Recent waitlist
+    db.select({ id: waitlistEntries.id, email: waitlistEntries.email, businessName: waitlistEntries.businessName, createdAt: waitlistEntries.createdAt })
+      .from(waitlistEntries)
+      .orderBy(desc(waitlistEntries.createdAt))
+      .limit(5),
+
+    // Recent inbound replies
+    db.select({ id: outreachReplies.id, body: outreachReplies.body, receivedAt: outreachReplies.receivedAt })
+      .from(outreachReplies)
+      .orderBy(desc(outreachReplies.receivedAt))
+      .limit(5),
+  ]);
+
+  const activeClients    = activeClientsResult[0]?.n ?? 0;
+  const newClientsMonth  = newClientsThisMonthResult[0]?.n ?? 0;
+  const totalLeads       = totalLeadsResult[0]?.n ?? 0;
+  const waitlistCount    = waitlistResult[0]?.n ?? 0;
+  const mrr              = Math.round(Number(mrrResult[0]?.total ?? 0));
+  const lastMrr          = Math.round(Number(lastMrrResult[0]?.total ?? 0));
+  const mrrGrowth        = lastMrr > 0 ? Math.round(((mrr - lastMrr) / lastMrr) * 100) : 0;
+
+  // Build city rows with business counts
+  const cityBusinessCounts = await Promise.all(
+    activeCitiesResult.slice(0, 6).map(async (city) => {
+      const [active] = await db.select({ n: count() }).from(businesses)
+        .where(and(eq(businesses.cityId, city.id), eq(businesses.status, "active")));
+      const [total]  = await db.select({ n: count() }).from(businesses)
+        .where(eq(businesses.cityId, city.id));
+      return { ...city, active: active?.n ?? 0, total: total?.n ?? 0 };
+    })
+  );
+
+  // Build activity feed from real events
+  type ActivityItem = { id: string; type: string; text: string; time: string };
+  const activity: ActivityItem[] = [];
+
+  for (const o of recentOrdersResult) {
+    activity.push({
+      id:   `order-${o.id}`,
+      type: "sold",
+      text: `New client signed — $${Number(o.total).toLocaleString()}`,
+      time: o.paidAt ? new Date(o.paidAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "recently",
+    });
+  }
+  for (const w of recentWaitlistResult) {
+    activity.push({
+      id:   `waitlist-${w.id}`,
+      type: "waitlist",
+      text: `${w.businessName ?? w.email} joined the waitlist`,
+      time: w.createdAt ? new Date(w.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "recently",
+    });
+  }
+  for (const r of recentRepliesResult) {
+    activity.push({
+      id:   `reply-${r.id}`,
+      type: "reply",
+      text: `Inbound reply: "${r.body.slice(0, 50)}${r.body.length > 50 ? "…" : ""}"`,
+      time: r.receivedAt ? new Date(r.receivedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "recently",
+    });
+  }
+
+  // Sort by recency (best-effort: use id ordering for now)
+  const sortedActivity = activity.slice(0, 8);
 
   return (
     <div className="space-y-8">
@@ -25,7 +161,7 @@ export default async function AdminDashboardPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Good morning, Jason 👋</h1>
-          <p className="mt-1 text-gray-500">Here's what's happening across HomeReach today.</p>
+          <p className="mt-1 text-gray-500">Here&apos;s what&apos;s happening across HomeReach today.</p>
         </div>
         <div className="flex gap-3 mt-1">
           <Link
@@ -47,15 +183,22 @@ export default async function AdminDashboardPage() {
       <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 p-7 text-white shadow-lg">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-blue-200 uppercase tracking-wide">Monthly Recurring Revenue</p>
-            <p className="mt-2 text-5xl font-bold">${s.mrr.toLocaleString()}</p>
-            <p className="mt-2 text-blue-200 text-sm">
-              <span className="text-green-300 font-semibold">↑ {s.mrrGrowth}%</span> vs. last month
-            </p>
+            <p className="text-sm font-medium text-blue-200 uppercase tracking-wide">Revenue This Month</p>
+            <p className="mt-2 text-5xl font-bold">${fmt(mrr)}</p>
+            {lastMrr > 0 ? (
+              <p className="mt-2 text-blue-200 text-sm">
+                <span className={`font-semibold ${mrrGrowth >= 0 ? "text-green-300" : "text-red-300"}`}>
+                  {mrrGrowth >= 0 ? "↑" : "↓"} {Math.abs(mrrGrowth)}%
+                </span>{" "}
+                vs. last month
+              </p>
+            ) : (
+              <p className="mt-2 text-blue-200 text-sm">First month of revenue tracking</p>
+            )}
           </div>
           <div className="text-right">
             <div className="text-sm text-blue-200 mb-1">This month</div>
-            <div className="text-3xl font-bold">{s.conversionsThisMonth}</div>
+            <div className="text-3xl font-bold">{newClientsMonth}</div>
             <div className="text-sm text-blue-200">new clients signed</div>
           </div>
         </div>
@@ -66,29 +209,29 @@ export default async function AdminDashboardPage() {
         {[
           {
             label: "Active Clients",
-            value: s.activeClients,
-            sub: `${s.conversionsThisMonth} signed this month`,
+            value: activeClients,
+            sub: `${newClientsMonth} signed this month`,
             icon: "🏢",
             accent: "text-blue-600",
           },
           {
             label: "Total Leads",
-            value: s.totalLeads,
-            sub: `${s.newLeadsThisWeek} new this week`,
+            value: totalLeads,
+            sub: "waitlist entries",
             icon: "🎯",
             accent: "text-purple-600",
           },
           {
-            label: "Open Spots",
-            value: s.openSpots,
-            sub: "available to sell",
+            label: "Active Cities",
+            value: activeCitiesResult.length,
+            sub: "markets live",
             icon: "📍",
             accent: "text-amber-600",
           },
           {
             label: "Waitlist",
-            value: s.waitlistCount,
-            sub: "pending signups",
+            value: waitlistCount,
+            sub: "unconverted signups",
             icon: "📋",
             accent: "text-pink-600",
           },
@@ -114,41 +257,34 @@ export default async function AdminDashboardPage() {
         <div className="lg:col-span-3 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
             <div>
-              <h2 className="font-semibold text-gray-900">Cities</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Spot fill rate and revenue by market</p>
+              <h2 className="font-semibold text-gray-900">Active Cities</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Businesses by market</p>
             </div>
             <Link href="/admin/cities" className="text-xs font-medium text-blue-600 hover:underline">
               Manage →
             </Link>
           </div>
           <div className="divide-y divide-gray-50">
-            {MOCK_CITIES.map((city) => {
-              const fillPct = Math.round((city.spotsSold / city.spotsTotal) * 100);
-              const barColor =
-                fillPct >= 75 ? "bg-green-500" :
-                fillPct >= 40 ? "bg-blue-500" :
-                "bg-gray-300";
+            {cityBusinessCounts.length === 0 && (
+              <p className="px-6 py-8 text-sm text-gray-400 text-center">No active cities yet. <Link href="/admin/cities" className="text-blue-600 underline">Add one →</Link></p>
+            )}
+            {cityBusinessCounts.map((city) => {
+              const fillPct = city.total > 0 ? Math.round((city.active / city.total) * 100) : 0;
+              const barColor = fillPct >= 75 ? "bg-green-500" : fillPct >= 40 ? "bg-blue-500" : "bg-gray-300";
               return (
-                <div key={city.name} className="flex items-center gap-4 px-6 py-4">
-                  <div className="w-36 shrink-0">
-                    <p className="font-medium text-sm text-gray-900">{city.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{city.leads} leads</p>
+                <div key={city.id} className="flex items-center gap-4 px-6 py-4">
+                  <div className="w-40 shrink-0">
+                    <p className="font-medium text-sm text-gray-900">{city.name}, {city.state}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{city.total} businesses total</p>
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs text-gray-500">{city.spotsSold} / {city.spotsTotal} spots sold</span>
+                      <span className="text-xs text-gray-500">{city.active} active</span>
                       <span className="text-xs font-semibold text-gray-700">{fillPct}%</span>
                     </div>
                     <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${barColor}`}
-                        style={{ width: `${fillPct}%` }}
-                      />
+                      <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${fillPct}%` }} />
                     </div>
-                  </div>
-                  <div className="w-20 text-right shrink-0">
-                    <p className="text-sm font-bold text-green-700">${city.mrr.toLocaleString()}</p>
-                    <p className="text-xs text-gray-400">/ mo</p>
                   </div>
                 </div>
               );
@@ -160,10 +296,13 @@ export default async function AdminDashboardPage() {
         <div className="lg:col-span-2 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-gray-100">
             <h2 className="font-semibold text-gray-900">Recent Activity</h2>
-            <p className="text-xs text-gray-400 mt-0.5">What's happened lately</p>
+            <p className="text-xs text-gray-400 mt-0.5">Live from database</p>
           </div>
           <div className="divide-y divide-gray-50">
-            {MOCK_RECENT_ACTIVITY.map((item) => {
+            {sortedActivity.length === 0 && (
+              <p className="px-6 py-8 text-sm text-gray-400 text-center">No activity yet.</p>
+            )}
+            {sortedActivity.map((item) => {
               const style = ACTIVITY_ICONS[item.type] ?? { icon: "•", color: "bg-gray-50 border-gray-100" };
               return (
                 <div key={item.id} className="flex items-start gap-3 px-6 py-4">

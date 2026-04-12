@@ -101,8 +101,9 @@ export default async function DashboardPage() {
 
   // ROI calculations
   const estimatedRevenue = t ? t.totalEngagements * AVG_JOB_VALUE : 0;
-  const adSpend = activeCampaign?.bundle?.price
-    ? Number(activeCampaign.bundle.price)
+  // Use order.total (actual charged amount) — NOT bundle.price (display-only).
+  const adSpend = activeCampaign?.order?.total
+    ? Number(activeCampaign.order.total)
     : 0;
   const roas =
     adSpend > 0 && estimatedRevenue > 0

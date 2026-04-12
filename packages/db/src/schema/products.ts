@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { cities } from "./cities";
+import { pricingProfiles } from "./pricing";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -60,9 +61,16 @@ export const bundles = pgTable("bundles", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   description: text("description"),
+  // bundles.price = DISPLAY/LEGACY only. All billing resolves from pricingProfileId.
   price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0.00"),
   isActive: boolean("is_active").notNull().default(true),
   cityId: uuid("city_id").references(() => cities.id, { onDelete: "set null" }),
+  // Links this bundle to its pricing_profile. When set, pricing engine uses this
+  // profile's price instead of summing component products. Null = component sum fallback.
+  pricingProfileId: uuid("pricing_profile_id").references(
+    () => pricingProfiles.id,
+    { onDelete: "set null" }
+  ),
   // Scarcity + display config:
   // { spotType: "anchor"|"front"|"back", maxSpots: 1|3|6,
   //   features: string[], badgeText?: string, highlight?: boolean }
@@ -102,6 +110,10 @@ export const bundlesRelations = relations(bundles, ({ one, many }) => ({
   city: one(cities, {
     fields: [bundles.cityId],
     references: [cities.id],
+  }),
+  pricingProfile: one(pricingProfiles, {
+    fields: [bundles.pricingProfileId],
+    references: [pricingProfiles.id],
   }),
   bundleProducts: many(bundleProducts),
   orders: many(orders),

@@ -9,6 +9,8 @@ import {
 import { FunnelProgress } from "@/components/funnel/funnel-progress";
 import { CheckoutButton } from "./checkout-button";
 import { cn } from "@/lib/utils";
+import { resolvePrice } from "@homereach/services/pricing";
+import type { ResolvePriceInput } from "@homereach/types";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,38 @@ export default async function BundleSelectionPage({ params }: Props) {
   const bundleList = await getBundlesWithAvailability(city.id, category.id);
   const availableBundles = bundleList.filter((b) => !b.isSoldOut);
   const soldOutBundles = bundleList.filter((b) => b.isSoldOut);
+
+  // ── Phase 1: Resolve authoritative prices from pricing engine ─────────────
+  // bundle.price (display-only) is NOT used for price display in this page.
+  // All prices come from the pricing engine via resolvePrice().
+  // isFounding uses city.foundingEligible — server-controlled, never client-trusted.
+  const resolvedPriceMap = new Map<string, { priceCents: number; isFoundingPrice: boolean }>();
+
+  await Promise.all(
+    bundleList.map(async (bundle) => {
+      try {
+        const input: ResolvePriceInput = {
+          productType: "bundle",
+          billingInterval: "monthly",
+          cityId: city.id,
+          bundleId: bundle.id,
+          isFounding: city.foundingEligible,
+        };
+        const resolved = await resolvePrice(input);
+        resolvedPriceMap.set(bundle.id, {
+          priceCents: resolved.workingPriceCents,
+          isFoundingPrice: resolved.isFoundingPrice,
+        });
+      } catch {
+        // If pricing engine fails for a bundle, fall back to bundle.price display value.
+        // This is a safe fallback — bundle.price is kept aligned with pricing profiles.
+        resolvedPriceMap.set(bundle.id, {
+          priceCents: Math.round(Number(bundle.price) * 100),
+          isFoundingPrice: false,
+        });
+      }
+    })
+  );
 
   const totalSpotsLeft = bundleList.reduce((sum, b) => sum + b.spotsRemaining, 0);
 
@@ -85,21 +119,39 @@ export default async function BundleSelectionPage({ params }: Props) {
 
       {/* Bundle cards */}
       <div className="mt-8 grid gap-5 lg:grid-cols-3">
-        {availableBundles.map((bundle) => (
-          <BundleCard
-            key={bundle.id}
-            bundle={bundle}
-            cityId={city.id}
-            categoryId={category.id}
-            citySlug={citySlug}
-            categorySlug={categorySlug}
-          />
-        ))}
+        {availableBundles.map((bundle) => {
+          const resolved = resolvedPriceMap.get(bundle.id) ?? {
+            priceCents: Math.round(Number(bundle.price) * 100),
+            isFoundingPrice: false,
+          };
+          return (
+            <BundleCard
+              key={bundle.id}
+              bundle={bundle}
+              resolvedPriceCents={resolved.priceCents}
+              isFoundingPrice={resolved.isFoundingPrice}
+              cityId={city.id}
+              categoryId={category.id}
+              citySlug={citySlug}
+              categorySlug={categorySlug}
+            />
+          );
+        })}
 
         {/* Sold out bundles — greyed out */}
-        {soldOutBundles.map((bundle) => (
-          <SoldOutBundleCard key={bundle.id} bundle={bundle} />
-        ))}
+        {soldOutBundles.map((bundle) => {
+          const resolved = resolvedPriceMap.get(bundle.id) ?? {
+            priceCents: Math.round(Number(bundle.price) * 100),
+            isFoundingPrice: false,
+          };
+          return (
+            <SoldOutBundleCard
+              key={bundle.id}
+              bundle={bundle}
+              resolvedPriceCents={resolved.priceCents}
+            />
+          );
+        })}
       </div>
 
       {/* What's included explainer */}
@@ -166,12 +218,17 @@ export default async function BundleSelectionPage({ params }: Props) {
 
 function BundleCard({
   bundle,
+  resolvedPriceCents,
+  isFoundingPrice,
   cityId,
   categoryId,
   citySlug,
   categorySlug,
 }: {
   bundle: Awaited<ReturnType<typeof getBundlesWithAvailability>>[0];
+  /** Authoritative price from pricing engine (cents). NEVER use bundle.price here. */
+  resolvedPriceCents: number;
+  isFoundingPrice: boolean;
   cityId: string;
   categoryId: string;
   citySlug: string;
@@ -188,6 +245,9 @@ function BundleCard({
     front: "bg-blue-50 text-blue-800 border-blue-200",
     back: "bg-gray-50 text-gray-700 border-gray-200",
   }[bundle.spotType];
+
+  // Convert cents to dollars for display
+  const displayPrice = resolvedPriceCents / 100;
 
   return (
     <div
@@ -227,9 +287,14 @@ function BundleCard({
         <h3 className="text-xl font-bold text-gray-900">{bundle.name}</h3>
         <div className="mt-1 flex items-baseline gap-1">
           <span className="text-3xl font-bold text-gray-900">
-            ${Number(bundle.price).toLocaleString()}
+            ${displayPrice.toLocaleString()}
           </span>
           <span className="text-sm text-gray-500">/ campaign</span>
+          {isFoundingPrice && (
+            <span className="ml-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+              Founding rate
+            </span>
+          )}
         </div>
         {bundle.description && (
           <p className="mt-2 text-sm text-gray-500 leading-snug">{bundle.description}</p>
@@ -310,9 +375,14 @@ function BundleCard({
 
 function SoldOutBundleCard({
   bundle,
+  resolvedPriceCents,
 }: {
   bundle: Awaited<ReturnType<typeof getBundlesWithAvailability>>[0];
+  /** Authoritative price from pricing engine (cents). NEVER use bundle.price here. */
+  resolvedPriceCents: number;
 }) {
+  const displayPrice = resolvedPriceCents / 100;
+
   return (
     <div className="relative flex flex-col rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 opacity-60">
       <span className="mb-3 inline-block rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-gray-400">
@@ -321,7 +391,7 @@ function SoldOutBundleCard({
       <h3 className="text-xl font-bold text-gray-400">{bundle.name}</h3>
       <div className="mt-1 flex items-baseline gap-1">
         <span className="text-3xl font-bold text-gray-300">
-          ${Number(bundle.price).toLocaleString()}
+          ${displayPrice.toLocaleString()}
         </span>
       </div>
       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">

@@ -6,6 +6,7 @@ import {
   integer,
   timestamp,
   pgEnum,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { businesses } from "./businesses";
@@ -42,9 +43,17 @@ export const orders = pgTable("orders", {
   status: orderStatusEnum("status").notNull().default("pending"),
   // Stripe identifiers — set after payment confirmed
   stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
-  stripeCustomerId: text("stripe_customer_id"),
+  stripeCustomerId: text("stripe_customer_id"), // deprecated: authoritative copy now on businesses.stripeCustomerId
   stripeCheckoutSessionId: text("stripe_checkout_session_id").unique(),
-  // Pricing snapshot (store at time of purchase, never derive from live catalog)
+  // Subscription ID — set when mode:"subscription" checkout completes (Task 20)
+  stripeSubscriptionId: text("stripe_subscription_id").unique(),
+  // Pricing snapshot — immutable audit trail written at checkout time (Task 20).
+  // Written by webhook handler on checkout.session.completed.
+  // NULL for orders created before Task 20. Never update after write.
+  // Shape conforms to PricingSnapshot from @homereach/types — not imported here
+  // to keep @homereach/db as a leaf package with no dependency on @homereach/types.
+  pricingSnapshotJson: jsonb("pricing_snapshot_json").$type<Record<string, unknown>>(),
+  // Totals
   subtotal: numeric("subtotal", { precision: 10, scale: 2 })
     .notNull()
     .default("0.00"),
@@ -78,6 +87,9 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull().default(1),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+  // Staged FK to spot_assignments — column added now, FK constraint added by Task 1 migration
+  // (spot_assignments table does not exist yet)
+  spotAssignmentId: uuid("spot_assignment_id"),
 });
 
 // ─── Relations ────────────────────────────────────────────────────────────────

@@ -2,288 +2,129 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { TargetedCampaign, CarrierRoute, TargetedCampaignStatus } from "@/lib/engine/types";
-import { TargetedRouteEngine } from "@/lib/engine/targeted-routes";
-import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin Campaigns Dashboard
-// Unified view: shared postcard + targeted route campaigns
+// Admin Campaigns Dashboard — real data from marketing_campaigns table
 // ─────────────────────────────────────────────────────────────────────────────
 
-type EnrichedCampaign = TargetedCampaign & { routes: CarrierRoute[] };
+export type CampaignStatus = "upcoming" | "active" | "completed" | "paused" | "cancelled";
 
-interface CityOption {
-  id: string;
-  name: string;
-  totalRoutes: number;
-  totalHomes: number;
+export interface RealCampaign {
+  id:             string;
+  businessId:     string;
+  businessName:   string;
+  businessPhone:  string;
+  businessEmail:  string;
+  city:           string;
+  category:       string;
+  bundleName:     string;
+  orderId:        string;
+  /** Actual amount charged (from order.total via pricing engine). NOT bundle.price. */
+  orderTotal:     number;
+  orderPaidAt:    string | null;
+  status:         CampaignStatus;
+  startDate:      string | null;
+  endDate:        string | null;
+  renewalDate:    string | null;
+  nextDropDate:   string | null;
+  totalDrops:     number;
+  dropsCompleted: number;
+  homesPerDrop:   number;
+  homesTotal:     number;
+  notes:          string;
+  createdAt:      string;
 }
 
 interface Props {
-  campaigns: EnrichedCampaign[];
-  cities: CityOption[];
-  allRoutes: CarrierRoute[];
+  campaigns: RealCampaign[];
 }
 
-const STATUS_META: Record<TargetedCampaignStatus, { label: string; color: string }> = {
-  draft:           { label: "Draft",          color: "bg-gray-800 text-gray-400"         },
-  pending_review:  { label: "Pending Review", color: "bg-amber-900/50 text-amber-300"    },
-  active:          { label: "Active",         color: "bg-green-900/50 text-green-300"    },
-  completed:       { label: "Completed",      color: "bg-blue-900/50 text-blue-300"      },
-  cancelled:       { label: "Cancelled",      color: "bg-red-900/50 text-red-400"        },
+const STATUS_META: Record<CampaignStatus, { label: string; bg: string; text: string }> = {
+  upcoming:  { label: "Upcoming",  bg: "bg-blue-100",   text: "text-blue-700"   },
+  active:    { label: "Active",    bg: "bg-green-100",  text: "text-green-700"  },
+  completed: { label: "Completed", bg: "bg-gray-100",   text: "text-gray-600"   },
+  paused:    { label: "Paused",    bg: "bg-amber-100",  text: "text-amber-700"  },
+  cancelled: { label: "Cancelled", bg: "bg-red-100",    text: "text-red-600"    },
 };
 
-function StatusBadge({ status }: { status: TargetedCampaignStatus }) {
-  const meta = STATUS_META[status];
+function StatusBadge({ status }: { status: CampaignStatus }) {
+  const m = STATUS_META[status];
   return (
-    <span className={cn("text-xs px-2.5 py-1 rounded-full font-semibold", meta.color)}>
-      {meta.label}
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${m.bg} ${m.text}`}>
+      {m.label}
     </span>
   );
 }
 
-// ── Campaign Detail Panel ─────────────────────────────────────────────────────
-
-function CampaignDetail({
-  campaign,
-  onStatusChange,
-}: {
-  campaign: EnrichedCampaign;
-  onStatusChange: (id: string, status: TargetedCampaignStatus) => void;
-}) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-base font-bold text-white">{campaign.businessName}</h3>
-            <StatusBadge status={campaign.status} />
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/40 text-blue-400 font-semibold">
-              🎯 Targeted
-            </span>
-          </div>
-          <p className="text-sm text-gray-400 mt-0.5">{campaign.contactName} · {campaign.city}</p>
-          <p className="text-xs text-gray-500">{campaign.email} · {campaign.phone}</p>
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-2xl font-bold text-white">{TargetedRouteEngine.formatPrice(campaign.totalPrice)}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{campaign.pricingTierLabel} rate</p>
-        </div>
-      </div>
-
-      {/* Reach stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatCell icon="🏠" label="Homes" value={campaign.totalHouseholds.toLocaleString()} />
-        <StatCell icon="📍" label="Routes" value={String(campaign.routes.length)} />
-        <StatCell icon="💰" label="Per 1k" value={`$${campaign.pricePerThousand}`} />
-      </div>
-
-      {/* Routes list */}
-      <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Selected Routes</p>
-        <div className="space-y-1.5">
-          {campaign.routes.map((r) => (
-            <div key={r.id} className="flex items-center justify-between px-3 py-2 bg-gray-800/50 rounded-lg text-xs">
-              <span className="text-gray-300">{r.name}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-gray-500">{r.routeCode}</span>
-                <span className="text-gray-300 font-semibold">{r.households.toLocaleString()} homes</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Targeting filters */}
-      {Object.keys(campaign.targetingFilters).length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Targeting Filters</p>
-          <div className="flex flex-wrap gap-2">
-            {campaign.targetingFilters.homeValueRange && (
-              <span className="text-xs px-2.5 py-1 bg-gray-800 text-gray-400 rounded-full">
-                🏡 Home value: {campaign.targetingFilters.homeValueRange}
-              </span>
-            )}
-            {campaign.targetingFilters.incomeRange && (
-              <span className="text-xs px-2.5 py-1 bg-gray-800 text-gray-400 rounded-full">
-                💼 Income: {campaign.targetingFilters.incomeRange}
-              </span>
-            )}
-            {campaign.targetingFilters.zipCluster && (
-              <span className="text-xs px-2.5 py-1 bg-gray-800 text-gray-400 rounded-full">
-                📮 ZIP: {campaign.targetingFilters.zipCluster}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Metrics (if available) */}
-      {campaign.metrics && (
-        <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Campaign Metrics</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <MetricCell label="Homes Reached" value={campaign.metrics.homesReached.toLocaleString()} />
-            {campaign.metrics.responseRate != null && (
-              <MetricCell label="Response Rate" value={`${campaign.metrics.responseRate}%`} />
-            )}
-            {campaign.metrics.leadsGenerated != null && (
-              <MetricCell label="Leads Generated" value={String(campaign.metrics.leadsGenerated)} />
-            )}
-            {campaign.metrics.estimatedROI != null && (
-              <MetricCell label="Est. ROI" value={TargetedRouteEngine.formatPrice(campaign.metrics.estimatedROI)} />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Notes */}
-      {campaign.notes && (
-        <div className="px-3 py-2 bg-gray-800 rounded-lg text-xs text-gray-400">{campaign.notes}</div>
-      )}
-
-      {/* Status actions */}
-      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-800">
-        <span className="text-xs text-gray-500">Update status:</span>
-        {(["pending_review", "active", "completed", "cancelled"] as const)
-          .filter((s) => s !== campaign.status)
-          .map((s) => (
-            <button
-              key={s}
-              onClick={() => onStatusChange(campaign.id, s)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition"
-            >
-              → {STATUS_META[s].label}
-            </button>
-          ))}
-      </div>
-    </div>
-  );
+function fmt(d: string | null) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function StatCell({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <div className="bg-gray-800/50 rounded-xl p-3 text-center">
-      <span className="text-lg">{icon}</span>
-      <p className="text-base font-bold text-white mt-1">{value}</p>
-      <p className="text-xs text-gray-500">{label}</p>
-    </div>
-  );
-}
+export function CampaignsClient({ campaigns }: Props) {
+  const [filter, setFilter] = useState<"all" | CampaignStatus>("all");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-function MetricCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-green-900/20 border border-green-800/30 rounded-xl p-3">
-      <p className="text-base font-bold text-green-300">{value}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-    </div>
-  );
-}
+  const filtered = filter === "all" ? campaigns : campaigns.filter((c) => c.status === filter);
 
-// ── Main Client ───────────────────────────────────────────────────────────────
-
-export function CampaignsClient({ campaigns, cities, allRoutes }: Props) {
-  const [localCampaigns, setLocalCampaigns] = useState(campaigns);
-  const [filter, setFilter] = useState<"all" | TargetedCampaignStatus>("all");
-  const [toast, setToast] = useState<string | null>(null);
-
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  }
-
-  function handleStatusChange(id: string, status: TargetedCampaignStatus) {
-    setLocalCampaigns((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status } : c))
-    );
-    showToast(`Status updated to ${STATUS_META[status].label}`);
-  }
-
-  const filtered = filter === "all"
-    ? localCampaigns
-    : localCampaigns.filter((c) => c.status === filter);
-
-  // Summary stats
-  const totalReach = localCampaigns
-    .filter((c) => c.status === "active")
-    .reduce((s, c) => s + c.totalHouseholds, 0);
-  const totalRevenue = localCampaigns
-    .filter((c) => c.status !== "cancelled")
-    .reduce((s, c) => s + c.totalPrice, 0);
-  const pendingCount = localCampaigns.filter((c) => c.status === "pending_review").length;
-  const activeCount  = localCampaigns.filter((c) => c.status === "active").length;
+  const activeCount    = campaigns.filter((c) => c.status === "active").length;
+  const upcomingCount  = campaigns.filter((c) => c.status === "upcoming").length;
+  const totalRevenue   = campaigns.filter((c) => c.status !== "cancelled").reduce((s, c) => s + c.orderTotal, 0);
+  const totalHomes     = campaigns.filter((c) => c.status === "active").reduce((s, c) => s + c.homesTotal, 0);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6 space-y-6 max-w-6xl mx-auto">
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-gray-800 border border-gray-700 text-sm text-white px-4 py-3 rounded-xl shadow-lg">
-          ✅ {toast}
-        </div>
-      )}
+    <div className="max-w-6xl space-y-6">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Campaigns</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Targeted route campaigns — dedicated postcards, precise reach
+          <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            All postcard marketing campaigns — live from database
           </p>
         </div>
         <Link
-          href="/targeted"
-          target="_blank"
-          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition"
+          href="/admin/availability"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
         >
-          + New Campaign →
+          📍 Manage Spots
         </Link>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <CampaignStat icon="✅" label="Active"          value={String(activeCount)}                        color="green" />
-        <CampaignStat icon="⏳" label="Pending Review"  value={String(pendingCount)}                       color={pendingCount > 0 ? "amber" : "gray"} />
-        <CampaignStat icon="🏠" label="Active Reach"    value={totalReach >= 1000 ? `${(totalReach/1000).toFixed(1)}k` : String(totalReach)} color="blue" />
-        <CampaignStat icon="💰" label="Total Revenue"   value={TargetedRouteEngine.formatPrice(totalRevenue)} color="gray" />
-      </div>
-
-      {/* System separation notice */}
-      <div className="p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
-        <div className="flex items-center gap-6 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="text-gray-400">
-              <span className="font-semibold text-white">Targeted Campaigns</span> — dedicated postcard, you pick exact routes
-            </span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { icon: "✅", label: "Active",        value: activeCount,                                    accent: "text-green-600" },
+          { icon: "🕐", label: "Upcoming",       value: upcomingCount,                                  accent: "text-blue-600"  },
+          { icon: "🏠", label: "Homes (active)", value: totalHomes >= 1000 ? `${(totalHomes/1000).toFixed(1)}k` : totalHomes, accent: "text-purple-600" },
+          { icon: "💰", label: "Total Revenue",  value: `$${totalRevenue.toLocaleString()}`,             accent: "text-amber-600" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{s.label}</p>
+              <span className="text-lg">{s.icon}</span>
+            </div>
+            <p className={`text-3xl font-bold ${s.accent}`}>{s.value}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-gray-600" />
-            <span className="text-gray-600">
-              Shared Postcard — see <Link href="/admin/availability" className="text-blue-500 hover:text-blue-400">Availability</Link> for spot-based campaigns
-            </span>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-2 border-b border-gray-800 pb-3 flex-wrap">
-        {(["all", "pending_review", "active", "completed", "draft", "cancelled"] as const).map((f) => {
-          const count = f === "all"
-            ? localCampaigns.length
-            : localCampaigns.filter((c) => c.status === f).length;
-          if (f !== "all" && count === 0) return null;
+      <div className="flex items-center gap-2 border-b border-gray-200 pb-3 flex-wrap">
+        {(["all", "active", "upcoming", "completed", "paused", "cancelled"] as const).map((f) => {
+          const cnt = f === "all" ? campaigns.length : campaigns.filter((c) => c.status === f).length;
+          if (f !== "all" && cnt === 0) return null;
           return (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-semibold transition",
-                filter === f ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-300"
-              )}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                filter === f
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              }`}
             >
-              {f === "all" ? "All" : STATUS_META[f].label} ({count})
+              {f === "all" ? "All" : STATUS_META[f as CampaignStatus].label} ({cnt})
             </button>
           );
         })}
@@ -291,69 +132,109 @@ export function CampaignsClient({ campaigns, cities, allRoutes }: Props) {
 
       {/* Campaign list */}
       {filtered.length === 0 ? (
-        <div className="py-16 text-center text-gray-600">
-          <p className="text-4xl mb-3">🎯</p>
-          <p className="text-sm">No campaigns in this status yet.</p>
-          <Link
-            href="/targeted"
-            target="_blank"
-            className="mt-3 inline-block text-sm text-blue-400 hover:text-blue-300"
-          >
-            + Create a targeted campaign →
-          </Link>
+        <div className="py-16 text-center text-gray-400">
+          <p className="text-4xl mb-3">📭</p>
+          <p className="text-sm">No campaigns yet. They appear here automatically after a client pays.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {filtered.map((campaign) => (
-            <CampaignDetail
-              key={campaign.id}
-              campaign={campaign}
-              onStatusChange={handleStatusChange}
-            />
-          ))}
-        </div>
-      )}
+        <div className="space-y-3">
+          {filtered.map((c) => (
+            <div
+              key={c.id}
+              className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden"
+            >
+              {/* Row */}
+              <button
+                onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                className="w-full flex items-center gap-4 px-6 py-4 text-left hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-gray-900 text-sm">{c.businessName}</span>
+                    <StatusBadge status={c.status} />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {c.city} · {c.category} · {c.bundleName}
+                  </p>
+                </div>
+                <div className="hidden sm:flex items-center gap-6 text-sm shrink-0">
+                  <div className="text-center">
+                    <p className="font-bold text-gray-900">{c.homesPerDrop.toLocaleString()}</p>
+                    <p className="text-xs text-gray-400">homes/drop</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-gray-900">{c.dropsCompleted}/{c.totalDrops}</p>
+                    <p className="text-xs text-gray-400">drops</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-green-700">${c.orderTotal.toLocaleString()}</p>
+                    <p className="text-xs text-gray-400">paid</p>
+                  </div>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">{expanded === c.id ? "▲" : "▼"}</span>
+              </button>
 
-      {/* City reach summary */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-        <h3 className="text-sm font-bold text-white mb-4">Available Markets</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {cities.map((city) => (
-            <div key={city.id} className="p-3 bg-gray-800/50 rounded-xl">
-              <p className="text-sm font-semibold text-white">{city.name}</p>
-              <p className="text-xs text-gray-500 mt-1">{city.totalRoutes} routes</p>
-              <p className="text-xs text-gray-500">{(city.totalHomes / 1_000).toFixed(1)}k homes available</p>
+              {/* Expanded detail */}
+              {expanded === c.id && (
+                <div className="border-t border-gray-100 px-6 py-5 space-y-4 bg-gray-50">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Paid On</p>
+                      <p className="text-gray-800">{fmt(c.orderPaidAt)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Start Date</p>
+                      <p className="text-gray-800">{fmt(c.startDate)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Next Drop</p>
+                      <p className="text-gray-800">{fmt(c.nextDropDate)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Renewal</p>
+                      <p className="text-gray-800">{fmt(c.renewalDate)}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Contact</p>
+                      <p className="text-gray-800">{c.businessPhone || "—"}</p>
+                      <p className="text-xs text-gray-500">{c.businessEmail || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Total Homes</p>
+                      <p className="text-gray-800 font-bold">{c.homesTotal.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Amount Charged</p>
+                      <p className="text-gray-800">${c.orderTotal.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  {c.notes && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-800">
+                      📝 {c.notes}
+                    </div>
+                  )}
+                  <div className="flex gap-2 pt-1">
+                    <Link
+                      href={`/admin/campaigns/${c.id}`}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      📊 Manage Campaign →
+                    </Link>
+                    <Link
+                      href={`/admin/businesses`}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      🏢 View Business →
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
-        <p className="text-xs text-gray-600 mt-4">
-          Route availability and household counts are updated periodically.
-          Future: income, home value, and ZIP cluster filters will narrow selectable routes.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function CampaignStat({
-  icon, label, value, color,
-}: {
-  icon: string; label: string; value: string;
-  color: "green" | "amber" | "blue" | "gray";
-}) {
-  const COLORS = {
-    green: "border-green-800/30",
-    amber: "border-amber-800/30",
-    blue:  "border-blue-800/30",
-    gray:  "border-gray-800",
-  };
-  return (
-    <div className={cn("bg-gray-900 border rounded-xl p-4", COLORS[color])}>
-      <div className="flex items-center gap-2 mb-2">
-        <span>{icon}</span>
-        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{label}</p>
-      </div>
-      <p className="text-xl font-bold text-white">{value}</p>
+      )}
     </div>
   );
 }

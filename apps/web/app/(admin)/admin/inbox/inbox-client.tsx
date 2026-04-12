@@ -98,6 +98,10 @@ function ConversationRow({
   onClick: () => void;
 }) {
   const intentBadge = conv.lastIntent ? AutomationEngine.getIntentBadge(conv.lastIntent) : null;
+  // Compute lead score from conversation messages
+  const score      = AutomationEngine.scoreConversation(conv as unknown as import("@/lib/engine/types").ConversationContext);
+  const scoreBadge = AutomationEngine.getScoreBadge(score);
+
   return (
     <button
       onClick={onClick}
@@ -117,11 +121,17 @@ function ConversationRow({
           </div>
           <p className="text-xs text-gray-500 truncate">{conv.businessName}</p>
           <p className="text-xs text-gray-400 truncate mt-0.5">{conv.lastMessage}</p>
-          {intentBadge && (
-            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium mt-1 ${intentBadge.color}`}>
-              {intentBadge.label}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {intentBadge && (
+              <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${intentBadge.color}`}>
+                {intentBadge.label}
+              </span>
+            )}
+            {/* Lead score chip */}
+            <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-semibold ${scoreBadge.color}`}>
+              {scoreBadge.emoji} {score} · {scoreBadge.label}
             </span>
-          )}
+          </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="text-xs text-gray-400">{formatTime(conv.lastMessageAt)}</span>

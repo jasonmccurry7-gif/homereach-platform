@@ -9,10 +9,23 @@ const NAV_GROUPS = [
   {
     label: "Command",
     items: [
-      { label: "OS Hub",         href: "/admin/hub",          emoji: "🖥️", badge: "NEW" },
+      { label: "⚡ OS Control Center", href: "/os",           emoji: "🖥️", badge: "PRIMARY" },
       { label: "Dashboard",      href: "/admin",              emoji: "🏠" },
-      { label: "Leads",          href: "/admin/leads",         emoji: "🎯" },
+      { label: "Leads",          href: "/admin/leads",              emoji: "🎯" },
+      { label: "Targeted Campaigns", href: "/admin/targeted-campaigns", emoji: "📬", badge: "NEW" },
       { label: "Inbox",          href: "/admin/inbox",         emoji: "💬" },
+    ],
+  },
+  {
+    label: "Growth",
+    items: [
+      { label: "Growth Intelligence", href: "/admin/growth",          emoji: "📈", badge: "NEW" },
+    ],
+  },
+  {
+    label: "Traffic Engine",
+    items: [
+      { label: "Traffic Engine",  href: "/admin/traffic-engine", emoji: "🚀", badge: "NEW" },
     ],
   },
   {
@@ -63,7 +76,7 @@ export function AdminNav() {
     <aside className="w-64 shrink-0 flex flex-col border-r border-gray-800 bg-gray-900 min-h-screen">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-800">
-        <Link href="/admin/hub" className="flex items-center gap-2.5">
+        <Link href="/os" className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
             HR
           </div>
@@ -86,6 +99,8 @@ export function AdminNav() {
                 const isActive =
                   item.href === "/admin"
                     ? pathname === "/admin"
+                    : item.href === "/os"
+                    ? pathname === "/os"
                     : pathname.startsWith(item.href);
                 return (
                   <Link

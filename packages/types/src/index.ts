@@ -290,3 +290,6 @@ export interface CheckoutSessionPayload {
   successUrl: string;
   cancelUrl: string;
 }
+
+// ─── Pricing Engine (Task 20) ─────────────────────────────────────────────────
+export * from "./pricing";

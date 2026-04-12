@@ -28,7 +28,7 @@ export default async function CitySelectionPage() {
           Where is your business located?
         </h1>
         <p className="mt-3 text-lg text-gray-500">
-          We mail to thousands of homes in each market. Choose your city to see available spots.
+          We reach 2,500+ targeted homeowners per city, every month. Choose your city to see available spots.
         </p>
       </div>
 

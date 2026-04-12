@@ -110,7 +110,7 @@ function StepCampaignType({ onSelect }: { onSelect: (type: "shared" | "targeted"
           <p className="text-xs text-blue-400 font-semibold mb-3">Exclusive category spot · From $299/mo</p>
           <ul className="space-y-1.5 text-sm text-gray-400">
             <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">✓</span> One business per category per city</li>
-            <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">✓</span> 15,000 homeowners every month</li>
+            <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">✓</span> 2,500+ homeowners every month</li>
             <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">✓</span> Lock out your competitors permanently</li>
             <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">✓</span> Monthly recurring campaign</li>
           </ul>

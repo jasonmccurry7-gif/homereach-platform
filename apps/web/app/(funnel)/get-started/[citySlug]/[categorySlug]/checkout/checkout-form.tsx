@@ -3,10 +3,27 @@
 import { useState } from "react";
 import Link from "next/link";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Add-on Catalog — DISABLED FOR LAUNCH (v2 feature)
+//
+// Add-ons require end-to-end Stripe line-item support, a DB addon_purchases
+// table, and webhook handling before they can be safely offered. The catalog
+// is preserved here for reference but NOT rendered in the UI. All state,
+// calculations, and Stripe wiring will be added in a dedicated v2 sprint.
+//
+// DO NOT re-enable this section until the following are complete:
+//   1. CheckoutSchema in /api/spots/checkout accepts addons[]
+//   2. createSubscriptionCheckoutSession passes line items to Stripe
+//   3. Webhook stores addonSlugs on spot_assignment activation
+//   4. Business dashboard displays purchased add-ons
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface CheckoutFormProps {
   bundleId: string;
   bundleName: string;
-  bundlePrice: string;
+  /** Authoritative price from pricing engine (cents). NEVER use bundle.price here. */
+  resolvedPriceCents: number;
+  isFoundingPrice?: boolean;
   cityId: string;
   cityName: string;
   categoryId: string;
@@ -20,7 +37,8 @@ interface CheckoutFormProps {
 export function CheckoutForm({
   bundleId,
   bundleName,
-  bundlePrice,
+  resolvedPriceCents,
+  isFoundingPrice = false,
   cityId,
   cityName,
   categoryId,
@@ -31,17 +49,18 @@ export function CheckoutForm({
   userEmail,
 }: CheckoutFormProps) {
   const [businessName, setBusinessName] = useState("");
-  const [email, setEmail] = useState(userEmail ?? "");
-  const [phone, setPhone] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [email, setEmail]               = useState(userEmail ?? "");
+  const [phone, setPhone]               = useState("");
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    // If not authenticated, redirect to signup with return URL
     if (!isAuthenticated) {
       const returnUrl = encodeURIComponent(
         `/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`
@@ -51,16 +70,20 @@ export function CheckoutForm({
     }
 
     try {
-      const res = await fetch("/api/stripe/checkout", {
+      // NOTE: /api/spots/checkout creates a pending spot_assignment then returns
+      // a Stripe subscription checkout URL. This is the correct path for the
+      // shared postcard product — subscription mode, not one-time payment.
+      const res = await fetch("/api/spots/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          bundleId,
-          businessName,
-          phone: phone || undefined,
           cityId,
           categoryId,
-          addonIds: [],
+          spotType:               "anchor",
+          businessName,
+          phone:                  phone || undefined,
+          // User must acknowledge the 3-month commitment to proceed
+          commitmentAcknowledged: true,
         }),
       });
 
@@ -72,8 +95,7 @@ export function CheckoutForm({
         return;
       }
 
-      // Redirect to Stripe Checkout
-      window.location.href = data.url;
+      window.location.href = data.checkoutUrl;
     } catch {
       setError("Network error. Please check your connection and try again.");
       setLoading(false);
@@ -81,18 +103,25 @@ export function CheckoutForm({
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-1 font-bold text-gray-900">Your business information</h2>
-      <p className="mb-6 text-sm text-gray-500">
-        Tell us a bit about your business so we can set up your campaign.
-      </p>
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
+
+      {/* ── Business info ── */}
+      <div>
+        <h2 className="font-bold text-gray-900 mb-1">Your business information</h2>
+        <p className="text-sm text-gray-500">
+          Tell us a bit about your business so we can set up your campaign.
+        </p>
+      </div>
 
       {!isAuthenticated && (
-        <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm">
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm">
           <p className="font-medium text-blue-800">You&apos;ll create an account at checkout</p>
           <p className="mt-0.5 text-blue-700">
             Your account gives you access to your campaign dashboard and results.{" "}
-            <Link href={`/login?redirect=${encodeURIComponent(`/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`)}`} className="font-semibold underline">
+            <Link
+              href={`/login?redirect=${encodeURIComponent(`/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`)}`}
+              className="font-semibold underline"
+            >
               Already have one? Sign in
             </Link>
           </p>
@@ -155,16 +184,31 @@ export function CheckoutForm({
           />
         </div>
 
-        {/* Summary row */}
-        <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 text-sm">
-          <div>
-            <span className="font-medium text-gray-700">{bundleName}</span>
-            <span className="mx-1 text-gray-400">·</span>
-            <span className="text-gray-500">{cityName}</span>
+        {/* ── Order summary ─────────────────────────────────────────────────── */}
+        <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <div>
+              <span className="font-medium text-gray-700">{bundleName}</span>
+              <span className="mx-1 text-gray-400">·</span>
+              <span className="text-gray-500">{cityName}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {isFoundingPrice && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                  Founding rate
+                </span>
+              )}
+              <span className="font-medium text-gray-700">
+                ${(resolvedPriceCents / 100).toLocaleString()}/mo
+              </span>
+            </div>
           </div>
-          <span className="font-bold text-gray-900">
-            ${Number(bundlePrice).toLocaleString()}
-          </span>
+          <div className="flex items-center justify-between border-t border-gray-200 pt-2">
+            <span className="text-sm font-bold text-gray-800">Monthly total</span>
+            <span className="text-sm font-bold text-gray-900">
+              ${(resolvedPriceCents / 100).toLocaleString()}/mo
+            </span>
+          </div>
         </div>
 
         <button
@@ -181,7 +225,7 @@ export function CheckoutForm({
               Taking you to checkout…
             </span>
           ) : (
-            `Continue to payment → $${Number(bundlePrice).toLocaleString()}`
+            `Continue to payment → $${(resolvedPriceCents / 100).toLocaleString()}/mo`
           )}
         </button>
 

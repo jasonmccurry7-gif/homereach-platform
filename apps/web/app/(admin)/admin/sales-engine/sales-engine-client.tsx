@@ -17,7 +17,6 @@ import { getTemperatureMeta }   from "@/lib/sales-engine/classifier";
 import { getEscalationMeta, getControlMeta } from "@/lib/sales-engine/escalation-engine";
 import { FOLLOW_UP_SCHEDULE }   from "@/lib/sales-engine/followup-engine";
 import { ALERT_CONFIG }         from "@/lib/sales-engine/alert-engine";
-import { MockDataBanner } from "@/components/admin/mock-data-banner";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -391,9 +390,11 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Mock Data Warning */}
-        <div className="mb-6">
-          <MockDataBanner items={["All leads", "Pipeline stats", "Hot alerts"]} />
+        {/* Live Data Indicator */}
+        <div className="mb-6 rounded-xl border border-green-800/50 bg-green-900/10 px-4 py-2.5 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+          <p className="text-sm text-green-400 font-medium">LIVE — Connected to production database</p>
+          <p className="text-xs text-green-600 ml-1">Lead data refreshes on every page load</p>
         </div>
 
         {/* Header */}

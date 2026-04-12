@@ -40,6 +40,14 @@ const ENV_SPECS: EnvSpec[] = [
     required: true,
     productionOnly: false,
   },
+  {
+    // Required for supabase.auth.admin.inviteUserByEmail() in the Stripe webhook.
+    // If missing, new business owners are never invited and the activation lifecycle
+    // silently breaks after payment. Fatal in production; warn in development.
+    key: "SUPABASE_SERVICE_ROLE_KEY",
+    required: true,
+    productionOnly: true,
+  },
 
   // ── Stripe ──────────────────────────────────────────────────────────────────
   {
@@ -48,9 +56,19 @@ const ENV_SPECS: EnvSpec[] = [
     productionOnly: false,
   },
   {
+    // Required in the browser — used for Stripe.js / Elements if ever added.
+    // Currently used for any client-side Stripe integration and must be a
+    // publishable key (pk_live_ or pk_test_). Validated here so deployment
+    // without it fails loudly instead of silently breaking Stripe Elements.
+    key: "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    required: true,
+    productionOnly: false,
+  },
+  {
     key: "STRIPE_WEBHOOK_SECRET",
     required: true,
     productionOnly: true,
+    dangerIfSet: "whsec_placeholder", // fail loudly if placeholder is still set
   },
 
   // ── Twilio ──────────────────────────────────────────────────────────────────
@@ -65,7 +83,7 @@ const ENV_SPECS: EnvSpec[] = [
     productionOnly: false,
   },
 
-  // ── Mailgun ──────────────────────────────────────────────────────────────────
+  // ── Mailgun (email provider) ──────────────────────────────────────────────────
   {
     key: "MAILGUN_API_KEY",
     required: true,
@@ -78,6 +96,16 @@ const ENV_SPECS: EnvSpec[] = [
   },
   {
     key: "MAILGUN_FROM_EMAIL",
+    required: false,
+    productionOnly: false,
+  },
+
+  // ── Notifications ─────────────────────────────────────────────────────────────
+  {
+    // Canonical admin notification address. Used by nonprofit, intake, and targeted
+    // routes to alert the operator of new leads, intake submissions, and applications.
+    // If missing in production, all admin email notifications silently drop.
+    key: "ADMIN_NOTIFICATION_EMAIL",
     required: true,
     productionOnly: true,
   },
@@ -95,6 +123,7 @@ const ENV_SPECS: EnvSpec[] = [
     required: true,
     productionOnly: false,
     validValues: ["true", "false"],
+    dangerIfSet: "true", // mock DB must never be enabled in production
   },
   {
     key: "ADMIN_DEV_BYPASS",

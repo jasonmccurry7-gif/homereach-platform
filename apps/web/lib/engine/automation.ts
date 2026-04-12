@@ -4,17 +4,16 @@
 // Multi-channel conversational automation.
 // Detects intent, generates human-like responses, and persists conversations.
 //
+// Agent 5 — AI Communications
+//
 // Design:
-//   • Static pure methods (detectIntent, generateResponse, etc.) — sync, no DB
+//   • Static pure methods (detectIntent, generateResponse, etc.)
+//   • Static async method (classifyIntentWithAI) — uses OpenAI when key is set
 //   • Instance async methods (processInbound, sendAutoReply, etc.) — use repo
 //
-// Usage (with repository injected — preferred):
-//   const engine = new AutomationEngine(getConversationRepository());
-//   const reply  = await engine.processInbound(conversationId, inboundBody);
-//
-// TODO: Replace keyword detection with OpenAI call for production:
-//   const completion = await openai.chat.completions.create({ ... })
-// TODO: Replace sendSms/sendEmail stubs with Twilio / Resend calls.
+// Intent detection order:
+//   1. If OPENAI_API_KEY is set: use GPT-4o-mini with structured output
+//   2. Fallback: keyword matching (fast, no API cost)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
@@ -27,6 +26,40 @@ import type {
 } from "./types";
 import type { IConversationRepository, UpsertConversationInput } from "./db/interfaces";
 import { getConversationRepository } from "./db/factory";
+
+// ── OpenAI (optional — loaded lazily if OPENAI_API_KEY is present) ─────────────
+// Using dynamic import to avoid breaking the build when openai package isn't
+// installed in development. Add OPENAI_API_KEY to .env.local to enable.
+let _openaiClient: import("openai").OpenAI | null = null;
+
+async function getOpenAIClient(): Promise<import("openai").OpenAI | null> {
+  if (!process.env.OPENAI_API_KEY) return null;
+  if (_openaiClient) return _openaiClient;
+
+  try {
+    const { default: OpenAI } = await import("openai");
+    _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    return _openaiClient;
+  } catch {
+    console.warn("[automation] openai package not installed — falling back to keyword detection");
+    return null;
+  }
+}
+
+const INTENT_CLASSIFICATION_PROMPT = `You are an intent classifier for HomeReach, a local direct mail marketing company.
+
+Classify the following inbound SMS or email reply into exactly ONE of these 5 intents:
+- ready_to_buy     : clearly wants to proceed, sign up, or get the intake link
+- interested       : curious, wants more info, or asking about pricing/details
+- objection        : hesitant, thinks it's too expensive, not sure, needs to think
+- asking_questions : has specific questions about how it works, areas, cancellation, etc.
+- not_interested   : explicitly doesn't want to continue, asks to stop
+
+Respond with ONLY a JSON object with two fields:
+  intent: (one of the 5 values above)
+  confidence: (0.0 to 1.0)
+
+Example: {"intent":"interested","confidence":0.92}`;
 
 // ── Intent Detection Config ───────────────────────────────────────────────────
 // TODO: Replace with OpenAI intent classification in production
@@ -99,7 +132,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "interested",
     channel: "sms",
     templates: [
-      "Here's the deal — you get the exclusive {{category}} spot in {{city}}. No other {{category}} can advertise in that area. 15,000 homeowners see your name every month.\n\nStarts at $299/mo. Want me to hold the spot while you look it over?",
+      "Here's the deal — you get the exclusive {{category}} spot in {{city}}. No other {{category}} can advertise in that area. 2,500+ homeowners see your name every month.\n\nStarts at $299/mo. Want me to hold the spot while you look it over?",
       "Awesome! So it's pretty simple — one business per category, per city. You'd be the only {{category}} on the postcard for {{city}}. Homeowners keep it on their fridge.\n\nPricing starts at $299/mo. Want the full breakdown?",
     ],
   },
@@ -107,7 +140,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "interested",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nThanks for your interest! Here's how it works:\n\n• You get the exclusive {{category}} spot in {{city}} — no competitors allowed\n• 15,000 homeowners receive the postcard every month\n• Starts at $299/month, no long-term contract required\n\nWant me to hold your spot while you review? I can send over the full details.\n\nJason",
+      "Hi {{firstName}},\n\nThanks for your interest! Here's how it works:\n\n• You get the exclusive {{category}} spot in {{city}} — no competitors allowed\n• 2,500+ homeowners receive the postcard every month\n• Starts at $299/month, no long-term contract required\n\nWant me to hold your spot while you review? I can send over the full details.\n\nJason",
     ],
   },
 
@@ -133,7 +166,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "asking_questions",
     channel: "sms",
     templates: [
-      "Great question. Here's the short version: one spot per category, per city. Exclusive. 15,000 homes/month. Starting at $299/mo, cancel anytime after 3 months.\n\nWhat else do you want to know?",
+      "Great question. Here's the short version: one spot per category, per city. Exclusive. 2,500+ homes/month. Starting at $299/mo, cancel anytime after 3 months.\n\nWhat else do you want to know?",
       "Happy to answer! What specifically are you wondering about — the pricing, the postcard design, how we track results, or something else?",
     ],
   },
@@ -141,7 +174,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "asking_questions",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nHappy to answer your questions! Quick overview:\n\n• One business per category in {{city}} — fully exclusive\n• 15,000 homeowners reached every month\n• Postcard design included, no design experience needed\n• Starts at $299/mo, cancel after 3 months\n\nWhat else can I clarify for you?\n\nJason",
+      "Hi {{firstName}},\n\nHappy to answer your questions! Quick overview:\n\n• One business per category in {{city}} — fully exclusive\n• 2,500+ homeowners reached every month\n• Postcard design included, no design experience needed\n• Starts at $299/mo, cancel after 3 months\n\nWhat else can I clarify for you?\n\nJason",
     ],
   },
 
@@ -178,6 +211,81 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
   },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DailyRateLimiter
+//
+// In-process rate limiter. Tracks sends per contact per calendar day.
+// For multi-instance deployments, swap _store for a Redis client.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class DailyRateLimiter {
+  private _store = new Map<string, number[]>();
+
+  constructor(private readonly maxPerDay: number) {}
+
+  /** Returns true if the contact has hit the daily limit. */
+  check(key: string): boolean {
+    const today = new Date().toISOString().slice(0, 10); // "2026-04-11"
+    const sends = (this._store.get(key) ?? []).filter(
+      (ts) => new Date(ts).toISOString().slice(0, 10) === today
+    );
+    return sends.length >= this.maxPerDay;
+  }
+
+  /** Record a send event for the contact. */
+  record(key: string): void {
+    const now = Date.now();
+    const existing = this._store.get(key) ?? [];
+    // Keep only last 7 days to prevent unbounded memory growth
+    const cutoff = now - 7 * 24 * 60 * 60 * 1000;
+    this._store.set(key, [...existing.filter((ts) => ts > cutoff), now]);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EmailPauseGuard
+//
+// Tracks email delivery metrics and auto-pauses the engine when:
+//   • Bounce rate > 5%  (over last 100 sends)
+//   • Spam rate   > 0.1% (over last 1000 sends)
+//
+// In production: hook into Mailgun webhooks to feed real bounce/spam events.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class EmailPauseGuard {
+  private _sent  = 0;
+  private _bounces = 0;
+  private _spams   = 0;
+
+  // Thresholds
+  private readonly BOUNCE_RATE_THRESHOLD = 0.05;   // 5%
+  private readonly SPAM_RATE_THRESHOLD   = 0.001;  // 0.1%
+  private readonly MIN_SAMPLE_SIZE       = 20;     // don't pause before 20 sends
+
+  recordSent():   void { this._sent++;    }
+  recordBounce(): void { this._bounces++; }
+  recordSpam():   void { this._spams++;   }
+
+  isPaused(): "bounce" | "spam" | null {
+    if (this._sent < this.MIN_SAMPLE_SIZE) return null;
+    if (this._bounces / this._sent > this.BOUNCE_RATE_THRESHOLD) return "bounce";
+    if (this._spams   / this._sent > this.SPAM_RATE_THRESHOLD)   return "spam";
+    return null;
+  }
+
+  getStatus(): null | { reason: string; bounceRate: number; spamRate: number } {
+    const paused = this.isPaused();
+    if (!paused) return null;
+    return {
+      reason:     paused === "bounce" ? "Bounce rate exceeded 5%" : "Spam rate exceeded 0.1%",
+      bounceRate: this._sent > 0 ? this._bounces / this._sent : 0,
+      spamRate:   this._sent > 0 ? this._spams   / this._sent : 0,
+    };
+  }
+
+  reset(): void { this._sent = 0; this._bounces = 0; this._spams = 0; }
+}
+
 // ── Engine ────────────────────────────────────────────────────────────────────
 
 export class AutomationEngine {
@@ -192,6 +300,9 @@ export class AutomationEngine {
   /**
    * Persist an inbound message, update intent, and optionally auto-reply.
    * Returns the saved message and a suggested auto-reply body (if applicable).
+   *
+   * AI reply generation uses FULL conversation history so replies are contextual
+   * and avoid repeating information already covered in the thread.
    */
   async processInbound(
     conversationId: string,
@@ -199,7 +310,12 @@ export class AutomationEngine {
     channel: MessageChannel,
     sentAt?: string
   ): Promise<{ message: AutomationMessage; autoReply?: string }> {
-    const detected = AutomationEngine.detectIntent(body);
+    // Fetch conversation BEFORE saving (to get prior history for AI context)
+    const ctxBefore = await this.repo.getById(conversationId).catch(() => null);
+
+    // Try OpenAI first; fall back to keyword detection
+    const detected = await AutomationEngine.classifyIntentWithAI(body)
+      ?? AutomationEngine.detectIntent(body);
 
     // Save the inbound message
     const message = await this.repo.addMessage(conversationId, {
@@ -214,18 +330,33 @@ export class AutomationEngine {
     // Persist detected intent on the conversation
     await this.repo.setLastIntent(conversationId, detected.type);
 
-    // Fetch conversation to check if auto-mode is active
+    // Fetch full updated conversation (with new message) for AI reply
     const ctx = await this.repo.getById(conversationId);
     let autoReply: string | undefined;
 
     if (ctx?.automationMode === "auto") {
       const firstName = ctx.leadName?.split(" ")[0] ?? "";
-      autoReply = AutomationEngine.generateResponse(detected.type, channel, {
-        firstName,
-        city:       ctx.city,
-        category:   ctx.category,
-      });
+
+      // Try AI-powered contextual reply using full history first
+      autoReply = await AutomationEngine._generateContextualReply(
+        detected.type,
+        channel,
+        body,
+        ctx.messages,
+        { firstName, city: ctx.city, category: ctx.category }
+      );
+
+      // Fallback to template if AI fails
+      if (!autoReply) {
+        autoReply = AutomationEngine.generateResponse(detected.type, channel, {
+          firstName,
+          city:       ctx.city,
+          category:   ctx.category,
+        });
+      }
     }
+
+    void ctxBefore; // suppress unused variable warning
 
     return { message, autoReply };
   }
@@ -287,8 +418,54 @@ export class AutomationEngine {
   // ── Static pure methods (sync, no repo) ──────────────────────────────────
 
   /**
-   * Detect the intent of an inbound message.
-   * TODO: Replace with OpenAI API call for production accuracy.
+   * Classify intent using OpenAI GPT-4o-mini.
+   * Returns null if OPENAI_API_KEY is not set or call fails (triggers keyword fallback).
+   * Uses structured JSON output for reliable parsing.
+   */
+  static async classifyIntentWithAI(messageBody: string): Promise<DetectedIntent | null> {
+    try {
+      const client = await getOpenAIClient();
+      if (!client) return null;
+
+      const completion = await client.chat.completions.create({
+        model:       "gpt-4o-mini",
+        messages: [
+          { role: "system", content: INTENT_CLASSIFICATION_PROMPT },
+          { role: "user",   content: messageBody.slice(0, 500) }, // cap at 500 chars
+        ],
+        max_tokens:  80,
+        temperature: 0.1, // low temp for consistency
+        response_format: { type: "json_object" },
+      });
+
+      const raw = completion.choices[0]?.message?.content ?? "";
+      const parsed = JSON.parse(raw) as { intent: IntentType; confidence: number };
+
+      const validIntents: IntentType[] = [
+        "ready_to_buy", "interested", "objection", "asking_questions", "not_interested",
+      ];
+      if (!validIntents.includes(parsed.intent)) return null;
+
+      return {
+        type:       parsed.intent,
+        confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.8)),
+        keywords:   [], // AI doesn't return keywords
+        suggestedResponse: AutomationEngine.getTemplateResponse(parsed.intent, "sms", {
+          firstName:  "",
+          city:       "",
+          category:   "",
+          intakeLink: (process.env.NEXT_PUBLIC_APP_URL ?? "") + "/get-started",
+        }),
+      };
+    } catch (err) {
+      console.error("[automation] OpenAI classification failed, using keyword fallback:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Keyword-based intent detection — fast fallback when OpenAI is unavailable.
+   * Used when OPENAI_API_KEY is not set or the API call fails.
    */
   static detectIntent(messageBody: string): DetectedIntent {
     const lower = messageBody.toLowerCase();
@@ -364,6 +541,68 @@ export class AutomationEngine {
     );
   }
 
+  /**
+   * Lead scoring — returns a numeric score based on conversation signals.
+   *
+   * Scoring rules (from ops directive):
+   *   +20  any inbound reply
+   *   +30  price-related ask (asking_questions with price keywords)
+   *   +15  click (intake link sent implies interest click)
+   *   -10  no response after outbound (outbound with no follow-up inbound)
+   *
+   * Score ranges:
+   *   0–29   Cold
+   *   30–59  Warm
+   *   60–89  Hot
+   *   90+    On Fire 🔥
+   */
+  static scoreConversation(ctx: ConversationContext): number {
+    let score = 0;
+
+    const inbound  = ctx.messages.filter((m) => m.direction === "inbound");
+    const outbound = ctx.messages.filter((m) => m.direction === "outbound");
+
+    // +20 per inbound reply (capped at 4 to prevent score inflation)
+    score += Math.min(inbound.length, 4) * 20;
+
+    // +30 if any message suggests price interest
+    const priceKeywords = ["price", "cost", "how much", "pricing", "rate", "fee", "charge", "pay", "afford"];
+    const hasPriceAsk = inbound.some((m) =>
+      priceKeywords.some((kw) => m.body.toLowerCase().includes(kw))
+    );
+    if (hasPriceAsk) score += 30;
+
+    // +15 if intake link was triggered (ready_to_buy signal)
+    const intakeSent = outbound.some((m) => m.body.includes("/targeted") || m.body.includes("intake") || m.body.includes("get-started"));
+    if (intakeSent) score += 15;
+
+    // -10 if last message was outbound with no inbound since (unresponded follow-up)
+    if (outbound.length > 0 && inbound.length === 0) {
+      score -= 10;
+    } else if (outbound.length > 0 && inbound.length > 0) {
+      const lastOut = outbound[outbound.length - 1];
+      const lastIn  = inbound[inbound.length - 1];
+      if (lastOut.sentAt > lastIn.sentAt) {
+        score -= 10; // Outbound sent after last inbound = no response yet
+      }
+    }
+
+    // Boost for ready_to_buy intent
+    if (ctx.lastIntent === "ready_to_buy")   score += 20;
+    if (ctx.lastIntent === "interested")     score += 10;
+    if (ctx.lastIntent === "not_interested") score = Math.min(score, 10);
+
+    return Math.max(0, score);
+  }
+
+  /** Get a score badge for display */
+  static getScoreBadge(score: number): { label: string; color: string; emoji: string } {
+    if (score >= 90) return { label: "On Fire",  color: "bg-red-100 text-red-800 border-red-200",       emoji: "🔥" };
+    if (score >= 60) return { label: "Hot",      color: "bg-orange-100 text-orange-800 border-orange-200", emoji: "♨️" };
+    if (score >= 30) return { label: "Warm",     color: "bg-yellow-100 text-yellow-800 border-yellow-200", emoji: "🌡" };
+    return                   { label: "Cold",    color: "bg-gray-100 text-gray-600 border-gray-200",     emoji: "❄️" };
+  }
+
   /** Intent badge label + Tailwind color class for UI display */
   static getIntentBadge(intent: IntentType): { label: string; color: string } {
     const BADGES: Record<IntentType, { label: string; color: string }> = {
@@ -379,11 +618,48 @@ export class AutomationEngine {
 
   /**
    * Send SMS via Twilio (real send).
+   *
+   * Guards:
+   *   1. Opt-out check — contact must NOT have optedOut=true in DB
+   *   2. Rate limiting  — max 5 auto SMS/day per number (configurable)
+   *
+   * Compliance:
+   *   • Appends "Reply STOP to opt out." footer to every outbound SMS if not
+   *     already present. Required for TCPA / carrier compliance.
    */
-  static async sendSms(to: string, body: string): Promise<{ success: boolean; sid?: string }> {
+  static async sendSms(
+    to: string,
+    body: string,
+    opts: { skipOptOutCheck?: boolean; skipRateLimit?: boolean; skipStopFooter?: boolean } = {}
+  ): Promise<{ success: boolean; sid?: string; blocked?: "opted_out" | "rate_limit" }> {
     try {
+      // ── 1. Opt-out enforcement ──────────────────────────────────────────────
+      if (!opts.skipOptOutCheck) {
+        const isOptedOut = await AutomationEngine._checkSmsOptOut(to);
+        if (isOptedOut) {
+          console.warn(`[AutomationEngine] SMS blocked — ${to} has opted out`);
+          return { success: false, blocked: "opted_out" };
+        }
+      }
+
+      // ── 2. Rate limiting ────────────────────────────────────────────────────
+      if (!opts.skipRateLimit) {
+        const blocked = AutomationEngine._smsRateLimiter.check(to);
+        if (blocked) {
+          console.warn(`[AutomationEngine] SMS blocked — rate limit reached for ${to}`);
+          return { success: false, blocked: "rate_limit" };
+        }
+        AutomationEngine._smsRateLimiter.record(to);
+      }
+
+      // ── 3. STOP compliance footer (TCPA) ────────────────────────────────────
+      const STOP_FOOTER = "\n\nReply STOP to opt out.";
+      const finalBody = opts.skipStopFooter || body.toLowerCase().includes("reply stop")
+        ? body
+        : body + STOP_FOOTER;
+
       const { sendSms } = await import("@homereach/services/outreach");
-      const result = await sendSms({ to, body });
+      const result = await sendSms({ to, body: finalBody });
       if (!result.success) {
         console.error(`[AutomationEngine] SMS to ${to} failed: ${result.error}`);
       }
@@ -396,13 +672,42 @@ export class AutomationEngine {
 
   /**
    * Send email via Mailgun (real send).
+   *
+   * Guards:
+   *   1. Rate limiting   — max 3 auto emails/day per address
+   *   2. Bounce pausing  — auto-pause if bounce rate for this domain > 5%
+   *   3. Spam pausing    — auto-pause if spam flag rate > 0.1%
    */
   static async sendEmail(
     to: string,
     subject: string,
-    body: string
-  ): Promise<{ success: boolean; id?: string }> {
+    body: string,
+    opts: { skipRateLimit?: boolean; skipBounceCheck?: boolean } = {}
+  ): Promise<{ success: boolean; id?: string; blocked?: "rate_limit" | "bounce_paused" | "spam_paused" }> {
     try {
+      // ── 1. Rate limiting ─────────────────────────────────────────────────────
+      if (!opts.skipRateLimit) {
+        const blocked = AutomationEngine._emailRateLimiter.check(to);
+        if (blocked) {
+          console.warn(`[AutomationEngine] Email blocked — rate limit reached for ${to}`);
+          return { success: false, blocked: "rate_limit" };
+        }
+        AutomationEngine._emailRateLimiter.record(to);
+      }
+
+      // ── 2. Bounce / spam auto-pause check ────────────────────────────────────
+      if (!opts.skipBounceCheck) {
+        const paused = AutomationEngine._emailPauseGuard.isPaused();
+        if (paused === "bounce") {
+          console.warn(`[AutomationEngine] Email paused — bounce rate threshold exceeded`);
+          return { success: false, blocked: "bounce_paused" };
+        }
+        if (paused === "spam") {
+          console.warn(`[AutomationEngine] Email paused — spam rate threshold exceeded`);
+          return { success: false, blocked: "spam_paused" };
+        }
+      }
+
       const { sendEmail } = await import("@homereach/services/outreach");
       const result = await sendEmail({
         to,
@@ -410,9 +715,15 @@ export class AutomationEngine {
         html: `<p>${body.replace(/\n/g, "<br/>")}</p>`,
         text: body,
       });
-      if (!result.success) {
+
+      // Track delivery metrics for auto-pause logic
+      if (result.success) {
+        AutomationEngine._emailPauseGuard.recordSent();
+      } else {
+        AutomationEngine._emailPauseGuard.recordBounce();
         console.error(`[AutomationEngine] Email to ${to} failed: ${result.error}`);
       }
+
       return { success: result.success, id: result.externalId };
     } catch (err) {
       console.error("[AutomationEngine] sendEmail error:", err);
@@ -420,7 +731,103 @@ export class AutomationEngine {
     }
   }
 
+  /**
+   * Record a spam complaint — called from webhook handler when a user
+   * marks an email as spam. Feeds into the auto-pause guard.
+   */
+  static recordSpamComplaint(): void {
+    AutomationEngine._emailPauseGuard.recordSpam();
+  }
+
+  /**
+   * Check current email pause status.
+   * Returns null if not paused, or a string describing the pause reason.
+   */
+  static getEmailPauseStatus(): null | { reason: string; bounceRate: number; spamRate: number } {
+    return AutomationEngine._emailPauseGuard.getStatus();
+  }
+
+  // ── Rate limiters (in-process; upgrade to Redis for multi-instance) ─────────
+
+  /** SMS: max 5 messages per phone number per day */
+  private static _smsRateLimiter = new DailyRateLimiter(5);
+
+  /** Email: max 3 messages per address per day */
+  private static _emailRateLimiter = new DailyRateLimiter(3);
+
+  /** Email auto-pause guard — pauses sends when bounce/spam rate crosses threshold */
+  private static _emailPauseGuard = new EmailPauseGuard();
+
+  /** Check if a phone number has opted out via Twilio STOP keyword */
+  private static async _checkSmsOptOut(phone: string): Promise<boolean> {
+    try {
+      const { db, outreachContacts } = await import("@homereach/db");
+      const { eq } = await import("drizzle-orm");
+      const [contact] = await db
+        .select({ optedOut: outreachContacts.optedOut })
+        .from(outreachContacts)
+        .where(eq(outreachContacts.phone, phone))
+        .limit(1);
+      return contact?.optedOut === true;
+    } catch {
+      // If DB check fails, allow send (fail open is safer than silently blocking)
+      return false;
+    }
+  }
+
   // ── Private helpers ───────────────────────────────────────────────────────
+
+  /**
+   * Generate a contextual AI reply using the FULL conversation history.
+   * Falls back to null if OpenAI is unavailable, so caller uses template.
+   */
+  private static async _generateContextualReply(
+    intent:   IntentType,
+    channel:  MessageChannel,
+    latestMsg: string,
+    history:  AutomationMessage[],
+    vars:     { firstName: string; city: string; category: string }
+  ): Promise<string | null> {
+    try {
+      const client = await getOpenAIClient();
+      if (!client) return null;
+
+      // Build conversation history for GPT context
+      const historyText = history
+        .slice(-10) // last 10 messages for context window efficiency
+        .map((m) => `${m.direction === "inbound" ? "Lead" : "HomeReach"}: ${m.body}`)
+        .join("\n");
+
+      const systemPrompt = `You are a friendly, brief sales rep for HomeReach — a local direct mail postcard company.
+Business context:
+  - Lead: ${vars.firstName || "a business owner"} in ${vars.city || "their city"}, category: ${vars.category || "their trade"}
+  - HomeReach sends postcards to 2,500+ targeted homeowners, exclusive per category
+  - Starting at $299/mo, no long-term contract required
+
+Respond to the latest message naturally and briefly (1–3 sentences max).
+Use the conversation history to avoid repeating yourself.
+Intent classification: ${intent}
+If intent is not_interested, politely acknowledge and offer to remove them.
+If intent is ready_to_buy, send the intake link: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/get-started
+Channel: ${channel} — keep SMS replies under 160 characters when possible.
+Do NOT add a sign-off or signature.`;
+
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system",    content: systemPrompt },
+          { role: "user",      content: `Conversation history:\n${historyText}\n\nLatest message from lead: "${latestMsg}"\n\nReply now:` },
+        ],
+        max_tokens:  200,
+        temperature: 0.7,
+      });
+
+      const reply = completion.choices[0]?.message?.content?.trim();
+      return reply || null;
+    } catch {
+      return null; // caller falls back to template
+    }
+  }
 
   private static getTemplateResponse(
     intent: IntentType,

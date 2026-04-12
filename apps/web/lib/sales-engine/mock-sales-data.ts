@@ -305,7 +305,7 @@ export const MOCK_SALES_LEADS: SalesLead[] = [
       { id: "m-006-3", role: "ai",         channel: "sms", body: "Great question — pulling in our team to get you exact numbers for Cuyahoga Falls. One sec.", sentAt: daysAgo(1), isRead: true, intentScore: 0 },
       { id: "m-006-4", role: "lead",        channel: "sms", body: "Spring's almost here need to get going on marketing", sentAt: daysAgo(1), isRead: true, intentScore: 25, signals: ["expressed_urgency"] },
       { id: "m-006-5", role: "lead",        channel: "sms", body: "Ready to move forward if price is right", sentAt: hoursAgo(22), isRead: true, intentScore: 25, signals: ["mentioned_readiness"] },
-      { id: "m-006-6", role: "human_agent", channel: "sms", body: "Hey Tom! This is Jason from HomeReach. For Cuyahoga Falls we have the anchor spot at $399/mo — covers 5,000 homes every month, exclusive to you. Want me to lock it in?", sentAt: hoursAgo(20), isRead: true, intentScore: 0 },
+      { id: "m-006-6", role: "human_agent", channel: "sms", body: "Hey Tom! This is Jason from HomeReach. For Cuyahoga Falls we have the anchor spot at $399/mo — covers 2,500+ homes every month, exclusive to you. Want me to lock it in?", sentAt: hoursAgo(20), isRead: true, intentScore: 0 },
     ],
     summary:         "Agent active. Pricing + urgency + readiness confirmed. Close imminent.",
     lastMessageAt:   hoursAgo(20),

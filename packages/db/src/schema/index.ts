@@ -27,3 +27,24 @@ export * from "./misc";
 
 // Marketing campaigns + metrics (Phase 3)
 export * from "./marketing";
+
+// Pricing engine — profiles + discount rules (Task 20)
+export * from "./pricing";
+
+// Lead capture — Facebook + external leads
+export * from "./leads";
+
+// Targeted Route Campaign product
+export * from "./targeted";
+
+// Shared Postcard spot inventory (Migration 15)
+export * from "./spots";
+
+// Post-payment intake onboarding (Migration 16)
+export * from "./intake";
+
+// Persistent conversation log (Migration 17)
+export * from "./conversations";
+
+// Growth intelligence — daily activity tracking (Migration 19)
+export * from "./growth";
