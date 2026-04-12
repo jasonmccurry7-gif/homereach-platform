@@ -9,7 +9,8 @@ const NAV_GROUPS = [
   {
     label: "Command",
     items: [
-      { label: "⚡ OS Control Center", href: "/os",           emoji: "🖥️", badge: "PRIMARY" },
+      { label: "⚡ OS Control Center", href: "/os",                    emoji: "🖥️", badge: "PRIMARY" },
+      { label: "Admin Control Center", href: "/admin/control-center", emoji: "🎛️", badge: "NEW" },
       { label: "Dashboard",      href: "/admin",              emoji: "🏠" },
       { label: "Leads",          href: "/admin/leads",              emoji: "🎯" },
       { label: "Targeted Campaigns", href: "/admin/targeted-campaigns", emoji: "📬", badge: "NEW" },
@@ -33,6 +34,7 @@ const NAV_GROUPS = [
     items: [
       { label: "Agent Dialer",      href: "/admin/agent-view",       emoji: "⚡", badge: "LIVE" },
       { label: "Sales Intelligence",href: "/admin/sales-dashboard",  emoji: "📊", badge: "LIVE" },
+      { label: "CRM",               href: "/admin/crm",              emoji: "🗂️", badge: "NEW" },
       { label: "Sales Engine",      href: "/admin/sales-engine",     emoji: "🤖" },
       { label: "Availability",      href: "/admin/availability",     emoji: "📍" },
       { label: "ROI Preview",       href: "/admin/roi-preview",      emoji: "💰" },
