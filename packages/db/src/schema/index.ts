@@ -48,3 +48,6 @@ export * from "./conversations";
 
 // Growth intelligence — daily activity tracking (Migration 19)
 export * from "./growth";
+
+// Sales execution system — outbound leads + event tracking (Migration 20)
+export * from "./sales";

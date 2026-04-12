@@ -1,11 +1,13 @@
-import type { Metadata } from "next";
-import { MOCK_AGENTS } from "@/lib/admin/mock-agents";
-import { AgentDashboardWrapper } from "./agent-dashboard";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import AgentDashboard from "./agent-dashboard";
 
-export const metadata: Metadata = { title: "Sales Agent Dashboard — HomeReach" };
+export const metadata = { title: "Agent View — HomeReach Sales" };
 
-export default function AgentViewPage() {
-  // In production, the active agent would be derived from session/auth.
-  // Here we pre-load all agents and let the client pick (for admin preview mode).
-  return <AgentDashboardWrapper agents={MOCK_AGENTS} />;
+export default async function AgentViewPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login?redirect=/admin/agent-view");
+
+  return <AgentDashboard agentId={user.id} />;
 }

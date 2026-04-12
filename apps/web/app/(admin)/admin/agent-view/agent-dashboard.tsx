@@ -1,529 +1,467 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import type { SalesAgent, AgentFollowUp } from "@/lib/engine/types";
-import type { Lead } from "@/lib/admin/mock-data";
-import { MOCK_LEADS, MOCK_CONVERSATIONS } from "@/lib/admin/mock-data";
-import { MOCK_FOLLOW_UPS, getAgentFollowUps } from "@/lib/admin/mock-agents";
-import { AutomationEngine } from "@/lib/engine/automation";
-import { ReviewEngine }     from "@/lib/review/review-engine";
-import { cn } from "@/lib/utils";
-import { MockDataBanner } from "@/components/admin/mock-data-banner";
+import { useState, useEffect, useCallback, useRef } from "react";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sales Agent Dashboard
-// Role: sales_agent — restricted view, personal data only
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface Props {
-  agents: SalesAgent[];
-}
-
-const STATUS_STYLES: Record<string, string> = {
-  lead:       "bg-gray-800 text-gray-300",
-  interested: "bg-amber-900/50 text-amber-300",
-  sold:       "bg-green-900/50 text-green-300",
-  churned:    "bg-red-900/50 text-red-400",
-  closed_won: "bg-emerald-900/50 text-emerald-300",
-  closed_lost:"bg-gray-800 text-gray-500",
+// ─── Types ────────────────────────────────────────────────────────────────────
+type SalesLead = {
+  id: string;
+  business_name: string;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  facebook_url: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  category: string | null;
+  score: number;
+  priority: "low" | "medium" | "high";
+  rating: number | null;
+  reviews_count: number;
+  buying_signal: boolean;
+  status: string;
+  notes: string | null;
 };
 
-function formatDue(iso: string): { label: string; urgent: boolean } {
-  const now = Date.now();
-  const diff = new Date(iso).getTime() - now;
-  const hours = Math.round(diff / 3_600_000);
-  if (hours < 0)   return { label: "Overdue",           urgent: true };
-  if (hours < 2)   return { label: `${hours}h`,         urgent: true };
-  if (hours < 24)  return { label: `Today, ${hours}h`,  urgent: true };
-  const days = Math.round(hours / 24);
-  return { label: `${days}d`,                           urgent: false };
-}
+type Channel = "sms" | "email" | "facebook";
+type ActionType = "lead_loaded" | "lead_skipped" | "message_sent" | "email_sent" | "text_sent" | "facebook_sent" | "reply_received" | "conversation_started" | "follow_up_sent" | "payment_link_created" | "deal_closed";
 
-function FollowUpRow({ fu, onComplete }: {
-  fu: AgentFollowUp;
-  onComplete: (id: string) => void;
-}) {
-  const due = formatDue(fu.dueAt);
+type Stats = {
+  loaded: number;
+  skipped: number;
+  sent: number;
+  replies: number;
+  deals: number;
+  revenue: number;
+};
+
+type Guidance = { type: string; message: string; priority: "high" | "medium" | "low" };
+
+// ─── Agent Dashboard ──────────────────────────────────────────────────────────
+export default function AgentDashboard({ agentId }: { agentId: string }) {
+  const [lead, setLead] = useState<SalesLead | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [channel, setChannel] = useState<Channel>("sms");
+  const [message, setMessage] = useState("");
+  const [stats, setStats] = useState<Stats>({ loaded: 0, skipped: 0, sent: 0, replies: 0, deals: 0, revenue: 0 });
+  const [guidance, setGuidance] = useState<Guidance[]>([]);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [filterCity, setFilterCity] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [dealRevenue, setDealRevenue] = useState("200");
+  const [showRevenueInput, setShowRevenueInput] = useState(false);
+  const [sessionStart] = useState(Date.now());
+  const messageRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Load next lead ──────────────────────────────────────────────────────────
+  const loadNextLead = useCallback(async () => {
+    setLoading(true);
+    setMessage("");
+    setShowRevenueInput(false);
+
+    const params = new URLSearchParams({ channel });
+    if (filterCity)     params.set("city", filterCity);
+    if (filterCategory) params.set("category", filterCategory);
+
+    const res = await fetch(`/api/admin/sales/next-lead?${params}`);
+    const data = await res.json();
+    setLead(data.lead ?? null);
+    setLoading(false);
+
+    if (data.lead) {
+      logEvent("lead_loaded", data.lead.id, null, null, null);
+      setStats(s => ({ ...s, loaded: s.loaded + 1 }));
+    }
+  }, [channel, filterCity, filterCategory]);
+
+  // ── Log event ───────────────────────────────────────────────────────────────
+  const logEvent = async (
+    action_type: ActionType,
+    lead_id: string | null,
+    ch: Channel | null,
+    msg: string | null,
+    revenue_cents: number | null,
+  ) => {
+    if (!agentId) return;
+    await fetch("/api/admin/sales/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent_id: agentId,
+        lead_id,
+        action_type,
+        channel: ch ?? channel,
+        city:     lead?.city ?? null,
+        category: lead?.category ?? null,
+        message:  msg,
+        revenue_cents,
+      }),
+    });
+  };
+
+  // ── Fetch guidance ──────────────────────────────────────────────────────────
+  const fetchGuidance = useCallback(async () => {
+    const since = new Date(sessionStart).toISOString();
+    const res = await fetch(`/api/admin/sales/insights?since=${since}`);
+    const data = await res.json();
+    setGuidance(data.guidance ?? []);
+  }, [sessionStart]);
+
+  useEffect(() => {
+    loadNextLead();
+  }, [loadNextLead]);
+
+  useEffect(() => {
+    const interval = setInterval(fetchGuidance, 30000);
+    fetchGuidance();
+    return () => clearInterval(interval);
+  }, [fetchGuidance]);
+
+  // ── Show flash ──────────────────────────────────────────────────────────────
+  const showFlash = (msg: string) => {
+    setFlash(msg);
+    setTimeout(() => setFlash(null), 2500);
+  };
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  const handleSkip = async () => {
+    if (lead) {
+      await logEvent("lead_skipped", lead.id, null, null, null);
+      setStats(s => ({ ...s, skipped: s.skipped + 1 }));
+    }
+    loadNextLead();
+  };
+
+  const handleSend = async () => {
+    if (!lead) return;
+    const actionMap: Record<Channel, ActionType> = {
+      sms:      "text_sent",
+      email:    "email_sent",
+      facebook: "facebook_sent",
+    };
+    await logEvent(actionMap[channel], lead.id, channel, message || null, null);
+    setStats(s => ({ ...s, sent: s.sent + 1 }));
+    showFlash("✓ Message logged");
+    fetchGuidance();
+    loadNextLead();
+  };
+
+  const handleReply = async () => {
+    if (!lead) return;
+    await logEvent("reply_received", lead.id, channel, null, null);
+    await logEvent("conversation_started", lead.id, channel, null, null);
+    setStats(s => ({ ...s, replies: s.replies + 1 }));
+    showFlash("✓ Reply + conversation logged");
+    fetchGuidance();
+  };
+
+  const handlePaymentLink = async () => {
+    if (!lead) return;
+    await logEvent("payment_link_created", lead.id, channel, null, null);
+    showFlash("✓ Payment link logged");
+    fetchGuidance();
+  };
+
+  const handleDealClosed = async () => {
+    if (!lead) return;
+    const rev = Math.round(parseFloat(dealRevenue || "200") * 100);
+    await logEvent("deal_closed", lead.id, channel, null, rev);
+    setStats(s => ({ ...s, deals: s.deals + 1, revenue: s.revenue + rev }));
+    showFlash(`🎉 DEAL CLOSED — $${dealRevenue}`);
+    setShowRevenueInput(false);
+    fetchGuidance();
+    loadNextLead();
+  };
+
+  const handleFollowUp = async () => {
+    if (!lead) return;
+    await logEvent("follow_up_sent", lead.id, channel, message || null, null);
+    showFlash("✓ Follow-up logged");
+    loadNextLead();
+  };
+
+  // ── Available channels based on lead data ───────────────────────────────────
+  const availableChannels: Channel[] = [];
+  if (lead?.phone) availableChannels.push("sms");
+  if (lead?.email) availableChannels.push("email");
+  if (lead?.facebook_url) availableChannels.push("facebook");
+
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className={cn(
-      "flex items-start gap-3 p-3 rounded-lg border",
-      due.urgent
-        ? "bg-amber-900/20 border-amber-800/30"
-        : "bg-gray-800/40 border-gray-700/40"
-    )}>
-      <button
-        onClick={() => onComplete(fu.id)}
-        className="w-5 h-5 mt-0.5 rounded border border-gray-600 hover:border-green-500 hover:bg-green-500/20 flex items-center justify-center shrink-0 transition"
-      >
-        <span className="text-xs text-gray-500 hover:text-green-400">✓</span>
-      </button>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{fu.leadName}</p>
-        <p className="text-xs text-gray-400 truncate">{fu.businessName} · {fu.city}</p>
-        <p className="text-xs text-gray-500 mt-1 truncate">{fu.note}</p>
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+      {/* Header bar */}
+      <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+          <span className="font-bold text-sm tracking-wide uppercase text-gray-200">HomeReach Sales</span>
+        </div>
+        {/* Session stats */}
+        <div className="flex items-center gap-6 text-xs">
+          <Stat label="Loaded"   value={stats.loaded}   color="text-gray-400" />
+          <Stat label="Sent"     value={stats.sent}     color="text-blue-400" />
+          <Stat label="Replied"  value={stats.replies}  color="text-yellow-400" />
+          <Stat label="Deals"    value={stats.deals}    color="text-green-400" />
+          <Stat label="Revenue"  value={`$${(stats.revenue/100).toFixed(0)}`} color="text-emerald-400" />
+        </div>
       </div>
-      <span className={cn(
-        "text-xs font-semibold shrink-0",
-        due.urgent ? "text-amber-400" : "text-gray-500"
-      )}>
-        {due.label}
-      </span>
-    </div>
-  );
-}
 
-// ── Agent Dashboard View ──────────────────────────────────────────────────
-
-function AgentDashboard({ agent }: { agent: SalesAgent }) {
-  const [completedFUs, setCompletedFUs] = useState<Set<string>>(new Set());
-  const [showToast, setShowToast] = useState<string | null>(null);
-
-  // Filtered data — agent sees ONLY their assigned leads
-  const myLeads = MOCK_LEADS.filter((l) => agent.assignedLeadIds.includes(l.id));
-  const myConversations = MOCK_CONVERSATIONS.filter((c) =>
-    agent.assignedLeadIds.includes(c.leadId)
-  );
-  const myFollowUps = getAgentFollowUps(agent.id).filter(
-    (f) => !completedFUs.has(f.id)
-  );
-
-  // Stats (RESTRICTED — only this agent's data, no company-wide revenue)
-  const closedLeads = myLeads.filter((l) => l.status === "sold" || l.status === "closed_won");
-  const activeLeads = myLeads.filter((l) => l.status === "interested");
-
-  // Review prompts — "Ask for review" reminders from ReviewEngine
-  const reviewPrompts = ReviewEngine.getAgentReviewPrompts(
-    myLeads.map((l) => ({
-      id:           l.id,
-      name:         l.name,
-      businessName: l.businessName,
-      status:       l.status,
-    })),
-    agent.id
-  ).filter((p) => p.suggestedAction !== "none");
-  const pipelineValue = activeLeads.reduce((s, l) => s + l.monthlyValue, 0);
-  const unreadCount = myConversations.reduce((s, c) => s + c.unreadCount, 0);
-
-  function toast(msg: string) {
-    setShowToast(msg);
-    setTimeout(() => setShowToast(null), 3000);
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Toast */}
-      {showToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-gray-800 border border-gray-700 text-sm text-white px-4 py-3 rounded-xl shadow-lg">
-          ✅ {showToast}
+      {/* Guidance banner */}
+      {guidance.length > 0 && (
+        <div className="bg-orange-900/40 border-b border-orange-700/50 px-4 py-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            {guidance.slice(0, 2).map((g, i) => (
+              <div key={i} className={`flex items-center gap-2 text-xs font-medium px-3 py-1 rounded-full ${
+                g.priority === "high" ? "bg-red-500/20 text-red-300 border border-red-500/30" :
+                g.priority === "medium" ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30" :
+                "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+              }`}>
+                {g.priority === "high" ? "⚡" : g.priority === "medium" ? "→" : "ℹ"} {g.message}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/60 backdrop-blur sticky top-0 z-10">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold">
-              {agent.name.split(" ").map((n) => n[0]).join("")}
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white">{agent.name}</p>
-              <p className="text-xs text-gray-500">Sales Agent · HomeReach</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {myFollowUps.length > 0 && (
-              <span className="flex items-center gap-1.5 text-xs text-amber-400">
-                ⏰ {myFollowUps.length} follow-up{myFollowUps.length !== 1 ? "s" : ""} due
-              </span>
-            )}
-            <Link
-              href="/admin/hub"
-              className="text-xs text-gray-500 hover:text-gray-300 transition"
+      {/* Flash message */}
+      {flash && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-xl shadow-2xl z-50 font-bold text-sm animate-bounce">
+          {flash}
+        </div>
+      )}
+
+      <div className="flex flex-1 gap-0">
+        {/* Left: Filters */}
+        <div className="w-44 bg-gray-900 border-r border-gray-800 p-3 flex flex-col gap-3">
+          <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Filters</div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">City</label>
+            <select
+              className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-700 focus:outline-none focus:border-blue-500"
+              value={filterCity}
+              onChange={e => setFilterCity(e.target.value)}
             >
-              ← Back to Hub
-            </Link>
+              <option value="">All Cities</option>
+              {["Wooster","Medina","Massillon","Cuyahoga Falls","Ravenna","Green","Stow","Hudson","North Canton","Fairlawn","Twinsburg"].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Category</label>
+            <select
+              className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-700 focus:outline-none focus:border-blue-500"
+              value={filterCategory}
+              onChange={e => setFilterCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              {["Restaurant & Food","Home Services","Health & Wellness","Automotive","Real Estate","Cleaning Services","Junk Removal","Other"].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Channel</label>
+            <div className="flex flex-col gap-1">
+              {(["sms","email","facebook"] as Channel[]).map(ch => (
+                <button
+                  key={ch}
+                  onClick={() => setChannel(ch)}
+                  className={`text-xs px-2 py-1.5 rounded-lg font-medium transition-all ${
+                    channel === ch
+                      ? ch === "sms" ? "bg-green-600 text-white"
+                        : ch === "email" ? "bg-blue-600 text-white"
+                        : "bg-indigo-600 text-white"
+                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                  }`}
+                >
+                  {ch === "sms" ? "📱 SMS" : ch === "email" ? "📧 Email" : "💬 Facebook"}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="p-6 max-w-6xl mx-auto space-y-8">
-
-        {/* Mock Data Warning */}
-        <MockDataBanner items={["All agent data"]} />
-
-        {/* ── Performance Strip ───────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <AgentStatCard
-            icon="✅"
-            label="Closed This Month"
-            value={String(agent.dealsClosedThisMonth)}
-            sub={`${agent.dealsClosedAllTime} all time`}
-            color="green"
-          />
-          <AgentStatCard
-            icon="🔥"
-            label="Active Pipeline"
-            value={activeLeads.length}
-            sub={`$${pipelineValue.toLocaleString()}/mo value`}
-            color="amber"
-          />
-          <AgentStatCard
-            icon="💰"
-            label="Commission (Month)"
-            value={`$${agent.commissionEarnedThisMonth.toFixed(0)}`}
-            sub={`$${agent.commissionEarnedAllTime.toLocaleString()} all time`}
-            color="blue"
-          />
-          <AgentStatCard
-            icon="💬"
-            label="Unread Messages"
-            value={unreadCount}
-            sub={`${myConversations.length} total convos`}
-            color={unreadCount > 0 ? "red" : "gray"}
-          />
-        </div>
-
-        {/* ── Main Grid ───────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* LEFT: My Leads */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* My Leads */}
-            <AgentPanel title="My Leads" sub={`${myLeads.length} assigned to you`}>
-              {myLeads.length === 0 ? (
-                <p className="text-sm text-gray-500">No leads assigned yet.</p>
-              ) : (
-                <div className="divide-y divide-gray-800">
-                  {myLeads.map((lead) => (
-                    <div key={lead.id} className="py-3 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="text-sm font-semibold text-white truncate">{lead.name}</p>
-                          <span className={cn(
-                            "text-xs px-2 py-0.5 rounded-full font-medium",
-                            STATUS_STYLES[lead.status] ?? STATUS_STYLES.lead
-                          )}>
-                            {lead.status.replace("_", " ")}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-400 truncate">{lead.businessName}</p>
-                        <p className="text-xs text-gray-500">{lead.city} · {lead.category}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        {lead.monthlyValue > 0 && (
-                          <span className="text-xs font-semibold text-green-400">
-                            ${lead.monthlyValue}/mo
-                          </span>
-                        )}
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => toast(`Intake sent to ${lead.name}`)}
-                            className="text-xs px-2.5 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition"
-                          >
-                            Intake
-                          </button>
-                          {lead.status === "interested" && (
-                            <button
-                              onClick={() => toast(`${lead.name} marked as closed`)}
-                              className="text-xs px-2.5 py-1 bg-green-700 hover:bg-green-600 text-white rounded-lg transition"
-                            >
-                              Close
-                            </button>
-                          )}
-                          {(lead.status === "sold" || lead.status === "closed_won" || lead.status === "interested") && (
-                            <button
-                              onClick={() => toast(`⭐ Review request sent to ${lead.name}`)}
-                              className="text-xs px-2.5 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded-lg transition"
-                            >
-                              ⭐ Review
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </AgentPanel>
-
-            {/* My Conversations */}
-            <AgentPanel title="My Conversations" sub="Your assigned leads only">
-              {myConversations.length === 0 ? (
-                <p className="text-sm text-gray-500">No conversations yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {myConversations.map((conv) => {
-                    const badge = conv.lastIntent
-                      ? AutomationEngine.getIntentBadge(conv.lastIntent as any)
-                      : null;
-                    return (
-                      <div
-                        key={conv.id}
-                        className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition cursor-pointer"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-                          {conv.leadName[0]}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-white truncate">{conv.leadName}</p>
-                            {badge && (
-                              <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", badge.color)}>
-                                {badge.label}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-400 truncate">{conv.lastMessage}</p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className="text-xs text-gray-500">{conv.channel.toUpperCase()}</span>
-                          {conv.unreadCount > 0 && (
-                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">
-                              {conv.unreadCount}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <Link href="/admin/inbox" className="mt-3 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                Open full inbox →
-              </Link>
-            </AgentPanel>
-          </div>
-
-          {/* RIGHT: Sidebar */}
-          <div className="space-y-6">
-
-            {/* Follow-ups */}
-            <AgentPanel title="⏰ Follow-Ups" sub="Tasks due today & upcoming">
-              {myFollowUps.length === 0 ? (
-                <p className="text-sm text-gray-500">You're all caught up 🎉</p>
-              ) : (
-                <div className="space-y-2">
-                  {myFollowUps.map((fu) => (
-                    <FollowUpRow
-                      key={fu.id}
-                      fu={fu}
-                      onComplete={(id) => {
-                        setCompletedFUs((prev) => new Set([...prev, id]));
-                        toast("Follow-up marked complete");
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </AgentPanel>
-
-            {/* ── Review Reminders ──────────────────────────────────── */}
-            <AgentPanel
-              title="⭐ Review Reminders"
-              sub={reviewPrompts.length > 0 ? `${reviewPrompts.filter(p => p.suggestedAction === "request_now").length} ready to request` : "All caught up"}
-            >
-              {reviewPrompts.length === 0 ? (
-                <p className="text-sm text-gray-500">No review reminders right now.</p>
-              ) : (
-                <div className="space-y-2">
-                  {reviewPrompts.map((prompt) => (
-                    <div
-                      key={prompt.leadId}
-                      className={cn(
-                        "flex items-start gap-2.5 p-3 rounded-lg border text-xs",
-                        prompt.suggestedAction === "request_now"
-                          ? "bg-amber-900/20 border-amber-800/30"
-                          : prompt.suggestedAction === "completed"
-                          ? "bg-green-900/10 border-green-800/20"
-                          : "bg-gray-800/40 border-gray-700/40"
+        {/* Center: Lead card */}
+        <div className="flex-1 flex flex-col items-center justify-start p-6 gap-4">
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-gray-500 text-sm animate-pulse">Loading lead...</div>
+            </div>
+          ) : !lead ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <div className="text-4xl">🎉</div>
+              <div className="text-white font-bold text-xl">Queue empty</div>
+              <div className="text-gray-400 text-sm">No more leads match this filter</div>
+              <button onClick={loadNextLead} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold text-sm">
+                Try Again
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Lead card */}
+              <div className="w-full max-w-2xl bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl">
+                {/* Card header */}
+                <div className={`px-5 py-4 flex items-start justify-between ${lead.buying_signal ? "bg-gradient-to-r from-emerald-900/60 to-gray-900" : "bg-gray-800/60"}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {lead.buying_signal && (
+                        <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs px-2 py-0.5 rounded-full font-bold">🔥 HOT</span>
                       )}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-white truncate">{prompt.businessName}</p>
-                        <p className="text-gray-500 mt-0.5 truncate">{prompt.leadName}</p>
-                        <p className={cn(
-                          "mt-1",
-                          prompt.suggestedAction === "request_now" ? "text-amber-400" :
-                          prompt.suggestedAction === "completed"   ? "text-green-400" :
-                          prompt.suggestedAction === "follow_up"   ? "text-blue-400" : "text-gray-500"
-                        )}>
-                          {prompt.suggestedMessage}
-                        </p>
-                      </div>
-                      {prompt.suggestedAction === "request_now" && (
-                        <button
-                          onClick={() => toast(`⭐ Review request sent to ${prompt.leadName}`)}
-                          className="shrink-0 mt-0.5 text-xs px-2.5 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded-lg transition"
-                        >
-                          Send
-                        </button>
-                      )}
-                      {prompt.suggestedAction === "follow_up" && (
-                        <button
-                          onClick={() => toast(`Reminder sent to ${prompt.leadName}`)}
-                          className="shrink-0 mt-0.5 text-xs px-2.5 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition"
-                        >
-                          Remind
-                        </button>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                        lead.priority === "high" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                        lead.priority === "medium" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
+                        "bg-gray-700 text-gray-400"
+                      }`}>{lead.priority?.toUpperCase()}</span>
+                      {lead.status !== "queued" && (
+                        <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs px-2 py-0.5 rounded-full">{lead.status}</span>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
-              <Link
-                href="/admin/reviews"
-                className="mt-3 text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1"
-              >
-                View all review requests →
-              </Link>
-            </AgentPanel>
-
-            {/* Quick Actions */}
-            <AgentPanel title="⚡ Quick Actions" sub="">
-              <div className="space-y-2">
-                {[
-                  { icon: "📝", label: "Send Intake Form",   action: "Intake link sent" },
-                  { icon: "✅", label: "Mark Deal Closed",   action: "Deal marked as closed" },
-                  { icon: "📞", label: "Log a Follow-Up",    action: "Follow-up logged" },
-                  { icon: "💬", label: "Open Inbox",         href: "/admin/inbox" },
-                ].map((item) => (
-                  item.href ? (
-                    <Link
-                      key={item.label}
-                      href={item.href}
-                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-300 hover:text-white transition"
-                    >
-                      <span>{item.icon}</span>
-                      {item.label}
-                    </Link>
-                  ) : (
-                    <button
-                      key={item.label}
-                      onClick={() => toast(item.action!)}
-                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-300 hover:text-white transition"
-                    >
-                      <span>{item.icon}</span>
-                      {item.label}
-                    </button>
-                  )
-                ))}
-              </div>
-            </AgentPanel>
-
-            {/* Commission Summary */}
-            <AgentPanel title="💰 My Commission" sub="This month's earnings">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-400">Deals closed</span>
-                  <span className="text-sm font-semibold text-white">{agent.dealsClosedThisMonth}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-400">Rate</span>
-                  <span className="text-sm font-semibold text-white">{(agent.commissionRate * 100).toFixed(0)}%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-400">Earned this month</span>
-                  <span className="text-sm font-bold text-green-400">
-                    ${agent.commissionEarnedThisMonth.toFixed(2)}
-                  </span>
-                </div>
-                <div className="pt-2 border-t border-gray-800">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">All-time earnings</span>
-                    <span className="text-sm font-bold text-white">
-                      ${agent.commissionEarnedAllTime.toLocaleString()}
-                    </span>
+                    <h2 className="text-white font-bold text-xl mt-1 truncate">{lead.business_name}</h2>
+                    {lead.contact_name && <p className="text-gray-400 text-sm">{lead.contact_name}</p>}
+                  </div>
+                  <div className="text-right ml-4 shrink-0">
+                    <div className="text-2xl font-bold text-white">{lead.score}</div>
+                    <div className="text-xs text-gray-500">score</div>
+                    {lead.rating && <div className="text-yellow-400 text-xs mt-0.5">⭐ {lead.rating} ({lead.reviews_count})</div>}
                   </div>
                 </div>
+
+                {/* Contact details */}
+                <div className="px-5 py-3 grid grid-cols-2 gap-2 border-t border-gray-800">
+                  <ContactRow icon="📍" label={[lead.city, lead.state].filter(Boolean).join(", ")} />
+                  <ContactRow icon="🏷️" label={lead.category ?? "—"} />
+                  {lead.phone && <ContactRow icon="📱" label={lead.phone} highlight={channel === "sms"} />}
+                  {lead.email && <ContactRow icon="📧" label={lead.email} highlight={channel === "email"} />}
+                  {lead.website && <ContactRow icon="🌐" label={lead.website} />}
+                  {lead.facebook_url && <ContactRow icon="💬" label="Facebook Profile" highlight={channel === "facebook"} link={lead.facebook_url} />}
+                  {lead.address && <ContactRow icon="📌" label={lead.address} />}
+                </div>
+
+                {/* Channel availability warning */}
+                {availableChannels.length > 0 && !availableChannels.includes(channel) && (
+                  <div className="mx-5 mb-3 bg-yellow-900/30 border border-yellow-700/40 text-yellow-300 text-xs px-3 py-2 rounded-lg">
+                    ⚠️ This lead has no {channel} contact info.{" "}
+                    Switch to {availableChannels.join(" or ")}.
+                  </div>
+                )}
+
+                {/* Message input */}
+                <div className="px-5 pb-4">
+                  <textarea
+                    ref={messageRef}
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    placeholder={
+                      channel === "sms" ? "Type your SMS message (optional — log send without message)" :
+                      channel === "email" ? "Email message (optional)" :
+                      "FB DM message (optional)"
+                    }
+                    rows={2}
+                    className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-blue-500 resize-none placeholder-gray-600"
+                  />
+                </div>
               </div>
-              <p className="text-xs text-gray-600 mt-3">* Commission figures are estimates. Final payout confirmed by admin.</p>
-            </AgentPanel>
-          </div>
+
+              {/* Primary action buttons */}
+              <div className="w-full max-w-2xl grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleSend}
+                  disabled={availableChannels.length > 0 && !availableChannels.includes(channel)}
+                  className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl text-base transition-all active:scale-95 shadow-lg shadow-blue-900/40"
+                >
+                  {channel === "sms" ? "📱" : channel === "email" ? "📧" : "💬"}
+                  {" "}SEND {channel.toUpperCase()} →
+                </button>
+
+                <button
+                  onClick={handleSkip}
+                  className="flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-4 rounded-2xl text-base transition-all active:scale-95"
+                >
+                  SKIP →
+                </button>
+              </div>
+
+              {/* Secondary actions */}
+              <div className="w-full max-w-2xl grid grid-cols-4 gap-2">
+                <SecondaryButton onClick={handleReply}       label="Reply Rcvd"  icon="💬" color="yellow" />
+                <SecondaryButton onClick={handleFollowUp}    label="Follow-Up"   icon="🔁" color="blue"   />
+                <SecondaryButton onClick={handlePaymentLink} label="Payment Link" icon="💳" color="purple" />
+                <button
+                  onClick={() => setShowRevenueInput(v => !v)}
+                  className="flex flex-col items-center justify-center gap-1 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-xs transition-all active:scale-95"
+                >
+                  <span>🏆</span>
+                  <span>CLOSE DEAL</span>
+                </button>
+              </div>
+
+              {/* Deal revenue input */}
+              {showRevenueInput && (
+                <div className="w-full max-w-2xl bg-emerald-900/30 border border-emerald-700/40 rounded-2xl p-4 flex items-center gap-3">
+                  <span className="text-emerald-300 font-bold text-sm">Deal value:</span>
+                  <span className="text-white font-bold">$</span>
+                  <input
+                    type="number"
+                    value={dealRevenue}
+                    onChange={e => setDealRevenue(e.target.value)}
+                    className="bg-gray-800 text-white font-bold text-lg px-3 py-1.5 rounded-lg border border-emerald-700 focus:outline-none w-28"
+                    min="1"
+                  />
+                  <span className="text-gray-400 text-sm">/mo</span>
+                  <button
+                    onClick={handleDealClosed}
+                    className="ml-auto bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-5 py-2 rounded-xl text-sm"
+                  >
+                    Confirm Close 🎉
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ── Wrapper: Agent Selector ───────────────────────────────────────────────
-
-export function AgentDashboardWrapper({ agents }: Props) {
-  const [selectedId, setSelectedId] = useState<string>(agents[0]?.id ?? "");
-  const agent = agents.find((a) => a.id === selectedId) ?? agents[0];
-
-  if (!agent) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400">
-      No agents found.
-    </div>
-  );
-
+// ── Sub-components ────────────────────────────────────────────────────────────
+function Stat({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
-    <div>
-      {/* Admin preview banner */}
-      <div className="bg-blue-900/40 border-b border-blue-800/50 px-6 py-2 flex items-center gap-4">
-        <span className="text-xs font-semibold text-blue-300">👀 Admin Preview Mode</span>
-        <span className="text-xs text-blue-400">Viewing dashboard as:</span>
-        <select
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value)}
-          className="text-xs bg-blue-900/60 border border-blue-700 rounded px-2 py-1 text-white"
-        >
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>{a.name} ({a.assignedLeadIds.length} leads)</option>
-          ))}
-        </select>
-        <span className="ml-auto text-xs text-blue-500">Agents cannot see company-wide revenue or other agents' data</span>
-      </div>
-      <AgentDashboard agent={agent} />
+    <div className="flex flex-col items-center">
+      <span className={`font-bold text-sm ${color}`}>{value}</span>
+      <span className="text-gray-600 text-xs">{label}</span>
     </div>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────
+function ContactRow({ icon, label, highlight, link }: { icon: string; label: string; highlight?: boolean; link?: string }) {
+  const content = (
+    <div className={`flex items-center gap-2 text-sm ${highlight ? "text-white font-medium" : "text-gray-400"}`}>
+      <span className="text-base">{icon}</span>
+      <span className="truncate">{label}</span>
+    </div>
+  );
+  if (link) return <a href={link} target="_blank" rel="noopener noreferrer" className="hover:text-blue-400">{content}</a>;
+  return content;
+}
 
-function AgentStatCard({
-  icon, label, value, sub, color,
-}: {
-  icon: string;
-  label: string;
-  value: string | number;
-  sub: string;
-  color: "green" | "amber" | "blue" | "red" | "gray";
+function SecondaryButton({ onClick, label, icon, color }: {
+  onClick: () => void; label: string; icon: string; color: "yellow" | "blue" | "purple" | "green";
 }) {
-  const COLORS = {
-    green: "from-green-900/40 to-green-900/10 border-green-800/30",
-    amber: "from-amber-900/40 to-amber-900/10 border-amber-800/30",
-    blue:  "from-blue-900/40  to-blue-900/10  border-blue-800/30",
-    red:   "from-red-900/40   to-red-900/10   border-red-800/30",
-    gray:  "from-gray-800/60  to-gray-800/20  border-gray-700/30",
+  const colors = {
+    yellow: "bg-yellow-800/40 hover:bg-yellow-700/60 text-yellow-300",
+    blue:   "bg-blue-800/40 hover:bg-blue-700/60 text-blue-300",
+    purple: "bg-purple-800/40 hover:bg-purple-700/60 text-purple-300",
+    green:  "bg-emerald-800/40 hover:bg-emerald-700/60 text-emerald-300",
   };
   return (
-    <div className={cn(
-      "rounded-2xl p-5 border bg-gradient-to-br",
-      COLORS[color]
-    )}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">{icon}</span>
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-      </div>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="text-xs text-gray-500 mt-1">{sub}</p>
-    </div>
-  );
-}
-
-function AgentPanel({ title, sub, children }: {
-  title: string; sub?: string; children: React.ReactNode;
-}) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-      <div className="mb-4">
-        <h3 className="text-sm font-bold text-white">{title}</h3>
-        {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
-      </div>
-      {children}
-    </div>
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-1 ${colors[color]} font-bold py-3 rounded-xl text-xs transition-all active:scale-95`}
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </button>
   );
 }

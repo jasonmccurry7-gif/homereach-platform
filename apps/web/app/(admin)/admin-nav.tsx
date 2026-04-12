@@ -29,13 +29,14 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Sales Engine",
+    label: "Sales Execution",
     items: [
-      { label: "Sales Engine",   href: "/admin/sales-engine",  emoji: "⚡", badge: "NEW" },
-      { label: "Availability",   href: "/admin/availability",  emoji: "📍" },
-      { label: "ROI Preview",    href: "/admin/roi-preview",   emoji: "📊" },
-      { label: "Ad Designer",    href: "/admin/ad-designer",   emoji: "🎨", badge: "NEW" },
-      { label: "Agent View",     href: "/admin/agent-view",    emoji: "👤" },
+      { label: "Agent Dialer",      href: "/admin/agent-view",       emoji: "⚡", badge: "LIVE" },
+      { label: "Sales Intelligence",href: "/admin/sales-dashboard",  emoji: "📊", badge: "LIVE" },
+      { label: "Sales Engine",      href: "/admin/sales-engine",     emoji: "🤖" },
+      { label: "Availability",      href: "/admin/availability",     emoji: "📍" },
+      { label: "ROI Preview",       href: "/admin/roi-preview",      emoji: "💰" },
+      { label: "Ad Designer",       href: "/admin/ad-designer",      emoji: "🎨" },
     ],
   },
   {
