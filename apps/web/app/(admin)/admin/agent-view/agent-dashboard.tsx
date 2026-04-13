@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type SalesLead = {
+
+type Lead = {
   id: string;
   business_name: string;
   contact_name: string | null;
@@ -16,417 +17,975 @@ type SalesLead = {
   state: string | null;
   category: string | null;
   score: number;
-  priority: "low" | "medium" | "high";
-  rating: number | null;
-  reviews_count: number;
   buying_signal: boolean;
   status: string;
   notes: string | null;
+  last_contacted_at: string | null;
+  last_reply_at: string | null;
+  next_follow_up_at: string | null;
 };
 
-type Channel = "sms" | "email" | "facebook";
-type ActionType = "lead_loaded" | "lead_skipped" | "message_sent" | "email_sent" | "text_sent" | "facebook_sent" | "reply_received" | "conversation_started" | "follow_up_sent" | "payment_link_created" | "deal_closed";
+type TextTask     = { lead: Lead; draft: { body: string } };
+type EmailTask    = { lead: Lead; draft: { subject: string; body: string } };
+type FbDmTask     = { lead: Lead; draft: { body: string } };
+type FollowUpTask = { lead: Lead; draft: { subject?: string; body: string }; channel: "sms" | "email"; days_since: number; overdue: boolean };
+type ReplyTask    = { lead: Lead; last_reply_at: string | null; suggested_response: string };
+type GroupPost    = { id: string; group_name: string; city: string; post_copy: string; scheduled_for: string | null };
 
-type Stats = {
-  loaded: number;
-  skipped: number;
-  sent: number;
-  replies: number;
-  deals: number;
-  revenue: number;
+type TaskData = {
+  date: string;
+  agent: { id: string; name: string };
+  sections: {
+    replies:      ReplyTask[];
+    followups:    FollowUpTask[];
+    texts:        TextTask[];
+    emails:       EmailTask[];
+    facebook_dms: FbDmTask[];
+    group_posts:  GroupPost[];
+  };
+  totals: {
+    total_tasks:         number;
+    sent_today:          number;
+    deals_today:         number;
+    revenue_today_cents: number;
+  };
 };
 
-type Guidance = { type: string; message: string; priority: "high" | "medium" | "low" };
+type SectionKey = "replies" | "followups" | "texts" | "emails" | "facebook_dms" | "group_posts";
 
-// ─── Agent Dashboard ──────────────────────────────────────────────────────────
+type SessionStats = { sent: number; deals: number; revenue: number };
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
+
 export default function AgentDashboard({ agentId }: { agentId: string }) {
-  const [lead, setLead] = useState<SalesLead | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [channel, setChannel] = useState<Channel>("sms");
-  const [message, setMessage] = useState("");
-  const [stats, setStats] = useState<Stats>({ loaded: 0, skipped: 0, sent: 0, replies: 0, deals: 0, revenue: 0 });
-  const [guidance, setGuidance] = useState<Guidance[]>([]);
-  const [flash, setFlash] = useState<string | null>(null);
-  const [filterCity, setFilterCity] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [dealRevenue, setDealRevenue] = useState("200");
-  const [showRevenueInput, setShowRevenueInput] = useState(false);
-  const [sessionStart] = useState(Date.now());
-  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const [data,         setData]         = useState<TaskData | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [activeTab,    setActiveTab]    = useState<SectionKey>("replies");
+  const [flash,        setFlash]        = useState<{ msg: string; ok: boolean } | null>(null);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [session,      setSession]      = useState<SessionStats>({ sent: 0, deals: 0, revenue: 0 });
 
-  // ── Load next lead ──────────────────────────────────────────────────────────
-  const loadNextLead = useCallback(async () => {
+  // ── Load ──────────────────────────────────────────────────────────────────
+  const loadTasks = useCallback(async () => {
     setLoading(true);
-    setMessage("");
-    setShowRevenueInput(false);
-
-    const params = new URLSearchParams({ channel });
-    if (filterCity)     params.set("city", filterCity);
-    if (filterCategory) params.set("category", filterCategory);
-
-    const res = await fetch(`/api/admin/sales/next-lead?${params}`);
-    const data = await res.json();
-    setLead(data.lead ?? null);
+    try {
+      const res  = await fetch("/api/admin/sales/todays-tasks");
+      const json = await res.json();
+      setData(json);
+      // Auto-navigate to first non-empty section
+      const order: SectionKey[] = ["replies", "followups", "texts", "emails", "facebook_dms", "group_posts"];
+      for (const key of order) {
+        if (json.sections?.[key]?.length > 0) {
+          setActiveTab(key);
+          break;
+        }
+      }
+    } catch {
+      // leave data null — error state rendered below
+    }
     setLoading(false);
+  }, []);
 
-    if (data.lead) {
-      logEvent("lead_loaded", data.lead.id, null, null, null);
-      setStats(s => ({ ...s, loaded: s.loaded + 1 }));
-    }
-  }, [channel, filterCity, filterCategory]);
+  useEffect(() => { loadTasks(); }, [loadTasks]);
 
-  // ── Log event ───────────────────────────────────────────────────────────────
-  const logEvent = async (
-    action_type: ActionType,
-    lead_id: string | null,
-    ch: Channel | null,
-    msg: string | null,
-    revenue_cents: number | null,
-  ) => {
-    if (!agentId) return;
-    await fetch("/api/admin/sales/event", {
-      method: "POST",
+  // ── Flash helper ──────────────────────────────────────────────────────────
+  const showFlash = (msg: string, ok = true) => {
+    setFlash({ msg, ok });
+    setTimeout(() => setFlash(null), 3000);
+  };
+
+  // ── Mark task done (remove from list) ─────────────────────────────────────
+  const done = (id: string) => setCompletedIds(prev => new Set([...prev, id]));
+
+  // ── Central event logger / sender ─────────────────────────────────────────
+  const logEvent = useCallback(async (payload: {
+    action_type:    string;
+    lead_id?:       string | null;
+    channel?:       string | null;
+    message?:       string | null;
+    subject?:       string | null;
+    revenue_cents?: number | null;
+  }) => {
+    const res = await fetch("/api/admin/sales/event", {
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agent_id: agentId,
-        lead_id,
-        action_type,
-        channel: ch ?? channel,
-        city:     lead?.city ?? null,
-        category: lead?.category ?? null,
-        message:  msg,
-        revenue_cents,
-      }),
+      body:    JSON.stringify({ agent_id: agentId, ...payload }),
     });
+    return res.json() as Promise<{ error?: string; sent?: boolean }>;
+  }, [agentId]);
+
+  // ── Action handlers ───────────────────────────────────────────────────────
+
+  const sendSms = async (lead: Lead, message: string, taskId: string) => {
+    const r = await logEvent({ action_type: "sms_sent", lead_id: lead.id, channel: "sms", message });
+    if (r.error) { showFlash(`Failed: ${r.error}`, false); return; }
+    showFlash(`✓ Text sent to ${lead.business_name}`);
+    done(taskId);
+    setSession(s => ({ ...s, sent: s.sent + 1 }));
   };
 
-  // ── Fetch guidance ──────────────────────────────────────────────────────────
-  const fetchGuidance = useCallback(async () => {
-    const since = new Date(sessionStart).toISOString();
-    const res = await fetch(`/api/admin/sales/insights?since=${since}`);
-    const data = await res.json();
-    setGuidance(data.guidance ?? []);
-  }, [sessionStart]);
-
-  useEffect(() => {
-    loadNextLead();
-  }, [loadNextLead]);
-
-  useEffect(() => {
-    const interval = setInterval(fetchGuidance, 30000);
-    fetchGuidance();
-    return () => clearInterval(interval);
-  }, [fetchGuidance]);
-
-  // ── Show flash ──────────────────────────────────────────────────────────────
-  const showFlash = (msg: string) => {
-    setFlash(msg);
-    setTimeout(() => setFlash(null), 2500);
+  const sendEmail = async (lead: Lead, message: string, subject: string, taskId: string) => {
+    const r = await logEvent({ action_type: "email_sent", lead_id: lead.id, channel: "email", message, subject });
+    if (r.error) { showFlash(`Failed: ${r.error}`, false); return; }
+    showFlash(`✓ Email sent to ${lead.business_name}`);
+    done(taskId);
+    setSession(s => ({ ...s, sent: s.sent + 1 }));
   };
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
-  const handleSkip = async () => {
-    if (lead) {
-      await logEvent("lead_skipped", lead.id, null, null, null);
-      setStats(s => ({ ...s, skipped: s.skipped + 1 }));
-    }
-    loadNextLead();
+  const markFbSent = async (lead: Lead, message: string, taskId: string) => {
+    await logEvent({ action_type: "fb_message_sent", lead_id: lead.id, channel: "facebook", message });
+    showFlash(`✓ FB DM logged for ${lead.business_name}`);
+    done(taskId);
+    setSession(s => ({ ...s, sent: s.sent + 1 }));
   };
 
-  const handleSend = async () => {
-    if (!lead) return;
-    const actionMap: Record<Channel, ActionType> = {
-      sms:      "text_sent",
-      email:    "email_sent",
-      facebook: "facebook_sent",
-    };
-    await logEvent(actionMap[channel], lead.id, channel, message || null, null);
-    setStats(s => ({ ...s, sent: s.sent + 1 }));
-    showFlash("✓ Message logged");
-    fetchGuidance();
-    loadNextLead();
+  const markGroupPosted = async (post: GroupPost) => {
+    await logEvent({ action_type: "fb_group_post", channel: "facebook", message: post.post_copy });
+    showFlash(`✓ Group post logged`);
+    done(post.id);
   };
 
-  const handleReply = async () => {
-    if (!lead) return;
-    await logEvent("reply_received", lead.id, channel, null, null);
-    await logEvent("conversation_started", lead.id, channel, null, null);
-    setStats(s => ({ ...s, replies: s.replies + 1 }));
-    showFlash("✓ Reply + conversation logged");
-    fetchGuidance();
+  const skipLead = async (lead: Lead, taskId: string) => {
+    await logEvent({ action_type: "lead_skipped", lead_id: lead.id });
+    done(taskId);
   };
 
-  const handlePaymentLink = async () => {
-    if (!lead) return;
-    await logEvent("payment_link_created", lead.id, channel, null, null);
-    showFlash("✓ Payment link logged");
-    fetchGuidance();
+  const markBadNumber = async (lead: Lead, taskId: string) => {
+    await logEvent({ action_type: "bad_number_marked", lead_id: lead.id, channel: "sms" });
+    done(taskId);
+    showFlash(`Marked bad number — ${lead.business_name}`);
   };
 
-  const handleDealClosed = async () => {
-    if (!lead) return;
-    const rev = Math.round(parseFloat(dealRevenue || "200") * 100);
-    await logEvent("deal_closed", lead.id, channel, null, rev);
-    setStats(s => ({ ...s, deals: s.deals + 1, revenue: s.revenue + rev }));
-    showFlash(`🎉 DEAL CLOSED — $${dealRevenue}`);
-    setShowRevenueInput(false);
-    fetchGuidance();
-    loadNextLead();
+  const markInvalidEmail = async (lead: Lead, taskId: string) => {
+    await logEvent({ action_type: "invalid_email_marked", lead_id: lead.id, channel: "email" });
+    done(taskId);
+    showFlash(`Marked invalid email — ${lead.business_name}`);
   };
 
-  const handleFollowUp = async () => {
-    if (!lead) return;
-    await logEvent("follow_up_sent", lead.id, channel, message || null, null);
-    showFlash("✓ Follow-up logged");
-    loadNextLead();
+  const closeDeal = async (lead: Lead, taskId: string, revenue: number) => {
+    await logEvent({ action_type: "deal_closed", lead_id: lead.id, revenue_cents: revenue * 100 });
+    done(taskId);
+    setSession(s => ({ ...s, deals: s.deals + 1, revenue: s.revenue + revenue }));
+    showFlash(`🎉 DEAL CLOSED — $${revenue}/mo — ${lead.business_name}`);
   };
 
-  // ── Available channels based on lead data ───────────────────────────────────
-  const availableChannels: Channel[] = [];
-  if (lead?.phone) availableChannels.push("sms");
-  if (lead?.email) availableChannels.push("email");
-  if (lead?.facebook_url) availableChannels.push("facebook");
+  // ── Section counts (exclude completed) ────────────────────────────────────
+  const counts: Record<SectionKey, number> = data
+    ? {
+        replies:      data.sections.replies.filter(t => !completedIds.has(t.lead.id + "_reply")).length,
+        followups:    data.sections.followups.filter(t => !completedIds.has(t.lead.id + "_followup")).length,
+        texts:        data.sections.texts.filter(t => !completedIds.has(t.lead.id + "_text")).length,
+        emails:       data.sections.emails.filter(t => !completedIds.has(t.lead.id + "_email")).length,
+        facebook_dms: data.sections.facebook_dms.filter(t => !completedIds.has(t.lead.id + "_fbdm")).length,
+        group_posts:  data.sections.group_posts.filter(t => !completedIds.has(t.id)).length,
+      }
+    : { replies: 0, followups: 0, texts: 0, emails: 0, facebook_dms: 0, group_posts: 0 };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  const totalRemaining = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  const TABS: { key: SectionKey; label: string; icon: string; urgent: boolean }[] = [
+    { key: "replies",      label: "Replies",     icon: "💬", urgent: true  },
+    { key: "followups",    label: "Follow-ups",  icon: "🔁", urgent: true  },
+    { key: "texts",        label: "Texts",       icon: "📱", urgent: false },
+    { key: "emails",       label: "Emails",      icon: "📧", urgent: false },
+    { key: "facebook_dms", label: "FB DMs",      icon: "💙", urgent: false },
+    { key: "group_posts",  label: "Group Posts", icon: "📢", urgent: false },
+  ];
+
+  // ── Loading & error states ────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-gray-500 text-sm animate-pulse">Loading today&apos;s tasks…</div>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4">
+        <p className="text-gray-400">Failed to load task queue.</p>
+        <button onClick={loadTasks} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const completedTotal = completedIds.size;
+  const totalStart     = data.totals.total_tasks;
+  const progress       = totalStart > 0 ? Math.min(100, (completedTotal / totalStart) * 100) : 0;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Header bar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <span className="font-bold text-sm tracking-wide uppercase text-gray-200">HomeReach Sales</span>
+
+      {/* Flash notification */}
+      {flash && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-xl shadow-2xl font-bold text-sm transition-all ${
+          flash.ok ? "bg-green-600" : "bg-red-600"
+        }`}>
+          {flash.msg}
         </div>
-        {/* Session stats */}
-        <div className="flex items-center gap-6 text-xs">
-          <Stat label="Loaded"   value={stats.loaded}   color="text-gray-400" />
-          <Stat label="Sent"     value={stats.sent}     color="text-blue-400" />
-          <Stat label="Replied"  value={stats.replies}  color="text-yellow-400" />
-          <Stat label="Deals"    value={stats.deals}    color="text-green-400" />
-          <Stat label="Revenue"  value={`$${(stats.revenue/100).toFixed(0)}`} color="text-emerald-400" />
+      )}
+
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-white">Today&apos;s To-Do</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{data.date} · {data.agent.name}</p>
+          </div>
+          <div className="flex items-center gap-5 text-sm">
+            <StatChip label="Remaining" value={totalRemaining}                          color="text-white"     />
+            <StatChip label="Sent"      value={data.totals.sent_today + session.sent}   color="text-blue-400"  />
+            <StatChip label="Deals"     value={data.totals.deals_today + session.deals} color="text-emerald-400" />
+            <StatChip
+              label="Rev"
+              value={`$${((data.totals.revenue_today_cents / 100) + session.revenue).toFixed(0)}`}
+              color="text-emerald-400"
+            />
+            <button
+              onClick={loadTasks}
+              className="text-xs text-gray-600 hover:text-gray-300 underline"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+        {/* Progress bar */}
+        <div className="mt-3 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-700"
+            style={{ width: `${progress}%` }}
+          />
         </div>
       </div>
 
-      {/* Guidance banner */}
-      {guidance.length > 0 && (
-        <div className="bg-orange-900/40 border-b border-orange-700/50 px-4 py-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            {guidance.slice(0, 2).map((g, i) => (
-              <div key={i} className={`flex items-center gap-2 text-xs font-medium px-3 py-1 rounded-full ${
-                g.priority === "high" ? "bg-red-500/20 text-red-300 border border-red-500/30" :
-                g.priority === "medium" ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30" :
-                "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-              }`}>
-                {g.priority === "high" ? "⚡" : g.priority === "medium" ? "→" : "ℹ"} {g.message}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Flash message */}
-      {flash && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-xl shadow-2xl z-50 font-bold text-sm animate-bounce">
-          {flash}
-        </div>
-      )}
-
-      <div className="flex flex-1 gap-0">
-        {/* Left: Filters */}
-        <div className="w-44 bg-gray-900 border-r border-gray-800 p-3 flex flex-col gap-3">
-          <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Filters</div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">City</label>
-            <select
-              className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-700 focus:outline-none focus:border-blue-500"
-              value={filterCity}
-              onChange={e => setFilterCity(e.target.value)}
-            >
-              <option value="">All Cities</option>
-              {["Wooster","Medina","Massillon","Cuyahoga Falls","Ravenna","Green","Stow","Hudson","North Canton","Fairlawn","Twinsburg"].map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Category</label>
-            <select
-              className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-700 focus:outline-none focus:border-blue-500"
-              value={filterCategory}
-              onChange={e => setFilterCategory(e.target.value)}
-            >
-              <option value="">All Categories</option>
-              {["Restaurant & Food","Home Services","Health & Wellness","Automotive","Real Estate","Cleaning Services","Junk Removal","Other"].map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Channel</label>
-            <div className="flex flex-col gap-1">
-              {(["sms","email","facebook"] as Channel[]).map(ch => (
-                <button
-                  key={ch}
-                  onClick={() => setChannel(ch)}
-                  className={`text-xs px-2 py-1.5 rounded-lg font-medium transition-all ${
-                    channel === ch
-                      ? ch === "sms" ? "bg-green-600 text-white"
-                        : ch === "email" ? "bg-blue-600 text-white"
-                        : "bg-indigo-600 text-white"
-                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                  }`}
-                >
-                  {ch === "sms" ? "📱 SMS" : ch === "email" ? "📧 Email" : "💬 Facebook"}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Center: Lead card */}
-        <div className="flex-1 flex flex-col items-center justify-start p-6 gap-4">
-          {loading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-gray-500 text-sm animate-pulse">Loading lead...</div>
-            </div>
-          ) : !lead ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <div className="text-4xl">🎉</div>
-              <div className="text-white font-bold text-xl">Queue empty</div>
-              <div className="text-gray-400 text-sm">No more leads match this filter</div>
-              <button onClick={loadNextLead} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold text-sm">
-                Try Again
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Lead card */}
-              <div className="w-full max-w-2xl bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl">
-                {/* Card header */}
-                <div className={`px-5 py-4 flex items-start justify-between ${lead.buying_signal ? "bg-gradient-to-r from-emerald-900/60 to-gray-900" : "bg-gray-800/60"}`}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {lead.buying_signal && (
-                        <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs px-2 py-0.5 rounded-full font-bold">🔥 HOT</span>
-                      )}
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                        lead.priority === "high" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-                        lead.priority === "medium" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
-                        "bg-gray-700 text-gray-400"
-                      }`}>{lead.priority?.toUpperCase()}</span>
-                      {lead.status !== "queued" && (
-                        <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs px-2 py-0.5 rounded-full">{lead.status}</span>
-                      )}
-                    </div>
-                    <h2 className="text-white font-bold text-xl mt-1 truncate">{lead.business_name}</h2>
-                    {lead.contact_name && <p className="text-gray-400 text-sm">{lead.contact_name}</p>}
-                  </div>
-                  <div className="text-right ml-4 shrink-0">
-                    <div className="text-2xl font-bold text-white">{lead.score}</div>
-                    <div className="text-xs text-gray-500">score</div>
-                    {lead.rating && <div className="text-yellow-400 text-xs mt-0.5">⭐ {lead.rating} ({lead.reviews_count})</div>}
-                  </div>
-                </div>
-
-                {/* Contact details */}
-                <div className="px-5 py-3 grid grid-cols-2 gap-2 border-t border-gray-800">
-                  <ContactRow icon="📍" label={[lead.city, lead.state].filter(Boolean).join(", ")} />
-                  <ContactRow icon="🏷️" label={lead.category ?? "—"} />
-                  {lead.phone && <ContactRow icon="📱" label={lead.phone} highlight={channel === "sms"} />}
-                  {lead.email && <ContactRow icon="📧" label={lead.email} highlight={channel === "email"} />}
-                  {lead.website && <ContactRow icon="🌐" label={lead.website} />}
-                  {lead.facebook_url && <ContactRow icon="💬" label="Facebook Profile" highlight={channel === "facebook"} link={lead.facebook_url} />}
-                  {lead.address && <ContactRow icon="📌" label={lead.address} />}
-                </div>
-
-                {/* Channel availability warning */}
-                {availableChannels.length > 0 && !availableChannels.includes(channel) && (
-                  <div className="mx-5 mb-3 bg-yellow-900/30 border border-yellow-700/40 text-yellow-300 text-xs px-3 py-2 rounded-lg">
-                    ⚠️ This lead has no {channel} contact info.{" "}
-                    Switch to {availableChannels.join(" or ")}.
-                  </div>
+      {/* ── Section tabs ──────────────────────────────────────────────────── */}
+      <div className="bg-gray-900 border-b border-gray-800 px-6 shrink-0">
+        <div className="flex gap-0 overflow-x-auto">
+          {TABS.map((tab) => {
+            const cnt     = counts[tab.key];
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  isActive
+                    ? "border-blue-500 text-white"
+                    : "border-transparent text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+                {cnt > 0 && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                    tab.urgent ? "bg-red-500/25 text-red-300" : "bg-gray-700 text-gray-300"
+                  }`}>
+                    {cnt}
+                  </span>
                 )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-                {/* Message input */}
-                <div className="px-5 pb-4">
-                  <textarea
-                    ref={messageRef}
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    placeholder={
-                      channel === "sms" ? "Type your SMS message (optional — log send without message)" :
-                      channel === "email" ? "Email message (optional)" :
-                      "FB DM message (optional)"
-                    }
-                    rows={2}
-                    className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-blue-500 resize-none placeholder-gray-600"
-                  />
-                </div>
-              </div>
+      {/* ── Section content ───────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto p-6 max-w-4xl w-full mx-auto">
+        {activeTab === "replies" && (
+          <RepliesSection
+            tasks={data.sections.replies}
+            completedIds={completedIds}
+            onSendSms={sendSms}
+            onSendEmail={sendEmail}
+            onDealClosed={closeDeal}
+            onSkip={skipLead}
+          />
+        )}
+        {activeTab === "followups" && (
+          <FollowUpsSection
+            tasks={data.sections.followups}
+            completedIds={completedIds}
+            onSendSms={sendSms}
+            onSendEmail={sendEmail}
+            onSkip={skipLead}
+            onDealClosed={closeDeal}
+          />
+        )}
+        {activeTab === "texts" && (
+          <TextsSection
+            tasks={data.sections.texts}
+            completedIds={completedIds}
+            onSend={sendSms}
+            onSkip={skipLead}
+            onBadNumber={markBadNumber}
+          />
+        )}
+        {activeTab === "emails" && (
+          <EmailsSection
+            tasks={data.sections.emails}
+            completedIds={completedIds}
+            onSend={sendEmail}
+            onSkip={skipLead}
+            onInvalidEmail={markInvalidEmail}
+          />
+        )}
+        {activeTab === "facebook_dms" && (
+          <FbDmsSection
+            tasks={data.sections.facebook_dms}
+            completedIds={completedIds}
+            onMarkSent={markFbSent}
+            onSkip={skipLead}
+          />
+        )}
+        {activeTab === "group_posts" && (
+          <GroupPostsSection
+            posts={data.sections.group_posts}
+            completedIds={completedIds}
+            onMarkPosted={markGroupPosted}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 
-              {/* Primary action buttons */}
-              <div className="w-full max-w-2xl grid grid-cols-2 gap-3">
-                <button
-                  onClick={handleSend}
-                  disabled={availableChannels.length > 0 && !availableChannels.includes(channel)}
-                  className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl text-base transition-all active:scale-95 shadow-lg shadow-blue-900/40"
-                >
-                  {channel === "sms" ? "📱" : channel === "email" ? "📧" : "💬"}
-                  {" "}SEND {channel.toUpperCase()} →
-                </button>
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── SECTION: Replies ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
-                <button
-                  onClick={handleSkip}
-                  className="flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-4 rounded-2xl text-base transition-all active:scale-95"
-                >
-                  SKIP →
-                </button>
-              </div>
+function RepliesSection({
+  tasks, completedIds, onSendSms, onSendEmail, onDealClosed, onSkip,
+}: {
+  tasks:        ReplyTask[];
+  completedIds: Set<string>;
+  onSendSms:    (lead: Lead, msg: string, id: string) => void;
+  onSendEmail:  (lead: Lead, msg: string, sub: string, id: string) => void;
+  onDealClosed: (lead: Lead, id: string, rev: number) => void;
+  onSkip:       (lead: Lead, id: string) => void;
+}) {
+  const visible = tasks.filter(t => !completedIds.has(t.lead.id + "_reply"));
 
-              {/* Secondary actions */}
-              <div className="w-full max-w-2xl grid grid-cols-4 gap-2">
-                <SecondaryButton onClick={handleReply}       label="Reply Rcvd"  icon="💬" color="yellow" />
-                <SecondaryButton onClick={handleFollowUp}    label="Follow-Up"   icon="🔁" color="blue"   />
-                <SecondaryButton onClick={handlePaymentLink} label="Payment Link" icon="💳" color="purple" />
-                <button
-                  onClick={() => setShowRevenueInput(v => !v)}
-                  className="flex flex-col items-center justify-center gap-1 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-xs transition-all active:scale-95"
-                >
-                  <span>🏆</span>
-                  <span>CLOSE DEAL</span>
-                </button>
-              </div>
+  if (visible.length === 0) {
+    return <EmptyState icon="💬" message="No replies waiting — you&apos;re all caught up!" />;
+  }
 
-              {/* Deal revenue input */}
-              {showRevenueInput && (
-                <div className="w-full max-w-2xl bg-emerald-900/30 border border-emerald-700/40 rounded-2xl p-4 flex items-center gap-3">
-                  <span className="text-emerald-300 font-bold text-sm">Deal value:</span>
-                  <span className="text-white font-bold">$</span>
-                  <input
-                    type="number"
-                    value={dealRevenue}
-                    onChange={e => setDealRevenue(e.target.value)}
-                    className="bg-gray-800 text-white font-bold text-lg px-3 py-1.5 rounded-lg border border-emerald-700 focus:outline-none w-28"
-                    min="1"
-                  />
-                  <span className="text-gray-400 text-sm">/mo</span>
-                  <button
-                    onClick={handleDealClosed}
-                    className="ml-auto bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-5 py-2 rounded-xl text-sm"
-                  >
-                    Confirm Close 🎉
-                  </button>
-                </div>
-              )}
-            </>
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon="💬"
+        title="Replies Needing Response"
+        subtitle="These leads replied to your outreach. Respond while they&apos;re warm."
+        count={visible.length}
+        color="red"
+      />
+      {visible.map(task => (
+        <ReplyCard
+          key={task.lead.id}
+          task={task}
+          taskId={task.lead.id + "_reply"}
+          onSendSms={onSendSms}
+          onSendEmail={onSendEmail}
+          onDealClosed={onDealClosed}
+          onSkip={onSkip}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ReplyCard({
+  task, taskId, onSendSms, onSendEmail, onDealClosed, onSkip,
+}: {
+  task:         ReplyTask;
+  taskId:       string;
+  onSendSms:    (lead: Lead, msg: string, id: string) => void;
+  onSendEmail:  (lead: Lead, msg: string, sub: string, id: string) => void;
+  onDealClosed: (lead: Lead, id: string, rev: number) => void;
+  onSkip:       (lead: Lead, id: string) => void;
+}) {
+  const { lead } = task;
+  const [draft, setDraft]     = useState(task.suggested_response);
+  const [rev,   setRev]       = useState("200");
+  const [showRev, setShowRev] = useState(false);
+  const hasPhone = !!(lead.phone?.trim());
+  const hasEmail = !!(lead.email?.trim());
+  const subject  = `Re: HomeReach advertising for ${lead.business_name}`;
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-red-500/30 overflow-hidden shadow-lg">
+      <div className="bg-red-900/20 px-5 py-3 flex items-center justify-between border-b border-red-500/20">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-red-400 uppercase tracking-wide">Reply received</span>
+            {lead.buying_signal && <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">🔥 HOT</span>}
+          </div>
+          <h3 className="text-white font-bold text-base mt-0.5">{lead.business_name}</h3>
+          {lead.contact_name && <p className="text-gray-400 text-sm">{lead.contact_name}</p>}
+        </div>
+        <LeadMeta lead={lead} />
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {task.last_reply_at && (
+          <p className="text-xs text-gray-500">
+            Replied {new Date(task.last_reply_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+          </p>
+        )}
+        <textarea
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          rows={3}
+          className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-blue-500 resize-none placeholder-gray-600"
+        />
+        <div className="flex flex-wrap gap-2">
+          {hasPhone && (
+            <ActionBtn color="green" onClick={() => onSendSms(lead, draft, taskId)}>📱 Reply via Text</ActionBtn>
           )}
+          {hasEmail && (
+            <ActionBtn color="blue" onClick={() => onSendEmail(lead, draft, subject, taskId)}>📧 Reply via Email</ActionBtn>
+          )}
+          <ActionBtn color="emerald" onClick={() => setShowRev(v => !v)}>🏆 Close Deal</ActionBtn>
+          <ActionBtn color="gray" onClick={() => onSkip(lead, taskId)}>Skip</ActionBtn>
+        </div>
+        {showRev && (
+          <div className="flex items-center gap-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl px-4 py-3">
+            <span className="text-sm text-emerald-300 font-semibold">Deal value:</span>
+            <span className="text-white font-bold">$</span>
+            <input
+              type="number"
+              value={rev}
+              onChange={e => setRev(e.target.value)}
+              className="bg-gray-800 text-white font-bold text-base px-3 py-1 rounded-lg border border-emerald-700 focus:outline-none w-24"
+              min="1"
+            />
+            <span className="text-gray-400 text-sm">/mo</span>
+            <button
+              onClick={() => onDealClosed(lead, taskId, parseFloat(rev) || 200)}
+              className="ml-auto bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-4 py-1.5 rounded-lg text-sm"
+            >
+              Confirm 🎉
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── SECTION: Follow-ups ───────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function FollowUpsSection({
+  tasks, completedIds, onSendSms, onSendEmail, onSkip, onDealClosed,
+}: {
+  tasks:        FollowUpTask[];
+  completedIds: Set<string>;
+  onSendSms:    (lead: Lead, msg: string, id: string) => void;
+  onSendEmail:  (lead: Lead, msg: string, sub: string, id: string) => void;
+  onSkip:       (lead: Lead, id: string) => void;
+  onDealClosed: (lead: Lead, id: string, rev: number) => void;
+}) {
+  const visible = tasks.filter(t => !completedIds.has(t.lead.id + "_followup"));
+
+  if (visible.length === 0) {
+    return <EmptyState icon="🔁" message="No follow-ups due — you&apos;re on top of it!" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon="🔁"
+        title="Follow-ups Due Today"
+        subtitle="These leads need a follow-up message. Overdue ones are marked in red."
+        count={visible.length}
+        color="orange"
+      />
+      {visible.map(task => (
+        <FollowUpCard
+          key={task.lead.id}
+          task={task}
+          taskId={task.lead.id + "_followup"}
+          onSendSms={onSendSms}
+          onSendEmail={onSendEmail}
+          onSkip={onSkip}
+          onDealClosed={onDealClosed}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FollowUpCard({
+  task, taskId, onSendSms, onSendEmail, onSkip, onDealClosed,
+}: {
+  task:         FollowUpTask;
+  taskId:       string;
+  onSendSms:    (lead: Lead, msg: string, id: string) => void;
+  onSendEmail:  (lead: Lead, msg: string, sub: string, id: string) => void;
+  onSkip:       (lead: Lead, id: string) => void;
+  onDealClosed: (lead: Lead, id: string, rev: number) => void;
+}) {
+  const { lead, channel, days_since, overdue, draft } = task;
+  const [body, setBody]       = useState(draft.body);
+  const [subj, setSubj]       = useState(draft.subject ?? `Following up — ${lead.business_name}`);
+  const [rev,  setRev]        = useState("200");
+  const [showRev, setShowRev] = useState(false);
+
+  return (
+    <div className={`bg-gray-900 rounded-2xl border overflow-hidden shadow-lg ${overdue ? "border-orange-500/40" : "border-gray-700"}`}>
+      <div className={`px-5 py-3 flex items-center justify-between border-b ${overdue ? "bg-orange-900/15 border-orange-500/20" : "bg-gray-800/40 border-gray-700"}`}>
+        <div>
+          <div className="flex items-center gap-2">
+            {overdue && <span className="text-xs font-bold text-orange-400 uppercase tracking-wide">Overdue</span>}
+            <span className="text-xs text-gray-500">{days_since}d since last contact · via {channel.toUpperCase()}</span>
+          </div>
+          <h3 className="text-white font-bold text-base mt-0.5">{lead.business_name}</h3>
+          {lead.contact_name && <p className="text-gray-400 text-sm">{lead.contact_name}</p>}
+        </div>
+        <LeadMeta lead={lead} />
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {channel === "email" && (
+          <input
+            type="text"
+            value={subj}
+            onChange={e => setSubj(e.target.value)}
+            className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2 border border-gray-700 focus:outline-none focus:border-blue-500"
+            placeholder="Subject line..."
+          />
+        )}
+        <textarea
+          value={body}
+          onChange={e => setBody(e.target.value)}
+          rows={channel === "sms" ? 3 : 6}
+          className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-blue-500 resize-none"
+        />
+        <div className="flex flex-wrap gap-2">
+          {channel === "sms"
+            ? <ActionBtn color="green" onClick={() => onSendSms(lead, body, taskId)}>📱 Send Follow-up Text</ActionBtn>
+            : <ActionBtn color="blue" onClick={() => onSendEmail(lead, body, subj, taskId)}>📧 Send Follow-up Email</ActionBtn>
+          }
+          <ActionBtn color="emerald" onClick={() => setShowRev(v => !v)}>🏆 Close Deal</ActionBtn>
+          <ActionBtn color="gray" onClick={() => onSkip(lead, taskId)}>Skip</ActionBtn>
+        </div>
+        {showRev && (
+          <div className="flex items-center gap-3 bg-emerald-900/20 border border-emerald-700/30 rounded-xl px-4 py-3">
+            <span className="text-sm text-emerald-300 font-semibold">Deal value:</span>
+            <span className="text-white font-bold">$</span>
+            <input
+              type="number" value={rev} onChange={e => setRev(e.target.value)}
+              className="bg-gray-800 text-white font-bold text-base px-3 py-1 rounded-lg border border-emerald-700 focus:outline-none w-24" min="1"
+            />
+            <span className="text-gray-400 text-sm">/mo</span>
+            <button
+              onClick={() => onDealClosed(lead, taskId, parseFloat(rev) || 200)}
+              className="ml-auto bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-4 py-1.5 rounded-lg text-sm"
+            >
+              Confirm 🎉
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── SECTION: Texts ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function TextsSection({
+  tasks, completedIds, onSend, onSkip, onBadNumber,
+}: {
+  tasks:        TextTask[];
+  completedIds: Set<string>;
+  onSend:       (lead: Lead, msg: string, id: string) => void;
+  onSkip:       (lead: Lead, id: string) => void;
+  onBadNumber:  (lead: Lead, id: string) => void;
+}) {
+  const visible = tasks.filter(t => !completedIds.has(t.lead.id + "_text"));
+
+  if (visible.length === 0) {
+    return <EmptyState icon="📱" message="No texts queued — great work!" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon="📱"
+        title="Texts to Send"
+        subtitle="Outbound SMS to new leads. Message is pre-written and editable."
+        count={visible.length}
+        color="green"
+      />
+      {visible.map(task => (
+        <TextCard
+          key={task.lead.id}
+          task={task}
+          taskId={task.lead.id + "_text"}
+          onSend={onSend}
+          onSkip={onSkip}
+          onBadNumber={onBadNumber}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TextCard({
+  task, taskId, onSend, onSkip, onBadNumber,
+}: {
+  task:        TextTask;
+  taskId:      string;
+  onSend:      (lead: Lead, msg: string, id: string) => void;
+  onSkip:      (lead: Lead, id: string) => void;
+  onBadNumber: (lead: Lead, id: string) => void;
+}) {
+  const { lead } = task;
+  const [draft, setDraft] = useState(task.draft.body);
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden shadow-md">
+      <div className="bg-gray-800/40 px-5 py-3 flex items-center justify-between border-b border-gray-700">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            {lead.buying_signal && <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">🔥 HOT</span>}
+            <span className="text-xs text-gray-500">Score {lead.score} · {lead.category}</span>
+          </div>
+          <h3 className="text-white font-bold text-base">{lead.business_name}</h3>
+          <p className="text-gray-400 text-xs">{lead.phone} · {lead.city}</p>
+        </div>
+        <LeadMeta lead={lead} />
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        <textarea
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          rows={3}
+          className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-green-500 resize-none"
+          maxLength={320}
+        />
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            <ActionBtn color="green" onClick={() => onSend(lead, draft, taskId)}>📱 Send Text</ActionBtn>
+            <ActionBtn color="gray"  onClick={() => onSkip(lead, taskId)}>Skip</ActionBtn>
+            <ActionBtn color="red"   onClick={() => onBadNumber(lead, taskId)}>Bad Number</ActionBtn>
+          </div>
+          <span className="text-xs text-gray-600">{draft.length}/320</span>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-function Stat({ label, value, color }: { label: string; value: string | number; color: string }) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── SECTION: Emails ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function EmailsSection({
+  tasks, completedIds, onSend, onSkip, onInvalidEmail,
+}: {
+  tasks:          EmailTask[];
+  completedIds:   Set<string>;
+  onSend:         (lead: Lead, msg: string, sub: string, id: string) => void;
+  onSkip:         (lead: Lead, id: string) => void;
+  onInvalidEmail: (lead: Lead, id: string) => void;
+}) {
+  const visible = tasks.filter(t => !completedIds.has(t.lead.id + "_email"));
+  const [bulkSending, setBulkSending] = useState(false);
+
+  const sendAll = async () => {
+    setBulkSending(true);
+    for (const task of visible.slice(0, 20)) {
+      onSend(task.lead, task.draft.body, task.draft.subject, task.lead.id + "_email");
+      await new Promise(r => setTimeout(r, 400));
+    }
+    setBulkSending(false);
+  };
+
+  if (visible.length === 0) {
+    return <EmptyState icon="📧" message="No emails queued — inbox zero!" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between">
+        <SectionHeader
+          icon="📧"
+          title="Emails to Send"
+          subtitle="Outbound emails to new leads. Subject and body are editable."
+          count={visible.length}
+          color="blue"
+        />
+        {visible.length > 1 && (
+          <button
+            onClick={sendAll}
+            disabled={bulkSending}
+            className="shrink-0 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
+          >
+            {bulkSending ? "Sending…" : `📧 Send All (${Math.min(visible.length, 20)})`}
+          </button>
+        )}
+      </div>
+      {visible.map(task => (
+        <EmailCard
+          key={task.lead.id}
+          task={task}
+          taskId={task.lead.id + "_email"}
+          onSend={onSend}
+          onSkip={onSkip}
+          onInvalidEmail={onInvalidEmail}
+        />
+      ))}
+    </div>
+  );
+}
+
+function EmailCard({
+  task, taskId, onSend, onSkip, onInvalidEmail,
+}: {
+  task:           EmailTask;
+  taskId:         string;
+  onSend:         (lead: Lead, msg: string, sub: string, id: string) => void;
+  onSkip:         (lead: Lead, id: string) => void;
+  onInvalidEmail: (lead: Lead, id: string) => void;
+}) {
+  const { lead } = task;
+  const [subj,     setSubj]     = useState(task.draft.subject);
+  const [body,     setBody]     = useState(task.draft.body);
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden shadow-md">
+      <div className="bg-gray-800/40 px-5 py-3 flex items-center justify-between border-b border-gray-700">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            {lead.buying_signal && <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">🔥 HOT</span>}
+            <span className="text-xs text-gray-500">Score {lead.score} · {lead.category}</span>
+          </div>
+          <h3 className="text-white font-bold text-base">{lead.business_name}</h3>
+          <p className="text-gray-400 text-xs">{lead.email} · {lead.city}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <LeadMeta lead={lead} />
+          <button onClick={() => setExpanded(v => !v)} className="text-xs text-gray-500 hover:text-gray-300">
+            {expanded ? "▲ Less" : "▼ Edit"}
+          </button>
+        </div>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {expanded ? (
+          <>
+            <input
+              type="text" value={subj} onChange={e => setSubj(e.target.value)}
+              className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2 border border-gray-700 focus:outline-none focus:border-blue-500"
+              placeholder="Subject..."
+            />
+            <textarea
+              value={body} onChange={e => setBody(e.target.value)}
+              rows={8}
+              className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-blue-500 resize-none font-mono"
+            />
+          </>
+        ) : (
+          <div className="text-xs text-gray-500 bg-gray-800/50 px-3 py-2 rounded-lg truncate">
+            <span className="text-gray-400 font-medium">Subject: </span>{subj}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <ActionBtn color="blue" onClick={() => onSend(lead, body, subj, taskId)}>📧 Send Email</ActionBtn>
+          <ActionBtn color="gray" onClick={() => onSkip(lead, taskId)}>Skip</ActionBtn>
+          <ActionBtn color="red"  onClick={() => onInvalidEmail(lead, taskId)}>Invalid Email</ActionBtn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── SECTION: Facebook DMs ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function FbDmsSection({
+  tasks, completedIds, onMarkSent, onSkip,
+}: {
+  tasks:        FbDmTask[];
+  completedIds: Set<string>;
+  onMarkSent:   (lead: Lead, msg: string, id: string) => void;
+  onSkip:       (lead: Lead, id: string) => void;
+}) {
+  const visible = tasks.filter(t => !completedIds.has(t.lead.id + "_fbdm"));
+
+  if (visible.length === 0) {
+    return <EmptyState icon="💙" message="No Facebook DMs queued!" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon="💙"
+        title="Facebook DMs"
+        subtitle="Copy the pre-written message, open their Facebook page, paste and send."
+        count={visible.length}
+        color="indigo"
+      />
+      {visible.map(task => (
+        <FbDmCard
+          key={task.lead.id}
+          task={task}
+          taskId={task.lead.id + "_fbdm"}
+          onMarkSent={onMarkSent}
+          onSkip={onSkip}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FbDmCard({
+  task, taskId, onMarkSent, onSkip,
+}: {
+  task:       FbDmTask;
+  taskId:     string;
+  onMarkSent: (lead: Lead, msg: string, id: string) => void;
+  onSkip:     (lead: Lead, id: string) => void;
+}) {
+  const { lead } = task;
+  const [draft,  setDraft]  = useState(task.draft.body);
+  const [copied, setCopied] = useState(false);
+
+  const copyDm = () => {
+    navigator.clipboard.writeText(draft).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden shadow-md">
+      <div className="bg-gray-800/40 px-5 py-3 flex items-center justify-between border-b border-gray-700">
+        <div>
+          <h3 className="text-white font-bold text-base">{lead.business_name}</h3>
+          <p className="text-gray-400 text-xs">{lead.city} · {lead.category}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {lead.facebook_url && (
+            <a
+              href={lead.facebook_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg font-semibold"
+            >
+              Open Facebook ↗
+            </a>
+          )}
+        </div>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        <textarea
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          rows={3}
+          className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-indigo-500 resize-none"
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={copyDm}
+            className={`text-xs font-bold px-4 py-2 rounded-xl transition-all ${
+              copied ? "bg-green-600 text-white" : "bg-indigo-600 hover:bg-indigo-500 text-white"
+            }`}
+          >
+            {copied ? "✓ Copied!" : "Copy DM"}
+          </button>
+          <ActionBtn color="green" onClick={() => onMarkSent(lead, draft, taskId)}>✓ Mark Sent</ActionBtn>
+          <ActionBtn color="gray"  onClick={() => onSkip(lead, taskId)}>No Page Found</ActionBtn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── SECTION: Group Posts ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function GroupPostsSection({
+  posts, completedIds, onMarkPosted,
+}: {
+  posts:        GroupPost[];
+  completedIds: Set<string>;
+  onMarkPosted: (post: GroupPost) => void;
+}) {
+  const visible = posts.filter(p => !completedIds.has(p.id));
+
+  if (visible.length === 0) {
+    return <EmptyState icon="📢" message="All group posts done for today!" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon="📢"
+        title="Facebook Group Posts"
+        subtitle="Copy the post, paste into each Facebook group, then mark as posted."
+        count={visible.length}
+        color="purple"
+      />
+      {visible.map(post => (
+        <GroupPostCard key={post.id} post={post} onMarkPosted={onMarkPosted} />
+      ))}
+    </div>
+  );
+}
+
+function GroupPostCard({ post, onMarkPosted }: { post: GroupPost; onMarkPosted: (p: GroupPost) => void }) {
+  const [copy,    setCopy]    = useState(post.post_copy);
+  const [copied,  setCopied]  = useState(false);
+
+  const copyPost = () => {
+    navigator.clipboard.writeText(copy).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden shadow-md">
+      <div className="bg-gray-800/40 px-5 py-3 border-b border-gray-700">
+        <h3 className="text-white font-bold text-base">{post.group_name}</h3>
+        <p className="text-gray-400 text-xs">{post.city}</p>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        <textarea
+          value={copy}
+          onChange={e => setCopy(e.target.value)}
+          rows={4}
+          className="w-full bg-gray-800 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-purple-500 resize-none"
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={copyPost}
+            className={`text-xs font-bold px-4 py-2 rounded-xl transition-all ${
+              copied ? "bg-green-600 text-white" : "bg-purple-600 hover:bg-purple-500 text-white"
+            }`}
+          >
+            {copied ? "✓ Copied!" : "Copy Post"}
+          </button>
+          <ActionBtn color="green" onClick={() => onMarkPosted(post)}>✓ Mark Posted</ActionBtn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Shared sub-components ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function StatChip({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
     <div className="flex flex-col items-center">
       <span className={`font-bold text-sm ${color}`}>{value}</span>
@@ -435,33 +994,78 @@ function Stat({ label, value, color }: { label: string; value: string | number; 
   );
 }
 
-function ContactRow({ icon, label, highlight, link }: { icon: string; label: string; highlight?: boolean; link?: string }) {
-  const content = (
-    <div className={`flex items-center gap-2 text-sm ${highlight ? "text-white font-medium" : "text-gray-400"}`}>
-      <span className="text-base">{icon}</span>
-      <span className="truncate">{label}</span>
+function SectionHeader({
+  icon, title, subtitle, count, color,
+}: {
+  icon:     string;
+  title:    string;
+  subtitle: string;
+  count:    number;
+  color:    "red" | "orange" | "green" | "blue" | "indigo" | "purple";
+}) {
+  const badge: Record<string, string> = {
+    red:    "bg-red-500/20 text-red-300",
+    orange: "bg-orange-500/20 text-orange-300",
+    green:  "bg-green-500/20 text-green-300",
+    blue:   "bg-blue-500/20 text-blue-300",
+    indigo: "bg-indigo-500/20 text-indigo-300",
+    purple: "bg-purple-500/20 text-purple-300",
+  };
+  return (
+    <div className="flex items-start gap-3 mb-1">
+      <span className="text-2xl">{icon}</span>
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-white font-bold text-lg">{title}</h2>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badge[color]}`}>{count}</span>
+        </div>
+        <p className="text-gray-500 text-sm">{subtitle}</p>
+      </div>
     </div>
   );
-  if (link) return <a href={link} target="_blank" rel="noopener noreferrer" className="hover:text-blue-400">{content}</a>;
-  return content;
 }
 
-function SecondaryButton({ onClick, label, icon, color }: {
-  onClick: () => void; label: string; icon: string; color: "yellow" | "blue" | "purple" | "green";
+function ActionBtn({
+  children, onClick, color,
+}: {
+  children: React.ReactNode;
+  onClick:  () => void;
+  color:    "green" | "blue" | "gray" | "red" | "emerald" | "indigo" | "purple";
 }) {
-  const colors = {
-    yellow: "bg-yellow-800/40 hover:bg-yellow-700/60 text-yellow-300",
-    blue:   "bg-blue-800/40 hover:bg-blue-700/60 text-blue-300",
-    purple: "bg-purple-800/40 hover:bg-purple-700/60 text-purple-300",
-    green:  "bg-emerald-800/40 hover:bg-emerald-700/60 text-emerald-300",
+  const styles: Record<string, string> = {
+    green:   "bg-green-700 hover:bg-green-600 text-white",
+    blue:    "bg-blue-700 hover:bg-blue-600 text-white",
+    gray:    "bg-gray-700 hover:bg-gray-600 text-gray-300",
+    red:     "bg-red-900/50 hover:bg-red-800/70 text-red-300",
+    emerald: "bg-emerald-700 hover:bg-emerald-600 text-white",
+    indigo:  "bg-indigo-700 hover:bg-indigo-600 text-white",
+    purple:  "bg-purple-700 hover:bg-purple-600 text-white",
   };
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-1 ${colors[color]} font-bold py-3 rounded-xl text-xs transition-all active:scale-95`}
+      className={`text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 ${styles[color]}`}
     >
-      <span>{icon}</span>
-      <span>{label}</span>
+      {children}
     </button>
+  );
+}
+
+function LeadMeta({ lead }: { lead: Lead }) {
+  return (
+    <div className="text-right shrink-0">
+      <div className="text-xl font-bold text-white">{lead.score}</div>
+      <div className="text-xs text-gray-600">score</div>
+      {lead.city && <div className="text-xs text-gray-500">{lead.city}</div>}
+    </div>
+  );
+}
+
+function EmptyState({ icon, message }: { icon: string; message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+      <span className="text-5xl">{icon}</span>
+      <p className="text-gray-400 text-base font-medium">{message}</p>
+    </div>
   );
 }
