@@ -147,7 +147,7 @@ export async function GET() {
         .lte("next_follow_up_at", now.toISOString())
         .not("next_follow_up_at", "is", null)
         .eq("do_not_contact", false)
-        .not("status", "in", "(closed,dnc,bad_number,invalid_email)")
+        .not("status", "in", "(closed,dead)")
         .order("next_follow_up_at", { ascending: true })
         .limit(30),
 

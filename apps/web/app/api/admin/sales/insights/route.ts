@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 // Identifies: best channel, best city, best category, lead quality, bottleneck stage
 
 // Canonical outbound action types (must match event/route.ts SEND_ACTIONS)
-const SENT_ACTIONS = new Set(["sms_sent", "email_sent", "fb_message_sent", "follow_up_sent"]);
+const SENT_ACTIONS = new Set(["text_sent", "sms_sent", "email_sent", "facebook_sent", "fb_message_sent", "follow_up_sent", "message_sent"]);
 
 export async function GET(request: Request) {
   try {

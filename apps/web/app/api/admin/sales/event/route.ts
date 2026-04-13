@@ -9,7 +9,7 @@ import crypto from "crypto";
 // Agent dialer calls this. Twilio/Mailgun are invoked here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SEND_ACTIONS = new Set(["sms_sent","email_sent","fb_message_sent","follow_up_sent"]);
+const SEND_ACTIONS = new Set(["text_sent","email_sent","facebook_sent","follow_up_sent","sms_sent","fb_message_sent"]);
 
 export async function POST(request: Request) {
   try {
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
     }
 
     // Send
-    if (channel === "sms" || action_type === "sms_sent") {
+    if (channel === "sms" || action_type === "text_sent" || action_type === "sms_sent") {
       const smsBody = message.includes("STOP") ? message : `${message}\n\nReply STOP to unsubscribe.`;
       sendResult = await sendSms({ to: dest, body: smsBody });
     } else if (channel === "email" || action_type === "email_sent") {
@@ -164,7 +164,15 @@ export async function POST(request: Request) {
   }
 
   // ── Insert event record ────────────────────────────────────────────────────
-  const finalActionType = action_type;
+  // Normalize to DB enum values (schema uses text_sent/facebook_sent)
+  const actionTypeMap: Record<string, string> = {
+    sms_sent:            "text_sent",
+    fb_message_sent:     "facebook_sent",
+    bad_number_marked:   "lead_skipped",
+    invalid_email_marked:"lead_skipped",
+    fb_group_post:       "facebook_sent",
+  };
+  const finalActionType = actionTypeMap[action_type] ?? action_type;
   const eventMetadata = {
     ...(metadata ?? {}),
     ...(sendResult ? { send_result: sendResult } : {}),

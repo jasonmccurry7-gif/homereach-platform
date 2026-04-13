@@ -117,7 +117,7 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   // ── Action handlers ───────────────────────────────────────────────────────
 
   const sendSms = async (lead: Lead, message: string, taskId: string) => {
-    const r = await logEvent({ action_type: "sms_sent", lead_id: lead.id, channel: "sms", message });
+    const r = await logEvent({ action_type: "text_sent", lead_id: lead.id, channel: "sms", message });
     if (r.error) { showFlash(`Failed: ${r.error}`, false); return; }
     showFlash(`✓ Text sent to ${lead.business_name}`);
     done(taskId);
@@ -133,14 +133,14 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   };
 
   const markFbSent = async (lead: Lead, message: string, taskId: string) => {
-    await logEvent({ action_type: "fb_message_sent", lead_id: lead.id, channel: "facebook", message });
+    await logEvent({ action_type: "facebook_sent", lead_id: lead.id, channel: "facebook", message });
     showFlash(`✓ FB DM logged for ${lead.business_name}`);
     done(taskId);
     setSession(s => ({ ...s, sent: s.sent + 1 }));
   };
 
   const markGroupPosted = async (post: GroupPost) => {
-    await logEvent({ action_type: "fb_group_post", channel: "facebook", message: post.post_copy });
+    await logEvent({ action_type: "facebook_sent", channel: "facebook", message: post.post_copy });
     showFlash(`✓ Group post logged`);
     done(post.id);
   };
@@ -151,13 +151,13 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   };
 
   const markBadNumber = async (lead: Lead, taskId: string) => {
-    await logEvent({ action_type: "bad_number_marked", lead_id: lead.id, channel: "sms" });
+    await logEvent({ action_type: "lead_skipped", lead_id: lead.id, channel: "sms" });
     done(taskId);
     showFlash(`Marked bad number — ${lead.business_name}`);
   };
 
   const markInvalidEmail = async (lead: Lead, taskId: string) => {
-    await logEvent({ action_type: "invalid_email_marked", lead_id: lead.id, channel: "email" });
+    await logEvent({ action_type: "lead_skipped", lead_id: lead.id, channel: "email" });
     done(taskId);
     showFlash(`Marked invalid email — ${lead.business_name}`);
   };
