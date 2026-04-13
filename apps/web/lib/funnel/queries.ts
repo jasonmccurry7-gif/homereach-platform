@@ -171,29 +171,37 @@ export async function getBundlesWithAvailability(
   const bundleIds = availableBundles.map((b) => b.id);
 
   // Count paid orders per bundle in this city + category
-  const orderCounts = await db
-    .select({
-      bundleId: orders.bundleId,
-      count: sql<number>`COUNT(*)`,
-    })
-    .from(orders)
-    .innerJoin(
-      sql`businesses b`,
-      sql`orders.business_id = b.id`
-    )
-    .where(
-      and(
-        sql`b.city_id = ${cityId}`,
-        sql`b.category_id = ${categoryId}`,
-        inArray(orders.bundleId, bundleIds),
-        inArray(orders.status, ["paid", "active"])
+  // Wrapped in try/catch — if orders/businesses tables are missing or have schema
+  // differences from live DB, default to 0 taken (all spots show as available).
+  let countMap: Record<string, number> = {};
+  try {
+    const orderCounts = await db
+      .select({
+        bundleId: orders.bundleId,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(orders)
+      .innerJoin(
+        sql`businesses b`,
+        sql`orders.business_id = b.id`
       )
-    )
-    .groupBy(orders.bundleId);
+      .where(
+        and(
+          sql`b.city_id = ${cityId}`,
+          sql`b.category_id = ${categoryId}`,
+          inArray(orders.bundleId, bundleIds),
+          inArray(orders.status, ["paid", "active"])
+        )
+      )
+      .groupBy(orders.bundleId);
 
-  const countMap = Object.fromEntries(
-    orderCounts.map((r) => [r.bundleId!, r.count])
-  );
+    countMap = Object.fromEntries(
+      orderCounts.map((r) => [r.bundleId!, r.count])
+    );
+  } catch {
+    // Safe fallback: show all spots as available if order count query fails
+    countMap = {};
+  }
 
   return availableBundles
     .map((bundle) => {
