@@ -13,6 +13,7 @@ interface Params {
 }
 
 export async function POST(req: Request, { params }: Params) {
+  try {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -38,4 +39,10 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   return NextResponse.json({ success: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

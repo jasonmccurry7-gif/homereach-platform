@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { db, bundles, cities } from "@homereach/db";
 import { desc, eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Bundles — HomeReach Admin" };
 
 async function getAllBundles() {

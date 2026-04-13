@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
@@ -17,4 +18,10 @@ export async function GET(request: Request) {
 
   const totalMRR = (data ?? []).reduce((s, c) => s + (c.mrr_cents ?? 0), 0);
   return NextResponse.json({ companies: data, total_mrr_cents: totalMRR });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const sp = req.nextUrl.searchParams;
 
@@ -65,4 +66,10 @@ export async function GET(req: NextRequest) {
     page,
     limit,
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

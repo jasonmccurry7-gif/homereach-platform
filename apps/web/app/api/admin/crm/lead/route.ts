@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 // GET /api/admin/crm/lead?id=UUID
 // Returns full lead detail with outreach history, notes, tasks, conversations
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
@@ -26,10 +27,17 @@ export async function GET(request: Request) {
     conversations:   convRes.data ?? [],
     pipeline_history: historyRes.data ?? [],
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 // PATCH /api/admin/crm/lead — update lead fields or pipeline stage
 export async function PATCH(request: Request) {
+  try {
   const supabase = await createClient();
   const body = await request.json();
   const { id, updates, stage_change, agent_id, stage_reason } = body;
@@ -57,4 +65,10 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

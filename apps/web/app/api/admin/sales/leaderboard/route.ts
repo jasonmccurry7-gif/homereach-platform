@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/leaderboard
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const since = searchParams.get("since") ?? new Date(Date.now() - 86400000).toISOString(); // default: today
@@ -100,4 +101,10 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ leaderboard, since });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

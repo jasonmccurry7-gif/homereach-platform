@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 // Returns the highest-priority uncontacted lead
 // Priority: HIGH buying_signal first → score DESC → created_at ASC
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const city     = searchParams.get("city");
@@ -52,4 +53,10 @@ export async function GET(request: Request) {
   if (!data || data.length === 0) return NextResponse.json({ lead: null }, { status: 200 });
 
   return NextResponse.json({ lead: data[0] });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

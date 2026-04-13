@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const period = req.nextUrl.searchParams.get("period") ?? "today";
   const today  = new Date().toISOString().slice(0, 10);
@@ -83,9 +84,16 @@ export async function GET(req: NextRequest) {
     tiers: tiers ?? [],
     commission_history: commissions ?? [],
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const { period = "today", date } = await req.json();
   const targetDate = date ?? new Date().toISOString().slice(0, 10);
@@ -93,4 +101,10 @@ export async function POST(req: NextRequest) {
   await supabase.rpc("refresh_leaderboard", { p_period: period, p_date: targetDate });
 
   return NextResponse.json({ ok: true, refreshed: { period, date: targetDate } });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

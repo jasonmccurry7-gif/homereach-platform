@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const body = await req.json();
   const { sequence_id, agent_id } = body;
@@ -45,9 +46,16 @@ export async function POST(req: NextRequest) {
   const failed    = results.filter(r => !!r.error).length;
 
   return NextResponse.json({ enrolled: succeeded, failed, results });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function DELETE(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const body = await req.json();
 
@@ -72,4 +80,10 @@ export async function DELETE(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

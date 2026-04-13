@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 // Returns full conversion funnel: leads viewed → sent → replied → closed
 // Optionally scoped by agent_id or date range
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const agent_id = searchParams.get("agent_id");
@@ -22,6 +23,12 @@ export async function GET(request: Request) {
   if (!events) return NextResponse.json({ funnel: buildFunnel([]) });
 
   return NextResponse.json({ funnel: buildFunnel(events), events_count: events.length });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 type Event = {

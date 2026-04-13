@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const resolution = req.nextUrl.searchParams.get("resolution") ?? "pending";
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50");
@@ -45,9 +46,16 @@ export async function GET(req: NextRequest) {
     });
 
   return NextResponse.json({ clusters: data ?? [], counts, total: count });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const { cluster_id, action, merge_notes } = await req.json();
 
@@ -101,4 +109,10 @@ export async function POST(req: NextRequest) {
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
   return NextResponse.json({ ok: true, action: resolution });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

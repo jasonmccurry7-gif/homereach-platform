@@ -12,6 +12,7 @@ import crypto from "crypto";
 const SEND_ACTIONS = new Set(["sms_sent","email_sent","fb_message_sent","follow_up_sent"]);
 
 export async function POST(request: Request) {
+  try {
   const supabase = await createClient();
   const body = await request.json();
   const {
@@ -226,4 +227,10 @@ export async function POST(request: Request) {
     sent: actualSent,
     send_error: sendResult?.success === false ? sendResult.error : undefined,
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

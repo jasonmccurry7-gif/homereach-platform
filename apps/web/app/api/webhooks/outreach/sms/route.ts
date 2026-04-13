@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { db, outreachContacts, outreachReplies, outreachMessages } from "@homereach/db";
 import { eq } from "drizzle-orm";
+import { createClient } from "@/lib/supabase/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/outreach/sms
@@ -21,6 +22,7 @@ const EMPTY_TWIML = new Response("<Response/>", {
 });
 
 export async function POST(req: Request) {
+  try {
   // ── Twilio signature validation ────────────────────────────────────────────
   // Skip validation only in development when no auth token is set.
   const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -62,6 +64,12 @@ export async function POST(req: Request) {
     params[k] = String(v);
   }
   return await handleSmsPayload(params);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 async function handleSmsPayload(params: Record<string, string>): Promise<Response> {
@@ -124,6 +132,43 @@ async function handleSmsPayload(params: Record<string, string>): Promise<Respons
     receivedAt: new Date(),
     isRead:     false,
   });
+
+  // ── Also update sales_leads in Supabase (bridges outreach ↔ sales system) ──
+  // If this phone number belongs to a sales lead, mark it replied so it
+  // surfaces in the agent Today's To-Do → Replies section.
+  try {
+    const supabase = await createClient();
+    const { data: matchingLead } = await supabase
+      .from("sales_leads")
+      .select("id, status")
+      .eq("phone", from)
+      .not("status", "in", "(closed,dnc,bad_number)")
+      .limit(1)
+      .single();
+
+    if (matchingLead) {
+      await supabase
+        .from("sales_leads")
+        .update({
+          status:        "replied",
+          last_reply_at: new Date().toISOString(),
+          pipeline_stage: "replied",
+        })
+        .eq("id", matchingLead.id);
+
+      // Log reply event in sales_events for reporting
+      await supabase.from("sales_events").insert({
+        lead_id:     matchingLead.id,
+        action_type: "reply_received",
+        channel:     "sms",
+        message:     body,
+        created_at:  new Date().toISOString(),
+      });
+    }
+  } catch (salesErr) {
+    // Non-fatal: outreach reply already stored above
+    console.warn("[sms/webhook] could not update sales_leads:", salesErr);
+  }
 
   return EMPTY_TWIML;
 }

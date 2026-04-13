@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET() {
+  try {
   const supabase = await createClient();
 
   const [sysResult, seqResult, agentResult] = await Promise.all([
@@ -22,9 +23,16 @@ export async function GET() {
     sequences: seqResult.data ?? [],
     agents: agentResult.data ?? [],
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const body = await req.json();
   const { scope, id, paused, reason } = body;
@@ -115,4 +123,10 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ error: "invalid scope" }, { status: 400 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

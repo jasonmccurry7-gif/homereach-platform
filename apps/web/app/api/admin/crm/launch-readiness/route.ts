@@ -15,6 +15,7 @@ type CheckResult = {
 };
 
 export async function GET() {
+  try {
   const supabase = await createClient();
 
   const checks: CheckResult[] = [];
@@ -195,4 +196,10 @@ export async function GET() {
     checks,
     timestamp: new Date().toISOString(),
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

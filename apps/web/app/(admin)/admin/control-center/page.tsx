@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ControlCenterClient from "./control-center-client";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Control Center | HomeReach Admin" };
 
 export default async function ControlCenterPage() {

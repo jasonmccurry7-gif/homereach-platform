@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { db, waitlistEntries, cities, categories } from "@homereach/db";
 import { desc, eq, isNull } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Waitlist — HomeReach Admin" };
 
 async function getWaitlist() {

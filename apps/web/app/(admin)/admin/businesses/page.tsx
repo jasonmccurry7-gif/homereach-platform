@@ -8,6 +8,8 @@ import {
 } from "@homereach/db";
 import { desc, eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Businesses — HomeReach Admin" };
 
 async function getAllBusinesses() {

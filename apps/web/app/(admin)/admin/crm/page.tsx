@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import CRMClient from "./crm-client";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = { title: "CRM | HomeReach Admin" };
 
 export default async function CRMPage() {

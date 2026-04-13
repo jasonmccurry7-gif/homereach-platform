@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
+  try {
   const { searchParams } = new URL(req.url);
   const citySlug     = searchParams.get("citySlug");
   const categorySlug = searchParams.get("categorySlug");
@@ -52,4 +53,10 @@ export async function GET(req: Request) {
     categoryId:   category.id,
     categoryName: category.name,
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

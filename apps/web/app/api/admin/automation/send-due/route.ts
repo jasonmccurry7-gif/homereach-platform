@@ -19,6 +19,7 @@ function hashMessage(body: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   // Allow cron or admin to trigger
   const secret = req.headers.get("x-cron-secret");
   const isCron = secret === process.env.CRON_SECRET;
@@ -279,9 +280,16 @@ export async function POST(req: NextRequest) {
     skipped,
     errors: errors.length > 0 ? errors : undefined,
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function GET() {
+  try {
   const supabase = await createClient();
   const now = new Date().toISOString();
 
@@ -306,4 +314,10 @@ export async function GET() {
     active_total: activeTotal ?? 0,
     sender_health: health ?? [],
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

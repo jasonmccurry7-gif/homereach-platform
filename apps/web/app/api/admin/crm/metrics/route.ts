@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 // GET /api/admin/crm/metrics?agent_id=&date=YYYY-MM-DD
 // Returns daily metrics rollup per agent
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const agentId = searchParams.get("agent_id");
@@ -16,10 +17,17 @@ export async function GET(request: Request) {
   const { data, error } = await q.order("metric_date", { ascending: false }).limit(100);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ metrics: data });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 // POST — upsert daily metrics for an agent
 export async function POST(request: Request) {
+  try {
   const supabase = await createClient();
   const body = await request.json();
   const { agent_id, metric_date, ...fields } = body;
@@ -42,4 +50,10 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET() {
+  try {
   const supabase = await createClient();
 
   const [identitiesRes, healthRes, countsRes] = await Promise.all([
@@ -31,9 +32,16 @@ export async function GET() {
     health:     healthRes.data ?? [],
     today_counts: countsRes.data ?? [],
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const body = await req.json();
 
@@ -72,4 +80,10 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true, identity: data });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

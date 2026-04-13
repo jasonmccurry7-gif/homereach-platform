@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET() {
+  try {
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -39,9 +40,16 @@ export async function GET() {
   }));
 
   return NextResponse.json({ sequences });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const body = await req.json();
 
@@ -73,4 +81,10 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ sequence: seq });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

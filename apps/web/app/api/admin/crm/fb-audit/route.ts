@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const sp = req.nextUrl.searchParams;
   const statusFilter = sp.get("status") ?? "";  // filter by fb_outreach_status
@@ -67,9 +68,16 @@ export async function GET(req: NextRequest) {
     total:  count ?? 0,
     page,
   });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 export async function PATCH(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const { event_id, fb_outreach_status } = await req.json();
 
@@ -87,4 +95,10 @@ export async function PATCH(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

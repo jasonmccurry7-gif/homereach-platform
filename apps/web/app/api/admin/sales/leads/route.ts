@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/leads
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const status   = searchParams.get("status");
@@ -28,4 +29,10 @@ export async function GET(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ leads: data, total: count, limit, offset });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

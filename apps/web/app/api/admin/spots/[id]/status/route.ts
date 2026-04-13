@@ -23,6 +23,7 @@ interface Params {
 }
 
 export async function POST(req: Request, { params }: Params) {
+  try {
   // ── Auth: admin only ───────────────────────────────────────────────────────
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -74,4 +75,10 @@ export async function POST(req: Request, { params }: Params) {
   console.log(`[admin/spots] override: ${id} → ${status} by ${user.email}`);
 
   return NextResponse.json({ success: true, id: updated.id, status: updated.status });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[route] error:`, msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }

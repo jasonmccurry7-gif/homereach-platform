@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/insights
 // Identifies: best channel, best city, best category, lead quality, bottleneck stage
+
+// Canonical outbound action types (must match event/route.ts SEND_ACTIONS)
+const SENT_ACTIONS = new Set(["sms_sent", "email_sent", "fb_message_sent", "follow_up_sent"]);
+
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const since = searchParams.get("since") ?? new Date(Date.now() - 86400000 * 7).toISOString(); // default 7 days
@@ -25,7 +30,7 @@ export async function GET(request: Request) {
   for (const ev of events) {
     const ch = ev.channel ?? "unknown";
     if (!channelStats[ch]) channelStats[ch] = { sent: 0, replies: 0, deals: 0 };
-    if (["message_sent","email_sent","text_sent","facebook_sent"].includes(ev.action_type)) channelStats[ch].sent++;
+    if (SENT_ACTIONS.has(ev.action_type)) channelStats[ch].sent++;
     if (ev.action_type === "reply_received") channelStats[ch].replies++;
     if (ev.action_type === "deal_closed")    channelStats[ch].deals++;
   }
@@ -50,7 +55,7 @@ export async function GET(request: Request) {
   for (const ev of events) {
     const c = ev.city ?? "Unknown";
     if (!cityStats[c]) cityStats[c] = { sent: 0, deals: 0, revenue: 0 };
-    if (["message_sent","email_sent","text_sent","facebook_sent"].includes(ev.action_type)) cityStats[c].sent++;
+    if (SENT_ACTIONS.has(ev.action_type)) cityStats[c].sent++;
     if (ev.action_type === "deal_closed") { cityStats[c].deals++; cityStats[c].revenue += ev.revenue_cents ?? 20000; }
   }
   const topCity = Object.entries(cityStats).sort((a,b) => b[1].deals - a[1].deals)[0];
@@ -69,7 +74,7 @@ export async function GET(request: Request) {
   for (const ev of events) {
     const cat = ev.category ?? "Unknown";
     if (!catStats[cat]) catStats[cat] = { sent: 0, replies: 0, deals: 0 };
-    if (["message_sent","email_sent","text_sent","facebook_sent"].includes(ev.action_type)) catStats[cat].sent++;
+    if (SENT_ACTIONS.has(ev.action_type)) catStats[cat].sent++;
     if (ev.action_type === "reply_received") catStats[cat].replies++;
     if (ev.action_type === "deal_closed") catStats[cat].deals++;
   }
@@ -83,7 +88,7 @@ export async function GET(request: Request) {
   }
 
   // Bottleneck detection
-  const sent = events.filter(e => ["message_sent","email_sent","text_sent","facebook_sent"].includes(e.action_type)).length;
+  const sent = events.filter(e => SENT_ACTIONS.has(e.action_type)).length;
   const replied = events.filter(e => e.action_type === "reply_received").length;
   const convo = events.filter(e => e.action_type === "conversation_started").length;
   const deals = events.filter(e => e.action_type === "deal_closed").length;
@@ -107,6 +112,12 @@ export async function GET(request: Request) {
   if (payLinks > deals) guidance.push({ type: "close", message: `Follow up on ${payLinks - deals} payment links — close these deals now`, priority: "high" });
 
   return NextResponse.json({ insights, guidance, stats: { sent, replied, convo, deals, payLinks, channelStats, cityStats, catStats } });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[insights] error:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
 }
 
 function capitalize(s: string) {
