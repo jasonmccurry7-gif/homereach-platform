@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { db, products } from "@homereach/db";
 import { desc } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Products — HomeReach Admin" };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -13,7 +14,12 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default async function AdminProductsPage() {
-  const rows = await db.select().from(products).orderBy(desc(products.createdAt));
+  let rows: Awaited<ReturnType<typeof db.select>> = [];
+  try {
+    rows = await db.select().from(products).orderBy(desc(products.createdAt));
+  } catch {
+    // DB unavailable — render empty state
+  }
 
   return (
     <div className="max-w-5xl">

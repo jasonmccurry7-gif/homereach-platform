@@ -14,6 +14,23 @@ import { eq, count, sum, gte, isNull, desc, and } from "drizzle-orm";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard — HomeReach Admin" };
 
+// ── System health fetch (non-blocking) ────────────────────────────────────────
+async function getSystemHealth() {
+  try {
+    const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+    const res = await fetch(`${base}/api/admin/health`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json() as Promise<{
+      status: "GREEN" | "YELLOW" | "RED";
+      timestamp: string;
+      summary: { total: number; passed: number; failed: number; warned: number };
+      failedChecks: { name: string; message: string }[];
+    }>;
+  } catch {
+    return null;
+  }
+}
+
 const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   sold:     { icon: "💰", color: "bg-green-50 border-green-100" },
   reply:    { icon: "💬", color: "bg-blue-50 border-blue-100" },
@@ -26,6 +43,8 @@ function fmt(n: number | null | undefined) {
 }
 
 export default async function AdminDashboardPage() {
+  const [health] = await Promise.all([getSystemHealth()]);
+
   // ── Real DB queries ────────────────────────────────────────────────────────
   const now        = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -160,8 +179,51 @@ export default async function AdminDashboardPage() {
   // Sort by recency (best-effort: use id ordering for now)
   const sortedActivity = activity.slice(0, 8);
 
+  const healthColor = {
+    GREEN:  { bg: "bg-green-50 border-green-200",  dot: "bg-green-500", text: "text-green-800", label: "All systems operational" },
+    YELLOW: { bg: "bg-amber-50 border-amber-200",  dot: "bg-amber-500", text: "text-amber-800", label: "Minor issues detected" },
+    RED:    { bg: "bg-red-50 border-red-200",      dot: "bg-red-500",   text: "text-red-800",   label: "Critical failure — action required" },
+  }[health?.status ?? "GREEN"];
+
   return (
     <div className="space-y-8">
+
+      {/* ── System Health Banner ─────────────────────────────────────────── */}
+      <div className={`flex items-center justify-between rounded-xl border px-5 py-3 ${healthColor.bg}`}>
+        <div className="flex items-center gap-3">
+          <span className={`inline-block h-3 w-3 rounded-full ${healthColor.dot} animate-pulse`} />
+          <span className={`text-sm font-semibold ${healthColor.text}`}>
+            SYSTEM {health?.status ?? "UNKNOWN"} — {healthColor.label}
+          </span>
+          {health && health.summary.failed > 0 && (
+            <span className="text-xs text-red-700 font-medium">
+              {health.summary.failed} check{health.summary.failed !== 1 ? "s" : ""} failing
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-4 text-xs text-gray-500">
+          {health && (
+            <span>Last checked: {new Date(health.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}</span>
+          )}
+          <Link href="/admin/control-center" className="font-medium text-blue-600 hover:underline">
+            View details →
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Failed checks (RED/YELLOW only) ─────────────────────────────── */}
+      {health && health.failedChecks.length > 0 && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm font-bold text-red-800 mb-2">⚠️ Action Required</p>
+          <ul className="space-y-1">
+            {health.failedChecks.map((c) => (
+              <li key={c.name} className="text-sm text-red-700">
+                <span className="font-mono font-semibold">{c.name}</span>: {c.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Page header */}
       <div className="flex items-start justify-between">

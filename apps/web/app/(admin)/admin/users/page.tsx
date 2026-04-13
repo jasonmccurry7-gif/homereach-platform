@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { db, profiles } from "@homereach/db";
 import { desc } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Users — HomeReach Admin" };
 
 const ROLE_COLORS: Record<string, string> = {

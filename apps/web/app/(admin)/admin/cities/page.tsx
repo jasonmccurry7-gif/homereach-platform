@@ -2,10 +2,16 @@ import type { Metadata } from "next";
 import { db, cities } from "@homereach/db";
 import { desc } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Cities — HomeReach Admin" };
 
 export default async function AdminCitiesPage() {
-  const rows = await db.select().from(cities).orderBy(desc(cities.createdAt));
+  let rows: Awaited<ReturnType<typeof db.select>>  = [];
+  try {
+    rows = await db.select().from(cities).orderBy(desc(cities.createdAt));
+  } catch {
+    // DB unavailable — render empty state rather than crash
+  }
 
   return (
     <div className="max-w-4xl">
