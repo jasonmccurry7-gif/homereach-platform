@@ -39,9 +39,9 @@ export default function LoginPage({
           {/* Social proof */}
           <div className="grid grid-cols-3 gap-4">
             {[
-              { value: "15k+", label: "Homes reached/drop" },
-              { value: "100%", label: "Category exclusive" },
-              { value: "3×", label: "Avg ROAS" },
+              { value: "2,500+", label: "Homes reached/drop" },
+              { value: "1 per city", label: "Category exclusive" },
+              { value: "3–5×", label: "Avg ROAS" },
             ].map((stat) => (
               <div
                 key={stat.label}
