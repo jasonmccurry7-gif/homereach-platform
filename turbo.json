@@ -21,6 +21,7 @@
     "USE_MOCK_DB",
     "ADMIN_DEV_BYPASS",
     "ADMIN_SYSTEM_USER_ID",
+    "ADMIN_NOTIFICATION_EMAIL",
     "NODE_ENV"
   ],
   "tasks": {
