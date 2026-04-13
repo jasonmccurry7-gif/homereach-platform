@@ -32,6 +32,12 @@ export default async function AdminDashboardPage() {
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
 
+  // Wrap all queries — if any table is missing or has schema differences,
+  // fall back to empty results rather than crashing the page.
+  const safeQuery = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try { return await fn(); } catch { return fallback; }
+  };
+
   const [
     activeClientsResult,
     newClientsThisMonthResult,
@@ -45,41 +51,41 @@ export default async function AdminDashboardPage() {
     recentRepliesResult,
   ] = await Promise.all([
     // Active clients
-    db.select({ n: count() }).from(businesses).where(eq(businesses.status, "active")),
+    safeQuery(() => db.select({ n: count() }).from(businesses).where(eq(businesses.status, "active")), [{ n: 0 }]),
 
     // New clients this month
-    db.select({ n: count() }).from(businesses).where(
+    safeQuery(() => db.select({ n: count() }).from(businesses).where(
       and(eq(businesses.status, "active"), gte(businesses.createdAt, monthStart))
-    ),
+    ), [{ n: 0 }]),
 
     // Total leads (waitlist entries that haven't converted)
-    db.select({ n: count() }).from(waitlistEntries),
+    safeQuery(() => db.select({ n: count() }).from(waitlistEntries), [{ n: 0 }]),
 
     // Unconverted waitlist
-    db.select({ n: count() }).from(waitlistEntries).where(isNull(waitlistEntries.convertedToBusinessId)),
+    safeQuery(() => db.select({ n: count() }).from(waitlistEntries).where(isNull(waitlistEntries.convertedToBusinessId)), [{ n: 0 }]),
 
     // MRR: sum of orders paid this month
-    db.select({ total: sum(orders.total) }).from(orders).where(
+    safeQuery(() => db.select({ total: sum(orders.total) }).from(orders).where(
       and(eq(orders.status, "paid"), gte(orders.paidAt, monthStart))
-    ),
+    ), [{ total: "0" }]),
 
     // Last month revenue for growth %
-    db.select({ total: sum(orders.total) }).from(orders).where(
+    safeQuery(() => db.select({ total: sum(orders.total) }).from(orders).where(
       and(
         eq(orders.status, "paid"),
         gte(orders.paidAt, lastMonthStart),
         gte(lastMonthEnd, orders.paidAt!)
       )
-    ),
+    ), [{ total: "0" }]),
 
     // Active cities (with active businesses)
-    db.selectDistinct({ id: cities.id, name: cities.name, state: cities.state })
+    safeQuery(() => db.selectDistinct({ id: cities.id, name: cities.name, state: cities.state })
       .from(cities)
       .leftJoin(businesses, eq(businesses.cityId, cities.id))
-      .where(eq(cities.isActive, true)),
+      .where(eq(cities.isActive, true)), []),
 
     // Recent paid orders
-    db.select({
+    safeQuery(() => db.select({
       id: orders.id,
       total: orders.total,
       paidAt: orders.paidAt,
@@ -88,19 +94,19 @@ export default async function AdminDashboardPage() {
       .from(orders)
       .where(eq(orders.status, "paid"))
       .orderBy(desc(orders.paidAt))
-      .limit(5),
+      .limit(5), []),
 
     // Recent waitlist
-    db.select({ id: waitlistEntries.id, email: waitlistEntries.email, businessName: waitlistEntries.businessName, createdAt: waitlistEntries.createdAt })
+    safeQuery(() => db.select({ id: waitlistEntries.id, email: waitlistEntries.email, businessName: waitlistEntries.businessName, createdAt: waitlistEntries.createdAt })
       .from(waitlistEntries)
       .orderBy(desc(waitlistEntries.createdAt))
-      .limit(5),
+      .limit(5), []),
 
     // Recent inbound replies
-    db.select({ id: outreachReplies.id, body: outreachReplies.body, receivedAt: outreachReplies.receivedAt })
+    safeQuery(() => db.select({ id: outreachReplies.id, body: outreachReplies.body, receivedAt: outreachReplies.receivedAt })
       .from(outreachReplies)
       .orderBy(desc(outreachReplies.receivedAt))
-      .limit(5),
+      .limit(5), []),
   ]);
 
   const activeClients    = activeClientsResult[0]?.n ?? 0;
@@ -114,10 +120,10 @@ export default async function AdminDashboardPage() {
   // Build city rows with business counts
   const cityBusinessCounts = await Promise.all(
     activeCitiesResult.slice(0, 6).map(async (city) => {
-      const [active] = await db.select({ n: count() }).from(businesses)
-        .where(and(eq(businesses.cityId, city.id), eq(businesses.status, "active")));
-      const [total]  = await db.select({ n: count() }).from(businesses)
-        .where(eq(businesses.cityId, city.id));
+      const [active] = await safeQuery(() => db.select({ n: count() }).from(businesses)
+        .where(and(eq(businesses.cityId, city.id), eq(businesses.status, "active"))), [{ n: 0 }]);
+      const [total]  = await safeQuery(() => db.select({ n: count() }).from(businesses)
+        .where(eq(businesses.cityId, city.id)), [{ n: 0 }]);
       return { ...city, active: active?.n ?? 0, total: total?.n ?? 0 };
     })
   );
