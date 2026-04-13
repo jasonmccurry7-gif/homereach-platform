@@ -94,9 +94,9 @@ export async function getActiveCities(): Promise<CityWithAvailability[]> {
 
   return cityResults.map((city) => ({
     ...city,
-    // Estimate: 3 bundles × 8 categories = 24 total max anchor spots, rough ceiling
+    // 10 spots per city max
     totalSpotsRemaining: city.isActive
-      ? Math.max(0, 24 - (countMap[city.id] ?? 0))
+      ? Math.max(0, 10 - (countMap[city.id] ?? 0))
       : 0,
   }));
 }

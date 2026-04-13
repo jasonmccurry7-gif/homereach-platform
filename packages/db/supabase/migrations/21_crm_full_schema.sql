@@ -74,6 +74,7 @@ CREATE TABLE crm_companies (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX idx_crm_companies_external_id ON crm_companies(external_id) WHERE external_id IS NOT NULL;
 CREATE INDEX idx_crm_companies_status ON crm_companies(status);
 CREATE INDEX idx_crm_companies_email  ON crm_companies(email);
 
@@ -150,6 +151,7 @@ CREATE TABLE crm_outreach_events (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX idx_crm_outreach_external_id ON crm_outreach_events(external_id) WHERE external_id IS NOT NULL;
 CREATE INDEX idx_crm_outreach_lead     ON crm_outreach_events(lead_id);
 CREATE INDEX idx_crm_outreach_agent    ON crm_outreach_events(agent_id);
 CREATE INDEX idx_crm_outreach_channel  ON crm_outreach_events(channel);

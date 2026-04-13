@@ -215,9 +215,9 @@ CREATE OR REPLACE VIEW v_agent_real_activity AS
 SELECT
   se.agent_id,
   p.full_name,
-  COUNT(*) FILTER (WHERE se.action_type IN ('sms_sent','email_sent','fb_message_sent','follow_up_sent'))
+  COUNT(*) FILTER (WHERE se.action_type IN ('text_sent','email_sent','facebook_sent','follow_up_sent'))
     AS real_messages_sent,
-  COUNT(*) FILTER (WHERE se.action_type IN ('reply_received','fb_reply_received'))
+  COUNT(*) FILTER (WHERE se.action_type IN ('reply_received'))
     AS replies_received,
   COUNT(*) FILTER (WHERE se.action_type = 'follow_up_sent')
     AS follow_ups_sent,
@@ -367,7 +367,7 @@ $$;
 CREATE OR REPLACE FUNCTION stop_enrollments_on_reply()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.action_type IN ('reply_received', 'fb_reply_received') THEN
+  IF NEW.action_type IN ('reply_received') THEN
     UPDATE auto_enrollments
     SET
       status      = 'stopped',

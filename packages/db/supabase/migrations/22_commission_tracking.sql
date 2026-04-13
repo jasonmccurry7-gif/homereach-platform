@@ -84,8 +84,8 @@ BEGIN
   agent_msgs AS (
     SELECT
       se.agent_id,
-      COUNT(*) FILTER (WHERE se.action_type IN ('sms_sent','email_sent','fb_message_sent','follow_up_sent')) AS messages_sent,
-      COUNT(*) FILTER (WHERE se.action_type IN ('reply_received','fb_reply_received'))                        AS replies,
+      COUNT(*) FILTER (WHERE se.action_type IN ('text_sent','email_sent','facebook_sent','follow_up_sent')) AS messages_sent,
+      COUNT(*) FILTER (WHERE se.action_type IN ('reply_received'))                        AS replies,
       COUNT(*) FILTER (WHERE se.action_type = 'deal_closed')                                                  AS deals_closed,
       COALESCE(SUM(se.revenue_cents) FILTER (WHERE se.action_type = 'deal_closed'), 0)                        AS revenue_cents
     FROM sales_events se, period_bounds pb

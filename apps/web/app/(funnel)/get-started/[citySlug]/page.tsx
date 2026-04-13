@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCityBySlug, getCategoriesForCity } from "@/lib/funnel/queries";
 import { FunnelProgress } from "@/components/funnel/funnel-progress";
+import { OtherCategoryCard } from "./other-category-card";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +29,12 @@ export default async function CategorySelectionPage({ params }: Props) {
   if (!city || !city.isActive) notFound();
 
   const categoryList = await getCategoriesForCity(city.id);
-  const available = categoryList.filter((c) => c.isAvailable);
-  const full = categoryList.filter((c) => !c.isAvailable);
+
+  // Separate "Other" from the rest
+  const otherCategory = categoryList.find((c) => c.slug === "other");
+  const regularCategories = categoryList.filter((c) => c.slug !== "other");
+  const available = regularCategories.filter((c) => c.isAvailable);
+  const full = regularCategories.filter((c) => !c.isAvailable);
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-16">
@@ -47,12 +52,11 @@ export default async function CategorySelectionPage({ params }: Props) {
           One business per category. Choose yours before a competitor does.
         </p>
 
-        {/* Trust signal — show how many spots are already taken */}
         {full.length > 0 && (
           <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-4 py-1.5">
             <span className="flex h-1.5 w-1.5 rounded-full bg-green-500" />
             <p className="text-sm font-medium text-green-700">
-              {full.length} categor{full.length === 1 ? "y" : "ies"} already claimed by local businesses in {city.name}
+              {full.length} categor{full.length === 1 ? "y" : "ies"} already claimed in {city.name}
             </p>
           </div>
         )}
@@ -62,16 +66,17 @@ export default async function CategorySelectionPage({ params }: Props) {
       {available.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {available.map((cat) => (
-            <CategoryCard
-              key={cat.id}
-              category={cat}
-              citySlug={citySlug}
-            />
+            <CategoryCard key={cat.id} category={cat} citySlug={citySlug} />
           ))}
+
+          {/* Other card — always last */}
+          {otherCategory && (
+            <OtherCategoryCard citySlug={citySlug} />
+          )}
         </div>
       )}
 
-      {/* Full / sold-out categories — also serves as social proof */}
+      {/* Sold out */}
       {full.length > 0 && (
         <div className="mt-10">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
@@ -85,12 +90,8 @@ export default async function CategorySelectionPage({ params }: Props) {
         </div>
       )}
 
-      {/* Back link */}
       <div className="mt-10 text-center">
-        <Link
-          href="/get-started"
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
+        <Link href="/get-started" className="text-sm text-gray-500 hover:text-gray-700">
           ← Choose a different city
         </Link>
       </div>
@@ -108,11 +109,8 @@ function CategoryCard({
   citySlug: string;
 }) {
   const urgency =
-    category.spotsRemaining <= 1
-      ? "critical"
-      : category.spotsRemaining <= 3
-      ? "high"
-      : "normal";
+    category.spotsRemaining <= 1 ? "critical" :
+    category.spotsRemaining <= 3 ? "high" : "normal";
 
   return (
     <Link
@@ -124,7 +122,6 @@ function CategoryCard({
           1 spot left
         </div>
       )}
-
       <div className="mb-3 text-3xl">{category.icon ?? "🏢"}</div>
       <h3 className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
         {category.name}
@@ -134,29 +131,16 @@ function CategoryCard({
           {category.description}
         </p>
       )}
-
       <div className="mt-3 flex items-center justify-between">
-        <span
-          className={cn(
-            "text-xs font-medium",
-            urgency === "critical" ? "text-red-600" :
-            urgency === "high" ? "text-amber-600" :
-            "text-green-600"
-          )}
-        >
-          {urgency === "critical"
-            ? "⚠️ Almost full"
-            : urgency === "high"
-            ? `${category.spotsRemaining} left`
-            : "Available"}
+        <span className={cn(
+          "text-xs font-medium",
+          urgency === "critical" ? "text-red-600" :
+          urgency === "high" ? "text-amber-600" : "text-green-600"
+        )}>
+          {urgency === "critical" ? "⚠️ Almost full" :
+           urgency === "high" ? `${category.spotsRemaining} left` : "Available"}
         </span>
-        <svg
-          className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-          stroke="currentColor"
-        >
+        <svg className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
         </svg>
       </div>

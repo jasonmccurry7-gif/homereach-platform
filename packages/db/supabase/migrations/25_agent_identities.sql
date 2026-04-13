@@ -190,11 +190,11 @@ LEFT JOIN agent_daily_send_counts sms_today
   ON sms_today.agent_id = ai.agent_id AND sms_today.send_date = CURRENT_DATE AND sms_today.channel = 'sms'
 LEFT JOIN sales_events se_sends
   ON se_sends.agent_id = ai.agent_id
-  AND se_sends.action_type IN ('sms_sent','email_sent')
+  AND se_sends.action_type IN ('text_sent','email_sent')
   AND se_sends.created_at >= now() - INTERVAL '7 days'
 LEFT JOIN sales_events se_replies
   ON se_replies.agent_id = ai.agent_id
-  AND se_replies.action_type IN ('reply_received','fb_reply_received')
+  AND se_replies.action_type IN ('reply_received')
   AND se_replies.created_at >= now() - INTERVAL '7 days'
 GROUP BY ai.agent_id, p.full_name, ai.from_email, ai.twilio_phone,
   ai.email_daily_limit, ai.sms_daily_limit, ai.email_ramp_day,

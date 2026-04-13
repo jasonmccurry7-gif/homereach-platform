@@ -12,13 +12,13 @@ INSERT INTO crm_companies (external_id, name, contact_name, email, phone, indust
   ('9', 'Top Line Roofing', 'David Chupp', 'sales@toplineroofingllc.com', NULL, 'Home Services', 'prospect', 'Stripe customer cus_UBfrxfyi6cdiC2 — invoice pending | City: Medina + Wooster'),
   ('10', 'Ark Veterinary Hospital', 'Stephanie Straubhaar', 'stephaniestraubhaar@arkvethosp.com', NULL, 'Health & Wellness', 'prospect', 'Stripe customer cus_UBfgoaMNZ6Wpe8 — invoice pending | City: Wooster'),
   ('11', 'Lake Erie Pools', NULL, 'swim@lakeeriepools.com', '+14408646910', 'Home Services', 'prospect', 'Stripe customer cus_UBeonV0zTA3XX0 — invoice pending | City: Medina')
-ON CONFLICT (external_id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- Insert deals and update company MRR
 INSERT INTO crm_deals (company_id, spot_id, city, monthly_value_cents, contract_months, total_value_cents, status, start_date, end_date, signed_at, notes)
 SELECT
   c.id,
-  d.spot_id,
+  d.spot_id::integer,
   d.city,
   d.mrr_cents,
   3,

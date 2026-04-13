@@ -2196,7 +2196,7 @@ SELECT
   s.fb_actually_sent, s.sent_at, COALESCE(s.created_at, NOW())
 FROM _outreach_staging s
 LEFT JOIN sales_leads sl ON sl.external_id = s.ext_lead_id
-ON CONFLICT (external_id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 DROP TABLE _outreach_staging;
 

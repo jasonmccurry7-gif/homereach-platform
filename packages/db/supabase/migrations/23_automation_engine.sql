@@ -88,7 +88,7 @@ CREATE INDEX IF NOT EXISTS idx_auto_send_log_lead       ON auto_send_log(lead_id
 CREATE OR REPLACE FUNCTION stop_enrollments_on_reply()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.action_type IN ('reply_received', 'fb_reply_received') THEN
+  IF NEW.action_type IN ('reply_received') THEN
     UPDATE auto_enrollments
     SET
       status     = 'stopped',
