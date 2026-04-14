@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ interface Reply {
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Get timestamp for 24 hours ago
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

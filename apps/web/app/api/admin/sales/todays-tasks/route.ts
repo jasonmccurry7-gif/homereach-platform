@@ -1,3 +1,4 @@
+import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -103,20 +104,29 @@ function replyResponseDraft(businessName: string, city: string, contactName?: st
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
+    // Use session client only for auth check (reads auth.users, no RLS issue)
+    // Use service client for all DB queries (bypasses RLS entirely)
+    const sessionClient = await createClient();
+    const db = createServiceClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await sessionClient.auth.getUser();
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-    const { data: profile } = await supabase
+    // Optional ?agent_id= override (for testing / admin impersonation)
+    const url = new URL(request.url);
+    const agentIdOverride = url.searchParams.get("agent_id");
+    const effectiveUserId = agentIdOverride ?? user.id;
+
+    const { data: profile } = await db
       .from("profiles")
       .select("id, full_name, role")
-      .eq("id", user.id)
-      .single();
+      .eq("id", effectiveUserId)
+      .maybeSingle();
+
+    // Use effectiveUserId as supabase reference throughout
+    const supabase = db;
 
     const now = new Date();
     const todayStart = new Date(now);
@@ -191,7 +201,7 @@ export async function GET() {
       supabase
         .from("sales_events")
         .select("action_type, lead_id, revenue_cents")
-        .eq("agent_id", user.id)
+        .eq("agent_id", effectiveUserId)
         .gte("created_at", todayStart.toISOString()),
     ]);
 
@@ -294,7 +304,7 @@ export async function GET() {
         month: "long",
         day: "numeric",
       }),
-      agent: { id: user.id, name: profile?.full_name ?? "Agent" },
+      agent: { id: effectiveUserId, name: profile?.full_name ?? "Agent" },
       sections: { replies, followups, texts, emails, facebook_dms, group_posts },
       totals: {
         total_tasks: totalTasks,

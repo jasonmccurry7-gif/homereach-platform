@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/next-lead
@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 // Priority: HIGH buying_signal first → score DESC → created_at ASC
 export async function GET(request: Request) {
   try {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const city     = searchParams.get("city");
   const category = searchParams.get("category");

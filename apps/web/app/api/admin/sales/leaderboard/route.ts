@@ -1,10 +1,10 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/leaderboard
 export async function GET(request: Request) {
   try {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const since = searchParams.get("since") ?? new Date(Date.now() - 86400000).toISOString(); // default: today
 

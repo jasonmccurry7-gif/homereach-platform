@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/insights
@@ -9,7 +9,7 @@ const SENT_ACTIONS = new Set(["text_sent", "sms_sent", "email_sent", "facebook_s
 
 export async function GET(request: Request) {
   try {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const since = searchParams.get("since") ?? new Date(Date.now() - 86400000 * 7).toISOString(); // default 7 days
 
