@@ -28,8 +28,8 @@ const PROTECTED = {
   dashboard: /^\/dashboard(\/|$)/,
 };
 
-// Agent-view is inside /admin but accessible to sales_agent too
-const AGENT_VIEW_ROUTE = /^\/admin\/agent-view(\/|$)/;
+// Routes inside /admin accessible to sales_agent role
+const AGENT_ALLOWED_ROUTES = /^\/admin\/(agent-view|ad-designer|roi-preview|products|bundles|crm|sales-dashboard|sales-engine)(\/|$)|^\/admin\/agent-view$/;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -83,8 +83,8 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    // sales_agent can only access agent-view inside /admin
-    if (role === "sales_agent" && !AGENT_VIEW_ROUTE.test(pathname)) {
+    // sales_agent can only access designated sales tool routes
+    if (role === "sales_agent" && !AGENT_ALLOWED_ROUTES.test(pathname)) {
       return NextResponse.redirect(new URL("/admin/agent-view", request.url));
     }
 
