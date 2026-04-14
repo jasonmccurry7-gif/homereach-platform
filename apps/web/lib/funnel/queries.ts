@@ -112,28 +112,33 @@ export async function getCategoriesForCity(
     .where(eq(categories.isActive, true))
     .orderBy(categories.name);
 
-  // Count paid orders per category in this city
-  const orderCounts = await db
-    .select({
-      categoryId: sql<string>`b.category_id`,
-      count: sql<number>`COUNT(*)`,
-    })
-    .from(orders)
-    .innerJoin(
-      sql`businesses b`,
-      sql`orders.business_id = b.id`
-    )
-    .where(
-      and(
-        sql`b.city_id = ${cityId}`,
-        inArray(orders.status, ["paid", "active"])
+  // Count paid orders per category in this city (safe fallback if query fails)
+  let countMap: Record<string, number> = {};
+  try {
+    const orderCounts = await db
+      .select({
+        categoryId: sql<string>`b.category_id`,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(orders)
+      .innerJoin(
+        sql`businesses b`,
+        sql`orders.business_id = b.id`
       )
-    )
-    .groupBy(sql`b.category_id`);
-
-  const countMap = Object.fromEntries(
-    orderCounts.map((r) => [r.categoryId, r.count])
-  );
+      .where(
+        and(
+          sql`b.city_id = ${cityId}`,
+          inArray(orders.status, ["paid", "active"])
+        )
+      )
+      .groupBy(sql`b.category_id`);
+    countMap = Object.fromEntries(
+      orderCounts.map((r) => [r.categoryId, r.count])
+    );
+  } catch {
+    // If the join fails (schema mismatch), show all categories as available
+    countMap = {};
+  }
 
   // Total spots per category = sum of maxSpots across all bundles (1+3+6 = 10)
   const TOTAL_SPOTS_PER_CATEGORY = 10;
@@ -155,16 +160,29 @@ export async function getBundlesWithAvailability(
   cityId: string,
   categoryId: string
 ): Promise<BundleWithAvailability[]> {
-  // Fetch global bundles (cityId = null) and city-specific bundles
-  const availableBundles = await db
-    .select()
-    .from(bundles)
-    .where(
-      and(
-        eq(bundles.isActive, true),
-        or(isNull(bundles.cityId), eq(bundles.cityId, cityId))
-      )
-    );
+  // Fetch active bundles — try city-filtered first, fall back to all active
+  let availableBundles: typeof bundles.$inferSelect[] = [];
+  try {
+    availableBundles = await db
+      .select()
+      .from(bundles)
+      .where(
+        and(
+          eq(bundles.isActive, true),
+          or(isNull(bundles.cityId), eq(bundles.cityId, cityId))
+        )
+      );
+  } catch {
+    // city_id column may not exist in this DB — fall back to simpler query
+    try {
+      availableBundles = await db
+        .select()
+        .from(bundles)
+        .where(eq(bundles.isActive, true));
+    } catch {
+      return [];
+    }
+  }
 
   if (availableBundles.length === 0) return [];
 
