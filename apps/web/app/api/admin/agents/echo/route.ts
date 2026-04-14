@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ ${agentEmail}`;
 // ─── Helper: Resolve Agent Identity ───────────────────────────────────────────
 
 async function resolveAgentIdentity(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   lead: EchoLead
 ): Promise<AgentIdentity | null> {
   // Try to look up from agent_identities table if assigned_agent_id exists
@@ -321,7 +321,7 @@ async function sendViaMailgun(
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
 export async function POST() {
-  let supabase: Awaited<ReturnType<typeof createClient>>;
+  const supabase = createServiceClient();
   const details: EchoResult["summary"] = {
     leads_processed: 0,
     sms_sent: 0,
@@ -332,7 +332,6 @@ export async function POST() {
   const detailLog: EchoResult["details"] = [];
 
   try {
-    supabase = await createClient();
 
     // 1. Fetch up to 20 queued leads with agent assignment
     const { data: leads, error: leadsError } = await supabase
@@ -563,7 +562,7 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Count queued leads
     const { count: queuedCount } = await supabase
