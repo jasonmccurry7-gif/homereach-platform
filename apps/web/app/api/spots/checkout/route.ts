@@ -1,211 +1,180 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { db, spotAssignments, businesses, cities, categories } from "@homereach/db";
-import { eq, and, inArray } from "drizzle-orm";
-import { createSubscriptionCheckoutSession } from "@homereach/services/stripe";
-import { snapshotPrice } from "@homereach/services/pricing";
-import type { SpotType } from "@homereach/types";
+import { createServiceClient } from "@/lib/supabase/service";
+import Stripe from "stripe";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/spots/checkout
-//
-// Creates a pending spot_assignment (reserves the slot) then returns a
-// Stripe subscription checkout URL. If payment is abandoned, the pending
-// row is cleaned up by a cron job (future) or admin override.
-//
-// REQUIRES: Migration 15 (spot_assignments table must exist)
+// Creates a Stripe checkout session for a HomeReach ad spot.
+// Uses Supabase JS (HTTP) — no Drizzle, reliable in Vercel serverless.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CheckoutSchema = z.object({
-  cityId:        z.string().uuid(),
-  categoryId:    z.string().uuid(),
-  spotType:      z.enum(["anchor", "front_feature", "back_feature", "full_card"]),
-  // Business identification
-  businessId:    z.string().uuid().optional(), // existing business
-  businessName:  z.string().min(1).optional(), // new business (if no businessId)
-  phone:         z.string().optional(),
-  // Commitment acknowledgment — must be true or we reject
-  commitmentAcknowledged: z.literal(true, {
-    errorMap: () => ({ message: "You must acknowledge the 3-month commitment to proceed." }),
-  }),
-});
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY not configured");
+  return new Stripe(key, { apiVersion: "2025-03-31.basil" });
+}
+
+const SPOT_LABEL: Record<string, string> = {
+  anchor: "Anchor Spot",
+  front:  "Front Feature Spot",
+  back:   "Back Feature Spot",
+};
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
+    const sessionClient = await createClient();
+    const { data: { user } } = await sessionClient.auth.getUser();
     if (!user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const db = createServiceClient();
     const body = await req.json();
-    const parsed = CheckoutSchema.safeParse(body);
+    const { bundleId, cityId, categoryId, businessName, phone,
+            addons = [], nonprofitId = null, citySlug = "", categorySlug = "" } = body;
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request", details: parsed.error.flatten() },
-        { status: 400 }
-      );
+    if (!bundleId || !cityId || !categoryId || !businessName?.trim()) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const { cityId, categoryId, spotType, businessId, businessName, phone } = parsed.data;
+    // 1. Load bundle
+    const { data: bundle } = await db.from("bundles").select("*")
+      .eq("id", bundleId).eq("is_active", true).single();
+    if (!bundle) return NextResponse.json({ error: "Bundle not found" }, { status: 404 });
 
-    // ── 1. Verify slot is available ───────────────────────────────────────────
-    const [existing] = await db
-      .select({ id: spotAssignments.id })
-      .from(spotAssignments)
-      .where(
-        and(
-          eq(spotAssignments.cityId,     cityId),
-          eq(spotAssignments.categoryId, categoryId),
-          inArray(spotAssignments.status, ["pending", "active"])
-        )
-      )
-      .limit(1);
+    const meta       = (bundle.metadata ?? {}) as Record<string, unknown>;
+    const spotType   = (meta.spotType as string) ?? "back";
+    const maxSpots   = (meta.maxSpots as number) ?? 1;
+    const bundlePrice = Math.round(Number(bundle.price) * 100);
 
-    if (existing) {
-      return NextResponse.json(
-        { error: "This spot is no longer available. Someone just claimed it." },
-        { status: 409 }
-      );
+    // 2. Load city
+    const { data: city } = await db.from("cities")
+      .select("id, name, state, founding_eligible").eq("id", cityId).single();
+    if (!city) return NextResponse.json({ error: "City not found" }, { status: 404 });
+
+    // 3. Check availability
+    const { count: takenCount } = await db.from("spot_assignments")
+      .select("id", { count: "exact" })
+      .eq("city_id", cityId).eq("category_id", categoryId)
+      .in("status", ["pending", "active"]);
+    if ((takenCount ?? 0) >= maxSpots) {
+      return NextResponse.json({ error: "This spot is no longer available." }, { status: 409 });
     }
 
-    // ── 2. Validate city exists ───────────────────────────────────────────────
-    const [cityRecord] = await db
-      .select({ id: cities.id, foundingEligible: cities.foundingEligible })
-      .from(cities)
-      .where(eq(cities.id, cityId))
-      .limit(1);
+    // 4. Resolve or create business
+    let businessId: string;
+    let existingStripeCustomerId: string | null = null;
 
-    if (!cityRecord) {
-      return NextResponse.json({ error: "City not found" }, { status: 404 });
-    }
+    const { data: existingBiz } = await db.from("businesses")
+      .select("id, stripe_customer_id").eq("owner_id", user.id)
+      .eq("city_id", cityId).eq("category_id", categoryId)
+      .eq("status", "pending").maybeSingle();
 
-    // ── 3. Resolve or create business ─────────────────────────────────────────
-    let resolvedBusinessId = businessId;
-    let resolvedBusinessEmail = user.email;
-
-    if (!resolvedBusinessId) {
-      if (!businessName) {
-        return NextResponse.json(
-          { error: "businessName required when no businessId provided" },
-          { status: 400 }
-        );
-      }
-
-      // Idempotent — reuse pending business for this user+city+category if it exists
-      const [existingBiz] = await db
-        .select({ id: businesses.id, email: businesses.email })
-        .from(businesses)
-        .where(
-          and(
-            eq(businesses.ownerId,    user.id),
-            eq(businesses.cityId,     cityId),
-            eq(businesses.categoryId, categoryId),
-            eq(businesses.status,     "pending")
-          )
-        )
-        .limit(1);
-
-      if (existingBiz) {
-        resolvedBusinessId    = existingBiz.id;
-        resolvedBusinessEmail = existingBiz.email ?? user.email;
-      } else {
-        const [newBiz] = await db
-          .insert(businesses)
-          .values({
-            ownerId:    user.id,
-            name:       businessName,
-            phone:      phone ?? null,
-            email:      user.email,
-            cityId,
-            categoryId,
-            status:     "pending",
-          })
-          .returning({ id: businesses.id, email: businesses.email });
-
-        resolvedBusinessId    = newBiz!.id;
-        resolvedBusinessEmail = newBiz!.email ?? user.email;
-      }
+    if (existingBiz) {
+      businessId = existingBiz.id;
+      existingStripeCustomerId = existingBiz.stripe_customer_id ?? null;
     } else {
-      // Look up email for existing business
-      const [biz] = await db
-        .select({ email: businesses.email })
-        .from(businesses)
-        .where(eq(businesses.id, resolvedBusinessId))
-        .limit(1);
-      resolvedBusinessEmail = biz?.email ?? user.email;
+      const { data: newBiz, error: bizErr } = await db.from("businesses")
+        .insert({ owner_id: user.id, name: businessName.trim(), phone: phone ?? null,
+                  email: user.email, city_id: cityId, category_id: categoryId, status: "pending" })
+        .select("id").single();
+      if (bizErr || !newBiz) return NextResponse.json({ error: "Failed to create business" }, { status: 500 });
+      businessId = newBiz.id;
     }
 
-    // ── 4. Derive military discount server-side (never trust client) ──────────
-    const [bizRecord] = await db
-      .select({ isMilitary: businesses.isMilitary, stripeCustomerId: businesses.stripeCustomerId })
-      .from(businesses)
-      .where(eq(businesses.id, resolvedBusinessId!))
-      .limit(1);
+    // 5. Create pending spot_assignment
+    const { data: assignment, error: assignErr } = await db.from("spot_assignments")
+      .insert({ business_id: businessId, city_id: cityId, category_id: categoryId,
+                bundle_id: bundleId, spot_type: spotType, status: "pending",
+                monthly_value_cents: bundlePrice })
+      .select("id").single();
+    if (assignErr || !assignment) return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500 });
 
-    // ── 5. Snapshot authoritative price ───────────────────────────────────────
-    const snapshot = await snapshotPrice(
-      {
-        productType:     "spot",
-        billingInterval: "monthly",
-        cityId,
-        spotType:        spotType as SpotType,
-        isFounding:      cityRecord.foundingEligible,
-      },
-      {
-        isVerifiedMilitary: bizRecord?.isMilitary ?? false,
-        spotCountInCart:    1,
-      }
-    );
-
-    // ── 6. Create pending spot_assignment (reserves the slot) ─────────────────
-    const [assignment] = await db
-      .insert(spotAssignments)
-      .values({
-        businessId:       resolvedBusinessId!,
-        cityId,
-        categoryId,
-        spotType:         spotType as SpotType,
-        status:           "pending",
-        monthlyValueCents: snapshot.finalPriceCents,
-      })
-      .returning({ id: spotAssignments.id });
-
-    if (!assignment) {
-      return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500 });
+    // 6. Resolve or create Stripe customer
+    const stripe = getStripe();
+    let stripeCustomerId = existingStripeCustomerId;
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: { businessId },
+      });
+      stripeCustomerId = customer.id;
+      await db.from("businesses").update({ stripe_customer_id: stripeCustomerId }).eq("id", businessId);
     }
 
-    // ── 7. Create Stripe subscription checkout session ─────────────────────────
-    // resolvedBusinessEmail is always set: initialized to user.email (verified non-null
-    // at the top of this handler via the 401 guard), and any DB-lookup path falls
-    // back to user.email. Belt-and-suspenders: fall back to user.email once more
-    // here rather than using a non-null assertion.
-    const session = await createSubscriptionCheckoutSession(
+    // 7. Build line items
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
-        businessId:      resolvedBusinessId!,
-        cityId,
-        categoryId,
-        reservationId:   assignment.id,  // spot_assignment.id doubles as reservationId
-        spotIds:         [assignment.id],
-        productType:     "spot",
-        spotType:        spotType as SpotType,
-        isFounding:      cityRecord.foundingEligible,
-        isVerifiedMilitary: bizRecord?.isMilitary ?? false,
-        email:           resolvedBusinessEmail ?? user.email,
+        price_data: {
+          currency: "usd", unit_amount: bundlePrice,
+          recurring: { interval: "month" },
+          product_data: {
+            name: `HomeReach ${SPOT_LABEL[spotType] ?? "Ad Spot"} — ${city.name}`,
+            description: `Monthly exclusive ad spot · ${city.name}, ${city.state}`,
+          },
+        },
+        quantity: 1,
       },
-      snapshot
-    );
+    ];
 
-    return NextResponse.json(
-      { checkoutUrl: session.url, spotAssignmentId: assignment.id },
-      { status: 200 }
-    );
+    if (addons.includes("design_upgrade")) {
+      lineItems.push({
+        price_data: {
+          currency: "usd", unit_amount: 9900,
+          recurring: { interval: "month" },
+          product_data: { name: "Premium Design Upgrade",
+            description: "Hand-crafted custom postcard design by our creative team" },
+        },
+        quantity: 1,
+      });
+    }
+
+    if (addons.includes("rush_launch")) {
+      lineItems.push({
+        price_data: {
+          currency: "usd", unit_amount: 14900,
+          product_data: { name: "Rush Launch",
+            description: "Priority processing — your campaign launches within 5 business days" },
+        },
+        quantity: 1,
+      });
+    }
+
+    if (addons.includes("nonprofit")) {
+      lineItems.push({
+        price_data: {
+          currency: "usd", unit_amount: 2500,
+          recurring: { interval: "month" },
+          product_data: { name: "Local Nonprofit Sponsorship",
+            description: "Feature a local nonprofit on your ad — $25/mo donated to the cause" },
+        },
+        quantity: 1,
+      });
+    }
+
+    // 8. Create Stripe session
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: stripeCustomerId,
+      line_items: lineItems,
+      metadata: { businessId, cityId, categoryId, bundleId,
+                  reservationId: assignment.id, addons: addons.join(","),
+                  nonprofitId: nonprofitId ?? "" },
+      subscription_data: {
+        metadata: { reservationId: assignment.id, businessId, cityId, bundleId },
+      },
+      success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/get-started/${citySlug}/${categorySlug}?bundle=${bundleId}`,
+      billing_address_collection: "auto",
+      allow_promotion_codes: true,
+    });
+
+    return NextResponse.json({ checkoutUrl: session.url, spotAssignmentId: assignment.id });
 
   } catch (err) {
     console.error("[api/spots/checkout] error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Server error" }, { status: 500 });
   }
 }
