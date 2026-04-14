@@ -34,7 +34,7 @@ type GroupPost    = { id: string; group_name: string; city: string; post_copy: s
 
 type TaskData = {
   date: string;
-  agent: { id: string; name: string };
+  agent: { id: string; name: string; first_name: string; email: string; phone: string; assigned_cities: string[] };
   sections: {
     replies:      ReplyTask[];
     followups:    FollowUpTask[];
@@ -46,14 +46,21 @@ type TaskData = {
   totals: {
     total_tasks:         number;
     sent_today:          number;
+    sms_sent_today:      number;
+    email_sent_today:    number;
+    fb_sent_today:       number;
     deals_today:         number;
     revenue_today_cents: number;
+  };
+  targets: {
+    sms_daily:   number;
+    email_daily: number;
   };
 };
 
 type SectionKey = "replies" | "followups" | "texts" | "emails" | "facebook_dms" | "group_posts";
 
-type SessionStats = { sent: number; deals: number; revenue: number };
+type SessionStats = { sent: number; sms: number; email: number; deals: number; revenue: number };
 
 type Reply = {
   id: string;
@@ -96,14 +103,14 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   const [activeTab,    setActiveTab]    = useState<SectionKey>("replies");
   const [flash,        setFlash]        = useState<{ msg: string; ok: boolean } | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
-  const [session,      setSession]      = useState<SessionStats>({ sent: 0, deals: 0, revenue: 0 });
+  const [session,      setSession]      = useState<SessionStats>({ sent: 0, sms: 0, email: 0, deals: 0, revenue: 0 });
   const [selectedCity, setSelectedCity] = useState<string>("All");
   const [replies,      setReplies]      = useState<Reply[]>([]);
   const [replyDraft,   setReplyDraft]   = useState<Record<string, string>>({});
   const [leaderboard,  setLeaderboard]  = useState<LeaderboardEntry[]>([]);
   const [activity,     setActivity]     = useState<ActivityTargets>({
-    sms_sent: 0, sms_target: 30,
-    email_sent: 0, email_target: 20,
+    sms_sent: 0, sms_target: 40,
+    email_sent: 0, email_target: 40,
     followups_sent: 0, followups_target: 10,
     replies_handled: 0, replies_pending: 0,
   });
@@ -115,6 +122,16 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
       const res  = await fetch("/api/admin/sales/todays-tasks");
       const json = await res.json();
       setData(json);
+      // Seed activity tracker with today's counts from server
+      if (json.totals) {
+        setActivity(a => ({
+          ...a,
+          sms_sent:   json.totals.sms_sent_today   ?? 0,
+          email_sent: json.totals.email_sent_today ?? 0,
+          sms_target:   json.targets?.sms_daily   ?? 40,
+          email_target: json.targets?.email_daily ?? 40,
+        }));
+      }
       // Auto-navigate to first non-empty section
       const order: SectionKey[] = ["replies", "followups", "texts", "emails", "facebook_dms", "group_posts"];
       for (const key of order) {
@@ -206,7 +223,8 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     if (r.error) { showFlash(`Failed: ${r.error}`, false); return; }
     showFlash(`✓ Text sent to ${lead.business_name}`);
     done(taskId);
-    setSession(s => ({ ...s, sent: s.sent + 1 }));
+    setSession(s => ({ ...s, sent: s.sent + 1, sms: s.sms + 1 }));
+    setActivity(a => ({ ...a, sms_sent: a.sms_sent + 1 }));
   };
 
   const sendEmail = async (lead: Lead, message: string, subject: string, taskId: string) => {
@@ -214,7 +232,8 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     if (r.error) { showFlash(`Failed: ${r.error}`, false); return; }
     showFlash(`✓ Email sent to ${lead.business_name}`);
     done(taskId);
-    setSession(s => ({ ...s, sent: s.sent + 1 }));
+    setSession(s => ({ ...s, sent: s.sent + 1, email: s.email + 1 }));
+    setActivity(a => ({ ...a, email_sent: a.email_sent + 1 }));
   };
 
   const markFbSent = async (lead: Lead, message: string, taskId: string) => {
@@ -416,36 +435,41 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
           />
         </div>
 
-        {/* Daily Activity Tracker */}
-        <div className="mt-4 pt-4 border-t border-gray-800">
-          <div className="text-xs font-bold text-gray-400 mb-3">Today's Progress</div>
-          <div className="grid grid-cols-4 gap-3">
-            <ProgressBar
-              label="SMS"
-              current={data.totals.sent_today + session.sent}
-              target={30}
-              icon="📱"
-            />
-            <ProgressBar
-              label="Emails"
-              current={data.totals.sent_today + session.sent}
-              target={20}
-              icon="📧"
-            />
-            <ProgressBar
-              label="Follow-ups"
-              current={data.totals.sent_today + session.sent}
-              target={10}
-              icon="🔁"
-            />
-            <ProgressBar
-              label="Replies"
-              current={replies.length}
-              target={data.sections.replies.length}
-              icon="💬"
-            />
-          </div>
-        </div>
+        {/* Daily Minimum Enforcement */}
+        {(() => {
+          const smsTotal   = (data.totals.sms_sent_today   ?? 0) + session.sms;
+          const emailTotal = (data.totals.email_sent_today ?? 0) + session.email;
+          const smsTgt     = data.targets?.sms_daily   ?? 40;
+          const emailTgt   = data.targets?.email_daily ?? 40;
+          const smsDone    = smsTotal   >= smsTgt;
+          const emailDone  = emailTotal >= emailTgt;
+          const smsLeft    = Math.max(0, smsTgt   - smsTotal);
+          const emailLeft  = Math.max(0, emailTgt - emailTotal);
+          const behindPace = !smsDone || !emailDone;
+
+          return (
+            <div className="mt-4 pt-4 border-t border-gray-800">
+              {/* Pace alert */}
+              {behindPace && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-900/30 border border-red-700/50 px-3 py-2">
+                  <span className="text-red-400 text-sm">⚠️</span>
+                  <p className="text-xs text-red-300 font-semibold">
+                    {!smsDone && !emailDone
+                      ? `Behind pace — ${smsLeft} SMS + ${emailLeft} emails remaining to hit daily targets`
+                      : !smsDone
+                      ? `${smsLeft} more SMS to hit daily target`
+                      : `${emailLeft} more emails to hit daily target`}
+                  </p>
+                </div>
+              )}
+              <div className="text-xs font-bold text-gray-400 mb-3">Daily Minimum (40 SMS · 40 Email)</div>
+              <div className="grid grid-cols-2 gap-3">
+                <EnforcedBar label="SMS" current={smsTotal} target={smsTgt} icon="📱" />
+                <EnforcedBar label="Email" current={emailTotal} target={emailTgt} icon="📧" />
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Leaderboard */}
         {leaderboard.length > 0 && (
@@ -458,21 +482,32 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-800">
+                    <th className="text-left py-2 px-2 font-bold text-gray-400">Rank</th>
                     <th className="text-left py-2 px-2 font-bold text-gray-400">Agent</th>
-                    <th className="text-right py-2 px-2 font-bold text-gray-400">Sent</th>
-                    <th className="text-right py-2 px-2 font-bold text-gray-400">Replies</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">SMS</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">Email</th>
                     <th className="text-right py-2 px-2 font-bold text-gray-400">Deals</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">Rev</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {leaderboard.map((entry) => (
-                    <tr key={entry.agent_name} className={`border-b border-gray-800/50 ${entry.agent_name === data.agent.name ? "bg-blue-500/10" : ""}`}>
-                      <td className="py-2 px-2 text-gray-300">{entry.agent_name}</td>
+                  {leaderboard.map((entry, i) => {
+                    const medals = ["🥇", "🥈", "🥉"];
+                    const isMe = entry.agent_name === data.agent.name;
+                    const isBehind = (entry.messages_sent ?? 0) < 40;
+                    return (
+                    <tr key={entry.agent_name} className={`border-b border-gray-800/50 ${isMe ? "bg-blue-500/10 font-semibold" : ""}`}>
+                      <td className="py-2 px-2 text-center">{medals[i] ?? `#${i+1}`}</td>
+                      <td className={`py-2 px-2 ${isMe ? "text-blue-300" : isBehind ? "text-red-400" : "text-gray-300"}`}>
+                        {entry.agent_name}{isBehind ? " ⚠️" : ""}
+                      </td>
                       <td className="text-right py-2 px-2 text-gray-400">{entry.messages_sent}</td>
                       <td className="text-right py-2 px-2 text-gray-400">{entry.replies}</td>
                       <td className="text-right py-2 px-2 text-emerald-400 font-semibold">{entry.deals}</td>
+                      <td className="text-right py-2 px-2 text-emerald-400">${((entry.revenue_cents ?? 0)/100).toFixed(0)}</td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1331,6 +1366,31 @@ function ProgressBar({ label, current, target, icon }: { label: string; current:
           style={{ width: `${percent}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+// Enforcement progress bar — RED/YELLOW/GREEN with count + status label
+function EnforcedBar({ label, current, target, icon }: { label: string; current: number; target: number; icon: string }) {
+  const pct  = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+  const done = current >= target;
+  const left = Math.max(0, target - current);
+  const bar  = done ? "bg-emerald-500" : pct >= 50 ? "bg-yellow-500" : "bg-red-500";
+  const txt  = done
+    ? "text-emerald-400"
+    : pct >= 50 ? "text-yellow-400" : "text-red-400";
+  const status = done ? "✅ TARGET MET" : pct >= 50 ? `${left} remaining` : `⚠️ ${left} remaining`;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-300">{icon} {label}</span>
+        <span className={`text-xs font-bold ${txt}`}>{current} / {target}</span>
+      </div>
+      <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+        <div className={`h-full transition-all duration-300 ${bar}`} style={{ width: `${pct}%` }} />
+      </div>
+      <p className={`text-[10px] font-semibold ${txt}`}>{status}</p>
     </div>
   );
 }
