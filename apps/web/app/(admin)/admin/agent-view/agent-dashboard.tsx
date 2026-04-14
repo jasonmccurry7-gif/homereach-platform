@@ -97,6 +97,7 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   const [flash,        setFlash]        = useState<{ msg: string; ok: boolean } | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [session,      setSession]      = useState<SessionStats>({ sent: 0, deals: 0, revenue: 0 });
+  const [selectedCity, setSelectedCity] = useState<string>("All");
   const [replies,      setReplies]      = useState<Reply[]>([]);
   const [replyDraft,   setReplyDraft]   = useState<Record<string, string>>({});
   const [leaderboard,  setLeaderboard]  = useState<LeaderboardEntry[]>([]);
@@ -274,15 +275,41 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     showFlash(`🎉 DEAL CLOSED — $${revenue}/mo — ${lead.business_name}`);
   };
 
+  // ── City list (derived from all loaded leads) ─────────────────────────────
+  const allCities: string[] = data
+    ? Array.from(new Set([
+        ...data.sections.texts.map(t => t.lead.city ?? ""),
+        ...data.sections.emails.map(t => t.lead.city ?? ""),
+        ...data.sections.facebook_dms.map(t => t.lead.city ?? ""),
+        ...data.sections.followups.map(t => t.lead.city ?? ""),
+        ...data.sections.replies.map(t => t.lead.city ?? ""),
+      ].filter(Boolean))).sort()
+    : [];
+
+  // ── City-filtered sections ─────────────────────────────────────────────────
+  const filterCity = <T extends { lead: Lead }>(items: T[]): T[] =>
+    selectedCity === "All" ? items : items.filter(t => t.lead.city === selectedCity);
+
+  const filteredSections = data ? {
+    replies:      filterCity(data.sections.replies),
+    followups:    filterCity(data.sections.followups),
+    texts:        filterCity(data.sections.texts),
+    emails:       filterCity(data.sections.emails),
+    facebook_dms: filterCity(data.sections.facebook_dms),
+    group_posts:  selectedCity === "All"
+      ? data.sections.group_posts
+      : data.sections.group_posts.filter(p => p.city === selectedCity),
+  } : null;
+
   // ── Section counts (exclude completed) ────────────────────────────────────
-  const counts: Record<SectionKey, number> = data
+  const counts: Record<SectionKey, number> = filteredSections
     ? {
-        replies:      data.sections.replies.filter(t => !completedIds.has(t.lead.id + "_reply")).length,
-        followups:    data.sections.followups.filter(t => !completedIds.has(t.lead.id + "_followup")).length,
-        texts:        data.sections.texts.filter(t => !completedIds.has(t.lead.id + "_text")).length,
-        emails:       data.sections.emails.filter(t => !completedIds.has(t.lead.id + "_email")).length,
-        facebook_dms: data.sections.facebook_dms.filter(t => !completedIds.has(t.lead.id + "_fbdm")).length,
-        group_posts:  data.sections.group_posts.filter(t => !completedIds.has(t.id)).length,
+        replies:      filteredSections.replies.filter(t => !completedIds.has(t.lead.id + "_reply")).length,
+        followups:    filteredSections.followups.filter(t => !completedIds.has(t.lead.id + "_followup")).length,
+        texts:        filteredSections.texts.filter(t => !completedIds.has(t.lead.id + "_text")).length,
+        emails:       filteredSections.emails.filter(t => !completedIds.has(t.lead.id + "_email")).length,
+        facebook_dms: filteredSections.facebook_dms.filter(t => !completedIds.has(t.lead.id + "_fbdm")).length,
+        group_posts:  filteredSections.group_posts.filter(t => !completedIds.has(t.id)).length,
       }
     : { replies: 0, followups: 0, texts: 0, emails: 0, facebook_dms: 0, group_posts: 0 };
 
@@ -339,6 +366,30 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
           <div>
             <h1 className="text-xl font-bold text-white">Today&apos;s To-Do</h1>
             <p className="text-sm text-gray-400 mt-0.5">{data.date} · {data.agent.name}</p>
+            {/* City filter */}
+            {allCities.length > 0 && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-gray-500">City:</span>
+                <select
+                  value={selectedCity}
+                  onChange={e => setSelectedCity(e.target.value)}
+                  className="bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="All">All Cities ({allCities.length})</option>
+                  {allCities.map(city => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+                {selectedCity !== "All" && (
+                  <button
+                    onClick={() => setSelectedCity("All")}
+                    className="text-xs text-gray-500 hover:text-white underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-5 text-sm">
             <StatChip label="Remaining" value={totalRemaining}                          color="text-white"     />
@@ -474,9 +525,9 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
           </div>
         )}
 
-        {activeTab === "replies" && (
+        {activeTab === "replies" && filteredSections && (
           <RepliesSection
-            tasks={data.sections.replies}
+            tasks={filteredSections.replies}
             completedIds={completedIds}
             onSendSms={sendSms}
             onSendEmail={sendEmail}
@@ -484,9 +535,9 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
             onSkip={skipLead}
           />
         )}
-        {activeTab === "followups" && (
+        {activeTab === "followups" && filteredSections && (
           <FollowUpsSection
-            tasks={data.sections.followups}
+            tasks={filteredSections.followups}
             completedIds={completedIds}
             onSendSms={sendSms}
             onSendEmail={sendEmail}
@@ -494,35 +545,35 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
             onDealClosed={closeDeal}
           />
         )}
-        {activeTab === "texts" && (
+        {activeTab === "texts" && filteredSections && (
           <TextsSection
-            tasks={data.sections.texts}
+            tasks={filteredSections.texts}
             completedIds={completedIds}
             onSend={sendSms}
             onSkip={skipLead}
             onBadNumber={markBadNumber}
           />
         )}
-        {activeTab === "emails" && (
+        {activeTab === "emails" && filteredSections && (
           <EmailsSection
-            tasks={data.sections.emails}
+            tasks={filteredSections.emails}
             completedIds={completedIds}
             onSend={sendEmail}
             onSkip={skipLead}
             onInvalidEmail={markInvalidEmail}
           />
         )}
-        {activeTab === "facebook_dms" && (
+        {activeTab === "facebook_dms" && filteredSections && (
           <FbDmsSection
-            tasks={data.sections.facebook_dms}
+            tasks={filteredSections.facebook_dms}
             completedIds={completedIds}
             onMarkSent={markFbSent}
             onSkip={skipLead}
           />
         )}
-        {activeTab === "group_posts" && (
+        {activeTab === "group_posts" && filteredSections && (
           <GroupPostsSection
-            posts={data.sections.group_posts}
+            posts={filteredSections.group_posts}
             completedIds={completedIds}
             onMarkPosted={markGroupPosted}
           />
