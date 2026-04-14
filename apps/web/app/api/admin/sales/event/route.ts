@@ -11,6 +11,67 @@ import crypto from "crypto";
 
 const SEND_ACTIONS = new Set(["text_sent","email_sent","facebook_sent","follow_up_sent","sms_sent","fb_message_sent"]);
 
+// ─── Direct Mailgun send with agent-specific from email/name ──────────────────
+// Bypasses the sendEmail wrapper which reads from process.env
+async function sendEmailWithAgentIdentity(options: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  fromEmail?: string | null;
+  fromName?: string | null;
+  replyTo?: string;
+}): Promise<{ success: boolean; externalId?: string; error?: string }> {
+  try {
+    const apiKey = process.env.MAILGUN_API_KEY;
+    const domain = process.env.MAILGUN_DOMAIN;
+
+    if (!apiKey || !domain) {
+      return {
+        success: false,
+        error: "MAILGUN_API_KEY or MAILGUN_DOMAIN not configured",
+      };
+    }
+
+    const fromEmail = options.fromEmail || process.env.MAILGUN_FROM_EMAIL || `no-reply@${domain}`;
+    const fromName = options.fromName || process.env.MAILGUN_FROM_NAME || "HomeReach";
+    const from = `${fromName} <${fromEmail}>`;
+
+    const body = new URLSearchParams();
+    body.set("from", from);
+    body.set("to", options.to);
+    body.set("subject", options.subject);
+    body.set("html", options.html);
+    body.set("text", options.text);
+    if (options.replyTo) {
+      body.set("h:Reply-To", options.replyTo);
+    }
+
+    const auth = Buffer.from(`api:${apiKey}`).toString("base64");
+
+    const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Mailgun error ${response.status}: ${detail}`);
+    }
+
+    const data = (await response.json()) as { id?: string; message?: string };
+    return { success: true, externalId: data.id };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "Unknown email error";
+    console.error("[sales/event/email] send failed:", error);
+    return { success: false, error };
+  }
+}
+
 export async function POST(request: Request) {
   try {
   const supabase = await createClient();
@@ -144,15 +205,16 @@ export async function POST(request: Request) {
           </p>
         </div>
       `;
-      const origEmail = process.env.MAILGUN_FROM_EMAIL;
-      const origName  = process.env.MAILGUN_FROM_NAME;
-      if (fromEmail) {
-        process.env.MAILGUN_FROM_EMAIL = fromEmail;
-        process.env.MAILGUN_FROM_NAME  = fromName;
-      }
-      sendResult = await sendEmail({ to: dest, subject: emailSubject, html: emailHtml, text: message, replyTo: fromEmail ?? undefined });
-      process.env.MAILGUN_FROM_EMAIL = origEmail;
-      process.env.MAILGUN_FROM_NAME  = origName;
+      // Send email directly via Mailgun with agent-specific from email/name
+      sendResult = await sendEmailWithAgentIdentity({
+        to: dest,
+        subject: emailSubject,
+        html: emailHtml,
+        text: message,
+        fromEmail: fromEmail || process.env.MAILGUN_FROM_EMAIL,
+        fromName: fromName || process.env.MAILGUN_FROM_NAME,
+        replyTo: fromEmail ?? undefined,
+      });
     }
 
     actualSent = sendResult?.success ?? false;

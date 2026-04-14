@@ -6,7 +6,8 @@ import { NextResponse } from "next/server";
 // POST /api/admin/agents/echo
 //
 // Routes leads to agents based on territory assignment, determines channel
-// (SMS or Email), builds personalized messages, and sends via /api/admin/sales/event
+// (SMS or Email), builds personalized messages, and sends directly via
+// Twilio SMS and Mailgun Email APIs without internal HTTP calls.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ interface EchoLead {
   city: string | null;
   category: string | null;
   assigned_agent_id: string | null;
+  score?: number;
 }
 
 interface EchoResult {
@@ -205,48 +207,111 @@ async function resolveAgentIdentity(
   return DEFAULT_AGENT;
 }
 
-// ─── Helper: Send via /api/admin/sales/event ─────────────────────────────────
+// ─── Helper: Send SMS via Twilio REST API ─────────────────────────────────
 
-async function sendOutreachEvent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  lead: EchoLead,
-  agent: AgentIdentity,
-  channel: "sms" | "email",
-  message: string,
-  emailSubject?: string
-): Promise<{ success: boolean; error?: string }> {
+async function sendViaTwilio(
+  toPhone: string,
+  fromPhone: string,
+  body: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const payload: Record<string, unknown> = {
-      agent_id: agent.id,
-      lead_id: lead.id,
-      action_type: channel === "sms" ? "text_sent" : "email_sent",
-      channel,
-      city: lead.city,
-      category: lead.category,
-      message,
-      ...(channel === "email" && emailSubject ? { subject: emailSubject } : {}),
-    };
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
 
-    // Call the sales event endpoint
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://home-reach.com";
-    const eventResponse = await fetch(
-      `${baseUrl}/api/admin/sales/event`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    if (!eventResponse.ok) {
-      const error = await eventResponse.text();
+    if (!accountSid || !authToken) {
       return {
         success: false,
-        error: `Event endpoint returned ${eventResponse.status}: ${error}`,
+        error: "TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not configured",
       };
     }
 
-    return { success: true };
+    const form = new URLSearchParams();
+    form.append("To", toPhone);
+    form.append("From", fromPhone);
+    form.append("Body", body);
+
+    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+    const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+
+    const response = await fetch(twilioUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `Twilio error ${response.status}: ${errorText}`,
+      };
+    }
+
+    const data = (await response.json()) as { sid?: string };
+    return { success: true, messageId: data.sid };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    return { success: false, error };
+  }
+}
+
+// ─── Helper: Send Email via Mailgun REST API ──────────────────────────────
+
+async function sendViaMailgun(
+  toEmail: string,
+  fromEmail: string,
+  fromName: string,
+  subject: string,
+  text: string,
+  html?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const apiKey = process.env.MAILGUN_API_KEY;
+    const domain = process.env.MAILGUN_DOMAIN;
+
+    if (!apiKey || !domain) {
+      return {
+        success: false,
+        error: "MAILGUN_API_KEY or MAILGUN_DOMAIN not configured",
+      };
+    }
+
+    const form = new URLSearchParams();
+    form.append("from", `${fromName} <${fromEmail}>`);
+    form.append("to", toEmail);
+    form.append("subject", subject);
+    form.append("text", text);
+    if (html) {
+      form.append("html", html);
+    }
+
+    const auth = Buffer.from(`api:${apiKey}`).toString("base64");
+
+    const response = await fetch(
+      `https://api.mailgun.net/v3/${domain}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `Mailgun error ${response.status}: ${errorText}`,
+      };
+    }
+
+    const data = (await response.json()) as { id?: string };
+    return { success: true, messageId: data.id };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     return { success: false, error };
@@ -256,7 +321,7 @@ async function sendOutreachEvent(
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
 export async function POST() {
-  const supabase = await createClient();
+  let supabase: Awaited<ReturnType<typeof createClient>>;
   const details: EchoResult["summary"] = {
     leads_processed: 0,
     sms_sent: 0,
@@ -267,6 +332,8 @@ export async function POST() {
   const detailLog: EchoResult["details"] = [];
 
   try {
+    supabase = await createClient();
+
     // 1. Fetch up to 20 queued leads with agent assignment
     const { data: leads, error: leadsError } = await supabase
       .from("sales_leads")
@@ -278,7 +345,8 @@ export async function POST() {
         email,
         city,
         category,
-        assigned_agent_id
+        assigned_agent_id,
+        score
         `
       )
       .eq("status", "queued")
@@ -339,6 +407,7 @@ export async function POST() {
         // Build message
         let message: string;
         let emailSubject: string | undefined;
+        let emailHtml: string | undefined;
 
         if (channel === "sms") {
           message = buildSmsMessage(
@@ -347,6 +416,10 @@ export async function POST() {
             typedLead.category || "local",
             typedLead.city || "your area"
           );
+          // Add STOP message if not present
+          if (!message.includes("STOP")) {
+            message = `${message}\n\nReply STOP to unsubscribe.`;
+          }
         } else {
           message = buildEmailBody(
             typedLead.business_name,
@@ -360,19 +433,69 @@ export async function POST() {
             typedLead.city || "your area",
             typedLead.category || "local"
           );
+          // Build HTML version
+          emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px;">
+              <p>${message.replace(/\n/g, "<br>")}</p>
+              <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
+              <p style="color: #999; font-size: 12px;">
+                You're receiving this because your business was identified as a match for HomeReach advertising.
+                <a href="https://home-reach.com/unsubscribe?email=${encodeURIComponent(typedLead.email || "")}">Unsubscribe</a>
+              </p>
+            </div>
+          `;
         }
 
-        // Send via /api/admin/sales/event
-        const sendResult = await sendOutreachEvent(
-          supabase,
-          typedLead,
-          agent,
-          channel,
-          message,
-          emailSubject
-        );
+        // Send directly via Twilio or Mailgun
+        let sendResult: { success: boolean; messageId?: string; error?: string };
+
+        if (channel === "sms") {
+          sendResult = await sendViaTwilio(
+            typedLead.phone!,
+            agent.phone,
+            message
+          );
+        } else {
+          sendResult = await sendViaMailgun(
+            typedLead.email!,
+            agent.email,
+            agent.name,
+            emailSubject!,
+            message,
+            emailHtml
+          );
+        }
 
         if (sendResult.success) {
+          // Log to sales_events
+          try {
+            await supabase.from("sales_events").insert({
+              lead_id: typedLead.id,
+              action_type: channel === "sms" ? "text_sent" : "email_sent",
+              channel,
+              message,
+              ...(channel === "email" && emailSubject
+                ? { metadata: { subject: emailSubject } }
+                : {}),
+            });
+          } catch (logErr) {
+            console.error(`[echo] failed to log event for lead ${typedLead.id}:`, logErr);
+          }
+
+          // Update lead status
+          try {
+            await supabase
+              .from("sales_leads")
+              .update({
+                status: "contacted",
+                pipeline_stage: "contacted",
+                last_contacted_at: new Date().toISOString(),
+              })
+              .eq("id", typedLead.id);
+          } catch (updateErr) {
+            console.error(`[echo] failed to update lead ${typedLead.id}:`, updateErr);
+          }
+
           if (channel === "sms") {
             details.sms_sent++;
           } else {

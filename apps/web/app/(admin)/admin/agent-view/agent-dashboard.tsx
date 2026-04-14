@@ -55,6 +55,39 @@ type SectionKey = "replies" | "followups" | "texts" | "emails" | "facebook_dms" 
 
 type SessionStats = { sent: number; deals: number; revenue: number };
 
+type Reply = {
+  id: string;
+  lead_id: string;
+  business_name: string;
+  phone: string | null;
+  email: string | null;
+  message: string;
+  channel: "sms" | "email";
+  received_at: string;
+  city: string;
+  category: string;
+};
+
+type LeaderboardEntry = {
+  agent_name: string;
+  messages_sent: number;
+  replies: number;
+  deals: number;
+  revenue_cents: number;
+  reply_rate: number;
+};
+
+type ActivityTargets = {
+  sms_sent: number;
+  sms_target: number;
+  email_sent: number;
+  email_target: number;
+  followups_sent: number;
+  followups_target: number;
+  replies_handled: number;
+  replies_pending: number;
+};
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function AgentDashboard({ agentId }: { agentId: string }) {
@@ -64,6 +97,15 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   const [flash,        setFlash]        = useState<{ msg: string; ok: boolean } | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [session,      setSession]      = useState<SessionStats>({ sent: 0, deals: 0, revenue: 0 });
+  const [replies,      setReplies]      = useState<Reply[]>([]);
+  const [replyDraft,   setReplyDraft]   = useState<Record<string, string>>({});
+  const [leaderboard,  setLeaderboard]  = useState<LeaderboardEntry[]>([]);
+  const [activity,     setActivity]     = useState<ActivityTargets>({
+    sms_sent: 0, sms_target: 30,
+    email_sent: 0, email_target: 20,
+    followups_sent: 0, followups_target: 10,
+    replies_handled: 0, replies_pending: 0,
+  });
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadTasks = useCallback(async () => {
@@ -87,6 +129,48 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   }, []);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  // ── Load replies (live conversations) ──────────────────────────────────────
+  useEffect(() => {
+    const fetchReplies = async () => {
+      try {
+        const res = await fetch("/api/admin/sales/replies");
+        if (res.ok) {
+          const result = await res.json();
+          setReplies(result.replies || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch replies:", err);
+      }
+    };
+    fetchReplies();
+    const interval = setInterval(fetchReplies, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ── Load leaderboard ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        const res = await fetch("/api/admin/sales/leaderboard");
+        if (res.ok) {
+          const result = await res.json();
+          const entries = (result.leaderboard || []).slice(0, 5).map((entry: any) => ({
+            agent_name: entry.name,
+            messages_sent: entry.messages || 0,
+            replies: entry.replies || 0,
+            deals: entry.deals || 0,
+            revenue_cents: entry.revenue_cents || 0,
+            reply_rate: entry.reply_rate || 0,
+          }));
+          setLeaderboard(entries);
+        }
+      } catch (err) {
+        console.error("Failed to fetch leaderboard:", err);
+      }
+    };
+    fetchLeaderboard();
+  }, []);
 
   // ── Flash helper ──────────────────────────────────────────────────────────
   const showFlash = (msg: string, ok = true) => {
@@ -143,6 +227,27 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     await logEvent({ action_type: "facebook_sent", channel: "facebook", message: post.post_copy });
     showFlash(`✓ Group post logged`);
     done(post.id);
+  };
+
+  const sendFollowUpReply = async (reply: Reply, message: string) => {
+    const r = await logEvent({
+      action_type: "follow_up_sent",
+      lead_id: reply.lead_id,
+      channel: reply.channel,
+      message,
+    });
+    if (r.error) {
+      showFlash(`Failed: ${r.error}`, false);
+      return;
+    }
+    showFlash(`✓ Reply sent to ${reply.business_name}`);
+    setReplies(prev => prev.filter(rep => rep.id !== reply.id));
+    setReplyDraft(prev => {
+      const next = { ...prev };
+      delete next[reply.id];
+      return next;
+    });
+    setSession(s => ({ ...s, sent: s.sent + 1 }));
   };
 
   const skipLead = async (lead: Lead, taskId: string) => {
@@ -259,6 +364,69 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
             style={{ width: `${progress}%` }}
           />
         </div>
+
+        {/* Daily Activity Tracker */}
+        <div className="mt-4 pt-4 border-t border-gray-800">
+          <div className="text-xs font-bold text-gray-400 mb-3">Today's Progress</div>
+          <div className="grid grid-cols-4 gap-3">
+            <ProgressBar
+              label="SMS"
+              current={data.totals.sent_today + session.sent}
+              target={30}
+              icon="📱"
+            />
+            <ProgressBar
+              label="Emails"
+              current={data.totals.sent_today + session.sent}
+              target={20}
+              icon="📧"
+            />
+            <ProgressBar
+              label="Follow-ups"
+              current={data.totals.sent_today + session.sent}
+              target={10}
+              icon="🔁"
+            />
+            <ProgressBar
+              label="Replies"
+              current={replies.length}
+              target={data.sections.replies.length}
+              icon="💬"
+            />
+          </div>
+        </div>
+
+        {/* Leaderboard */}
+        {leaderboard.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-800">
+            <h3 className="text-xs font-bold text-gray-400 mb-3 flex items-center gap-2">
+              <span>🏆</span>
+              <span>Today's Leaderboard</span>
+            </h3>
+            <div className="text-xs overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-800">
+                    <th className="text-left py-2 px-2 font-bold text-gray-400">Agent</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">Sent</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">Replies</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">Deals</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((entry) => (
+                    <tr key={entry.agent_name} className={`border-b border-gray-800/50 ${entry.agent_name === data.agent.name ? "bg-blue-500/10" : ""}`}>
+                      <td className="py-2 px-2 text-gray-300">{entry.agent_name}</td>
+                      <td className="text-right py-2 px-2 text-gray-400">{entry.messages_sent}</td>
+                      <td className="text-right py-2 px-2 text-gray-400">{entry.replies}</td>
+                      <td className="text-right py-2 px-2 text-emerald-400 font-semibold">{entry.deals}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Section tabs ──────────────────────────────────────────────────── */}
@@ -294,6 +462,18 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
 
       {/* ── Section content ───────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-6 max-w-4xl w-full mx-auto">
+        {/* Live Conversations Panel */}
+        {replies.length > 0 && (
+          <div className="mb-6">
+            <LiveConversationsPanel
+              replies={replies}
+              replyDraft={replyDraft}
+              onDraftChange={setReplyDraft}
+              onSendReply={sendFollowUpReply}
+            />
+          </div>
+        )}
+
         {activeTab === "replies" && (
           <RepliesSection
             tasks={data.sections.replies}
@@ -982,6 +1162,91 @@ function GroupPostCard({ post, onMarkPosted }: { post: GroupPost; onMarkPosted: 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ── LIVE CONVERSATIONS PANEL ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function LiveConversationsPanel({
+  replies,
+  replyDraft,
+  onDraftChange,
+  onSendReply,
+}: {
+  replies: Reply[];
+  replyDraft: Record<string, string>;
+  onDraftChange: (drafts: Record<string, string>) => void;
+  onSendReply: (reply: Reply, message: string) => void;
+}) {
+  if (replies.length === 0) {
+    return <EmptyState icon="💬" message="No new replies in the last 24 hours" />;
+  }
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-emerald-500/30 overflow-hidden shadow-lg">
+      <div className="bg-emerald-900/20 px-5 py-3 border-b border-emerald-500/20 flex items-center gap-2">
+        <span className="text-base">💬</span>
+        <span className="flex-1 font-bold text-white">Live Conversations</span>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+          <span className="text-xs text-emerald-400 font-semibold">{replies.length} new</span>
+        </div>
+      </div>
+      <div className="divide-y divide-gray-800">
+        {replies.map((reply) => (
+          <div key={reply.id} className="p-4 hover:bg-gray-800/50 transition-colors">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h4 className="text-white font-bold text-sm">{reply.business_name}</h4>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                    reply.channel === "sms"
+                      ? "bg-green-500/20 text-green-300"
+                      : "bg-blue-500/20 text-blue-300"
+                  }`}>
+                    {reply.channel === "sms" ? "📱 SMS" : "📧 Email"}
+                  </span>
+                  {reply.city && <span className="text-xs text-gray-500">{reply.city}</span>}
+                  {reply.category && <span className="text-xs text-gray-500">{reply.category}</span>}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs text-gray-500">
+                  {new Date(reply.received_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-800/50 rounded-lg p-3 mb-3 border border-gray-700">
+              <p className="text-sm text-gray-300">{reply.message}</p>
+            </div>
+            <div className="space-y-2">
+              <textarea
+                value={replyDraft[reply.id] || ""}
+                onChange={(e) =>
+                  onDraftChange({ ...replyDraft, [reply.id]: e.target.value })
+                }
+                placeholder="Type your reply..."
+                rows={2}
+                className="w-full bg-gray-800 text-white text-sm rounded-lg px-3 py-2 border border-gray-700 focus:outline-none focus:border-emerald-500 resize-none placeholder-gray-600"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() =>
+                    onSendReply(reply, replyDraft[reply.id] || "Thanks for reaching out!")
+                  }
+                  disabled={!replyDraft[reply.id]}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  Send Reply
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ── Shared sub-components ─────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -990,6 +1255,31 @@ function StatChip({ label, value, color }: { label: string; value: string | numb
     <div className="flex flex-col items-center">
       <span className={`font-bold text-sm ${color}`}>{value}</span>
       <span className="text-gray-600 text-xs">{label}</span>
+    </div>
+  );
+}
+
+function ProgressBar({ label, current, target, icon }: { label: string; current: number; target: number; icon: string }) {
+  const percent = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+  let colorClass = "bg-gray-600";
+  if (percent >= 100) {
+    colorClass = "bg-emerald-500";
+  } else if (percent >= 50) {
+    colorClass = "bg-yellow-500";
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-400">{icon} {label}</span>
+        <span className="text-xs font-bold text-gray-300">{current}/{target}</span>
+      </div>
+      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div
+          className={`h-full transition-all duration-300 ${colorClass}`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
     </div>
   );
 }
