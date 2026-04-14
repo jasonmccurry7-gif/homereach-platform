@@ -31,6 +31,10 @@
     {
       "path": "/api/admin/system/agents/prospector",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/admin/agents/scraper",
+      "schedule": "0 */3 * * *"
     }
   ]
 }
