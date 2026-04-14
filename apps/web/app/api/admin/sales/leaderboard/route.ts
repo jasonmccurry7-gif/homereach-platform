@@ -16,11 +16,23 @@ export async function GET(request: Request) {
 
   if (evError) return NextResponse.json({ error: evError.message }, { status: 500 });
 
-  // Get all profiles + agent identities for name lookup
-  const [{ data: profiles }, { data: identities }] = await Promise.all([
+  // Get all profiles + agent identities + streaks
+  const [{ data: profiles }, { data: identities }, { data: streaks }] = await Promise.all([
     supabase.from("profiles").select("id, full_name, email"),
     supabase.from("agent_identities").select("agent_id, from_name"),
+    supabase.from("agent_streaks").select("agent_id, current_streak, longest_streak, power_mode_days_total, today_power_mode, streak_active"),
   ]);
+
+  const streakMap: Record<string, { current: number; longest: number; total: number; active: boolean; today: boolean }> = {};
+  for (const s of streaks ?? []) {
+    streakMap[s.agent_id] = {
+      current: s.current_streak ?? 0,
+      longest: s.longest_streak ?? 0,
+      total:   s.power_mode_days_total ?? 0,
+      active:  s.streak_active ?? false,
+      today:   s.today_power_mode ?? false,
+    };
+  }
 
   // Build name map: prefer profiles.full_name, fallback to agent_identities.from_name, then email prefix
   const profileMap: Record<string, string> = {};
@@ -92,17 +104,43 @@ export async function GET(request: Request) {
   }
 
   const leaderboard = Object.values(agentStats).map(s => {
-    const replyRate  = s.messages > 0 ? +(s.replies / s.messages * 100).toFixed(1) : 0;
-    const closeRate  = s.messages > 0 ? +(s.deals   / s.messages * 100).toFixed(1) : 0;
+    const replyRate    = s.messages > 0 ? +(s.replies / s.messages * 100).toFixed(1) : 0;
+    const closeRate    = s.messages > 0 ? +(s.deals   / s.messages * 100).toFixed(1) : 0;
+    const streak       = streakMap[s.agent_id] ?? { current: 0, longest: 0, total: 0, active: false, today: false };
     const flags: string[] = [];
     if (s.messages > 50 && replyRate < 2) flags.push("high_activity_low_conversion");
-    if (s.messages < 10) flags.push("low_activity");
+    if (s.messages < 10)  flags.push("low_activity");
     if (s.replies > 0 && s.conversations === 0) flags.push("replies_not_followed_up");
-    return { ...s, reply_rate: replyRate, close_rate: closeRate, flags };
+    if (streak.today)     flags.push("power_mode_today");
+    // Streak badges
+    const streakBadge =
+      streak.current >= 20 ? { label: "👑 TOP 1%",    color: "bg-yellow-400 text-black" } :
+      streak.current >= 10 ? { label: "🏆 ELITE",     color: "bg-purple-600 text-white" } :
+      streak.current >= 5  ? { label: "⚡ CONSISTENT", color: "bg-blue-500 text-white"   } :
+      streak.current >= 3  ? { label: "🔥 HOT STREAK", color: "bg-orange-500 text-white" } :
+      null;
+
+    return {
+      ...s,
+      reply_rate:   replyRate,
+      close_rate:   closeRate,
+      flags,
+      current_streak:       streak.current,
+      longest_streak:       streak.longest,
+      power_mode_days_total: streak.total,
+      power_mode_today:     streak.today,
+      streak_active:        streak.active,
+      streak_badge:         streakBadge,
+    };
   });
 
-  // Sort by deals desc, then revenue desc, then messages desc
-  leaderboard.sort((a, b) => b.deals - a.deals || b.revenue_cents - a.revenue_cents || b.messages - a.messages);
+  // Sort: deals → revenue → current_streak → messages
+  leaderboard.sort((a, b) =>
+    b.deals - a.deals ||
+    b.revenue_cents - a.revenue_cents ||
+    b.current_streak - a.current_streak ||
+    b.messages - a.messages
+  );
 
   // Tag top performers
   if (leaderboard.length > 0) {
@@ -111,6 +149,8 @@ export async function GET(request: Request) {
     if (bestConverter) bestConverter.flags = [...(bestConverter.flags ?? []), "best_converter"];
     const mostActive = [...leaderboard].sort((a,b) => b.messages - a.messages)[0];
     if (mostActive) mostActive.flags = [...(mostActive.flags ?? []), "most_active"];
+    const hotStreak = [...leaderboard].sort((a,b) => b.current_streak - a.current_streak)[0];
+    if (hotStreak && hotStreak.current_streak >= 3) hotStreak.flags = [...(hotStreak.flags ?? []), "longest_streak"];
   }
 
   return NextResponse.json({ leaderboard, since });

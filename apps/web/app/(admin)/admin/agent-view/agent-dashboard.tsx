@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,6 +115,17 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     replies_handled: 0, replies_pending: 0,
   });
 
+  // ── Power Mode state ──────────────────────────────────────────────────────
+  const [powerMode, setPowerMode] = useState({
+    active:        false,
+    justActivated: false,
+    currentStreak: 0,
+    longestStreak: 0,
+    totalDays:     0,
+    milestone:     0,   // 3, 5, 10, 20 or 0
+  });
+  const [streakBanner, setStreakBanner] = useState<string | null>(null);
+
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -196,6 +207,57 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     setTimeout(() => setFlash(null), 3000);
   };
 
+  // ── Power Mode check (called after every send) ───────────────────────────
+  const checkPowerMode = React.useCallback(async () => {
+    try {
+      const res  = await fetch("/api/admin/sales/power-mode/check", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ agent_id: agentId }),
+      });
+      const pm = await res.json();
+      if (!pm.power_mode_hit) return;
+
+      setPowerMode(prev => ({
+        active:        true,
+        justActivated: pm.just_activated && !prev.active,
+        currentStreak: pm.current_streak ?? prev.currentStreak,
+        longestStreak: pm.longest_streak ?? prev.longestStreak,
+        totalDays:     pm.total_power_days ?? prev.totalDays,
+        milestone:     pm.milestone ?? 0,
+      }));
+
+      // Show milestone banner
+      if (pm.just_activated) {
+        const streakMsg =
+          pm.milestone === 20 ? `👑 20 DAY STREAK — Top performer status.` :
+          pm.milestone === 10 ? `🏆 10 DAY STREAK — Elite consistency.` :
+          pm.milestone === 5  ? `⚡ 5 DAY STREAK — You're outperforming most.` :
+          pm.milestone === 3  ? `🔥 3 DAY STREAK — You're building momentum.` :
+          null;
+        if (streakMsg) setStreakBanner(streakMsg);
+        setTimeout(() => setStreakBanner(null), 8000);
+      }
+    } catch { /* non-critical */ }
+  }, [agentId]);
+
+  // Load initial power mode state on mount
+  React.useEffect(() => {
+    fetch(`/api/admin/sales/power-mode/check?agent_id=${agentId}`)
+      .then(r => r.json())
+      .then(pm => {
+        if (pm.power_mode_hit) {
+          setPowerMode(prev => ({
+            ...prev,
+            active:        true,
+            currentStreak: pm.current_streak ?? 0,
+            longestStreak: pm.longest_streak ?? 0,
+            totalDays:     pm.total_power_days ?? 0,
+          }));
+        }
+      }).catch(() => {});
+  }, [agentId]);
+
   // ── Mark task done (remove from list) ─────────────────────────────────────
   const done = (id: string) => setCompletedIds(prev => new Set([...prev, id]));
 
@@ -225,6 +287,7 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     done(taskId);
     setSession(s => ({ ...s, sent: s.sent + 1, sms: s.sms + 1 }));
     setActivity(a => ({ ...a, sms_sent: a.sms_sent + 1 }));
+    checkPowerMode();
   };
 
   const sendEmail = async (lead: Lead, message: string, subject: string, taskId: string) => {
@@ -234,6 +297,7 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
     done(taskId);
     setSession(s => ({ ...s, sent: s.sent + 1, email: s.email + 1 }));
     setActivity(a => ({ ...a, email_sent: a.email_sent + 1 }));
+    checkPowerMode();
   };
 
   const markFbSent = async (lead: Lead, message: string, taskId: string) => {
@@ -379,6 +443,33 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
         </div>
       )}
 
+      {/* ⚡ POWER MODE ACTIVATED banner */}
+      {powerMode.justActivated && (
+        <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-orange-500 via-red-500 to-orange-500 text-white text-center py-3 font-bold text-sm animate-pulse shadow-2xl">
+          🔥 POWER MODE ACTIVATED — {data?.agent.name} just hit quota and is now in closing mode.
+        </div>
+      )}
+
+      {/* Streak milestone banner */}
+      {streakBanner && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-40 px-8 py-4 rounded-2xl bg-gray-900 border-2 border-orange-500 text-white font-bold text-base shadow-2xl text-center min-w-80">
+          {streakBanner}
+        </div>
+      )}
+
+      {/* Power Mode status bar (when active) */}
+      {powerMode.active && !powerMode.justActivated && (
+        <div className="bg-gradient-to-r from-orange-900/50 to-red-900/50 border-b border-orange-700/50 px-6 py-2 flex items-center justify-between text-sm">
+          <span className="text-orange-300 font-semibold">
+            ⚡ POWER MODE ACTIVE — {powerMode.currentStreak > 0 ? `🔥 ${powerMode.currentStreak}-day streak` : "Quota complete"}
+          </span>
+          <span className="text-orange-400 text-xs">
+            {powerMode.totalDays} total power mode day{powerMode.totalDays !== 1 ? "s" : ""}
+            {powerMode.longestStreak > 0 ? ` · Best: ${powerMode.longestStreak} days` : ""}
+          </span>
+        </div>
+      )}
+
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0">
         <div className="flex items-start justify-between gap-4">
@@ -484,27 +575,42 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
                   <tr className="border-b border-gray-800">
                     <th className="text-left py-2 px-2 font-bold text-gray-400">Rank</th>
                     <th className="text-left py-2 px-2 font-bold text-gray-400">Agent</th>
-                    <th className="text-right py-2 px-2 font-bold text-gray-400">SMS</th>
-                    <th className="text-right py-2 px-2 font-bold text-gray-400">Email</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">Msgs</th>
                     <th className="text-right py-2 px-2 font-bold text-gray-400">Deals</th>
                     <th className="text-right py-2 px-2 font-bold text-gray-400">Rev</th>
+                    <th className="text-right py-2 px-2 font-bold text-orange-400">🔥 Streak</th>
+                    <th className="text-right py-2 px-2 font-bold text-gray-400">🏆 Best</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {leaderboard.map((entry, i) => {
-                    const medals = ["🥇", "🥈", "🥉"];
-                    const isMe = entry.agent_name === data.agent.name;
-                    const isBehind = (entry.messages_sent ?? 0) < 40;
+                  {(leaderboard as any[]).map((entry, i) => {
+                    const medals   = ["🥇", "🥈", "🥉"];
+                    const isMe     = entry.agent_name === data.agent.name || entry.name === data.agent.name;
+                    const isBehind = (entry.messages_sent ?? entry.messages ?? 0) < 40;
+                    const streak   = entry.current_streak ?? 0;
+                    const badge    = entry.streak_badge;
                     return (
-                    <tr key={entry.agent_name} className={`border-b border-gray-800/50 ${isMe ? "bg-blue-500/10 font-semibold" : ""}`}>
+                    <tr key={entry.agent_name ?? entry.name ?? i} className={`border-b border-gray-800/50 ${isMe ? "bg-blue-500/10 font-semibold" : ""}`}>
                       <td className="py-2 px-2 text-center">{medals[i] ?? `#${i+1}`}</td>
                       <td className={`py-2 px-2 ${isMe ? "text-blue-300" : isBehind ? "text-red-400" : "text-gray-300"}`}>
-                        {entry.agent_name}{isBehind ? " ⚠️" : ""}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span>{entry.agent_name ?? entry.name}</span>
+                          {isBehind && <span title="Below 40 min">⚠️</span>}
+                          {entry.power_mode_today && <span title="Power Mode today">⚡</span>}
+                          {badge && (
+                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${badge.color}`}>
+                              {badge.label}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="text-right py-2 px-2 text-gray-400">{entry.messages_sent}</td>
-                      <td className="text-right py-2 px-2 text-gray-400">{entry.replies}</td>
+                      <td className="text-right py-2 px-2 text-gray-400">{entry.messages_sent ?? entry.messages ?? 0}</td>
                       <td className="text-right py-2 px-2 text-emerald-400 font-semibold">{entry.deals}</td>
                       <td className="text-right py-2 px-2 text-emerald-400">${((entry.revenue_cents ?? 0)/100).toFixed(0)}</td>
+                      <td className={`text-right py-2 px-2 font-bold ${streak >= 3 ? "text-orange-400" : "text-gray-500"}`}>
+                        {streak > 0 ? `${streak}🔥` : "—"}
+                      </td>
+                      <td className="text-right py-2 px-2 text-gray-500">{entry.longest_streak ?? 0}</td>
                     </tr>
                   );
                   })}
