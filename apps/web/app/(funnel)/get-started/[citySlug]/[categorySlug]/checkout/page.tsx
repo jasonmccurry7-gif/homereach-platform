@@ -3,8 +3,6 @@ import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCityBySlug, getCategoryBySlug, getBundleById } from "@/lib/funnel/queries";
 import { CheckoutForm } from "./checkout-form";
-import { resolvePrice } from "@homereach/services/pricing";
-import type { ResolvePriceInput } from "@homereach/types";
 
 export const metadata: Metadata = {
   title: "Confirm Your Spot — HomeReach",
@@ -29,26 +27,14 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
 
   if (!city || !category || !bundle) notFound();
 
-  // ── Phase 1: Resolve authoritative price from pricing engine ─────────────
-  // bundle.price (display-only) is NOT used for price display on this page.
-  // isFounding uses city.foundingEligible — server-controlled, never client-trusted.
-  let resolvedPriceCents: number;
-  let isFoundingPrice = false;
-  try {
-    const priceInput: ResolvePriceInput = {
-      productType: "bundle",
-      billingInterval: "monthly",
-      cityId: city.id,
-      bundleId: bundle.id,
-      isFounding: city.foundingEligible,
-    };
-    const resolved = await resolvePrice(priceInput);
-    resolvedPriceCents = resolved.workingPriceCents;
-    isFoundingPrice = resolved.isFoundingPrice;
-  } catch {
-    // Safe fallback — bundle.price is kept aligned with pricing profiles.
-    resolvedPriceCents = Math.round(Number(bundle.price) * 100);
-  }
+  // ── Phase 1: Resolve pricing based on founding eligibility ─────────────
+  // isFoundingOpen: true when this city's founding period is still open
+  // Pricing uses dedicated founding_price and standard_price columns (in cents)
+  const isFoundingOpen = city.foundingEligible ?? true;
+  const foundingPriceCents = (bundle.founding_price as number) ?? Math.round(Number(bundle.price) * 100);
+  const standardPriceCents = (bundle.standard_price as number) ?? Math.round(foundingPriceCents * 1.5);
+  const resolvedPriceCents = isFoundingOpen ? foundingPriceCents : standardPriceCents;
+  const pricingType: 'founding' | 'standard' = isFoundingOpen ? 'founding' : 'standard';
 
   // Check auth
   const supabase = await createClient();
@@ -107,20 +93,39 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
               <div className="flex items-center justify-between">
                 <span className="font-bold text-gray-900">Monthly total</span>
                 <div className="text-right">
-                  <span className="text-2xl font-bold text-gray-900">
-                    ${(resolvedPriceCents / 100).toLocaleString()}
-                  </span>
-                  <span className="text-sm text-gray-400">/mo</span>
-                  {isFoundingPrice && (
-                    <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                      Founding rate
-                    </span>
+                  {isFoundingOpen ? (
+                    <>
+                      <span className="text-sm text-gray-400 line-through">
+                        ${(standardPriceCents / 100).toLocaleString()}
+                      </span>
+                      <br />
+                      <span className="text-2xl font-bold text-blue-600">
+                        ${(resolvedPriceCents / 100).toLocaleString()}
+                      </span>
+                      <span className="text-sm text-gray-400">/mo</span>
+                      <br />
+                      <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                        Founding Member Rate
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-2xl font-bold text-gray-900">
+                        ${(resolvedPriceCents / 100).toLocaleString()}
+                      </span>
+                      <span className="text-sm text-gray-400">/mo</span>
+                    </>
                   )}
                 </div>
               </div>
               <p className="mt-0.5 text-right text-xs text-gray-400">
-                Billed monthly · Cancel anytime after 90 days
+                Billed monthly · Price locked in for life
               </p>
+              {isFoundingOpen && (
+                <p className="mt-3 text-right text-xs text-gray-600">
+                  Founding Member Rate — locked in for life. Once this city fills, all new advertisers pay standard pricing.
+                </p>
+              )}
             </div>
 
             {/* Exclusivity reinforcement */}
@@ -168,7 +173,9 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
             bundleId={bundleId}
             bundleName={bundle.name}
             resolvedPriceCents={resolvedPriceCents}
-            isFoundingPrice={isFoundingPrice}
+            pricingType={pricingType}
+            isFoundingOpen={isFoundingOpen}
+            standardPriceCents={standardPriceCents}
             cityId={city.id}
             cityName={city.name}
             categoryId={category.id}

@@ -47,31 +47,38 @@ export default async function BundleSelectionPage({ params }: Props) {
 
   // ── Phase 1: Resolve authoritative prices from pricing engine ─────────────
   // bundle.price (display-only) is NOT used for price display in this page.
-  // All prices come from the pricing engine via resolvePrice().
-  // isFounding uses city.foundingEligible — server-controlled, never client-trusted.
+  // Primary: use bundle.foundingPriceCents if city.isFoundingOpen, else bundle.standardPriceCents
+  // Secondary: try pricing engine via resolvePrice()
+  // isFounding uses city.isFoundingOpen — server-controlled, never client-trusted.
   const resolvedPriceMap = new Map<string, { priceCents: number; isFoundingPrice: boolean }>();
 
   await Promise.all(
     bundleList.map(async (bundle) => {
       try {
+        // Primary: use bundle's bundled pricing data
+        const isFoundingPrice = city.isFoundingOpen;
+        const checkoutPrice = isFoundingPrice ? bundle.foundingPriceCents : bundle.standardPriceCents;
+
+        // Secondary: try pricing engine as fallback
         const input: ResolvePriceInput = {
           productType: "bundle",
           billingInterval: "monthly",
           cityId: city.id,
           bundleId: bundle.id,
-          isFounding: city.foundingEligible,
+          isFounding: isFoundingPrice,
         };
         const resolved = await resolvePrice(input);
         resolvedPriceMap.set(bundle.id, {
-          priceCents: resolved.workingPriceCents,
-          isFoundingPrice: resolved.isFoundingPrice,
+          priceCents: resolved.workingPriceCents ?? checkoutPrice,
+          isFoundingPrice,
         });
       } catch {
-        // If pricing engine fails for a bundle, fall back to bundle.price display value.
-        // This is a safe fallback — bundle.price is kept aligned with pricing profiles.
+        // If pricing engine fails, use bundle's bundled pricing data
+        const isFoundingPrice = city.isFoundingOpen;
+        const checkoutPrice = isFoundingPrice ? bundle.foundingPriceCents : bundle.standardPriceCents;
         resolvedPriceMap.set(bundle.id, {
-          priceCents: Math.round(Number(bundle.price) * 100),
-          isFoundingPrice: false,
+          priceCents: checkoutPrice,
+          isFoundingPrice,
         });
       }
     })
@@ -121,13 +128,16 @@ export default async function BundleSelectionPage({ params }: Props) {
       <div className="mt-8 grid gap-5 lg:grid-cols-3">
         {availableBundles.map((bundle) => {
           const resolved = resolvedPriceMap.get(bundle.id) ?? {
-            priceCents: Math.round(Number(bundle.price) * 100),
-            isFoundingPrice: false,
+            priceCents: city.isFoundingOpen ? bundle.foundingPriceCents : bundle.standardPriceCents,
+            isFoundingPrice: city.isFoundingOpen,
           };
           return (
             <BundleCard
               key={bundle.id}
               bundle={bundle}
+              standardPriceCents={bundle.standardPriceCents}
+              foundingPriceCents={bundle.foundingPriceCents}
+              isFoundingOpen={city.isFoundingOpen}
               resolvedPriceCents={resolved.priceCents}
               isFoundingPrice={resolved.isFoundingPrice}
               cityId={city.id}
@@ -218,6 +228,9 @@ export default async function BundleSelectionPage({ params }: Props) {
 
 function BundleCard({
   bundle,
+  standardPriceCents,
+  foundingPriceCents,
+  isFoundingOpen,
   resolvedPriceCents,
   isFoundingPrice,
   cityId,
@@ -226,6 +239,12 @@ function BundleCard({
   categorySlug,
 }: {
   bundle: Awaited<ReturnType<typeof getBundlesWithAvailability>>[0];
+  /** Standard pricing (cents). */
+  standardPriceCents: number;
+  /** Founding member pricing (cents). */
+  foundingPriceCents: number;
+  /** Whether founding pricing is currently open. */
+  isFoundingOpen: boolean;
   /** Authoritative price from pricing engine (cents). NEVER use bundle.price here. */
   resolvedPriceCents: number;
   isFoundingPrice: boolean;
@@ -248,6 +267,8 @@ function BundleCard({
 
   // Convert cents to dollars for display
   const displayPrice = resolvedPriceCents / 100;
+  const standardPrice = (standardPriceCents / 100).toLocaleString();
+  const foundingPrice = (foundingPriceCents / 100).toLocaleString();
 
   return (
     <div
@@ -285,17 +306,29 @@ function BundleCard({
 
         {/* Name + price */}
         <h3 className="text-xl font-bold text-gray-900">{bundle.name}</h3>
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className="text-3xl font-bold text-gray-900">
-            ${displayPrice.toLocaleString()}
-          </span>
-          <span className="text-sm text-gray-500">/ campaign</span>
-          {isFoundingPrice && (
-            <span className="ml-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-              Founding rate
+        {bundle.spotType === "anchor" && (
+          <p className="text-xs text-amber-700 font-semibold mt-1">Featured Business · Largest placement · Only 1 per card</p>
+        )}
+
+        {/* Pricing display */}
+        {isFoundingOpen ? (
+          <div className="mt-2">
+            <p className="text-sm text-gray-400 line-through">${standardPrice}/mo</p>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-bold text-blue-600">${foundingPrice}</span>
+              <span className="text-sm text-gray-500">/mo</span>
+            </div>
+            <span className="inline-block mt-1 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+              Founding Member Rate — locked in for life
             </span>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-3xl font-bold text-gray-900">${standardPrice}</span>
+            <span className="text-sm text-gray-500">/mo</span>
+          </div>
+        )}
+
         {bundle.description && (
           <p className="mt-2 text-sm text-gray-500 leading-snug">{bundle.description}</p>
         )}
@@ -312,9 +345,9 @@ function BundleCard({
               )}
             >
               {bundle.spotsRemaining === 1
-                ? "⚠️ Last spot available"
+                ? (isFoundingOpen ? "⚠️ Last founding spot" : "⚠️ Last spot")
                 : bundle.spotsRemaining <= 2
-                ? `Only ${bundle.spotsRemaining} spots left`
+                ? (isFoundingOpen ? `Only ${bundle.spotsRemaining} founding spots left` : `Only ${bundle.spotsRemaining} spots left`)
                 : `${bundle.spotsRemaining} of ${bundle.maxSpots} spots available`}
             </span>
           </div>
@@ -332,6 +365,13 @@ function BundleCard({
             />
           </div>
         </div>
+
+        {/* Founding member microcopy */}
+        {isFoundingOpen && (
+          <p className="mt-2 text-xs text-gray-500 italic leading-snug">
+            Once this city fills, all new advertisers pay standard pricing.
+          </p>
+        )}
 
         {/* Features */}
         <ul className="mt-5 space-y-2">
@@ -362,6 +402,7 @@ function BundleCard({
           citySlug={citySlug}
           categorySlug={categorySlug}
           highlight={bundle.highlight}
+          priceCents={isFoundingOpen ? foundingPriceCents : standardPriceCents}
         />
         <p className="mt-2 text-center text-xs text-gray-400">
           Secure checkout · No contracts

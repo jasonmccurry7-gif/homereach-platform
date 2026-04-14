@@ -16,6 +16,7 @@ export type CityWithAvailability = {
   totalSpotsRemaining: number;
   isComingSoon: boolean;
   foundingEligible: boolean;
+  isFoundingOpen: boolean;
 };
 
 export type CategoryWithAvailability = {
@@ -44,6 +45,8 @@ export type BundleWithAvailability = {
   badgeColor: string | null;
   highlight: boolean;
   sortOrder: number;
+  standardPriceCents: number;
+  foundingPriceCents: number;
 };
 
 // ── Step 1: Cities ────────────────────────────────────────────────────────────
@@ -68,6 +71,7 @@ export async function getActiveCities(): Promise<CityWithAvailability[]> {
     foundingEligible: city.founding_eligible ?? false,
     totalSpotsRemaining: city.is_active ? 99 : 0,
     isComingSoon: !city.is_active,
+    isFoundingOpen: city.founding_eligible ?? true,
   }));
 }
 
@@ -185,6 +189,8 @@ export async function getBundlesWithAvailability(
         badgeColor: (meta.badgeColor as string) ?? null,
         highlight: (meta.highlight as boolean) ?? false,
         sortOrder: (meta.sortOrder as number) ?? 99,
+        standardPriceCents: (bundle.standard_price as number) ?? Math.round(Number(bundle.price) * 150),
+        foundingPriceCents: (bundle.founding_price as number) ?? Math.round(Number(bundle.price) * 100),
       };
     })
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -211,6 +217,7 @@ export async function getCityBySlug(slug: string): Promise<CityWithAvailability 
     foundingEligible: data.founding_eligible ?? false,
     totalSpotsRemaining: data.is_active ? 99 : 0,
     isComingSoon: !data.is_active,
+    isFoundingOpen: data.founding_eligible ?? true,
   };
 }
 

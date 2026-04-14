@@ -7,7 +7,9 @@ interface CheckoutFormProps {
   bundleId: string;
   bundleName: string;
   resolvedPriceCents: number;
-  isFoundingPrice?: boolean;
+  pricingType: 'founding' | 'standard';
+  isFoundingOpen: boolean;
+  standardPriceCents: number;
   cityId: string;
   cityName: string;
   categoryId: string;
@@ -153,7 +155,9 @@ export function CheckoutForm({
   bundleId,
   bundleName,
   resolvedPriceCents,
-  isFoundingPrice = false,
+  pricingType,
+  isFoundingOpen,
+  standardPriceCents,
   cityId,
   cityName,
   categoryId,
@@ -222,6 +226,8 @@ export function CheckoutForm({
           phone: phone || undefined,
           addons: selectedAddons,
           nonprofitId: selectedAddons.includes("nonprofit") ? "local" : null,
+          pricingType,
+          lockedPrice: resolvedPriceCents,
         }),
       });
 
@@ -393,9 +399,9 @@ export function CheckoutForm({
               <span>+${addon.price}{addon.unit}</span>
             </div>
           ))}
-          {isFoundingPrice && (
+          {isFoundingOpen && (
             <div className="flex items-center gap-1.5 text-green-700 text-xs font-semibold pt-1">
-              🎉 Founding rate applied
+              🎉 Founding Member Rate — locked in for life
             </div>
           )}
           <div className="flex justify-between border-t border-gray-100 pt-3 font-bold text-gray-900">

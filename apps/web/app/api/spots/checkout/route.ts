@@ -32,7 +32,8 @@ export async function POST(req: Request) {
     const db = createServiceClient();
     const body = await req.json();
     const { bundleId, cityId, categoryId, businessName, phone,
-            addons = [], nonprofitId = null, citySlug = "", categorySlug = "" } = body;
+            addons = [], nonprofitId = null, citySlug = "", categorySlug = "",
+            pricingType = "founding", lockedPrice } = body;
 
     if (!bundleId || !cityId || !categoryId || !businessName?.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -87,7 +88,8 @@ export async function POST(req: Request) {
     const { data: assignment, error: assignErr } = await db.from("spot_assignments")
       .insert({ business_id: businessId, city_id: cityId, category_id: categoryId,
                 bundle_id: bundleId, spot_type: spotType, status: "pending",
-                monthly_value_cents: bundlePrice })
+                monthly_value_cents: bundlePrice, locked_price: lockedPrice ?? bundlePrice,
+                pricing_type: pricingType ?? "founding" })
       .select("id").single();
     if (assignErr || !assignment) return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500 });
 
@@ -108,7 +110,7 @@ export async function POST(req: Request) {
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         price_data: {
-          currency: "usd", unit_amount: bundlePrice,
+          currency: "usd", unit_amount: lockedPrice ?? bundlePrice,
           recurring: { interval: "month" },
           product_data: {
             name: `HomeReach ${SPOT_LABEL[spotType] ?? "Ad Spot"} — ${city.name}`,
@@ -171,9 +173,9 @@ export async function POST(req: Request) {
       line_items: lineItems,
       metadata: { businessId, cityId, categoryId, bundleId,
                   reservationId: assignment.id, addons: addons.join(","),
-                  nonprofitId: nonprofitId ?? "" },
+                  nonprofitId: nonprofitId ?? "", pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
       subscription_data: {
-        metadata: { reservationId: assignment.id, businessId, cityId, bundleId },
+        metadata: { reservationId: assignment.id, businessId, cityId, bundleId, pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
       },
       success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/get-started/${citySlug}/${categorySlug}?bundle=${bundleId}`,

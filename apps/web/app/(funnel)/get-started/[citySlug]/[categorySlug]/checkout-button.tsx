@@ -12,6 +12,7 @@ interface CheckoutButtonProps {
   citySlug: string;
   categorySlug: string;
   highlight: boolean;
+  priceCents?: number;
 }
 
 export function CheckoutButton({
@@ -22,6 +23,7 @@ export function CheckoutButton({
   citySlug,
   categorySlug,
   highlight,
+  priceCents,
 }: CheckoutButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -33,8 +35,12 @@ export function CheckoutButton({
 
     // Navigate to the checkout review/business-info page
     // Auth check happens there — if not logged in, redirect to login → back
+    const params = new URLSearchParams({ bundle: bundleId });
+    if (priceCents !== undefined) {
+      params.append("price", priceCents.toString());
+    }
     router.push(
-      `/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`
+      `/get-started/${citySlug}/${categorySlug}/checkout?${params.toString()}`
     );
   }
 
