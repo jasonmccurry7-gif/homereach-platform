@@ -199,11 +199,18 @@ function AgentCard({
       const response = await fetch(`/api/admin/agents/${agent.id}`, {
         method: "POST",
       })
-      if (response.ok) {
-        const data = await response.json()
-        setRunResult(
-          `${agent.name}: ${data.actions} actions, ${data.messages} SMS sent`
-        )
+      const data = await response.json()
+      if (response.ok && data.success) {
+        const s = data.summary || {}
+        const parts = []
+        if (s.leads_processed) parts.push(`${s.leads_processed} leads`)
+        if (s.sms_sent) parts.push(`${s.sms_sent} SMS`)
+        if (s.emails_sent) parts.push(`${s.emails_sent} emails`)
+        if (s.runs !== undefined) parts.push(`${s.runs} runs`)
+        setRunResult(`${agent.name}: ${parts.join(", ") || data.message || "complete"}`)
+        setTimeout(() => setRunResult(null), 5000)
+      } else {
+        setRunResult(`${agent.name}: ${data.error || data.message || "error — check logs"}`)
         setTimeout(() => setRunResult(null), 5000)
       }
     } catch (error) {

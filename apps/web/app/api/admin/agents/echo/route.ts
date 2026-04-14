@@ -228,8 +228,9 @@ async function sendOutreachEvent(
     };
 
     // Call the sales event endpoint
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://home-reach.com";
     const eventResponse = await fetch(
-      `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/admin/sales/event`,
+      `${baseUrl}/api/admin/sales/event`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
