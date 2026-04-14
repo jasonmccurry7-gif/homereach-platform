@@ -305,20 +305,19 @@ export async function POST(request: Request) {
       const updates: Record<string, unknown> = {};
 
       if (SEND_ACTIONS.has(action_type)) {
-        updates.status           = "contacted";
+        updates.status            = "contacted";
         updates.last_contacted_at = new Date().toISOString();
-        updates.pipeline_stage   = "contacted";
-        // Increment message count (ignore errors — non-critical)
-        await supabase.rpc("increment_lead_messages", { lead_uuid: lead_id }).catch(() => {});
+        updates.pipeline_stage    = "contacted";
+        // Increment message count — non-critical, swallow errors
+        try { await supabase.rpc("increment_lead_messages", { lead_uuid: lead_id }); } catch {}
       }
 
       if (["reply_received", "fb_reply_received", "conversation_started"].includes(action_type)) {
         updates.status         = "replied";
         updates.last_reply_at  = new Date().toISOString();
         updates.pipeline_stage = "replied";
-        updates.total_replies  = supabase.rpc("increment_lead_replies", { lead_uuid: lead_id }) as unknown as number;
-        // Increment reply count gracefully
-        await supabase.rpc("increment_lead_replies", { lead_uuid: lead_id }).catch(() => {});
+        // Increment reply count — non-critical, swallow errors
+        try { await supabase.rpc("increment_lead_replies", { lead_uuid: lead_id }); } catch {}
       }
 
       if (action_type === "payment_link_sent") {
@@ -332,9 +331,6 @@ export async function POST(request: Request) {
       if (action_type === "follow_up_sent") {
         updates.next_follow_up_at = null;
       }
-
-      // Remove the RPC assignment from updates object (that was wrong)
-      delete updates.total_replies;
 
       if (Object.keys(updates).length > 0) {
         await supabase.from("sales_leads").update(updates).eq("id", lead_id);
