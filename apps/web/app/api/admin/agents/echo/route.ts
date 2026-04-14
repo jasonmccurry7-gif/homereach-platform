@@ -282,10 +282,9 @@ export async function POST() {
         `
       )
       .eq("status", "queued")
-      .not("assigned_agent_id", "is", null)
       .eq("do_not_contact", false)
       .eq("sms_opt_out", false)
-      .order("created_at", { ascending: true })
+      .order("score", { ascending: false }) // highest quality leads first
       .limit(20);
 
     if (leadsError) {
