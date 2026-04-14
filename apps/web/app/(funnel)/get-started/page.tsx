@@ -94,7 +94,7 @@ function CityCard({ city }: { city: Awaited<ReturnType<typeof getActiveCities>>[
   const urgency =
     city.totalSpotsRemaining <= 2
       ? "critical"
-      : city.totalSpotsRemaining <= 6
+      : city.totalSpotsRemaining <= 4
       ? "high"
       : "normal";
 
@@ -137,7 +137,7 @@ function CityCard({ city }: { city: Awaited<ReturnType<typeof getActiveCities>>[
               urgency === "high" ? "bg-amber-500" :
               "bg-blue-500"
             )}
-            style={{ width: `${Math.min(100, ((24 - city.totalSpotsRemaining) / 24) * 100)}%` }}
+            style={{ width: `${Math.min(100, ((10 - city.totalSpotsRemaining) / 10) * 100)}%` }}
           />
         </div>
         <p className={cn(
@@ -147,8 +147,8 @@ function CityCard({ city }: { city: Awaited<ReturnType<typeof getActiveCities>>[
           "text-gray-500"
         )}>
           {urgency === "critical"
-            ? `Only ${city.totalSpotsRemaining} spot${city.totalSpotsRemaining !== 1 ? "s" : ""} left`
-            : `${city.totalSpotsRemaining} spots available`}
+            ? `Only ${city.totalSpotsRemaining} of 10 spots left`
+            : `${city.totalSpotsRemaining} of 10 spots available`}
         </p>
       </div>
 

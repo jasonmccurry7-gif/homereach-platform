@@ -51,6 +51,8 @@ export type BundleWithAvailability = {
 
 // ── Step 1: Cities ────────────────────────────────────────────────────────────
 
+const MAX_SPOTS_PER_CITY = 10; // 1 anchor + 3 front + 6 back per spec
+
 export async function getActiveCities(): Promise<CityWithAvailability[]> {
   const supabase = createServiceClient();
 
@@ -61,18 +63,49 @@ export async function getActiveCities(): Promise<CityWithAvailability[]> {
 
   if (error || !allCities) return [];
 
-  return allCities.map((city) => ({
-    id: city.id,
-    name: city.name,
-    state: city.state,
-    slug: city.slug,
-    isActive: city.is_active,
-    launchedAt: city.launched_at ? new Date(city.launched_at) : null,
-    foundingEligible: city.founding_eligible ?? false,
-    totalSpotsRemaining: city.is_active ? 99 : 0,
-    isComingSoon: !city.is_active,
-    isFoundingOpen: city.founding_eligible ?? true,
-  }));
+  const activeCityIds = allCities.filter(c => c.is_active).map(c => c.id);
+
+  // Count distinct categories with active/paid orders per city
+  // (each category slot = 1 spot taken out of the 10 per city)
+  let takenMap: Record<string, number> = {};
+  if (activeCityIds.length > 0) {
+    try {
+      const { data: bizWithOrders } = await supabase
+        .from("businesses")
+        .select("city_id, category_id, orders!inner(status)")
+        .in("city_id", activeCityIds)
+        .in("orders.status", ["paid", "active"]);
+
+      if (bizWithOrders) {
+        // Count unique city_id + category_id combos (each = 1 taken slot)
+        const seen = new Set<string>();
+        for (const biz of bizWithOrders) {
+          const key = `${biz.city_id}:${biz.category_id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            takenMap[biz.city_id] = (takenMap[biz.city_id] ?? 0) + 1;
+          }
+        }
+      }
+    } catch { /* fallback to 10 remaining if query fails */ }
+  }
+
+  return allCities.map((city) => {
+    const taken = takenMap[city.id] ?? 0;
+    const remaining = Math.max(0, MAX_SPOTS_PER_CITY - taken);
+    return {
+      id: city.id,
+      name: city.name,
+      state: city.state,
+      slug: city.slug,
+      isActive: city.is_active,
+      launchedAt: city.launched_at ? new Date(city.launched_at) : null,
+      foundingEligible: city.founding_eligible ?? false,
+      totalSpotsRemaining: city.is_active ? remaining : 0,
+      isComingSoon: !city.is_active,
+      isFoundingOpen: city.founding_eligible ?? true,
+    };
+  });
 }
 
 // ── Step 2: Categories ────────────────────────────────────────────────────────
