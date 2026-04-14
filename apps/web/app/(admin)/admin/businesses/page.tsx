@@ -1,31 +1,8 @@
 import type { Metadata } from "next";
-import {
-  db,
-  businesses,
-  profiles,
-  cities,
-  categories,
-} from "@homereach/db";
-import { desc, eq } from "drizzle-orm";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = { title: "Businesses — HomeReach Admin" };
-
-async function getAllBusinesses() {
-  return db
-    .select({
-      business: businesses,
-      owner: { email: profiles.email, fullName: profiles.fullName },
-      city: { name: cities.name, state: cities.state },
-      category: { name: categories.name, icon: categories.icon },
-    })
-    .from(businesses)
-    .leftJoin(profiles, eq(businesses.ownerId, profiles.id))
-    .leftJoin(cities, eq(businesses.cityId, cities.id))
-    .leftJoin(categories, eq(businesses.categoryId, categories.id))
-    .orderBy(desc(businesses.createdAt));
-}
 
 const STATUS_COLORS: Record<string, string> = {
   active:  "bg-green-50 text-green-700 border-green-200",
@@ -35,7 +12,17 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default async function AdminBusinessesPage() {
-  const rows = await getAllBusinesses();
+  const db = createServiceClient();
+
+  const { data: rows = [] } = await db
+    .from("businesses")
+    .select(`
+      id, name, website, status, is_nonprofit, created_at,
+      profiles:owner_id ( email, full_name ),
+      cities:city_id ( name, state ),
+      categories:category_id ( name, icon )
+    `)
+    .order("created_at", { ascending: false });
 
   return (
     <div className="max-w-6xl">
@@ -64,57 +51,41 @@ export default async function AdminBusinessesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {rows.map(({ business, owner, city, category }) => (
-                <tr key={business.id} className="hover:bg-gray-50 transition-colors">
+              {rows.map((row: any) => (
+                <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-4">
-                    <p className="font-semibold text-gray-900">{business.name}</p>
-                    {business.website && (
-                      <a
-                        href={business.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-500 hover:underline"
-                      >
-                        {business.website}
-                      </a>
+                    <p className="font-semibold text-gray-900">{row.name}</p>
+                    {row.website && (
+                      <a href={row.website} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-blue-500 hover:underline">{row.website}</a>
                     )}
                   </td>
                   <td className="px-4 py-4">
-                    <p className="text-gray-700">{owner?.fullName || "—"}</p>
-                    <p className="text-xs text-gray-400">{owner?.email}</p>
+                    <p className="text-gray-700">{row.profiles?.full_name || "—"}</p>
+                    <p className="text-xs text-gray-400">{row.profiles?.email}</p>
                   </td>
                   <td className="px-4 py-4">
                     <p className="text-gray-700">
-                      {city ? `${city.name}, ${city.state}` : "—"}
+                      {row.cities ? `${row.cities.name}, ${row.cities.state}` : "—"}
                     </p>
                     <p className="text-xs text-gray-400">
-                      {category?.icon} {category?.name ?? "—"}
+                      {row.categories?.icon} {row.categories?.name ?? "—"}
                     </p>
                   </td>
                   <td className="px-4 py-4">
-                    <span
-                      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                        STATUS_COLORS[business.status] ?? "bg-gray-100 text-gray-600 border-gray-200"
-                      }`}
-                    >
-                      {business.status}
-                    </span>
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                      STATUS_COLORS[row.status] ?? "bg-gray-100 text-gray-600 border-gray-200"
+                    }`}>{row.status}</span>
                   </td>
                   <td className="px-4 py-4">
-                    {business.isNonprofit ? (
-                      <span className="inline-flex items-center rounded-full bg-purple-50 border border-purple-200 px-2.5 py-0.5 text-xs font-semibold text-purple-700">
-                        Nonprofit
-                      </span>
+                    {row.is_nonprofit ? (
+                      <span className="inline-flex items-center rounded-full bg-purple-50 border border-purple-200 px-2.5 py-0.5 text-xs font-semibold text-purple-700">Nonprofit</span>
                     ) : (
                       <span className="text-xs text-gray-400">Standard</span>
                     )}
                   </td>
                   <td className="px-4 py-4 text-xs text-gray-400">
-                    {new Date(business.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
+                    {new Date(row.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </td>
                 </tr>
               ))}

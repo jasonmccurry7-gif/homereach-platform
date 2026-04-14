@@ -1,23 +1,8 @@
 import type { Metadata } from "next";
-import { db, orders, businesses, bundles } from "@homereach/db";
-import { desc, eq } from "drizzle-orm";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = { title: "Orders — HomeReach Admin" };
-
-async function getAllOrders() {
-  return db
-    .select({
-      order: orders,
-      business: { name: businesses.name },
-      bundle: { name: bundles.name },
-    })
-    .from(orders)
-    .leftJoin(businesses, eq(orders.businessId, businesses.id))
-    .leftJoin(bundles, eq(orders.bundleId, bundles.id))
-    .orderBy(desc(orders.createdAt));
-}
 
 const STATUS_COLORS: Record<string, string> = {
   paid:        "bg-green-50 text-green-700 border-green-200",
@@ -30,25 +15,32 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default async function AdminOrdersPage() {
-  const rows = await getAllOrders();
+  const db = createServiceClient();
 
-  const totalRevenue = rows
-    .filter((r) => ["paid", "active", "completed"].includes(r.order.status))
-    .reduce((sum, r) => sum + Number(r.order.total), 0);
+  const { data: rows = [] } = await db
+    .from("orders")
+    .select(`
+      id, status, total, subtotal, locked_price, pricing_type,
+      paid_at, created_at,
+      stripe_payment_intent_id, stripe_checkout_session_id,
+      businesses:business_id ( name ),
+      bundles:bundle_id ( name )
+    `)
+    .order("created_at", { ascending: false });
+
+  const totalRevenue = (rows as any[])
+    .filter(r => ["paid", "active", "completed"].includes(r.status))
+    .reduce((sum, r) => sum + Number(r.total ?? 0), 0);
 
   return (
     <div className="max-w-6xl">
       <div className="mb-8 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {rows.length} order{rows.length !== 1 ? "s" : ""}
-          </p>
+          <p className="mt-1 text-sm text-gray-500">{rows.length} order{rows.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="rounded-xl bg-green-50 border border-green-200 px-5 py-3 text-right">
-          <p className="text-xs text-green-600 font-medium uppercase tracking-widest">
-            Total revenue
-          </p>
+          <p className="text-xs text-green-600 font-medium uppercase tracking-widest">Total revenue</p>
           <p className="text-2xl font-bold text-green-800">
             ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </p>
@@ -67,53 +59,46 @@ export default async function AdminOrdersPage() {
                 <th className="px-4 py-3 font-semibold text-gray-600">Business</th>
                 <th className="px-4 py-3 font-semibold text-gray-600">Bundle</th>
                 <th className="px-4 py-3 font-semibold text-gray-600">Status</th>
+                <th className="px-4 py-3 font-semibold text-gray-600">Pricing</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-600">Total</th>
                 <th className="px-4 py-3 font-semibold text-gray-600">Paid at</th>
                 <th className="px-4 py-3 font-semibold text-gray-600">Stripe</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {rows.map(({ order, business, bundle }) => (
-                <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+              {(rows as any[]).map((row) => (
+                <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-4">
-                    <p className="font-semibold text-gray-900">{business?.name ?? "—"}</p>
-                    <p className="font-mono text-xs text-gray-400">{order.id}</p>
+                    <p className="font-semibold text-gray-900">{row.businesses?.name ?? "—"}</p>
+                    <p className="font-mono text-xs text-gray-400">{row.id.slice(0, 8)}…</p>
                   </td>
-                  <td className="px-4 py-4 text-gray-700">{bundle?.name ?? "—"}</td>
+                  <td className="px-4 py-4 text-gray-700">{row.bundles?.name ?? "—"}</td>
                   <td className="px-4 py-4">
-                    <span
-                      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                        STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-600 border-gray-200"
-                      }`}
-                    >
-                      {order.status}
-                    </span>
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                      STATUS_COLORS[row.status] ?? "bg-gray-100 text-gray-600 border-gray-200"
+                    }`}>{row.status}</span>
+                  </td>
+                  <td className="px-4 py-4">
+                    {row.pricing_type === "founding" ? (
+                      <span className="inline-flex items-center rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-xs font-semibold text-green-700">Founding</span>
+                    ) : row.pricing_type === "standard" ? (
+                      <span className="inline-flex items-center rounded-full bg-gray-100 border border-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600">Standard</span>
+                    ) : <span className="text-xs text-gray-400">—</span>}
                   </td>
                   <td className="px-4 py-4 text-right font-mono font-semibold text-gray-900">
-                    ${Number(order.total).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    ${Number(row.total ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-4 py-4 text-xs text-gray-500">
-                    {order.paidAt
-                      ? new Date(order.paidAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })
-                      : "—"}
+                    {row.paid_at ? new Date(row.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
                   </td>
                   <td className="px-4 py-4">
-                    {order.stripePaymentIntentId ? (
-                      <a
-                        href={`https://dashboard.stripe.com/payments/${order.stripePaymentIntentId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono text-xs text-blue-500 hover:underline"
-                      >
-                        {order.stripePaymentIntentId.slice(0, 18)}…
+                    {row.stripe_payment_intent_id ? (
+                      <a href={`https://dashboard.stripe.com/payments/${row.stripe_payment_intent_id}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="font-mono text-xs text-blue-500 hover:underline">
+                        {row.stripe_payment_intent_id.slice(0, 16)}…
                       </a>
-                    ) : (
-                      <span className="text-xs text-gray-400">—</span>
-                    )}
+                    ) : <span className="text-xs text-gray-400">—</span>}
                   </td>
                 </tr>
               ))}
