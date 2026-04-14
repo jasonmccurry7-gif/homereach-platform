@@ -170,12 +170,14 @@ ON CONFLICT (id) DO UPDATE SET
 ALTER TABLE agent_registry ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies: service_role has full access, authenticated users have read-only access
+DROP POLICY IF EXISTS "service_role_full_access_agent_registry" ON agent_registry;
 CREATE POLICY "service_role_full_access_agent_registry" ON agent_registry
   AS PERMISSIVE FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "authenticated_read_only_agent_registry" ON agent_registry;
 CREATE POLICY "authenticated_read_only_agent_registry" ON agent_registry
   AS PERMISSIVE FOR SELECT
   TO authenticated
@@ -184,12 +186,14 @@ CREATE POLICY "authenticated_read_only_agent_registry" ON agent_registry
 -- Enable RLS on agent_run_log
 ALTER TABLE agent_run_log ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role_full_access_agent_run_log" ON agent_run_log;
 CREATE POLICY "service_role_full_access_agent_run_log" ON agent_run_log
   AS PERMISSIVE FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "authenticated_read_only_agent_run_log" ON agent_run_log;
 CREATE POLICY "authenticated_read_only_agent_run_log" ON agent_run_log
   AS PERMISSIVE FOR SELECT
   TO authenticated

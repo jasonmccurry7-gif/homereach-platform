@@ -82,12 +82,14 @@ ORDER BY ar.layer, ar.name;
 -- Enable RLS on agent_daily_stats
 ALTER TABLE agent_daily_stats ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role_full_access_agent_daily_stats" ON agent_daily_stats;
 CREATE POLICY "service_role_full_access_agent_daily_stats" ON agent_daily_stats
   AS PERMISSIVE FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "authenticated_read_only_agent_daily_stats" ON agent_daily_stats;
 CREATE POLICY "authenticated_read_only_agent_daily_stats" ON agent_daily_stats
   AS PERMISSIVE FOR SELECT
   TO authenticated
