@@ -16,7 +16,7 @@ export const maxDuration = 300; // 5 min — scraping takes time
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MAX_PER_CITY      = 500;  // total leads per city
-const RESULTS_PER_RUN   = 5;    // businesses scraped per category per city per run
+const RESULTS_PER_RUN   = 10; // 10 per category per city per run    // businesses scraped per category per city per run
 
 // City+category search queries (maps to our DB category slugs)
 const CITIES = [
