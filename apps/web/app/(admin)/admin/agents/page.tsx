@@ -1,16 +1,42 @@
-import type { Metadata } from "next";
-import { MOCK_AGENTS, MOCK_FOLLOW_UPS } from "@/lib/admin/mock-agents";
-import { MOCK_LEADS } from "@/lib/admin/mock-data";
-import { AgentsClient } from "./agents-client";
+export const dynamic = "force-dynamic"
+import { createClient } from "@/lib/supabase/server"
+import AgentsDashboard from "./agents-dashboard"
 
-export const metadata: Metadata = { title: "Agents — HomeReach Admin" };
+export default async function AgentsPage() {
+  const supabase = await createClient()
 
-export default function AgentsPage() {
+  // Fetch all agents from registry
+  const { data: agents } = await supabase
+    .from("agent_registry")
+    .select("*")
+    .order("layer", { ascending: true })
+
+  // Fetch today's stats
+  const { data: stats } = await supabase
+    .from("agent_daily_stats")
+    .select("*")
+    .eq("stat_date", new Date().toISOString().split("T")[0])
+
+  // Fetch recent run logs (last 50)
+  const { data: runLogs } = await supabase
+    .from("agent_run_log")
+    .select("*")
+    .order("run_at", { ascending: false })
+    .limit(50)
+
+  // Fetch latest kaizen insights
+  const { data: kaisenInsights } = await supabase
+    .from("kaizen_insights")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(1)
+
   return (
-    <AgentsClient
-      agents={MOCK_AGENTS}
-      leads={MOCK_LEADS}
-      followUps={MOCK_FOLLOW_UPS}
+    <AgentsDashboard
+      agents={agents || []}
+      stats={stats || []}
+      runLogs={runLogs || []}
+      kaisenInsights={kaisenInsights?.[0] || null}
     />
-  );
+  )
 }
