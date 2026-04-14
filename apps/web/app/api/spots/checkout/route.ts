@@ -119,39 +119,49 @@ export async function POST(req: Request) {
       },
     ];
 
-    if (addons.includes("design_upgrade")) {
-      lineItems.push({
-        price_data: {
-          currency: "usd", unit_amount: 9900,
-          recurring: { interval: "month" },
-          product_data: { name: "Premium Design Upgrade",
-            description: "Hand-crafted custom postcard design by our creative team" },
-        },
-        quantity: 1,
-      });
+    // ── Print products (one-time) ─────────────────────────────────────────────
+    if (addons.includes("door_hangers")) {
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 19700,
+        product_data: { name: "Door Hangers (500)", description: "500 professionally designed door hangers for local distribution" } }, quantity: 1 });
+    }
+    if (addons.includes("fliers")) {
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700,
+        product_data: { name: "Fliers (500)", description: "500 full-color fliers for events and local distribution" } }, quantity: 1 });
+    }
+    if (addons.includes("yard_signs")) {
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 14700,
+        product_data: { name: "Yard Signs (10)", description: "10 branded yard signs with stakes" } }, quantity: 1 });
+    }
+    if (addons.includes("business_cards")) {
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 7900,
+        product_data: { name: "Business Cards (500)", description: "500 premium business cards, professionally designed and printed" } }, quantity: 1 });
     }
 
-    if (addons.includes("rush_launch")) {
-      lineItems.push({
-        price_data: {
-          currency: "usd", unit_amount: 14900,
-          product_data: { name: "Rush Launch",
-            description: "Priority processing — your campaign launches within 5 business days" },
-        },
-        quantity: 1,
-      });
+    // ── Digital (recurring) ───────────────────────────────────────────────────
+    if (addons.includes("website_design")) {
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, recurring: { interval: "month" },
+        product_data: { name: "Website Design & Hosting", description: "Mobile-friendly business website with hosting and ongoing updates" } }, quantity: 1 });
     }
 
+    // ── Automation (recurring) ────────────────────────────────────────────────
+    if (addons.includes("full_automation")) {
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 7900, recurring: { interval: "month" },
+        product_data: { name: "Full Automation Bundle (SMS + Email)", description: "Automated SMS and email follow-up sequences to convert postcard leads" } }, quantity: 1 });
+    } else {
+      if (addons.includes("sms_automation")) {
+        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, recurring: { interval: "month" },
+          product_data: { name: "SMS Follow-Up Automation", description: "Automated text sequences that follow up with every lead" } }, quantity: 1 });
+      }
+      if (addons.includes("email_automation")) {
+        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, recurring: { interval: "month" },
+          product_data: { name: "Email Automation", description: "Drip email sequences that nurture leads until they're ready to buy" } }, quantity: 1 });
+      }
+    }
+
+    // ── Nonprofit (recurring) ─────────────────────────────────────────────────
     if (addons.includes("nonprofit")) {
-      lineItems.push({
-        price_data: {
-          currency: "usd", unit_amount: 2500,
-          recurring: { interval: "month" },
-          product_data: { name: "Local Nonprofit Sponsorship",
-            description: "Feature a local nonprofit on your ad — $25/mo donated to the cause" },
-        },
-        quantity: 1,
-      });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 2500, recurring: { interval: "month" },
+        product_data: { name: "Local Nonprofit Sponsorship", description: "Feature a local nonprofit on your ad — $25/mo donated to the cause" } }, quantity: 1 });
     }
 
     // 8. Create Stripe session

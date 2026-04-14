@@ -18,32 +18,136 @@ interface CheckoutFormProps {
   userEmail: string | null;
 }
 
-const ADDONS = [
+// ── Add-on catalog ────────────────────────────────────────────────────────────
+
+type AddonCategory = "print" | "digital" | "automation" | "bundle";
+
+const ADDONS: {
+  id: string;
+  category: AddonCategory;
+  name: string;
+  description: string;
+  price: number;
+  unit: string;
+  recurring: boolean;
+  badge?: string;
+  icon: string;
+}[] = [
+  // ── Print Products ──────────────────────────────────────────────────────────
   {
-    id: "design_upgrade",
-    name: "Premium Design Upgrade",
-    description: "Our creative team builds a fully custom, hand-crafted postcard ad for your business.",
-    price: 99,
-    recurring: true,
-    badge: null,
-  },
-  {
-    id: "rush_launch",
-    name: "Rush Launch",
-    description: "Skip the line — your campaign goes live within 5 business days instead of 10–14.",
-    price: 149,
+    id: "door_hangers",
+    category: "print",
+    name: "Door Hangers",
+    description: "500 professionally designed door hangers distributed in your target area.",
+    price: 197,
+    unit: "per run",
     recurring: false,
-    badge: "One-time",
+    icon: "🚪",
   },
+  {
+    id: "fliers",
+    category: "print",
+    name: "Fliers",
+    description: "500 full-color fliers — great for events, bulletin boards, and local distribution.",
+    price: 97,
+    unit: "per run",
+    recurring: false,
+    icon: "📄",
+  },
+  {
+    id: "yard_signs",
+    category: "print",
+    name: "Yard Signs",
+    description: "10 branded yard signs with stakes. Perfect for job sites, events, and neighborhoods.",
+    price: 147,
+    unit: "per order",
+    recurring: false,
+    icon: "🪧",
+  },
+  {
+    id: "business_cards",
+    category: "print",
+    name: "Business Cards",
+    description: "500 premium business cards, professionally designed and printed.",
+    price: 79,
+    unit: "per order",
+    recurring: false,
+    icon: "🪪",
+  },
+  // ── Digital ─────────────────────────────────────────────────────────────────
+  {
+    id: "website_design",
+    category: "digital",
+    name: "Website Design",
+    description: "A clean, mobile-friendly website built for your business. Includes hosting and updates.",
+    price: 97,
+    unit: "/mo",
+    recurring: true,
+    badge: "Popular",
+    icon: "🌐",
+  },
+  // ── Automation ───────────────────────────────────────────────────────────────
+  {
+    id: "sms_automation",
+    category: "automation",
+    name: "SMS Follow-Up Automation",
+    description: "Automated text sequences follow up with every lead from your postcard campaign.",
+    price: 49,
+    unit: "/mo",
+    recurring: true,
+    badge: "New",
+    icon: "📱",
+  },
+  {
+    id: "email_automation",
+    category: "automation",
+    name: "Email Automation",
+    description: "Drip email sequences nurture postcard leads until they're ready to buy.",
+    price: 49,
+    unit: "/mo",
+    recurring: true,
+    icon: "📧",
+  },
+  {
+    id: "full_automation",
+    category: "automation",
+    name: "Full Automation Bundle",
+    description: "SMS + Email automation together. Our system contacts, follows up, and converts leads automatically.",
+    price: 79,
+    unit: "/mo",
+    recurring: true,
+    badge: "Best Value",
+    icon: "🤖",
+  },
+  // ── Nonprofit Sponsorship ────────────────────────────────────────────────────
   {
     id: "nonprofit",
+    category: "bundle",
     name: "Sponsor a Local Nonprofit",
-    description: "Feature a local nonprofit cause on your ad. We donate $25/mo on your behalf — great for brand image.",
+    description: "Feature a local nonprofit cause on your ad. We donate $25/mo on your behalf — great for community goodwill.",
     price: 25,
+    unit: "/mo",
     recurring: true,
     badge: "Community",
+    icon: "❤️",
   },
 ];
+
+const CATEGORY_LABELS: Record<AddonCategory, string> = {
+  print:      "Print Products",
+  digital:    "Digital",
+  automation: "Marketing Automation",
+  bundle:     "Community & Bundles",
+};
+
+const CATEGORY_ORDER: AddonCategory[] = ["print", "digital", "automation", "bundle"];
+
+const BADGE_STYLES: Record<string, string> = {
+  "Popular":    "bg-blue-100 text-blue-700",
+  "New":        "bg-purple-100 text-purple-700",
+  "Best Value": "bg-amber-100 text-amber-700",
+  "Community":  "bg-emerald-100 text-emerald-700",
+};
 
 export function CheckoutForm({
   bundleId,
@@ -67,19 +171,29 @@ export function CheckoutForm({
   const [error, setError]               = useState<string | null>(null);
 
   function toggleAddon(id: string) {
+    // full_automation replaces individual sms/email automation
+    if (id === "full_automation") {
+      setSelectedAddons(prev => {
+        const without = prev.filter(a => a !== "sms_automation" && a !== "email_automation");
+        return without.includes("full_automation")
+          ? without.filter(a => a !== "full_automation")
+          : [...without, "full_automation"];
+      });
+      return;
+    }
+    if ((id === "sms_automation" || id === "email_automation") && selectedAddons.includes("full_automation")) {
+      return; // already covered by bundle
+    }
     setSelectedAddons(prev =>
       prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
     );
   }
 
-  // Calculate total
-  const addonTotal = ADDONS
-    .filter(a => selectedAddons.includes(a.id) && a.recurring)
-    .reduce((sum, a) => sum + a.price * 100, 0);
-  const oneTimeTotal = ADDONS
-    .filter(a => selectedAddons.includes(a.id) && !a.recurring)
-    .reduce((sum, a) => sum + a.price * 100, 0);
-  const monthlyTotal = resolvedPriceCents + addonTotal;
+  // Calculate totals
+  const selectedItems = ADDONS.filter(a => selectedAddons.includes(a.id));
+  const monthlyAddons  = selectedItems.filter(a => a.recurring).reduce((s, a) => s + a.price * 100, 0);
+  const oneTimeAddons  = selectedItems.filter(a => !a.recurring).reduce((s, a) => s + a.price * 100, 0);
+  const monthlyTotal   = resolvedPriceCents + monthlyAddons;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -112,13 +226,11 @@ export function CheckoutForm({
       });
 
       const data = await res.json();
-
       if (!res.ok) {
         setError(data.error ?? "Something went wrong. Please try again.");
         setLoading(false);
         return;
       }
-
       window.location.href = data.checkoutUrl;
     } catch {
       setError("Network error. Please check your connection and try again.");
@@ -129,12 +241,10 @@ export function CheckoutForm({
   return (
     <div className="space-y-5">
 
-      {/* ── Business info ───────────────────────────────────────────────────── */}
+      {/* ── Business info ── */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <h2 className="font-bold text-gray-900 mb-1">Your business information</h2>
-        <p className="text-sm text-gray-500 mb-5">
-          Tell us about your business so we can set up your campaign.
-        </p>
+        <p className="text-sm text-gray-500 mb-5">Tell us about your business to get started.</p>
 
         {!isAuthenticated && (
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm mb-5">
@@ -161,13 +271,9 @@ export function CheckoutForm({
             <label htmlFor="businessName" className="block text-sm font-medium text-gray-700">
               Business name <span className="text-red-500">*</span>
             </label>
-            <input
-              id="businessName"
-              type="text"
-              required
+            <input id="businessName" type="text" required
               placeholder={`Your ${categoryName.toLowerCase()} business name`}
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
+              value={businessName} onChange={(e) => setBusinessName(e.target.value)}
               className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -176,13 +282,8 @@ export function CheckoutForm({
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email address <span className="text-red-500">*</span>
             </label>
-            <input
-              id="email"
-              type="email"
-              required
-              placeholder="you@yourbusiness.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+            <input id="email" type="email" required placeholder="you@yourbusiness.com"
+              value={email} onChange={(e) => setEmail(e.target.value)}
               disabled={isAuthenticated && !!userEmail}
               className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
             />
@@ -190,101 +291,121 @@ export function CheckoutForm({
 
           <div>
             <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-              Phone
-              <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+              Phone <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
             </label>
-            <input
-              id="phone"
-              type="tel"
-              placeholder="(330) 555-0100"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+            <input id="phone" type="tel" placeholder="(330) 555-0100"
+              value={phone} onChange={(e) => setPhone(e.target.value)}
               className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </form>
       </div>
 
-      {/* ── Add-ons ─────────────────────────────────────────────────────────── */}
+      {/* ── Add-ons ── */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="font-bold text-gray-900 mb-1">Boost your campaign</h2>
-        <p className="text-sm text-gray-500 mb-4">Optional add-ons — add them now or skip.</p>
+        <h2 className="font-bold text-gray-900 mb-1">Add more to your campaign</h2>
+        <p className="text-sm text-gray-500 mb-5">
+          Supercharge your results with print, digital, and automation products.
+        </p>
 
-        <div className="space-y-3">
-          {ADDONS.map((addon) => {
-            const selected = selectedAddons.includes(addon.id);
+        <div className="space-y-6">
+          {CATEGORY_ORDER.map(cat => {
+            const items = ADDONS.filter(a => a.category === cat);
             return (
-              <button
-                key={addon.id}
-                type="button"
-                onClick={() => toggleAddon(addon.id)}
-                className={`w-full text-left rounded-xl border px-4 py-3.5 transition-all ${
-                  selected
-                    ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
-                    : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-semibold text-gray-900">{addon.name}</span>
-                      {addon.badge && (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                          {addon.badge}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 leading-snug">{addon.description}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-gray-900">
-                      +${addon.price}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {addon.recurring ? "/mo" : "one-time"}
-                    </p>
-                  </div>
+              <div key={cat}>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                  {CATEGORY_LABELS[cat]}
+                </p>
+                <div className="space-y-2">
+                  {items.map(addon => {
+                    const selected = selectedAddons.includes(addon.id);
+                    const coveredByBundle = (addon.id === "sms_automation" || addon.id === "email_automation")
+                      && selectedAddons.includes("full_automation");
+                    return (
+                      <button
+                        key={addon.id}
+                        type="button"
+                        onClick={() => !coveredByBundle && toggleAddon(addon.id)}
+                        disabled={coveredByBundle}
+                        className={`w-full text-left rounded-xl border px-4 py-3.5 transition-all ${
+                          coveredByBundle
+                            ? "border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed"
+                            : selected
+                              ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
+                              : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 flex-1">
+                            <span className="text-xl shrink-0 mt-0.5">{addon.icon}</span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                                <span className="text-sm font-semibold text-gray-900">{addon.name}</span>
+                                {addon.badge && (
+                                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${BADGE_STYLES[addon.badge] ?? "bg-gray-100 text-gray-600"}`}>
+                                    {addon.badge}
+                                  </span>
+                                )}
+                                {coveredByBundle && (
+                                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                                    Included in bundle
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-500 leading-snug">{addon.description}</p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold text-gray-900">+${addon.price}</p>
+                            <p className="text-xs text-gray-400">{addon.unit}</p>
+                          </div>
+                        </div>
+                        {selected && !coveredByBundle && (
+                          <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-600">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                            Added
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-                {selected && (
-                  <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-600">
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                    Added
-                  </div>
-                )}
-              </button>
+              </div>
             );
           })}
         </div>
       </div>
 
-      {/* ── Price summary + CTA ─────────────────────────────────────────────── */}
+      {/* ── Price summary + CTA ── */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="space-y-2 text-sm mb-4">
+        <div className="space-y-2 text-sm mb-5">
           <div className="flex justify-between">
             <span className="text-gray-600">{bundleName} · {cityName}</span>
             <span className="font-medium">${(resolvedPriceCents / 100).toLocaleString()}/mo</span>
           </div>
-          {ADDONS.filter(a => selectedAddons.includes(a.id)).map(addon => (
+          {selectedItems.map(addon => (
             <div key={addon.id} className="flex justify-between text-gray-500">
-              <span>{addon.name}</span>
-              <span>+${addon.price}{addon.recurring ? "/mo" : " once"}</span>
+              <span className="flex items-center gap-1.5">
+                <span>{addon.icon}</span> {addon.name}
+              </span>
+              <span>+${addon.price}{addon.unit}</span>
             </div>
           ))}
           {isFoundingPrice && (
             <div className="flex items-center gap-1.5 text-green-700 text-xs font-semibold pt-1">
-              <span>🎉</span> Founding rate applied
+              🎉 Founding rate applied
             </div>
           )}
-          <div className="flex justify-between border-t border-gray-100 pt-2 font-bold text-gray-900">
+          <div className="flex justify-between border-t border-gray-100 pt-3 font-bold text-gray-900">
             <span>Monthly total</span>
             <span>${(monthlyTotal / 100).toLocaleString()}/mo</span>
           </div>
-          {oneTimeTotal > 0 && (
+          {oneTimeAddons > 0 && (
             <div className="flex justify-between text-gray-500 text-xs">
-              <span>Due today (one-time)</span>
-              <span>${(oneTimeTotal / 100).toLocaleString()}</span>
+              <span>One-time charges today</span>
+              <span>+${(oneTimeAddons / 100).toLocaleString()}</span>
             </div>
           )}
         </div>
@@ -307,7 +428,6 @@ export function CheckoutForm({
             `Continue to payment → $${(monthlyTotal / 100).toLocaleString()}/mo`
           )}
         </button>
-
         <p className="mt-3 text-center text-xs text-gray-400">
           Secure Stripe checkout · Card details never stored on our servers
         </p>

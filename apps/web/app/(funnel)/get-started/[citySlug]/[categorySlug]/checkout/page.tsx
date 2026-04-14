@@ -140,8 +140,8 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
               {[
                 { icon: "💳", text: "Pay securely via Stripe" },
                 { icon: "🎨", text: "We design your postcard (or use yours)" },
-                { icon: "📬", text: "First drop in 10–14 days" },
-                { icon: "📊", text: "Track calls & results in your dashboard" },
+                { icon: "📬", text: "Our team will reach out to schedule your campaign" },
+                { icon: "📊", text: "Track results in your dashboard" },
               ].map((s) => (
                 <div key={s.text} className="flex items-start gap-2">
                   <span className="text-sm shrink-0">{s.icon}</span>
