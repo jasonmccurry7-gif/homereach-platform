@@ -1,9 +1,9 @@
-import { db, cities, categories, bundles, orders } from "@homereach/db";
-import { eq, and, inArray, sql, isNull, or } from "drizzle-orm";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Funnel Query Helpers
 // Server-side only. Used in Server Components for each funnel step.
+// Uses Supabase JS client (HTTP) — reliable in Vercel serverless.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type CityWithAvailability = {
@@ -15,6 +15,7 @@ export type CityWithAvailability = {
   launchedAt: Date | null;
   totalSpotsRemaining: number;
   isComingSoon: boolean;
+  foundingEligible: boolean;
 };
 
 export type CategoryWithAvailability = {
@@ -48,56 +49,25 @@ export type BundleWithAvailability = {
 // ── Step 1: Cities ────────────────────────────────────────────────────────────
 
 export async function getActiveCities(): Promise<CityWithAvailability[]> {
-  const allCities = await db
-    .select()
-    .from(cities)
-    .orderBy(cities.name);
+  const supabase = createServiceClient();
 
-  // Calculate total spots remaining per city
-  // Spots = sum of (maxSpots per bundle * num categories) - sold orders
-  const cityResults: CityWithAvailability[] = allCities.map((city) => ({
-    ...city,
-    // Simplified: active cities show "spots available", inactive show "coming soon"
-    totalSpotsRemaining: city.isActive ? 99 : 0,
-    isComingSoon: !city.isActive,
-  }));
+  const { data: allCities, error } = await supabase
+    .from("cities")
+    .select("*")
+    .order("name");
 
-  // For active cities, calculate real availability
-  const activeCityIds = allCities
-    .filter((c) => c.isActive)
-    .map((c) => c.id);
+  if (error || !allCities) return [];
 
-  if (activeCityIds.length === 0) return cityResults;
-
-  // Count paid orders per city to estimate fill rate
-  const orderCounts = await db
-    .select({
-      cityId: sql<string>`b.city_id`,
-      count: sql<number>`COUNT(*)`,
-    })
-    .from(orders)
-    .innerJoin(
-      sql`businesses b`,
-      sql`orders.business_id = b.id`
-    )
-    .where(
-      and(
-        inArray(sql`b.city_id`, activeCityIds),
-        inArray(orders.status, ["paid", "active"])
-      )
-    )
-    .groupBy(sql`b.city_id`);
-
-  const countMap = Object.fromEntries(
-    orderCounts.map((r) => [r.cityId, r.count])
-  );
-
-  return cityResults.map((city) => ({
-    ...city,
-    // 10 spots per city max
-    totalSpotsRemaining: city.isActive
-      ? Math.max(0, 10 - (countMap[city.id] ?? 0))
-      : 0,
+  return allCities.map((city) => ({
+    id: city.id,
+    name: city.name,
+    state: city.state,
+    slug: city.slug,
+    isActive: city.is_active,
+    launchedAt: city.launched_at ? new Date(city.launched_at) : null,
+    foundingEligible: city.founding_eligible ?? false,
+    totalSpotsRemaining: city.is_active ? 99 : 0,
+    isComingSoon: !city.is_active,
   }));
 }
 
@@ -106,122 +76,93 @@ export async function getActiveCities(): Promise<CityWithAvailability[]> {
 export async function getCategoriesForCity(
   cityId: string
 ): Promise<CategoryWithAvailability[]> {
-  const allCategories = await db
-    .select()
-    .from(categories)
-    .where(eq(categories.isActive, true))
-    .orderBy(categories.name);
+  const supabase = createServiceClient();
 
-  // Count paid orders per category in this city (safe fallback if query fails)
+  const { data: allCategories, error } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("is_active", true)
+    .order("name");
+
+  if (error || !allCategories) return [];
+
+  // Count paid orders per category — best-effort, default to 0 if query fails
   let countMap: Record<string, number> = {};
   try {
-    const orderCounts = await db
-      .select({
-        categoryId: sql<string>`b.category_id`,
-        count: sql<number>`COUNT(*)`,
-      })
-      .from(orders)
-      .innerJoin(
-        sql`businesses b`,
-        sql`orders.business_id = b.id`
-      )
-      .where(
-        and(
-          sql`b.city_id = ${cityId}`,
-          inArray(orders.status, ["paid", "active"])
-        )
-      )
-      .groupBy(sql`b.category_id`);
-    countMap = Object.fromEntries(
-      orderCounts.map((r) => [r.categoryId, r.count])
-    );
+    const { data: orderCounts } = await supabase
+      .from("orders")
+      .select("bundle_id, businesses!inner(category_id, city_id)")
+      .eq("businesses.city_id", cityId)
+      .in("status", ["paid", "active"]);
+
+    if (orderCounts) {
+      for (const order of orderCounts) {
+        const catId = (order.businesses as any)?.category_id;
+        if (catId) countMap[catId] = (countMap[catId] ?? 0) + 1;
+      }
+    }
   } catch {
-    // If the join fails (schema mismatch), show all categories as available
     countMap = {};
   }
 
-  // Total spots per category = sum of maxSpots across all bundles (1+3+6 = 10)
   const TOTAL_SPOTS_PER_CATEGORY = 10;
 
   return allCategories.map((cat) => {
     const taken = countMap[cat.id] ?? 0;
     const remaining = Math.max(0, TOTAL_SPOTS_PER_CATEGORY - taken);
     return {
-      ...cat,
+      id: cat.id,
+      name: cat.name,
+      slug: cat.slug,
+      description: cat.description ?? null,
+      icon: cat.icon ?? null,
       spotsRemaining: remaining,
       isAvailable: remaining > 0,
     };
   });
 }
 
-// ── Step 3: Bundles (with real scarcity) ──────────────────────────────────────
+// ── Step 3: Bundles ────────────────────────────────────────────────────────────
 
 export async function getBundlesWithAvailability(
   cityId: string,
   categoryId: string
 ): Promise<BundleWithAvailability[]> {
-  // Fetch active bundles — try city-filtered first, fall back to all active
-  let availableBundles: typeof bundles.$inferSelect[] = [];
-  try {
-    availableBundles = await db
-      .select()
-      .from(bundles)
-      .where(
-        and(
-          eq(bundles.isActive, true),
-          or(isNull(bundles.cityId), eq(bundles.cityId, cityId))
-        )
-      );
-  } catch {
-    // city_id column may not exist in this DB — fall back to simpler query
-    try {
-      availableBundles = await db
-        .select()
-        .from(bundles)
-        .where(eq(bundles.isActive, true));
-    } catch {
-      return [];
-    }
-  }
+  const supabase = createServiceClient();
 
-  if (availableBundles.length === 0) return [];
+  // Fetch active bundles (city_id = null means global, available everywhere)
+  const { data: rawBundles, error } = await supabase
+    .from("bundles")
+    .select("*")
+    .eq("is_active", true)
+    .or(`city_id.is.null,city_id.eq.${cityId}`);
 
-  const bundleIds = availableBundles.map((b) => b.id);
+  if (error || !rawBundles || rawBundles.length === 0) return [];
 
-  // Count paid orders per bundle in this city + category
-  // Wrapped in try/catch — if orders/businesses tables are missing or have schema
-  // differences from live DB, default to 0 taken (all spots show as available).
+  const bundleIds = rawBundles.map((b) => b.id);
+
+  // Count paid orders per bundle in this city+category — best-effort
   let countMap: Record<string, number> = {};
   try {
-    const orderCounts = await db
-      .select({
-        bundleId: orders.bundleId,
-        count: sql<number>`COUNT(*)`,
-      })
-      .from(orders)
-      .innerJoin(
-        sql`businesses b`,
-        sql`orders.business_id = b.id`
-      )
-      .where(
-        and(
-          sql`b.city_id = ${cityId}`,
-          sql`b.category_id = ${categoryId}`,
-          inArray(orders.bundleId, bundleIds),
-          inArray(orders.status, ["paid", "active"])
-        )
-      )
-      .groupBy(orders.bundleId);
+    const { data: orderCounts } = await supabase
+      .from("orders")
+      .select("bundle_id, businesses!inner(city_id, category_id)")
+      .eq("businesses.city_id", cityId)
+      .eq("businesses.category_id", categoryId)
+      .in("bundle_id", bundleIds)
+      .in("status", ["paid", "active"]);
 
-    countMap = Object.fromEntries(
-      orderCounts.map((r) => [r.bundleId!, r.count])
-    );
+    if (orderCounts) {
+      for (const order of orderCounts) {
+        const bid = order.bundle_id;
+        if (bid) countMap[bid] = (countMap[bid] ?? 0) + 1;
+      }
+    }
   } catch {
-    // Safe fallback: show all spots as available if order count query fails
     countMap = {};
   }
 
-  return availableBundles
+  return rawBundles
     .map((bundle) => {
       const meta = (bundle.metadata ?? {}) as Record<string, unknown>;
       const maxSpots = (meta.maxSpots as number) ?? 1;
@@ -232,8 +173,8 @@ export async function getBundlesWithAvailability(
         id: bundle.id,
         name: bundle.name,
         slug: bundle.slug,
-        description: bundle.description,
-        price: bundle.price,
+        description: bundle.description ?? null,
+        price: String(bundle.price ?? "0"),
         spotType: (meta.spotType as "anchor" | "front" | "back") ?? "back",
         maxSpots,
         spotsTaken,
@@ -251,29 +192,55 @@ export async function getBundlesWithAvailability(
 
 // ── Lookups ───────────────────────────────────────────────────────────────────
 
-export async function getCityBySlug(slug: string) {
-  const [city] = await db
-    .select()
-    .from(cities)
-    .where(eq(cities.slug, slug))
-    .limit(1);
-  return city ?? null;
+export async function getCityBySlug(slug: string): Promise<CityWithAvailability | null> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("cities")
+    .select("*")
+    .eq("slug", slug)
+    .single();
+
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    state: data.state,
+    slug: data.slug,
+    isActive: data.is_active,
+    launchedAt: data.launched_at ? new Date(data.launched_at) : null,
+    foundingEligible: data.founding_eligible ?? false,
+    totalSpotsRemaining: data.is_active ? 99 : 0,
+    isComingSoon: !data.is_active,
+  };
 }
 
-export async function getCategoryBySlug(slug: string) {
-  const [category] = await db
-    .select()
-    .from(categories)
-    .where(eq(categories.slug, slug))
-    .limit(1);
-  return category ?? null;
+export async function getCategoryBySlug(slug: string): Promise<CategoryWithAvailability | null> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("slug", slug)
+    .single();
+
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    slug: data.slug,
+    description: data.description ?? null,
+    icon: data.icon ?? null,
+    spotsRemaining: 10,
+    isAvailable: true,
+  };
 }
 
 export async function getBundleById(id: string) {
-  const [bundle] = await db
-    .select()
-    .from(bundles)
-    .where(eq(bundles.id, id))
-    .limit(1);
-  return bundle ?? null;
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("bundles")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error || !data) return null;
+  return data;
 }
