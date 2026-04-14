@@ -1,0 +1,215 @@
+================================================================================
+HomeReach Echo Agent System — Build Complete
+================================================================================
+
+DELIVERABLES
+────────────────────────────────────────────────────────────────────────────
+
+✓ Echo Agent (Outbound Prospecting)
+  - Endpoint: POST /api/admin/agents/echo
+  - Fetch queued leads and route to assigned agents
+  - Choose channel (SMS/Email) based on contact availability
+  - Build personalized messages using territory-aware agent identities
+  - Send via existing /api/admin/sales/event infrastructure
+  - Response: summary of leads processed, SMS sent, emails sent, errors
+  - Status: GET /api/admin/agents/echo (returns queue size, last run)
+
+✓ Closer Agent (Follow-up & Payment Links)
+  - Endpoint: POST /api/admin/agents/closer
+  - Fetch warm leads (replied/interested, last activity > 2 hours ago)
+  - Check if payment link already sent in last 7 days (skip if yes)
+  - Send SMS with exclusive payment link
+  - Update pipeline_stage to 'negotiating'
+  - Response: summary of follow-ups sent, payment links sent
+  - Status: GET /api/admin/agents/closer (returns warm lead count)
+
+✓ Anchor Agent (Client Retention)
+  - Endpoint: POST /api/admin/agents/anchor
+  - Fetch spot assignments for renewals (< 30 days out, active) and churn risk (paused)
+  - Send win-back SMS for paused spots (billing issue)
+  - Send retention reminders at 30 days and 7 days before renewal
+  - Response: summary of renewals, win-backs sent, retention sent
+  - Status: GET /api/admin/agents/anchor (returns renewals approaching, churn risk)
+
+✓ Orchestrator (Run All Agents)
+  - Endpoint: POST /api/admin/agents/run?agents=echo,closer,anchor
+  - Run agents in sequence with performance tracking
+  - Supports selective agent runs (e.g., ?agents=echo,anchor)
+  - Returns execution time for each agent
+  - Status: GET /api/admin/agents/run (health check for all agents)
+
+✓ Territory Mapping
+  - Heather: Wooster, Medina
+  - Josh: Massillon, Ravenna
+  - Chris: Green, Stow
+  - Jason: Cuyahoga Falls, Hudson, Canton, Akron (default for unmapped)
+  - Fallback: Hardcoded in types.ts, upgradeable to agent_identities table
+
+✓ Documentation
+  - README.md (full agent system documentation)
+  - TESTING.md (test commands and setup)
+  - AGENTS_SETUP.md (integration & deployment guide)
+  - types.ts (shared types and territory map)
+
+FILE PATHS
+────────────────────────────────────────────────────────────────────────────
+
+Core Agents:
+  /sessions/stoic-youthful-curie/mnt/HomeReach Platform Rebuild/homereach/
+  ├── apps/web/app/api/admin/agents/
+  │   ├── echo/route.ts
+  │   ├── closer/route.ts
+  │   ├── anchor/route.ts
+  │   ├── run/route.ts
+  │   ├── types.ts
+  │   ├── README.md
+  │   └── TESTING.md
+  └── AGENTS_SETUP.md
+
+INTEGRATION POINTS
+────────────────────────────────────────────────────────────────────────────
+
+1. Supabase Client
+   - Import: const supabase = await createClient();
+   - Used for all database queries (leads, spots, businesses, cities)
+   - Type-safe access to salesLeads, spotAssignments, businesses tables
+
+2. Messaging Service
+   - Existing: /api/admin/sales/event
+   - Delegates actual SMS/email sends
+   - Handles: opt-out validation, rate limiting, message deduplication
+   - Updates lead status & logs events automatically
+
+3. Database Dependencies
+   - sales_leads (status, assigned_agent_id, last_reply_at, do_not_contact, sms_opt_out)
+   - sales_events (all agent runs logged here with metadata)
+   - spot_assignments (for Anchor: status, commitment_ends_at, activated_at)
+   - businesses (for Anchor: phone, email, city)
+   - cities (for city lookups)
+
+DESIGN DECISIONS
+────────────────────────────────────────────────────────────────────────────
+
+1. Hardcoded Territory Map (Fallback)
+   - Territory map hardcoded in types.ts for quick setup
+   - Can be upgraded to agent_identities table when ready
+   - Agents resolve: assigned_agent_id → agent_identities table → territory map → default
+
+2. Event-Driven Messaging
+   - All sends routed through /api/admin/sales/event
+   - Reuses existing opt-out checks, rate limiting, deduplication
+   - Agents remain stateless (only queue leads, don't send directly)
+
+3. Partial Success Handling
+   - If 1 of 20 leads fails, remaining 19 still process
+   - Errors logged in response details, don't block orchestration
+   - Partial runs logged to sales_events with error count
+
+4. SMS vs Email Strategy
+   - Echo: SMS if phone exists, else email (channel selection per lead)
+   - Closer: SMS only (requires phone for payment link urgency)
+   - Anchor: SMS only (direct communication for billing/renewal)
+
+5. Renewal Trigger Dates
+   - Anchor only sends at 30 days and 7 days before renewal
+   - Prevents message fatigue, focuses on decision triggers
+   - Can be tuned per business (settings table in future)
+
+TESTING
+────────────────────────────────────────────────────────────────────────────
+
+Quick Start:
+  # Create test lead
+  INSERT INTO sales_leads (...) VALUES (...)
+  
+  # Run agent
+  curl -X POST http://localhost:3000/api/admin/agents/echo
+  
+  # Check results
+  SELECT * FROM sales_events WHERE message LIKE '%Test%'
+
+See TESTING.md for:
+  - Complete test data setup scripts
+  - Load testing (50+ leads)
+  - Message deduplication verification
+  - Territory fallback testing
+  - Error scenario walkthroughs
+
+MONITORING
+────────────────────────────────────────────────────────────────────────────
+
+1. Agent Status Endpoints
+   GET /api/admin/agents/{echo|closer|anchor} → queue size, last run metadata
+   GET /api/admin/agents/run → orchestrator health + all agent statuses
+
+2. Event Logging
+   All runs logged to sales_events table:
+   - action_type: 'text_sent', 'email_sent', 'follow_up_sent'
+   - metadata: JSON summary {leads_processed, sms_sent, errors, etc}
+
+3. SQL Queries (Monitoring)
+   SELECT * FROM sales_events 
+   WHERE action_type IN ('text_sent', 'email_sent', 'follow_up_sent')
+   ORDER BY created_at DESC;
+
+DEPLOYMENT CHECKLIST
+────────────────────────────────────────────────────────────────────────────
+
+[ ] Verify /api/admin/sales/event is accessible and working
+[ ] Test agents with 5-10 leads in development
+[ ] Verify Twilio/Mailgun credentials are valid
+[ ] Confirm Supabase RLS policies allow agent queries
+[ ] Set up error alerting (Slack, email, monitoring service)
+[ ] Configure cron job for periodic runs (or manual trigger)
+[ ] Test graceful handling of SMS/email failures
+[ ] Verify rate limits are reasonable (check sales/event RPC)
+[ ] Document agent phone numbers and territories with sales team
+[ ] Create monitoring dashboard (queue size, send volume, errors)
+[ ] Gradual rollout: Phase 1 → 20% leads, Phase 2 → 100%, Phase 3 → Enable Closer/Anchor
+
+NEXT STEPS
+────────────────────────────────────────────────────────────────────────────
+
+Immediate (Before Production):
+  1. Run integration tests with real leads (TESTING.md)
+  2. Verify message templates with sales team
+  3. Confirm territory assignments with each agent
+  4. Set up error alerting and monitoring
+  5. Create cron job for automated agent runs
+
+Short-term (Phase 1-2):
+  1. Deploy agents to staging
+  2. Run with 20% of leads (tag subset)
+  3. Monitor reply rates, errors, message sentiment
+  4. Gather feedback from sales team
+
+Medium-term (Phase 3-4):
+  1. Scale to 100% of queued leads
+  2. Enable Closer for warm lead follow-up
+  3. Enable Anchor for renewal/retention
+  4. Implement A/B testing framework
+
+Long-term Enhancements:
+  1. Create agent_identities table (dynamic territory assignment)
+  2. Build admin dashboard for agent management
+  3. Implement webhook-based reply handling
+  4. Add performance metrics & leaderboards
+  5. Create message variation testing
+
+CONTACTS & SUPPORT
+────────────────────────────────────────────────────────────────────────────
+
+Documentation Files:
+  - Full docs: apps/web/app/api/admin/agents/README.md
+  - Testing guide: apps/web/app/api/admin/agents/TESTING.md
+  - Setup guide: AGENTS_SETUP.md (root)
+
+Questions on:
+  - Architecture → See README.md "Architecture" section
+  - Integration → See AGENTS_SETUP.md "Integration Points"
+  - Testing → See TESTING.md "Quick Test Commands"
+  - Troubleshooting → See AGENTS_SETUP.md "Troubleshooting"
+
+================================================================================
+BUILD COMPLETED: 2026-04-13
+================================================================================
