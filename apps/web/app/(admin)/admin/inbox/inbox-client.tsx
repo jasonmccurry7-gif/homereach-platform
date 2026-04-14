@@ -520,7 +520,7 @@ export function InboxClient() {
                 onClick={() => {
                   const firstName = active.leadName.split(" ")[0];
                   setReplyText(
-                    `Hi ${firstName}, this is Jason from HomeReach — here's your intake link to lock in the ${active.category} spot in ${active.city}: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/get-started\n\nTakes about 3 minutes!`
+                    `Hi ${firstName}, here's your intake link to lock in the ${active.category} spot in ${active.city}: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/get-started\n\nTakes about 3 minutes! — HomeReach`
                   );
                 }}
                 className="text-xs px-2 py-1 rounded-full border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors"
