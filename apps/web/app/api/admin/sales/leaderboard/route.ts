@@ -16,14 +16,27 @@ export async function GET(request: Request) {
 
   if (evError) return NextResponse.json({ error: evError.message }, { status: 500 });
 
-  // Get all profiles for name lookup
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, full_name, role")
-    .in("role", ["admin", "sales_agent"]);
+  // Get all profiles + agent identities for name lookup
+  const [{ data: profiles }, { data: identities }] = await Promise.all([
+    supabase.from("profiles").select("id, full_name, email"),
+    supabase.from("agent_identities").select("agent_id, from_name"),
+  ]);
 
+  // Build name map: prefer profiles.full_name, fallback to agent_identities.from_name, then email prefix
   const profileMap: Record<string, string> = {};
-  for (const p of profiles ?? []) profileMap[p.id] = p.full_name || "Unknown Agent";
+  for (const p of profiles ?? []) {
+    if (p.full_name?.trim()) {
+      profileMap[p.id] = p.full_name.trim();
+    } else if (p.email) {
+      profileMap[p.id] = p.email.split("@")[0]; // e.g. josh@home-reach.com → josh
+    }
+  }
+  // Override with agent_identities.from_name if it has a real name
+  for (const ai of identities ?? []) {
+    if (ai.from_name?.trim() && ai.agent_id) {
+      profileMap[ai.agent_id] = ai.from_name.trim();
+    }
+  }
 
   if (!events || events.length === 0) {
     return NextResponse.json({ leaderboard: [] });
@@ -50,7 +63,7 @@ export async function GET(request: Request) {
     if (!agentStats[aid]) {
       agentStats[aid] = {
         agent_id: aid,
-        name: profileMap[aid] ?? "Unknown",
+        name: profileMap[aid] ?? `Agent (${aid.slice(0, 8)})`,
         messages: 0, replies: 0, conversations: 0,
         follow_ups: 0, payment_links: 0, deals: 0,
         revenue_cents: 0, leads_viewed: 0,
