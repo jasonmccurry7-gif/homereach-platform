@@ -191,20 +191,7 @@ export async function POST(request: Request) {
             limit_info: limit,
           }, { status: 429 });
         }
-
-        // Dedup check (use message_hash column)
-        if (message && lead_id) {
-          const msgHash = crypto.createHash("sha256").update(message).digest("hex");
-          const { error: hashErr } = await supabase
-            .from("agent_message_hashes")
-            .insert({ agent_id, lead_id, message_hash: msgHash });
-
-          if (hashErr?.code === "23505") {
-            return NextResponse.json({
-              error: "Identical message already sent to this lead. Please use a different variation.",
-            }, { status: 400 });
-          }
-        }
+        // Note: dedup hash is inserted AFTER successful send (see below)
       }
 
       // Resolve destination address
@@ -251,6 +238,16 @@ export async function POST(request: Request) {
 
       if (sendResult && !sendResult.success) {
         console.error(`[sales/event] send failed for lead ${lead_id}:`, sendResult.error);
+      }
+
+      // ── Dedup hash: only record AFTER successful send ────────────────────
+      if (actualSent && agent_id && message && lead_id) {
+        const msgHash = crypto.createHash("sha256").update(message).digest("hex");
+        try {
+          await supabase
+            .from("agent_message_hashes")
+            .insert({ agent_id, lead_id, message_hash: msgHash });
+        } catch { /* non-critical — ignore duplicates */ }
       }
     }
 
