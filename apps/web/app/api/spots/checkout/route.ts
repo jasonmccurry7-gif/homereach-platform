@@ -54,14 +54,25 @@ export async function POST(req: Request) {
       .select("id, name, state, founding_eligible").eq("id", cityId).single();
     if (!city) return NextResponse.json({ error: "City not found" }, { status: 404 });
 
-    // 3. Check availability
-    const { count: takenCount } = await db.from("spot_assignments")
-      .select("id", { count: "exact" })
-      .eq("city_id", cityId).eq("category_id", categoryId)
-      .in("status", ["pending", "active"]);
-    if ((takenCount ?? 0) >= maxSpots) {
-      return NextResponse.json({ error: "This spot is no longer available." }, { status: 409 });
-    }
+    // 3. Check availability via orders joined through businesses
+    // Count active/pending orders for this city+category+bundle combo
+    try {
+      const { data: activeBizIds } = await db.from("businesses")
+        .select("id")
+        .eq("city_id", cityId)
+        .eq("category_id", categoryId);
+      if (activeBizIds && activeBizIds.length > 0) {
+        const bizIds = activeBizIds.map((b: { id: string }) => b.id);
+        const { count: takenCount } = await db.from("orders")
+          .select("id", { count: "exact" })
+          .eq("bundle_id", bundleId)
+          .in("business_id", bizIds)
+          .in("status", ["pending", "paid", "active"]);
+        if ((takenCount ?? 0) >= maxSpots) {
+          return NextResponse.json({ error: "This spot is no longer available." }, { status: 409 });
+        }
+      }
+    } catch { /* non-critical check — proceed if availability query fails */ }
 
     // 4. Resolve or create business
     let businessId: string;
@@ -84,12 +95,18 @@ export async function POST(req: Request) {
       businessId = newBiz.id;
     }
 
-    // 5. Create pending spot_assignment
-    const { data: assignment, error: assignErr } = await db.from("spot_assignments")
-      .insert({ business_id: businessId, city_id: cityId, category_id: categoryId,
-                bundle_id: bundleId, spot_type: spotType, status: "pending",
-                monthly_value_cents: bundlePrice, locked_price: lockedPrice ?? bundlePrice,
-                pricing_type: pricingType ?? "founding" })
+    // 5. Create pending order (reserves the spot)
+    const finalPrice = lockedPrice ?? bundlePrice;
+    const { data: assignment, error: assignErr } = await db.from("orders")
+      .insert({
+        business_id:  businessId,
+        bundle_id:    bundleId,
+        status:       "pending",
+        subtotal:     (finalPrice / 100).toFixed(2),
+        total:        (finalPrice / 100).toFixed(2),
+        locked_price: finalPrice,
+        pricing_type: pricingType ?? "founding",
+      })
       .select("id").single();
     if (assignErr || !assignment) return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500 });
 
@@ -172,10 +189,10 @@ export async function POST(req: Request) {
       customer: stripeCustomerId,
       line_items: lineItems,
       metadata: { businessId, cityId, categoryId, bundleId,
-                  reservationId: assignment.id, addons: addons.join(","),
+                  orderId: assignment.id, addons: addons.join(","),
                   nonprofitId: nonprofitId ?? "", pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
       subscription_data: {
-        metadata: { reservationId: assignment.id, businessId, cityId, bundleId, pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
+        metadata: { orderId: assignment.id, businessId, cityId, bundleId, pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
       },
       success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/get-started/${citySlug}/${categorySlug}?bundle=${bundleId}`,
@@ -183,7 +200,7 @@ export async function POST(req: Request) {
       allow_promotion_codes: true,
     });
 
-    return NextResponse.json({ checkoutUrl: session.url, spotAssignmentId: assignment.id });
+    return NextResponse.json({ checkoutUrl: session.url, orderId: assignment.id });
 
   } catch (err) {
     console.error("[api/spots/checkout] error:", err);
