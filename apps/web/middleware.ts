@@ -29,7 +29,7 @@ const PROTECTED = {
 };
 
 // Routes inside /admin accessible to sales_agent role
-const AGENT_ALLOWED_ROUTES = /^\/admin\/(agent-view|ad-designer|roi-preview|products|bundles|crm|sales-dashboard|sales-engine)(\/|$)|^\/admin\/agent-view$/;
+const AGENT_ALLOWED_ROUTES = /^\/admin\/(agent-view|ad-designer|roi-preview|products|bundles|crm|sales-dashboard|sales-engine|facebook)(\/|$)|^\/admin\/agent-view$/;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

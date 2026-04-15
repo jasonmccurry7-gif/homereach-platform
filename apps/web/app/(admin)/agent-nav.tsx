@@ -13,6 +13,7 @@ const NAV = [
     label: "Sales",
     items: [
       { href: "/admin/agent-view",    icon: "⚡", label: "My Dashboard",    badge: "LIVE" },
+      { href: "/admin/facebook",      icon: "💙", label: "Facebook Engine",  badge: "LIVE" },
       { href: "/admin/sales-dashboard", icon: "📊", label: "Sales Intelligence" },
       { href: "/admin/crm",           icon: "🗂️", label: "CRM" },
       { href: "/admin/sales-engine",  icon: "🤖", label: "Sales Engine" },
