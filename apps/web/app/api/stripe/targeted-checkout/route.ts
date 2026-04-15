@@ -56,19 +56,19 @@ export async function POST(req: Request) {
 
     // ── Print add-ons (one-time) ──────────────────────────────────────────────
     if (addons.includes("door_hangers"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 40000, product_data: { name: "Door Hangers (500)", description: "500 door hangers at $0.80 each" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 40000, product_data: { name: "Door Hangers (500) — 3.5\" × 8.5\"", description: "500 door hangers, 3.5\" × 8.5\", professionally designed and printed" } }, quantity: 1 });
     if (addons.includes("fliers"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 12500, product_data: { name: "Fliers (500)", description: "500 fliers at $0.25 each" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 22500, product_data: { name: "Fliers (500) — 8.5\" × 11\"", description: "500 full-color fliers, 8.5\" × 11\"" } }, quantity: 1 });
     if (addons.includes("yard_signs"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 30000, product_data: { name: "Yard Signs (10)", description: "10 yard signs at $30 each" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 30000, product_data: { name: "Yard Signs (10) — 18\" × 24\"", description: "10 branded yard signs with stakes, 18\" × 24\"" } }, quantity: 1 });
     if (addons.includes("business_cards"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 10000, product_data: { name: "Business Cards (500)", description: "500 business cards at $0.20 each" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 10500, product_data: { name: "Business Cards (500) — 3.5\" × 2\"", description: "500 premium business cards, standard 3.5\" × 2\"" } }, quantity: 1 });
 
-    // ── Recurring add-ons require a separate subscription session ─────────────
-    // For targeted campaigns (one-time payment mode), we handle recurring add-ons
-    // as additional one-time charges upfront (first month) for simplicity.
-    if (addons.includes("website_design"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, product_data: { name: "Website Design & Hosting (first month)", description: "Mobile-friendly website — billed monthly going forward" } }, quantity: 1 });
+    // ── Digital add-ons ───────────────────────────────────────────────────────
+    if (addons.includes("website_setup"))
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 49700, product_data: { name: "Website Design (One-Time Setup)", description: "Professional mobile-friendly website designed and built for your business" } }, quantity: 1 });
+    if (addons.includes("website_maintenance"))
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, product_data: { name: "Website Hosting & Maintenance (first month)", description: "Hosting, updates, and support — $97/mo going forward" } }, quantity: 1 });
     if (addons.includes("full_automation"))
       lineItems.push({ price_data: { currency: "usd", unit_amount: 7900, product_data: { name: "Full Automation Bundle (first month)", description: "SMS + Email automation — billed monthly going forward" } }, quantity: 1 });
     else {

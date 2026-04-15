@@ -5,11 +5,12 @@ import { useSearchParams } from "next/navigation";
 
 // ── Shared add-on catalog (same as spot checkout) ──────────────────────────────
 const ADDONS = [
-  { id: "door_hangers",    name: "Door Hangers (500)",      desc: "500 door hangers for local distribution.",                         price: 400,  unit: "500 @ $0.80 ea", recurring: false, icon: "🚪" },
-  { id: "fliers",          name: "Fliers (500)",            desc: "500 full-color fliers for events and bulletin boards.",             price: 125,  unit: "500 @ $0.25 ea", recurring: false, icon: "📄" },
-  { id: "yard_signs",      name: "Yard Signs (10)",         desc: "10 branded yard signs with stakes.",                                price: 300,  unit: "10 @ $30 ea",    recurring: false, icon: "🪧" },
-  { id: "business_cards",  name: "Business Cards (500)",    desc: "500 premium business cards, professionally designed.",             price: 100,  unit: "500 @ $0.20 ea", recurring: false, icon: "🪪" },
-  { id: "website_design",  name: "Website Design & Hosting",desc: "Mobile-friendly website with hosting and ongoing updates.",        price: 97,   unit: "/mo",            recurring: true,  icon: "🌐", badge: "Popular" },
+  { id: "door_hangers",       name: "Door Hangers (500) — 3.5\" × 8.5\"",  desc: "500 door hangers, 3.5\" × 8.5\", professionally designed and printed.",              price: 400,  unit: "500 @ $0.80 ea", recurring: false, icon: "🚪" },
+  { id: "fliers",             name: "Fliers (500) — 8.5\" × 11\"",          desc: "500 full-color fliers, 8.5\" × 11\". Great for events and bulletin boards.",       price: 225,  unit: "500 @ $0.45 ea", recurring: false, icon: "📄" },
+  { id: "yard_signs",         name: "Yard Signs (10) — 18\" × 24\"",         desc: "10 branded yard signs with stakes, 18\" × 24\". Perfect for job sites.",          price: 300,  unit: "10 @ $30 ea",    recurring: false, icon: "🪧" },
+  { id: "business_cards",     name: "Business Cards (500) — 3.5\" × 2\"",    desc: "500 premium business cards, standard 3.5\" × 2\". Professionally printed.",      price: 105,  unit: "500 @ $0.21 ea", recurring: false, icon: "🪪" },
+  { id: "website_setup",      name: "Website Design (One-Time Setup)",       desc: "Professional mobile-friendly website designed and built for your business.",      price: 497,  unit: "one-time",       recurring: false, icon: "🌐", badge: "Popular" },
+  { id: "website_maintenance", name: "Website Hosting & Maintenance",        desc: "Ongoing hosting, updates, and support for your HomeReach website.",               price: 97,   unit: "/mo",            recurring: true,  icon: "🖥️" },
   { id: "sms_automation",  name: "SMS Follow-Up Automation",desc: "Automated text sequences that follow up with every lead.",         price: 49,   unit: "/mo",            recurring: true,  icon: "📱" },
   { id: "email_automation",name: "Email Automation",        desc: "Drip email sequences that nurture leads until they're ready.",     price: 49,   unit: "/mo",            recurring: true,  icon: "📧" },
   { id: "full_automation", name: "Full Automation Bundle",  desc: "SMS + Email automation together — convert postcard leads automatically.", price: 79, unit: "/mo", recurring: true, icon: "🤖", badge: "Best Value" },

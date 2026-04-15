@@ -141,25 +141,29 @@ export async function POST(req: Request) {
     // ── Print products (one-time) ─────────────────────────────────────────────
     if (addons.includes("door_hangers")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 40000,
-        product_data: { name: "Door Hangers (500)", description: "500 door hangers at $0.80 each" } }, quantity: 1 });
+        product_data: { name: "Door Hangers (500) — 3.5\" × 8.5\"", description: "500 door hangers, 3.5\" × 8.5\", professionally designed and printed" } }, quantity: 1 });
     }
     if (addons.includes("fliers")) {
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 12500,
-        product_data: { name: "Fliers (500)", description: "500 full-color fliers at $0.25 each" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 22500,
+        product_data: { name: "Fliers (500) — 8.5\" × 11\"", description: "500 full-color fliers, 8.5\" × 11\", for events and local distribution" } }, quantity: 1 });
     }
     if (addons.includes("yard_signs")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 30000,
-        product_data: { name: "Yard Signs (10)", description: "10 yard signs with stakes at $30 each" } }, quantity: 1 });
+        product_data: { name: "Yard Signs (10) — 18\" × 24\"", description: "10 branded yard signs with stakes, 18\" × 24\"" } }, quantity: 1 });
     }
     if (addons.includes("business_cards")) {
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 10000,
-        product_data: { name: "Business Cards (500)", description: "500 premium business cards at $0.20 each" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 10500,
+        product_data: { name: "Business Cards (500) — 3.5\" × 2\"", description: "500 premium business cards, standard 3.5\" × 2\" size" } }, quantity: 1 });
     }
 
-    // ── Digital (recurring) ───────────────────────────────────────────────────
-    if (addons.includes("website_design")) {
+    // ── Digital ───────────────────────────────────────────────────────────────
+    if (addons.includes("website_setup")) {
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 49700,
+        product_data: { name: "Website Design (One-Time Setup)", description: "Professional mobile-friendly website designed and built for your business" } }, quantity: 1 });
+    }
+    if (addons.includes("website_maintenance")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, recurring: { interval: "month" },
-        product_data: { name: "Website Design & Hosting", description: "Mobile-friendly business website with hosting and ongoing updates" } }, quantity: 1 });
+        product_data: { name: "Website Hosting & Maintenance", description: "Ongoing hosting, updates, and support — $97/mo" } }, quantity: 1 });
     }
 
     // ── Automation (recurring) ────────────────────────────────────────────────
