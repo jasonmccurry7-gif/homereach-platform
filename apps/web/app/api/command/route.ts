@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/service";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // allow up to 60s for agent execution
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/command — APEX Mobile Command Center
@@ -36,6 +34,16 @@ function twimlOk() {
   );
 }
 
+// GET — liveness check (visit in browser to confirm endpoint is deployed)
+export async function GET() {
+  return new NextResponse(JSON.stringify({
+    status: "APEX command line is live",
+    approved: ["+13302069639", "+13303044916"],
+    apex_number: process.env.APEX_COMMAND_NUMBER ?? "not set",
+    cron_secret_set: !!process.env.CRON_SECRET,
+  }), { headers: { "Content-Type": "application/json" } });
+}
+
 export async function POST(req: Request) {
   try {
     const text   = await req.text();
@@ -64,8 +72,7 @@ export async function POST(req: Request) {
     }
 
     // Execute APEX command and return result in TwiML
-    const db     = createServiceClient();
-    const result = await executeCommand(body, db);
+    const result = await executeCommand(body);
     return twimlMessage(result);
 
   } catch (err) {
@@ -78,24 +85,13 @@ export async function POST(req: Request) {
 // APEX Command Engine
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function executeCommand(
-  cmd: string,
-  db: ReturnType<typeof createServiceClient>
-): Promise<string> {
+async function executeCommand(cmd: string): Promise<string> {
   const appUrl = "https://home-reach.com";
   const lower  = cmd.toLowerCase();
   const start  = Date.now();
 
-  // Log it
-  await db.from("apex_command_log").insert({
-    sender: "system", command: cmd, status: "processing",
-    timestamp: new Date().toISOString(),
-  }).catch(() => {});
-
   // ── Approval gate ─────────────────────────────────────────────────────────
   if (/\bpric(e|ing)\b|checkout|funnel|city.?launch|stripe.?change/.test(lower)) {
-    await db.from("apex_command_log").update({ status: "awaiting_approval" })
-      .eq("command", cmd).catch(() => {});
     return [
       "⚠️ APEX — CEO Approval Required",
       "",
@@ -170,12 +166,6 @@ async function executeCommand(
   ];
 
   const response = lines.join("\n");
-
-  await db.from("apex_command_log").update({
-    status: status.toLowerCase(),
-    response: response.slice(0, 2000),
-    elapsed_ms: Date.now() - start,
-  }).eq("command", cmd).catch(() => {});
 
   return response;
 }
