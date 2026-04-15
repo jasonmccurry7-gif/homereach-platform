@@ -45,6 +45,7 @@ const NAV_GROUPS = [
   {
     label: "Management",
     items: [
+      { label: "Founding Members", href: "/admin/founding",      emoji: "🏷️", badge: "NEW" },
       { label: "Pricing Control", href: "/admin/pricing",        emoji: "🏷️", badge: "NEW" },
       { label: "Profit Center",  href: "/admin/profit-center",  emoji: "💰", badge: "NEW" },
       { label: "Reviews",        href: "/admin/reviews",        emoji: "⭐", badge: "NEW" },

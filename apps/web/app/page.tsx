@@ -363,6 +363,51 @@ export default function HomePage() {
               Launch a Campaign →
             </Link>
           </div>
+          {/* Property Intelligence Leads — NEW */}
+          <div className="rounded-2xl border border-amber-700/50 bg-gradient-to-b from-amber-950/30 to-gray-900 p-8 relative">
+            <div className="absolute -top-3 left-4">
+              <span className="rounded-full bg-amber-500 px-3 py-1 text-xs font-black text-black">NEW PRODUCT</span>
+            </div>
+            <div className="flex items-start justify-between mb-4 mt-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-400 mb-1">Founding Member Pricing</p>
+                <h3 className="text-xl font-black text-white">Property Intelligence Leads</h3>
+              </div>
+              <span className="text-3xl">🏠</span>
+            </div>
+            <p className="text-gray-300 text-sm leading-relaxed mb-5">
+              We identify homeowners who need your service — before they start searching.
+              Verified intent signals from 2,500+ homeowner data points per city.
+            </p>
+            <ul className="space-y-2 mb-6">
+              {[
+                "Pre-qualified homeowner leads by category",
+                "Category exclusivity available (Tier 3)",
+                "Monthly subscription — leads delivered automatically",
+                "Full dashboard with lead details",
+                "Founding Member rates locked in for life",
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-gray-300">
+                  <span className="text-amber-400 mt-0.5 shrink-0">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <div className="border-t border-gray-800 pt-4 mb-4">
+              <p className="text-xs text-gray-500 line-through">From $400/month</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-2xl font-black text-amber-400">$200</p>
+                <p className="text-sm text-gray-400">/month — Founding Member Rate</p>
+              </div>
+              <p className="text-xs text-green-400 mt-1">🏷️ Founding slots limited — locks in for life</p>
+            </div>
+            <Link
+              href="/intelligence"
+              className="block w-full rounded-xl bg-amber-500 py-3 text-center text-sm font-black text-black hover:bg-amber-400 transition-colors"
+            >
+              Claim Founding Rate →
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -404,7 +449,8 @@ export default function HomePage() {
           </div>
           <div className="flex flex-wrap justify-center items-center gap-5 text-sm text-gray-500">
             <Link href="/get-started" className="hover:text-gray-300 transition-colors">Shared Postcards</Link>
-            <Link href="/targeted"    className="hover:text-gray-300 transition-colors">Targeted Campaigns</Link>
+            <Link href="/targeted"      className="hover:text-gray-300 transition-colors">Targeted Campaigns</Link>
+            <Link href="/intelligence"  className="hover:text-amber-400 transition-colors font-medium text-amber-500">Property Intelligence ✦</Link>
             <Link href="/nonprofit"   className="hover:text-gray-300 transition-colors">Nonprofits</Link>
             <Link href="/login"       className="hover:text-gray-300 transition-colors">Log in</Link>
           </div>
