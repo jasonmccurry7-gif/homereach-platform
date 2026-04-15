@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 function getApprovedSenders(): Set<string> {
   const extra = (process.env.APEX_APPROVED_SENDERS ?? "")
     .split(",").map(s => s.trim()).filter(Boolean);
-  return new Set(["+13302069639", "+13303044916", ...extra]);
+  return new Set(["+13302069639", ...extra]); // Jason's personal cell only
 }
 
 function twimlMessage(text: string) {
