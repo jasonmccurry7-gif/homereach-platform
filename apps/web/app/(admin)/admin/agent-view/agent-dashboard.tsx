@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import CallEngine from "./call-engine";
+import QuickCallLog from "./quick-call-log";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +100,8 @@ type ActivityTargets = {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function AgentDashboard({ agentId }: { agentId: string }) {
+  const [mainView,     setMainView]     = useState<"messages" | "calls">("messages");
+  const [showQuickLog, setShowQuickLog] = useState(false);
   const [data,         setData]         = useState<TaskData | null>(null);
   const [loading,      setLoading]      = useState(true);
   const [activeTab,    setActiveTab]    = useState<SectionKey>("replies");
@@ -470,6 +474,49 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
         </div>
       )}
 
+      {/* ── Main view switcher ──────────────────────────────────────────── */}
+      <div className="bg-gray-900 border-b border-gray-700 px-6 pt-3 flex items-center gap-1">
+        <button
+          onClick={() => setMainView("messages")}
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors border-b-2 ${
+            mainView === "messages" ? "border-blue-500 text-white bg-gray-800" : "border-transparent text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          📨 Messages
+        </button>
+        <button
+          onClick={() => setMainView("calls")}
+          className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors border-b-2 ${
+            mainView === "calls" ? "border-green-500 text-white bg-gray-800" : "border-transparent text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          📞 Call List
+        </button>
+        <button
+          onClick={() => setShowQuickLog(true)}
+          className="ml-auto mb-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg"
+        >
+          + Quick Log
+        </button>
+      </div>
+
+      {/* ── Quick Call Log Modal ─────────────────────────────────────────── */}
+      {showQuickLog && (
+        <QuickCallLog
+          agentId={agentId}
+          onClose={() => setShowQuickLog(false)}
+          onSaved={() => { setShowQuickLog(false); }}
+        />
+      )}
+
+      {/* ── Call Engine View ─────────────────────────────────────────────── */}
+      {mainView === "calls" && (
+        <CallEngine agentId={agentId} />
+      )}
+
+      {/* ── Messages View ─────────────────────────────────────────────────── */}
+      {mainView === "messages" && <>
+
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0">
         <div className="flex items-start justify-between gap-4">
@@ -721,6 +768,7 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
         )}
       </div>
     </div>
+    </>}
   );
 }
 
