@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 function getApprovedSenders(): Set<string> {
   const extra = (process.env.APEX_APPROVED_SENDERS ?? "")
     .split(",").map(s => s.trim()).filter(Boolean);
-  return new Set(["+13303044916", ...extra]); // Jason always allowed
+  return new Set(["+13302069639", "+13303044916", ...extra]); // Jason's personal cell + work
 }
 
 // ── Send SMS via Twilio ───────────────────────────────────────────────────────
