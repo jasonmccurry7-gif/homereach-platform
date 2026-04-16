@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import QuickCallLog from "./quick-call-log";
+import FacebookEngine from "./facebook-engine";
 
 const OBJECTIONS: Record<string, string[]> = {
   "Too Expensive": [
@@ -54,6 +55,7 @@ interface Progress { done:number; target:number; }
 interface DailyProgress { texts:Progress; emails:Progress; calls:Progress; dms:Progress; posts:Progress; revenue:number; deals:number; }
 
 export default function AgentHome({ agentId, agentName }: { agentId:string; agentName:string }) {
+  const [mainView, setMainView] = useState<"messages" | "calls" | "facebook">("messages");
   const [actions, setActions]   = useState<ActionItem[]>([]);
   const [progress, setProgress] = useState<DailyProgress>({ texts:{done:0,target:20}, emails:{done:0,target:20}, calls:{done:0,target:15}, dms:{done:0,target:20}, posts:{done:0,target:2}, revenue:0, deals:0 });
   const [date, setDate]         = useState("");
@@ -274,6 +276,29 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
 
       {/* ── HEADER ────────────────────────────────────────────────────────── */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 shrink-0">
+        {/* Main view switcher — Messages | Calls | Facebook Engine */}
+        <div className="flex items-center gap-1 mb-3 border-b border-gray-800 pb-2">
+          <button onClick={()=>setMainView("messages")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mainView==="messages"?"bg-blue-600 text-white":"bg-gray-800 text-gray-400 hover:text-gray-200"}`}>
+            📨 Messages
+          </button>
+          <button onClick={()=>setMainView("calls")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mainView==="calls"?"bg-green-600 text-white":"bg-gray-800 text-gray-400 hover:text-gray-200"}`}>
+            📞 Calls
+          </button>
+          <button onClick={()=>setMainView("facebook")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mainView==="facebook"?"bg-blue-800 text-white":"bg-gray-800 text-gray-400 hover:text-gray-200"}`}>
+            📘 FB Engine
+          </button>
+          <button onClick={()=>setShowLog(true)} className="ml-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg">+ Log</button>
+        </div>
+
+        {/* Facebook Engine — full-screen takeover when active */}
+        {mainView === "facebook" && (
+          <FacebookEngine agentId={agentId} agentName={agentName} />
+        )}
+
+        {mainView !== "facebook" && (<>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="font-black text-white text-base leading-tight">{agentName}</h1>
@@ -281,7 +306,6 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
           </div>
           <div className="flex items-center gap-2">
             {progress.deals>0&&<div className="text-right"><p className="text-xs font-bold text-emerald-400">${(progress.revenue/100).toFixed(0)}</p><p className="text-[10px] text-gray-600">{progress.deals} deal{progress.deals!==1?"s":""}</p></div>}
-            <button onClick={()=>setShowLog(true)} className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg">+ Log</button>
             <button onClick={load} className="text-gray-600 hover:text-gray-300 text-xs">↻</button>
           </div>
         </div>
@@ -312,10 +336,11 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
             </button>
           ))}
         </div>
+        </>)}
       </div>
 
-      {/* ── ACTION LIST ───────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-800/50">
+      {/* ── ACTION LIST — only shown when not in Facebook view ──────────── */}
+      {mainView === "facebook" ? null : <div className="flex-1 overflow-y-auto divide-y divide-gray-800/50">
         {visible.length===0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <p className="text-5xl">🏆</p>
@@ -409,7 +434,7 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
             )}
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }
