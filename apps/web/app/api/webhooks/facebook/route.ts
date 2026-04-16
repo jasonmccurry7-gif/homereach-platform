@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 // Until then, events will only arrive from the app's test users.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VERIFY_TOKEN = process.env.FACEBOOK_VERIFY_TOKEN ?? "homereach-fb-verify";
+const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN ?? process.env.FACEBOOK_VERIFY_TOKEN ?? "homereach-fb-verify";
 const APP_SECRET   = process.env.FACEBOOK_APP_SECRET ?? "";
 const BASE_URL     = process.env.NEXT_PUBLIC_SITE_URL ?? "https://home-reach.com";
 const CRON_SECRET  = process.env.CRON_SECRET ?? "";
