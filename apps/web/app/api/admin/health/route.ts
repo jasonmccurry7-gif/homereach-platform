@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, cities, bundles, categories } from "@homereach/db";
-import { eq, count } from "drizzle-orm";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/health
@@ -38,33 +37,50 @@ async function runCheck(
 }
 
 export async function GET() {
+  const supabase = createServiceClient();
+
   const checks: CheckResult[] = await Promise.all([
 
     // ── Database connectivity ──────────────────────────────────────────────
     runCheck("db_connectivity", async () => {
-      await db.select({ n: count() }).from(cities).limit(1);
+      const { error } = await supabase.from("cities").select("id", { count: "exact", head: true });
+      if (error) throw new Error(error.message);
       return "Database reachable";
     }),
 
     // ── Cities seeded ─────────────────────────────────────────────────────
     runCheck("cities_seeded", async () => {
-      const [{ n }] = await db.select({ n: count() }).from(cities).where(eq(cities.isActive, true));
-      if (n === 0) throw new Error("No active cities found — funnel will show empty");
-      return `${n} active cities`;
+      const { count, error } = await supabase
+        .from("cities").select("id", { count: "exact", head: true }).eq("is_active", true);
+      if (error) throw new Error(error.message);
+      if (!count || count === 0) throw new Error("No active cities found — funnel will show empty");
+      return `${count} active cities`;
     }),
 
     // ── Bundles seeded ────────────────────────────────────────────────────
     runCheck("bundles_seeded", async () => {
-      const [{ n }] = await db.select({ n: count() }).from(bundles).where(eq(bundles.isActive, true));
-      if (n === 0) throw new Error("No active bundles — bundle selection page will be empty");
-      return `${n} active bundles`;
+      const { count, error } = await supabase
+        .from("bundles").select("id", { count: "exact", head: true }).eq("is_active", true);
+      if (error) throw new Error(error.message);
+      if (!count || count === 0) throw new Error("No active bundles — bundle selection page will be empty");
+      return `${count} active bundles`;
     }),
 
     // ── Categories seeded ─────────────────────────────────────────────────
     runCheck("categories_seeded", async () => {
-      const [{ n }] = await db.select({ n: count() }).from(categories).where(eq(categories.isActive, true));
-      if (n === 0) throw new Error("No active categories — funnel step 2 will be empty");
-      return `${n} active categories`;
+      const { count, error } = await supabase
+        .from("categories").select("id", { count: "exact", head: true }).eq("is_active", true);
+      if (error) throw new Error(error.message);
+      if (!count || count === 0) throw new Error("No active categories — funnel step 2 will be empty");
+      return `${count} active categories`;
+    }),
+
+    // ── Sales leads present ───────────────────────────────────────────────
+    runCheck("leads_seeded", async () => {
+      const { count, error } = await supabase
+        .from("sales_leads").select("id", { count: "exact", head: true });
+      if (error) throw new Error(error.message);
+      return `${count ?? 0} total leads in CRM`;
     }),
 
     // ── Env vars: Stripe ──────────────────────────────────────────────────
@@ -101,7 +117,7 @@ export async function GET() {
   const warned  = checks.filter((c) => c.status === "warn");
 
   // Revenue-impacting failures → RED
-  const redChecks = ["db_connectivity", "env_stripe", "env_twilio", "bundles_seeded"];
+  const redChecks = ["db_connectivity", "env_stripe", "env_twilio", "bundles_seeded", "leads_seeded"];
   const isRed = failed.some((c) => redChecks.includes(c.name));
 
   const overall: "GREEN" | "YELLOW" | "RED" =
