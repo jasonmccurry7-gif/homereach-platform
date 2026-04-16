@@ -43,6 +43,14 @@
     {
       "path": "/api/facebook/followup",
       "schedule": "0 9,13,17 * * *"
+    },
+    {
+      "path": "/api/admin/sales/nudge",
+      "schedule": "0 10,13,15 * * 1-5"
+    },
+    {
+      "path": "/api/admin/sales/follow-up-sequence",
+      "schedule": "0 8 * * 1-5"
     }
   ]
 }

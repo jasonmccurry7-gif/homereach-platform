@@ -113,8 +113,8 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
   const [replyDraft,   setReplyDraft]   = useState<Record<string, string>>({});
   const [leaderboard,  setLeaderboard]  = useState<LeaderboardEntry[]>([]);
   const [activity,     setActivity]     = useState<ActivityTargets>({
-    sms_sent: 0, sms_target: 40,
-    email_sent: 0, email_target: 40,
+    sms_sent: 0, sms_target: 20,
+    email_sent: 0, email_target: 20,
     followups_sent: 0, followups_target: 10,
     replies_handled: 0, replies_pending: 0,
   });
@@ -143,8 +143,8 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
           ...a,
           sms_sent:   json.totals.sms_sent_today   ?? 0,
           email_sent: json.totals.email_sent_today ?? 0,
-          sms_target:   json.targets?.sms_daily   ?? 40,
-          email_target: json.targets?.email_daily ?? 40,
+          sms_target:   json.targets?.sms_daily ?? 20,
+          email_target: json.targets?.email_daily ?? 20,
         }));
       }
       // Auto-navigate to first non-empty section
@@ -577,8 +577,8 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
         {(() => {
           const smsTotal   = (data.totals.sms_sent_today   ?? 0) + session.sms;
           const emailTotal = (data.totals.email_sent_today ?? 0) + session.email;
-          const smsTgt     = data.targets?.sms_daily   ?? 40;
-          const emailTgt   = data.targets?.email_daily ?? 40;
+          const smsTgt     = data.targets?.sms_daily ?? 20;
+          const emailTgt   = data.targets?.email_daily ?? 20;
           const smsDone    = smsTotal   >= smsTgt;
           const emailDone  = emailTotal >= emailTgt;
           const smsLeft    = Math.max(0, smsTgt   - smsTotal);

@@ -390,8 +390,8 @@ export async function GET(request: Request) {
         revenue_today_cents: revenueToday,
       },
       targets: {
-        sms_daily:   40,
-        email_daily: 40,
+        sms_daily:   20,
+        email_daily: 20,
       },
     });
   } catch (err) {

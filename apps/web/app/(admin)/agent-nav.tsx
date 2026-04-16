@@ -12,6 +12,7 @@ const NAV = [
   {
     label: "Sales",
     items: [
+      { href: "/admin/war-room",      icon: "🎯", label: "War Room",        badge: "LIVE" },
       { href: "/admin/agent-view",    icon: "⚡", label: "My Dashboard",    badge: "LIVE" },
       { href: "/admin/facebook",      icon: "💙", label: "Facebook Engine",  badge: "LIVE" },
       { href: "/admin/sales-dashboard", icon: "📊", label: "Sales Intelligence" },

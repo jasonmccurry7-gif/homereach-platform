@@ -173,7 +173,7 @@ export async function GET(request: Request) {
         id: callList.id,
         agent_id: callList.agent_id,
         list_date: callList.list_date,
-        target_calls: 10,
+        target_calls: 15,
         list_size: leadIds.length,
       },
       leads: leads || [],
