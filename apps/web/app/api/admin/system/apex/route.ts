@@ -91,6 +91,8 @@ function extractSummary(agent: string, data: Record<string, unknown>): string {
       return `${data.at_risk ?? 0} at-risk accounts · ${data.messages_sent ?? 0} retention messages`;
     case "Scraper":
       return `${data.added ?? 0} new leads scraped`;
+    case "FacebookScores":
+      return `${data.scores_computed ?? 0} scores computed · avg ${data.avg_overall_score ?? 0}/100`;
     default:
       return JSON.stringify(data).slice(0, 100);
   }
@@ -150,6 +152,10 @@ export async function POST(req: NextRequest) {
     const health = await runAgent("Sentinel", "/api/admin/health", "GET");
     results.push(health);
 
+    // ── STEP 10: Facebook Performance Scores — compute daily snapshot ────────
+    const fbScores = await runAgent("FacebookScores", "/api/admin/sales/facebook/daily-score");
+    results.push(fbScores);
+
   } catch (err) {
     console.error("[APEX] Orchestrator error:", err);
   }
@@ -203,7 +209,7 @@ export async function GET() {
     agent: "Apex Orchestrator",
     status: "ready",
     description: "POST to run full agent sweep. Fires all 16 agents in sequence.",
-    agents: ["Pulse", "Ledger", "Kaizen", "Prospector", "Echo", "Closer", "Anchor", "Scraper", "Sentinel"],
+    agents: ["Pulse", "Ledger", "Kaizen", "Prospector", "Echo", "Closer", "Anchor", "Scraper", "Sentinel", "FacebookScores"],
     cron_secret_required: true,
   });
 }

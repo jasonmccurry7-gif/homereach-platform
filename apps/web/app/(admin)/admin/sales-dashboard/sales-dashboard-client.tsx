@@ -51,6 +51,33 @@ type AgentDetail = {
 
 type TimeRange = "today" | "week" | "month";
 
+type FbLeaderboardEntry = {
+  rank: number;
+  agent_id: string;
+  name: string;
+  overall_score: number;
+  visibility_score: number;
+  engagement_score: number;
+  conversion_score: number;
+  revenue_opp_score: number;
+  posts_completed: number;
+  comments_completed: number;
+  dm_converted_count: number;
+  biz_owner_interactions: number;
+  streak_days: number;
+  is_top_performer: boolean;
+  is_on_streak: boolean;
+  has_biz_owner_win: boolean;
+};
+
+type FbTeamSummary = {
+  avg_overall_score: number;
+  total_dm_conversions: number;
+  total_biz_owner_interactions: number;
+  active_streaks: number;
+  reps_active: number;
+};
+
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
 export default function SalesDashboardClient() {
   const [funnel, setFunnel]         = useState<FunnelData | null>(null);
@@ -61,6 +88,8 @@ export default function SalesDashboardClient() {
   const [timeRange, setTimeRange]   = useState<TimeRange>("today");
   const [activeAgent, setActiveAgent] = useState<AgentDetail | null>(null);
   const [sortBy, setSortBy] = useState<"deals" | "revenue" | "reply_rate" | "messages">("deals");
+  const [fbLeaderboard, setFbLeaderboard] = useState<FbLeaderboardEntry[]>([]);
+  const [fbTeamSummary, setFbTeamSummary] = useState<FbTeamSummary | null>(null);
 
   const sinceMap: Record<TimeRange, string> = {
     today: new Date(Date.now() - 86400000).toISOString(),
@@ -71,16 +100,20 @@ export default function SalesDashboardClient() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const since = sinceMap[timeRange];
-    const [fRes, lRes, iRes] = await Promise.all([
+    const today = new Date().toISOString().split("T")[0];
+    const [fRes, lRes, iRes, fbRes] = await Promise.all([
       fetch(`/api/admin/sales/funnel?since=${since}`),
       fetch(`/api/admin/sales/leaderboard?since=${since}`),
       fetch(`/api/admin/sales/insights?since=${since}`),
+      fetch(`/api/admin/sales/facebook/leaderboard?date=${today}`),
     ]);
-    const [fData, lData, iData] = await Promise.all([fRes.json(), lRes.json(), iRes.json()]);
+    const [fData, lData, iData, fbData] = await Promise.all([fRes.json(), lRes.json(), iRes.json(), fbRes.json()]);
     setFunnel(fData.funnel ?? null);
     setLeaderboard(lData.leaderboard ?? []);
     setInsights(iData.insights ?? []);
     setGuidance(iData.guidance ?? []);
+    setFbLeaderboard(fbData.leaderboard ?? []);
+    setFbTeamSummary(fbData.team_summary ?? null);
     setLoading(false);
   }, [timeRange]);
 
@@ -277,6 +310,95 @@ export default function SalesDashboardClient() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Facebook Performance Leaderboard */}
+      <div className="mt-6 bg-gray-900 border border-blue-900/40 rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-bold text-white text-sm">📘 Facebook Performance — Today</h2>
+            <p className="text-gray-500 text-xs mt-0.5">Engagement scores across all reps · computed by APEX each morning</p>
+          </div>
+          {fbTeamSummary && (
+            <div className="flex items-center gap-4 text-xs">
+              <div className="text-center">
+                <div className="font-bold text-blue-400 text-lg">{fbTeamSummary.avg_overall_score}</div>
+                <div className="text-gray-500">Team Avg</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-green-400 text-lg">{fbTeamSummary.total_dm_conversions}</div>
+                <div className="text-gray-500">DM Converts</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-yellow-400 text-lg">{fbTeamSummary.total_biz_owner_interactions}</div>
+                <div className="text-gray-500">Biz Wins</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-orange-400 text-lg">{fbTeamSummary.active_streaks}</div>
+                <div className="text-gray-500">On Streak</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {fbLeaderboard.length === 0 ? (
+          <div className="text-center text-gray-500 text-xs py-6">
+            No Facebook scores for today yet — APEX computes these each morning, or trigger manually via Apex Orchestrator.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-800">
+                  <th className="text-left py-2 px-2">Rank</th>
+                  <th className="text-left py-2 px-2">Rep</th>
+                  <th className="text-right py-2 px-2">Overall</th>
+                  <th className="text-right py-2 px-2">Visibility</th>
+                  <th className="text-right py-2 px-2">Engagement</th>
+                  <th className="text-right py-2 px-2">Conversion</th>
+                  <th className="text-right py-2 px-2">Rev Opp</th>
+                  <th className="text-right py-2 px-2">Posts</th>
+                  <th className="text-right py-2 px-2">Comments</th>
+                  <th className="text-right py-2 px-2">DMs</th>
+                  <th className="text-right py-2 px-2">Streak</th>
+                  <th className="text-left py-2 px-2">Badges</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fbLeaderboard.map((rep) => (
+                  <tr key={rep.agent_id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-all">
+                    <td className="py-2.5 px-2">
+                      <span className={`font-bold ${rep.rank === 1 ? "text-yellow-400" : rep.rank === 2 ? "text-gray-300" : rep.rank === 3 ? "text-orange-400" : "text-gray-600"}`}>
+                        #{rep.rank}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-2 font-semibold text-white">{rep.name}</td>
+                    <td className="py-2.5 px-2 text-right">
+                      <span className={`font-bold text-sm ${rep.overall_score >= 70 ? "text-green-400" : rep.overall_score >= 40 ? "text-yellow-400" : "text-gray-500"}`}>
+                        {rep.overall_score}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-2 text-right text-purple-300">{rep.visibility_score}</td>
+                    <td className="py-2.5 px-2 text-right text-blue-300">{rep.engagement_score}</td>
+                    <td className="py-2.5 px-2 text-right text-yellow-300">{rep.conversion_score}</td>
+                    <td className="py-2.5 px-2 text-right text-emerald-300">{rep.revenue_opp_score}</td>
+                    <td className="py-2.5 px-2 text-right text-gray-400">{rep.posts_completed}</td>
+                    <td className="py-2.5 px-2 text-right text-gray-400">{rep.comments_completed}</td>
+                    <td className="py-2.5 px-2 text-right text-green-400 font-bold">{rep.dm_converted_count}</td>
+                    <td className="py-2.5 px-2 text-right text-orange-400">{rep.streak_days}d</td>
+                    <td className="py-2.5 px-2">
+                      <div className="flex gap-1 flex-wrap">
+                        {rep.is_top_performer && <span className="bg-yellow-900/40 text-yellow-400 text-xs px-1.5 py-0.5 rounded-full">🏆 Top</span>}
+                        {rep.is_on_streak    && <span className="bg-orange-900/40 text-orange-400 text-xs px-1.5 py-0.5 rounded-full">🔥 Streak</span>}
+                        {rep.has_biz_owner_win && <span className="bg-blue-900/40 text-blue-400 text-xs px-1.5 py-0.5 rounded-full">🏢 Biz Win</span>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Bottom row: Channel + City + Category + Insights */}

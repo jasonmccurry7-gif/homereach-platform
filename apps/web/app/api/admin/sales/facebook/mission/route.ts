@@ -153,12 +153,66 @@ export async function GET(req: Request) {
     warmOpportunities = fbLeads ?? [];
   } catch {}
 
+  // ── Open city/category slots — churned or cancelled spots that reps can fill ──
+  // These are high-priority targets for Facebook outreach — real revenue opportunities.
+  let openSlots: Array<{
+    city: string;
+    category: string;
+    spot_type: string;
+    city_id: string;
+    category_id: string;
+    released_at: string | null;
+  }> = [];
+  try {
+    const { data: slotData } = await supabase
+      .from("spot_assignments")
+      .select(`
+        spot_type,
+        released_at,
+        cities!inner(name),
+        categories!inner(name)
+      `)
+      .in("status", ["churned", "cancelled"])
+      .order("released_at", { ascending: false })
+      .limit(20);
+
+    if (slotData) {
+      // De-dupe by city+category — keep most recently released
+      const seen = new Set<string>();
+      for (const row of slotData) {
+        const cityName     = (row.cities as unknown as { name: string })?.name ?? "";
+        const categoryName = (row.categories as unknown as { name: string })?.name ?? "";
+        const key = `${cityName}|${categoryName}`;
+        if (!seen.has(key) && cityName) {
+          seen.add(key);
+          // Filter by agent's assigned cities if available
+          if (assignedCities.length === 0 || assignedCities.some(c => c.toLowerCase().includes(cityName.toLowerCase()))) {
+            openSlots.push({
+              city: cityName,
+              category: categoryName,
+              spot_type: row.spot_type ?? "anchor",
+              city_id: "",
+              category_id: "",
+              released_at: row.released_at ?? null,
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // spot_assignments not accessible — continue without slot data
+  }
+
   const tasks = MISSION_TASKS.map(task => ({
     ...task,
     completed: completedToday[task.type] ?? 0,
     remaining: Math.max(0, task.target - (completedToday[task.type] ?? 0)),
     done: task.target > 0 && (completedToday[task.type] ?? 0) >= task.target,
     warmOpportunities: task.type === "sales_opportunity_followup" ? warmOpportunities : [],
+    // Surface open slots in city-specific tasks
+    openSlots: ["authority_post", "group_contribution", "sales_opportunity_followup"].includes(task.type)
+      ? openSlots.slice(0, 5)
+      : [],
   }));
 
   const totalCompleted = Object.values(completedToday).reduce((a, b) => a + b, 0);
@@ -170,6 +224,7 @@ export async function GET(req: Request) {
     date: today,
     agent_id: agentId,
     assigned_cities: assignedCities,
+    open_slots: openSlots,
     tasks,
     total_completed_today: totalCompleted,
     mission_score: missionScore,

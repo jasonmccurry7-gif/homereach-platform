@@ -23,6 +23,13 @@ import { useState, useEffect, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type OpenSlot = {
+  city:       string;
+  category:   string;
+  spot_type:  string;
+  released_at: string | null;
+};
+
 type MissionTask = {
   type:   string;
   label:  string;
@@ -36,12 +43,14 @@ type MissionTask = {
   remaining:  number;
   done:       boolean;
   warmOpportunities: Array<{ business_name: string; city: string; category: string; facebook_url: string | null }>;
+  openSlots:  OpenSlot[];
 };
 
 type MissionData = {
   date:                  string;
   agent_id:              string;
   assigned_cities:       string[];
+  open_slots:            OpenSlot[];
   tasks:                 MissionTask[];
   total_completed_today: number;
   mission_score:         number;
@@ -292,6 +301,7 @@ export default function FacebookEngine({ agentId, agentName }: { agentId: string
           <MissionPanel
             tasks={mission.tasks}
             assignedCities={mission.assigned_cities}
+            openSlots={mission.open_slots ?? []}
             activeCity={activeCity}
             onLogTask={logTask}
             onFireAlert={fireAlert}
@@ -313,10 +323,11 @@ export default function FacebookEngine({ agentId, agentName }: { agentId: string
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MissionPanel({
-  tasks, assignedCities, activeCity, onLogTask, onFireAlert,
+  tasks, assignedCities, activeCity, openSlots, onLogTask, onFireAlert,
 }: {
   tasks:          MissionTask[];
   assignedCities: string[];
+  openSlots:      OpenSlot[];
   activeCity:     string;
   onLogTask:      (type: string, payload: Record<string, unknown>) => void;
   onFireAlert:    (type: string, msg: string, ctx?: Record<string, unknown>) => void;
@@ -348,6 +359,22 @@ function MissionPanel({
           )}
         </div>
       </div>
+
+      {/* Open slots banner — show when real revenue slots exist */}
+      {openSlots.length > 0 && (
+        <div className="bg-emerald-900/20 border border-emerald-700/40 rounded-2xl px-4 py-3">
+          <p className="text-xs font-bold text-emerald-400 mb-1">🎯 {openSlots.length} Open Slot{openSlots.length > 1 ? "s" : ""} Available — Revenue Priority</p>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {openSlots.slice(0, 4).map((s, i) => (
+              <span key={i} className="text-xs bg-emerald-900/40 border border-emerald-800/50 text-emerald-300 px-2 py-0.5 rounded-full">
+                {s.city} · {s.category}
+              </span>
+            ))}
+            {openSlots.length > 4 && <span className="text-xs text-gray-500">+{openSlots.length - 4} more</span>}
+          </div>
+          <p className="text-[11px] text-gray-500 mt-1.5">Target these city/category combos in your posts, group contributions, and DMs today.</p>
+        </div>
+      )}
 
       {/* Task cards */}
       {tasks.map(task => (
@@ -480,6 +507,40 @@ function TaskCard({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Open city/category slots — high-priority revenue targets */}
+          {task.openSlots && task.openSlots.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-emerald-400 uppercase">🎯 Open Slots — Real Revenue Opportunities</p>
+              </div>
+              <div className="bg-emerald-900/15 border border-emerald-800/30 rounded-xl px-3 py-2 mb-1">
+                <p className="text-xs text-emerald-300 leading-relaxed">These city/category slots have been freed up — target them in your Facebook posts and outreach to fill them fast.</p>
+              </div>
+              <div className="space-y-1.5">
+                {task.openSlots.map((slot, i) => (
+                  <div key={i} className="flex items-center justify-between bg-gray-800 border border-emerald-900/40 rounded-xl px-3 py-2">
+                    <div>
+                      <span className="text-sm font-bold text-white">{slot.city}</span>
+                      <span className="text-xs text-gray-500 ml-2">·</span>
+                      <span className="text-xs text-emerald-300 ml-2">{slot.category}</span>
+                      <span className="text-xs text-gray-600 ml-2">({slot.spot_type})</span>
+                    </div>
+                    <button
+                      onClick={() => onFireAlert(
+                        "warm_opportunity",
+                        `Open ${slot.spot_type} slot in ${slot.city} · ${slot.category} — target in your next Facebook post`,
+                        { city: slot.city, category: slot.category, spot_type: slot.spot_type }
+                      )}
+                      className="text-xs bg-emerald-800 hover:bg-emerald-700 text-emerald-200 px-2 py-1 rounded-lg"
+                    >
+                      📲 Alert
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
