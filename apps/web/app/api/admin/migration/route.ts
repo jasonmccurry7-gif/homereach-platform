@@ -1,21 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/migration
-//
 // Persists a migrated/legacy client record to the businesses table.
-// GET  /api/admin/migration — returns all businesses with status active/pending
-//      that were created by admin (no ownerId from Stripe checkout).
+// GET  /api/admin/migration — returns all migrated business records.
 //
-// MigratedClient data maps to:
-//   businesses table (name, phone, email, cityId, categoryId, status, notes)
-//   + a metadata JSON note storing contractStart, remainingMonths, monthlyPrice,
-//     spotType, migrationStatus, migratedBy, billingPrevented flags.
+// Uses Supabase service client (not Drizzle) — Drizzle requires a direct
+// DATABASE_URL which is not available on Vercel. Supabase REST API works fine.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db, businesses } from "@homereach/db";
-import { eq, isNull, or } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 const MigrationSchema = z.object({
   businessName:    z.string().min(1),
@@ -35,62 +30,69 @@ const MigrationSchema = z.object({
   migratedBy:      z.string().default("admin"),
 });
 
-// ── POST — create migrated client ──────────────────────────────────────────────
+// ── POST — create migrated client ─────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
-    // Resolve the operator's real user ID from session
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const ownerId = user?.id ?? process.env.ADMIN_SYSTEM_USER_ID ?? "00000000-0000-0000-0000-000000000001";
+    // Get authenticated user's ID for ownerId
+    const sessionClient = await createClient();
+    const { data: { user } } = await sessionClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await req.json();
     const data = MigrationSchema.parse(body);
 
-    // Build contract end date from contractStart + remainingMonths
-    const contractStart = data.contractStart
-      ? new Date(data.contractStart)
-      : new Date();
-    const contractEnd = new Date(contractStart);
+    // Build contract dates
+    const contractStart = data.contractStart ? new Date(data.contractStart) : new Date();
+    const contractEnd   = new Date(contractStart);
     contractEnd.setMonth(contractEnd.getMonth() + data.remainingMonths);
 
-    // Pack all migration metadata into the notes field as JSON
-    // (no dedicated migration table — businesses table is the source of truth)
+    // Pack migration metadata into notes field
     const metaNotes = JSON.stringify({
-      contactName:     data.contactName ?? null,
-      spotType:        data.spotType,
-      monthlyPrice:    data.monthlyPrice,
-      contractStart:   contractStart.toISOString().split("T")[0],
-      contractEnd:     contractEnd.toISOString().split("T")[0],
-      remainingMonths: data.remainingMonths,
-      migrationStatus: data.migrationStatus,
-      migratedBy:      data.migratedBy,
-      migratedAt:      new Date().toISOString(),
-      billingPrevented: data.migrationStatus !== "new_system",
+      contactName:        data.contactName ?? null,
+      spotType:           data.spotType,
+      monthlyPrice:       data.monthlyPrice,
+      contractStart:      contractStart.toISOString().split("T")[0],
+      contractEnd:        contractEnd.toISOString().split("T")[0],
+      remainingMonths:    data.remainingMonths,
+      migrationStatus:    data.migrationStatus,
+      migratedBy:         data.migratedBy,
+      migratedAt:         new Date().toISOString(),
+      billingPrevented:   data.migrationStatus !== "new_system",
       appearsInDashboard: data.migrationStatus !== "legacy_pending",
-      city:            data.city ?? null,
-      category:        data.category ?? null,
+      city:               data.city ?? null,
+      category:           data.category ?? null,
     });
 
     const adminNote = data.notes
       ? `${data.notes}\n\n[migration_meta]${metaNotes}`
       : `[migration_meta]${metaNotes}`;
 
-    const [inserted] = await db
-      .insert(businesses)
-      .values({
-        ownerId,
-        name:       data.businessName,
-        phone:      data.phone ?? null,
-        email:      data.email ?? null,
-        cityId:     data.cityId ?? null,
-        categoryId: data.categoryId ?? null,
-        status:     data.migrationStatus === "legacy_pending" ? "pending" : "active",
-        notes:      adminNote,
+    // Use service client for insert (bypasses RLS)
+    const db = createServiceClient();
+    const { data: inserted, error } = await db
+      .from("businesses")
+      .insert({
+        owner_id:  user.id,
+        name:      data.businessName,
+        phone:     data.phone ?? null,
+        email:     data.email ?? null,
+        city_id:   null,   // stored as text in migration_meta
+        category_id: null, // stored as text in migration_meta
+        status:    data.migrationStatus === "legacy_pending" ? "pending" : "active",
+        notes:     adminNote,
       })
-      .returning({ id: businesses.id, name: businesses.name });
+      .select("id, name")
+      .single();
 
-    return NextResponse.json({ success: true, id: inserted!.id, name: inserted!.name });
+    if (error) {
+      console.error("[POST /api/admin/migration] insert error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, id: inserted.id, name: inserted.name });
   } catch (err) {
     console.error("[POST /api/admin/migration]", err);
     if (err instanceof z.ZodError) {
@@ -100,81 +102,65 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── GET — load all migrated clients ───────────────────────────────────────────
+// ── GET — load all migrated clients ──────────────────────────────────────────
 
 export async function GET() {
   try {
-    // Return businesses whose notes contain the migration_meta sentinel
-    const rows = await db
-      .select({
-        id:         businesses.id,
-        name:       businesses.name,
-        phone:      businesses.phone,
-        email:      businesses.email,
-        cityId:     businesses.cityId,
-        categoryId: businesses.categoryId,
-        status:     businesses.status,
-        notes:      businesses.notes,
-        createdAt:  businesses.createdAt,
-      })
-      .from(businesses)
-      .where(
-        or(
-          eq(businesses.ownerId, process.env.ADMIN_SYSTEM_USER_ID ?? "00000000-0000-0000-0000-000000000001"),
-          isNull(businesses.notes)
-        )
-      )
-      .orderBy(businesses.createdAt);
+    const db = createServiceClient();
 
-    // Parse migration metadata from notes field
-    const clients = rows
-      .filter((r) => r.notes?.includes("[migration_meta]"))
-      .map((r) => {
-        let meta: Record<string, unknown> = {};
-        try {
-          const metaStr = r.notes!.split("[migration_meta]")[1];
-          meta = JSON.parse(metaStr ?? "{}");
-        } catch { /* ignore parse errors */ }
+    const { data: rows, error } = await db
+      .from("businesses")
+      .select("id, name, phone, email, city_id, category_id, status, notes, created_at")
+      .like("notes", "%[migration_meta]%")
+      .order("created_at", { ascending: false });
 
-        const contractStart  = (meta.contractStart  as string) ?? new Date().toISOString().split("T")[0];
-        const contractEnd    = (meta.contractEnd    as string) ?? contractStart;
-        const remaining      = (meta.remainingMonths as number) ?? 0;
-        const endDate        = new Date(contractEnd);
-        const now            = new Date();
-        const msLeft         = endDate.getTime() - now.getTime();
-        const daysLeft       = Math.max(0, Math.ceil(msLeft / 86400000));
-        const nearingRenewal = daysLeft <= 60;
+    if (error) {
+      console.error("[GET /api/admin/migration]", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
-        return {
-          id:              r.id,
-          businessName:    r.name,
-          contactName:     (meta.contactName as string) ?? "",
-          phone:           r.phone ?? "",
-          email:           r.email ?? "",
-          cityId:          r.cityId ?? "",
-          city:            (meta.city as string) ?? "",
-          categoryId:      r.categoryId ?? "",
-          category:        (meta.category as string) ?? "",
-          spotId:          null,
-          spotType:        (meta.spotType as string) ?? "front",
-          monthlyPrice:    (meta.monthlyPrice as number) ?? 299,
-          migrationStatus: (meta.migrationStatus as string) ?? "legacy_active",
-          contract: {
-            startDate:        contractStart,
-            endDate:          contractEnd,
-            remainingMonths:  remaining,
-            isNearingRenewal: nearingRenewal,
-            renewalTriggered: nearingRenewal && daysLeft <= 30,
-            renewalNote:      nearingRenewal ? "Renewal conversation should be initiated" : undefined,
-          },
-          notes: r.notes?.split("[migration_meta]")[0]?.trim() ?? "",
-          migratedAt:  (meta.migratedAt as string) ?? r.createdAt.toISOString(),
-          migratedBy:  (meta.migratedBy as string) ?? "admin",
-          appearsInDashboard: (meta.appearsInDashboard as boolean) ?? true,
-          appearsInROI:       (meta.appearsInDashboard as boolean) ?? true,
-          billingPrevented:   (meta.billingPrevented as boolean) ?? true,
-        };
-      });
+    const clients = (rows ?? []).map((r) => {
+      let meta: Record<string, unknown> = {};
+      try {
+        const metaStr = r.notes?.split("[migration_meta]")[1];
+        meta = JSON.parse(metaStr ?? "{}");
+      } catch { /* ignore */ }
+
+      const contractStart  = (meta.contractStart  as string) ?? new Date().toISOString().split("T")[0];
+      const contractEnd    = (meta.contractEnd    as string) ?? contractStart;
+      const remaining      = (meta.remainingMonths as number) ?? 0;
+      const daysLeft       = Math.max(0, Math.ceil((new Date(contractEnd).getTime() - Date.now()) / 86400000));
+      const nearingRenewal = daysLeft <= 60;
+
+      return {
+        id:              r.id,
+        businessName:    r.name,
+        contactName:     (meta.contactName as string) ?? "",
+        phone:           r.phone ?? "",
+        email:           r.email ?? "",
+        cityId:          r.city_id ?? "",
+        city:            (meta.city as string) ?? "",
+        categoryId:      r.category_id ?? "",
+        category:        (meta.category as string) ?? "",
+        spotId:          null,
+        spotType:        (meta.spotType as string) ?? "front",
+        monthlyPrice:    (meta.monthlyPrice as number) ?? 299,
+        migrationStatus: (meta.migrationStatus as string) ?? "legacy_active",
+        contract: {
+          startDate:        contractStart,
+          endDate:          contractEnd,
+          remainingMonths:  remaining,
+          isNearingRenewal: nearingRenewal,
+          renewalTriggered: nearingRenewal && daysLeft <= 30,
+        },
+        notes:             r.notes?.split("[migration_meta]")[0]?.trim() ?? "",
+        migratedAt:        (meta.migratedAt as string) ?? r.created_at,
+        migratedBy:        (meta.migratedBy as string) ?? "admin",
+        appearsInDashboard: (meta.appearsInDashboard as boolean) ?? true,
+        appearsInROI:       (meta.appearsInDashboard as boolean) ?? true,
+        billingPrevented:   (meta.billingPrevented as boolean) ?? true,
+      };
+    });
 
     return NextResponse.json({ clients });
   } catch (err) {
