@@ -30,8 +30,8 @@ export default async function AgentLayout({ children }: { children: React.ReactN
   if (role !== "admin" && role !== "sales_agent") redirect("/dashboard");
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col max-w-md mx-auto relative">
-      <main className="flex-1 overflow-y-auto pb-20">
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col w-full relative">
+      <main className="flex-1 overflow-y-auto pb-20 max-w-lg mx-auto w-full">
         {children}
       </main>
       <AgentBottomNav />

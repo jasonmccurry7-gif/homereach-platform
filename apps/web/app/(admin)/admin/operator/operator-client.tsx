@@ -99,16 +99,16 @@ function RevenueVelocity({ funnel, leaderboard }: { funnel?: OperatorData["funne
   const replies = agents.reduce((s, a) => s + a.replies, 0);
 
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
       {[
         { label: "💰 Revenue Today",    value: `$${Number(rev).toLocaleString()}`, color: "text-emerald-400" },
         { label: "📨 Messages Sent",    value: msgs.toString(),                    color: "text-blue-400" },
         { label: "💬 Replies",          value: replies.toString(),                 color: "text-purple-400" },
         { label: "✅ Deals Closed",     value: deals.toString(),                   color: "text-yellow-400" },
       ].map(({ label, value, color }) => (
-        <div key={label} className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div key={label} className="bg-gray-900 border border-gray-800 rounded-lg p-3 md:p-4">
           <p className="text-gray-400 text-xs mb-1">{label}</p>
-          <p className={`text-3xl font-bold ${color}`}>{value}</p>
+          <p className={`text-2xl md:text-3xl font-bold ${color}`}>{value}</p>
         </div>
       ))}
     </div>
@@ -126,22 +126,22 @@ function ClosingPipeline({ stages, hotLeads }: { stages?: PipelineStage[]; hotLe
         <h2 className="text-base font-semibold">🎯 Closing Pipeline</h2>
         <span className="text-xs text-gray-500">Click stage to expand leads</span>
       </div>
-      <div className="grid grid-cols-5 divide-x divide-gray-800">
+      <div className="grid grid-cols-3 md:grid-cols-5 divide-x divide-gray-800">
         {(stages ?? []).map(stage => (
           <button
             key={stage.status}
             onClick={() => setExpanded(expanded === stage.status ? null : stage.status)}
-            className={`p-4 text-left transition-colors ${expanded === stage.status ? "bg-gray-800" : "hover:bg-gray-800/50"}`}
+            className={`p-3 md:p-4 text-left transition-colors min-h-[60px] ${expanded === stage.status ? "bg-gray-800" : "hover:bg-gray-800/50"}`}
           >
-            <p className="text-xs text-gray-400 mb-1">{STAGE_LABELS[stage.status] ?? stage.status}</p>
-            <p className="text-2xl font-bold text-white">{stage.count}</p>
+            <p className="text-xs text-gray-400 mb-1 leading-tight">{STAGE_LABELS[stage.status] ?? stage.status}</p>
+            <p className="text-xl md:text-2xl font-bold text-white">{stage.count}</p>
           </button>
         ))}
       </div>
       {expanded && (() => {
         const stage = (stages ?? []).find(s => s.status === expanded);
         if (!stage || stage.leads.length === 0) return (
-          <div className="px-6 py-3 text-sm text-gray-500">No leads in this stage</div>
+          <div className="px-4 py-3 text-sm text-gray-500">No leads in this stage</div>
         );
         return (
           <div className="divide-y divide-gray-800">
@@ -149,14 +149,14 @@ function ClosingPipeline({ stages, hotLeads }: { stages?: PipelineStage[]; hotLe
               const isHot  = hotIds.has(lead.id);
               const isAtRisk = lead.last_reply_at && hoursSince(lead.last_reply_at) > 24;
               return (
-                <div key={lead.id} className="px-6 py-3 flex items-center gap-4 text-sm">
-                  <div className="flex-1">
-                    <span className="font-medium text-white">{lead.business_name}</span>
-                    <span className="text-gray-400 ml-2">{lead.city} · {lead.category}</span>
+                <div key={lead.id} className="px-3 md:px-6 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium text-white block truncate">{lead.business_name}</span>
+                    <span className="text-gray-400 text-xs">{lead.city} · {lead.category}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {isHot     && <span className="bg-red-800 text-red-300 text-xs px-2 py-0.5 rounded-full font-medium">🔥 HOT</span>}
-                    {isAtRisk  && <span className="bg-amber-800 text-amber-300 text-xs px-2 py-0.5 rounded-full font-medium">⚠️ AT-RISK</span>}
+                    {isAtRisk  && <span className="bg-amber-800 text-amber-300 text-xs px-2 py-0.5 rounded-full font-medium">⚠️ RISK</span>}
                     {lead.last_reply_at && <span className="text-gray-500 text-xs">{timeAgo(lead.last_reply_at)}</span>}
                     <a href={`/agent/leads/${lead.id}`} className="text-blue-400 hover:text-blue-300 text-xs">Open →</a>
                   </div>
@@ -188,7 +188,31 @@ function FulfillmentCommand({ items }: { items?: FulfillRow[] }) {
           ⚠️ INFERRED STATE — all rows require manual action. No automation triggered.
         </p>
       </div>
-      <div className="overflow-x-auto">
+      {/* Mobile: cards; Desktop: table */}
+      <div className="md:hidden divide-y divide-gray-800">
+        {items.map(row => {
+          const hrsSince   = hoursSince(row.created_at);
+          const intake     = Array.isArray(row.intake_submissions) ? row.intake_submissions[0] : null;
+          const intakeStatus = intake?.status ?? "not_started";
+          const rowBg = hrsSince > 48 ? "bg-red-900/20" : hrsSince > 24 ? "bg-amber-900/10" : "";
+          return (
+            <div key={row.id} className={`p-4 space-y-2 ${rowBg}`}>
+              <p className="font-semibold text-white">{(row.businesses as { name: string } | undefined)?.name ?? "—"}</p>
+              <p className="text-xs text-gray-400">{(row.cities as { name: string } | undefined)?.name ?? "—"} · {(row.categories as { name: string } | undefined)?.name ?? "—"}</p>
+              <div className="flex items-center gap-3 flex-wrap text-xs">
+                <span className={hrsSince > 48 ? "text-red-400 font-semibold" : hrsSince > 24 ? "text-amber-400" : "text-gray-300"}>
+                  ⏱ {hrsSince < 1 ? "< 1h" : `${Math.floor(hrsSince)}h`} ago
+                </span>
+                {intakeStatus === "submitted" ? <span className="text-emerald-400">✅ Submitted</span>
+                  : intakeStatus === "reviewed" ? <span className="text-blue-400">✅ Reviewed</span>
+                  : <span className="text-amber-400">⏳ Intake pending</span>}
+                <span className="text-orange-400 font-medium">⚠️ Manual action needed</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-800 text-left">
@@ -246,32 +270,54 @@ function SalesWarboard({ leaderboard }: { leaderboard?: OperatorData["leaderboar
   }
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-800">
+      <div className="px-4 md:px-6 py-4 border-b border-gray-800">
         <h2 className="text-base font-semibold">⚔️ Sales Warboard</h2>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-800 text-left">
-            {["Rank", "Agent", "Texts", "Emails", "Replies", "Deals", "Revenue", "Reply %"].map(h => (
-              <th key={h} className="px-4 py-3 text-xs text-gray-400 font-semibold">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-800">
-          {[...agents].sort((a, b) => b.deals - a.deals || b.revenue_cents - a.revenue_cents).map((agent, idx) => (
-            <tr key={agent.agent_id} className="hover:bg-gray-800/30 transition-colors">
-              <td className="px-4 py-3 text-gray-400 font-bold">#{idx + 1}</td>
-              <td className="px-4 py-3 font-medium text-white">{agent.name}</td>
-              <td className="px-4 py-3 text-blue-300">{agent.messages}</td>
-              <td className="px-4 py-3 text-purple-300">{agent.messages}</td>
-              <td className="px-4 py-3 text-emerald-300">{agent.replies}</td>
-              <td className="px-4 py-3 text-yellow-300 font-bold">{agent.deals}</td>
-              <td className="px-4 py-3 text-emerald-400 font-semibold">${(agent.revenue_cents / 100).toLocaleString()}</td>
-              <td className="px-4 py-3 text-gray-300">{(agent.reply_rate * 100).toFixed(1)}%</td>
+      {/* Mobile: agent cards */}
+      <div className="md:hidden divide-y divide-gray-800">
+        {[...agents].sort((a, b) => b.deals - a.deals || b.revenue_cents - a.revenue_cents).map((agent, idx) => (
+          <div key={agent.agent_id} className="p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-white">#{idx + 1} {agent.name}</span>
+              <span className="text-yellow-300 font-bold text-sm">{agent.deals} deals</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div><p className="text-gray-500">Texts</p><p className="text-blue-300 font-medium">{agent.messages}</p></div>
+              <div><p className="text-gray-500">Replies</p><p className="text-emerald-300 font-medium">{agent.replies}</p></div>
+              <div><p className="text-gray-500">Reply %</p><p className="text-gray-300 font-medium">{(agent.reply_rate * 100).toFixed(1)}%</p></div>
+            </div>
+            {agent.revenue_cents > 0 && (
+              <p className="text-emerald-400 text-sm font-semibold">${(agent.revenue_cents / 100).toLocaleString()} revenue</p>
+            )}
+          </div>
+        ))}
+      </div>
+      {/* Desktop: full table */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-800 text-left">
+              {["Rank", "Agent", "Texts", "Emails", "Replies", "Deals", "Revenue", "Reply %"].map(h => (
+                <th key={h} className="px-4 py-3 text-xs text-gray-400 font-semibold">{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-gray-800">
+            {[...agents].sort((a, b) => b.deals - a.deals || b.revenue_cents - a.revenue_cents).map((agent, idx) => (
+              <tr key={agent.agent_id} className="hover:bg-gray-800/30 transition-colors">
+                <td className="px-4 py-3 text-gray-400 font-bold">#{idx + 1}</td>
+                <td className="px-4 py-3 font-medium text-white">{agent.name}</td>
+                <td className="px-4 py-3 text-blue-300">{agent.messages}</td>
+                <td className="px-4 py-3 text-purple-300">{agent.messages}</td>
+                <td className="px-4 py-3 text-emerald-300">{agent.replies}</td>
+                <td className="px-4 py-3 text-yellow-300 font-bold">{agent.deals}</td>
+                <td className="px-4 py-3 text-emerald-400 font-semibold">${(agent.revenue_cents / 100).toLocaleString()}</td>
+                <td className="px-4 py-3 text-gray-300">{(agent.reply_rate * 100).toFixed(1)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -297,7 +343,7 @@ function SystemIntelligence({
         <h2 className="text-base font-semibold">🛡️ System Intelligence</h2>
         <span className={`text-sm font-bold ${statusColor}`}>{overallStatus}</span>
       </div>
-      <div className="p-4 grid grid-cols-2 gap-4">
+      <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Health checks */}
         <div>
           <p className="text-xs text-gray-400 font-semibold mb-2">SYSTEM CHECKS</p>
@@ -395,19 +441,18 @@ export default function OperatorClient({ initialData }: { initialData: OperatorD
   }, [fetchData, initialData]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6">
+      <div className="max-w-7xl mx-auto space-y-5 md:space-y-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">🎯 Operator Command Center</h1>
-            <p className="text-gray-400 text-sm mt-1">Real-time control over the entire revenue engine</p>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">🎯 Command Center</h1>
+            <p className="text-gray-400 text-sm mt-0.5">Real-time revenue engine</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Last updated</p>
-            <p className="text-white font-mono text-sm">{lastFetch.toLocaleTimeString()}</p>
-            {loading && <p className="text-xs text-amber-400 mt-0.5">Refreshing…</p>}
+          <div className="text-left sm:text-right">
+            <p className="text-xs text-gray-500">Updated {lastFetch.toLocaleTimeString()}</p>
+            {loading && <p className="text-xs text-amber-400">Refreshing…</p>}
           </div>
         </div>
 
@@ -436,7 +481,7 @@ export default function OperatorClient({ initialData }: { initialData: OperatorD
         </div>
 
         {/* Two-column: Warboard + System Intelligence */}
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
           <div>
             <h2 className="text-xs text-gray-500 font-semibold tracking-widest uppercase mb-3">Sales Warboard</h2>
             <SalesWarboard leaderboard={data?.leaderboard} />

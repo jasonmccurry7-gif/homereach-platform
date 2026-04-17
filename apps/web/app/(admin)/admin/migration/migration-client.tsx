@@ -166,7 +166,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
   const endDate = contractEnd(form.contractStart, form.remainingMonths);
 
   return (
-    <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-5">
+    <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 md:p-6 space-y-5">
       <div>
         <h2 className="text-base font-bold text-white">Add Legacy / Migrated Client</h2>
         <p className="text-xs text-gray-500 mt-0.5">
@@ -177,7 +177,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
       {/* Business Info */}
       <fieldset className="space-y-3">
         <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Business Info</legend>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Business Name" required>
             <input value={form.businessName} onChange={(e) => set("businessName", e.target.value)}
               placeholder="Harrington Plumbing" required />
@@ -258,7 +258,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
       {/* Migration Status */}
       <fieldset>
         <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Migration Status</legend>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {(["legacy_active", "legacy_pending", "new_system"] as const).map((status) => {
             const meta = MIGRATION_STATUS_META[status];
             return (
@@ -528,10 +528,10 @@ export function MigrationClient({ initialClients }: Props) {
   const newSystemCount = clients.filter((c) => c.migrationStatus === "new_system").length;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 space-y-5 md:space-y-6 max-w-7xl mx-auto">
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-gray-800 border border-gray-700 text-sm text-white px-4 py-3 rounded-xl shadow-lg">
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-sm z-50 bg-gray-800 border border-gray-700 text-sm text-white px-4 py-3 rounded-xl shadow-lg text-center sm:text-left">
           {toast}
         </div>
       )}
@@ -544,17 +544,17 @@ export function MigrationClient({ initialClients }: Props) {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-white">Client Migration</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Manage existing customers — legacy contracts, billing protection, renewal tracking
+            Legacy contracts, billing protection, renewal tracking
           </p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
           className={cn(
-            "px-4 py-2 rounded-xl text-sm font-semibold transition",
+            "px-4 py-3 sm:py-2 rounded-xl text-sm font-semibold transition w-full sm:w-auto",
             showForm
               ? "bg-gray-700 text-gray-300"
               : "bg-blue-600 hover:bg-blue-500 text-white"
@@ -581,7 +581,7 @@ export function MigrationClient({ initialClients }: Props) {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
         <MigrationStat icon="💰" label="Legacy MRR"      value={`$${totalMRR.toLocaleString()}`}  sub="from migrated clients" />
         <MigrationStat icon="🔒" label="Legacy Active"   value={String(legacyCount)}               sub="billing prevented" />
         <MigrationStat icon="⏳" label="Pending"         value={String(pendingCount)}              sub="awaiting finalization" />
@@ -592,29 +592,28 @@ export function MigrationClient({ initialClients }: Props) {
       {showForm && <MigrationForm onSubmit={handleAdd} />}
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-2 border-b border-gray-800 pb-3">
-        {(["all", "legacy_active", "legacy_pending", "new_system"] as const).map((f) => {
-          const count = f === "all"
-            ? clients.length
-            : clients.filter((c) => c.migrationStatus === f).length;
-          return (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-semibold transition",
-                filter === f
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-500 hover:text-gray-300"
-              )}
-            >
-              {f === "all" ? "All" : MIGRATION_STATUS_META[f].label} ({count})
-            </button>
-          );
-        })}
-        <span className="ml-auto text-xs text-gray-600 italic">
-          Future: bulk CSV import supported
-        </span>
+      <div className="overflow-x-auto -mx-4 px-4">
+        <div className="flex items-center gap-2 border-b border-gray-800 pb-3 min-w-max">
+          {(["all", "legacy_active", "legacy_pending", "new_system"] as const).map((f) => {
+            const count = f === "all"
+              ? clients.length
+              : clients.filter((c) => c.migrationStatus === f).length;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap min-h-[36px]",
+                  filter === f
+                    ? "bg-gray-700 text-white"
+                    : "text-gray-500 hover:text-gray-300"
+                )}
+              >
+                {f === "all" ? "All" : MIGRATION_STATUS_META[f].label} ({count})
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Client Grid */}
@@ -659,13 +658,13 @@ function MigrationStat({ icon, label, value, sub }: {
   icon: string; label: string; value: string; sub: string;
 }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span>{icon}</span>
-        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{label}</p>
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 md:p-4">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-sm">{icon}</span>
+        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide truncate">{label}</p>
       </div>
       <p className="text-xl font-bold text-white">{value}</p>
-      <p className="text-xs text-gray-600 mt-0.5">{sub}</p>
+      <p className="text-xs text-gray-600 mt-0.5 truncate">{sub}</p>
     </div>
   );
 }

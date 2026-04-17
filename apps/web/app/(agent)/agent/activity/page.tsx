@@ -126,15 +126,15 @@ export default function ActivityPage() {
               const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
               return (
                 <Link key={status} href={`/agent/leads?status=${status}`} className="flex items-center gap-3 py-1">
-                  <span className="text-sm w-5">{icon}</span>
-                  <span className="text-sm text-gray-300 w-28">{label}</span>
-                  <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+                  <span className="text-sm w-5 flex-shrink-0">{icon}</span>
+                  <span className="text-sm text-gray-300 w-24 flex-shrink-0">{label}</span>
+                  <div className="flex-1 bg-gray-800 rounded-full h-2 min-w-0">
                     <div
-                      className={`h-1.5 rounded-full ${STATUS_BADGE[status]?.split(" ")[0] ?? "bg-gray-600"}`}
+                      className={`h-2 rounded-full ${STATUS_BADGE[status]?.split(" ")[0] ?? "bg-gray-600"}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <span className="text-sm text-gray-400 w-6 text-right">{count}</span>
+                  <span className="text-sm text-gray-400 w-8 text-right flex-shrink-0">{count}</span>
                 </Link>
               );
             })}
