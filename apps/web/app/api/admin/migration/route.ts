@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/admin/migration
-// Persists a migrated/legacy client record to the businesses table.
-// GET  /api/admin/migration — returns all migrated business records.
+// POST   /api/admin/migration      — create migrated client
+// GET    /api/admin/migration      — list all migrated clients
+// DELETE /api/admin/migration?id=X — permanently remove a migrated client
 //
 // Uses Supabase service client (not Drizzle) — Drizzle requires a direct
 // DATABASE_URL which is not available on Vercel. Supabase REST API works fine.
@@ -166,5 +166,55 @@ export async function GET() {
   } catch (err) {
     console.error("[GET /api/admin/migration]", err);
     return NextResponse.json({ error: "Failed to load migration records" }, { status: 500 });
+  }
+}
+
+// ── DELETE — remove a migrated client ────────────────────────────────────────
+
+export async function DELETE(req: NextRequest) {
+  try {
+    // Auth check
+    const sessionClient = await createClient();
+    const { data: { user } } = await sessionClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const id = req.nextUrl.searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
+
+    const db = createServiceClient();
+
+    // Safety: only delete records that have the migration_meta sentinel
+    // so we can never accidentally delete a real platform business
+    const { data: row } = await db
+      .from("businesses")
+      .select("id, notes")
+      .eq("id", id)
+      .single();
+
+    if (!row) {
+      return NextResponse.json({ error: "Record not found" }, { status: 404 });
+    }
+    if (!row.notes?.includes("[migration_meta]")) {
+      return NextResponse.json({ error: "Record is not a migration entry — delete blocked" }, { status: 403 });
+    }
+
+    const { error } = await db
+      .from("businesses")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("[DELETE /api/admin/migration]", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, id });
+  } catch (err) {
+    console.error("[DELETE /api/admin/migration]", err);
+    return NextResponse.json({ error: "Failed to delete migration record" }, { status: 500 });
   }
 }

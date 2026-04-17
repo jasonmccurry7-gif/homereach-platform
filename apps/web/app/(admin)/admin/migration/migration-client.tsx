@@ -47,6 +47,7 @@ const CITY_OPTIONS = [
   { id: "city-wadsworth",       label: "Wadsworth, OH"       },
   { id: "city-norton",          label: "Norton, OH"          },
   { id: "city-barberton",       label: "Barberton, OH"       },
+  { id: "city-ravenna",         label: "Ravenna, OH"         },
 ];
 
 const CATEGORY_OPTIONS = [
@@ -114,6 +115,7 @@ function ContractBar({ contract }: { contract: MigratedClient["contract"] }) {
 function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => void }) {
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -123,7 +125,8 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
     e.preventDefault();
     setSubmitting(true);
 
-    const cityObj = CITY_OPTIONS.find((c) => c.id === form.city || c.label === form.city);
+    const cityObj    = CITY_OPTIONS.find((c) => c.id === form.city || c.label === form.city);
+    const resolvedCategory = form.category === "Other" ? (customCategory.trim() || "Other") : form.category;
     const startDate = form.contractStart;
     const endDate   = contractEnd(startDate, form.remainingMonths);
 
@@ -135,8 +138,8 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
       email:           form.email,
       cityId:          cityObj?.id ?? "city-custom",
       city:            cityObj?.label ?? form.city,
-      categoryId:      `cat-${form.category.toLowerCase().replace(/\s/g, "-")}`,
-      category:        form.category,
+      categoryId:      `cat-${resolvedCategory.toLowerCase().replace(/\s/g, "-")}`,
+      category:        resolvedCategory,
       spotId:          null,
       spotType:        form.spotType,
       monthlyPrice:    Number(form.monthlyPrice),
@@ -159,6 +162,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
     setTimeout(() => {
       onSubmit(newClient);
       setForm(BLANK_FORM);
+      setCustomCategory("");
       setSubmitting(false);
     }, 600);
   }
@@ -210,13 +214,23 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
             </select>
           </Field>
           <Field label="Category" required>
-            <select value={form.category} onChange={(e) => set("category", e.target.value)} required>
+            <select value={form.category} onChange={(e) => { set("category", e.target.value); if (e.target.value !== "Other") setCustomCategory(""); }} required>
               <option value="">Select category…</option>
               {CATEGORY_OPTIONS.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
           </Field>
+          {form.category === "Other" && (
+            <Field label="Specify category" required>
+              <input
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="e.g. Auto Detailing, Dog Grooming…"
+                required
+              />
+            </Field>
+          )}
           <Field label="Spot Type" required>
             <select value={form.spotType} onChange={(e) => set("spotType", e.target.value as SpotType)}>
               {Object.entries(SPOT_TYPE_META).map(([key, meta]) => (
@@ -321,11 +335,13 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
 
 // ── Client Card ───────────────────────────────────────────────────────────
 
-function ClientCard({ client, onStatusChange }: {
+function ClientCard({ client, onStatusChange, onRemove }: {
   client: MigratedClient;
   onStatusChange: (id: string, status: ClientMigrationStatus) => void;
+  onRemove: (id: string, name: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <div className={cn(
@@ -422,6 +438,34 @@ function ClientCard({ client, onStatusChange }: {
                 ))}
             </div>
           </div>
+
+          {/* Remove */}
+          <div className="pt-1">
+            {!confirming ? (
+              <button
+                onClick={() => setConfirming(true)}
+                className="text-xs text-red-500 hover:text-red-400 transition"
+              >
+                🗑 Remove this client
+              </button>
+            ) : (
+              <div className="flex items-center gap-3 p-3 bg-red-900/20 border border-red-800/40 rounded-xl">
+                <p className="text-xs text-red-300 flex-1">Permanently delete <strong>{client.businessName}</strong>?</p>
+                <button
+                  onClick={() => { onRemove(client.id, client.businessName); setConfirming(false); }}
+                  className="text-xs px-3 py-1.5 bg-red-700 hover:bg-red-600 text-white rounded-lg transition font-semibold"
+                >
+                  Yes, delete
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  className="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -514,6 +558,21 @@ export function MigrationClient({ initialClients }: Props) {
       )
     );
     showToast(`Status updated to ${MIGRATION_STATUS_META[status].label}`);
+  }
+
+  async function handleRemove(id: string, name: string) {
+    try {
+      const res = await fetch(`/api/admin/migration?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        showToast(`⚠️ Delete failed: ${data.error ?? "unknown error"}`);
+        return;
+      }
+      setClients((prev) => prev.filter((c) => c.id !== id));
+      showToast(`🗑 ${name} removed`);
+    } catch {
+      showToast("⚠️ Network error — could not remove client");
+    }
   }
 
   const filtered = filter === "all" ? clients : clients.filter((c) => c.migrationStatus === filter);
@@ -635,6 +694,7 @@ export function MigrationClient({ initialClients }: Props) {
               key={client.id}
               client={client}
               onStatusChange={handleStatusChange}
+              onRemove={handleRemove}
             />
           ))}
         </div>
