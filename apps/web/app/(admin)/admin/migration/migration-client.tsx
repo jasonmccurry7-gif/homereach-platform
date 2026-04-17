@@ -43,7 +43,9 @@ const CITY_OPTIONS = [
 const CATEGORY_OPTIONS = [
   "Plumber", "HVAC", "Electrician", "Landscaper", "Dentist",
   "Chiropractor", "Realtor", "Insurance", "Attorney",
-  "Pool Service", "Roofer", "House Cleaning",
+  "Pool Service", "Roofer", "House Cleaning", "Pressure Washing",
+  "Pest Control", "Painting", "Flooring", "Windows", "Gutters",
+  "Other",
 ];
 
 // ── Helper: compute contract end date ────────────────────────────────────

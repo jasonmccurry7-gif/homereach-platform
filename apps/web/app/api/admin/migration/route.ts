@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db, businesses } from "@homereach/db";
 import { eq, isNull, or } from "drizzle-orm";
+import { createClient } from "@/lib/supabase/server";
 
 const MigrationSchema = z.object({
   businessName:    z.string().min(1),
@@ -38,6 +39,11 @@ const MigrationSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // Resolve the operator's real user ID from session
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const ownerId = user?.id ?? process.env.ADMIN_SYSTEM_USER_ID ?? "00000000-0000-0000-0000-000000000001";
+
     const body = await req.json();
     const data = MigrationSchema.parse(body);
 
@@ -73,10 +79,7 @@ export async function POST(req: NextRequest) {
     const [inserted] = await db
       .insert(businesses)
       .values({
-        // ownerId is required (NOT NULL) — use a sentinel system user UUID.
-        // The migration admin should set this to a real admin user ID in Supabase.
-        // TODO: derive from session when admin auth is fully wired.
-        ownerId:    process.env.ADMIN_SYSTEM_USER_ID ?? "00000000-0000-0000-0000-000000000001",
+        ownerId,
         name:       data.businessName,
         phone:      data.phone ?? null,
         email:      data.email ?? null,
