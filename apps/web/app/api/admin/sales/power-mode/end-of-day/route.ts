@@ -68,5 +68,32 @@ export async function POST(req: Request) {
   // Reset daily counters via DB function
   await db.rpc("reset_daily_power_mode").catch(() => {});
 
+  // ── Alert hook (fire-and-forget, never blocks, additive) ─────────────────
+  // Fires quota_warning personal SMS alerts for agents who missed Power Mode today.
+  // Guarded by ENABLE_INTERNAL_ALERTS flag.
+  if (process.env.ENABLE_INTERNAL_ALERTS === "true") {
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const missedAgents = (streaks ?? []).filter(s => !s.today_power_mode);
+
+    for (const streak of missedAgents) {
+      const profile = profileMap[streak.agent_id];
+      const name    = profile?.full_name ?? "Agent";
+
+      Promise.resolve().then(() =>
+        fetch(`${baseUrl}/api/admin/alerts/send`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent_id:     streak.agent_id,
+            alert_type:   "quota_warning",
+            urgency:      "high",
+            custom_body:  `⚠️ ${name}, you missed Power Mode today (${streak.today_sms_sent}/40 SMS, ${streak.today_email_sent}/40 email). Streak reset. Fresh start tomorrow 💪`,
+            shadow_mode:  process.env.ALERT_SHADOW_MODE === "true",
+          }),
+        }).catch(() => {})
+      );
+    }
+  }
+
   return NextResponse.json({ ok: true, summary });
 }

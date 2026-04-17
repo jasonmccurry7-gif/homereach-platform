@@ -278,6 +278,77 @@ export async function POST() {
       }
     }
 
+    // ── Alert hook (fire-and-forget, never blocks, additive) ─────────────────
+    // Fires payment_follow_up alerts for stale payment_sent leads, and hot_lead
+    // alerts for leads active in the last 4h. Guarded by ENABLE_INTERNAL_ALERTS.
+    if (process.env.ENABLE_INTERNAL_ALERTS === "true") {
+      const { origin } = new URL("http://placeholder");
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      Promise.resolve().then(async () => {
+        try {
+          const alertPromises: Promise<unknown>[] = [];
+
+          // payment_follow_up: stale payment_sent leads (> 24h)
+          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { data: paymentStale } = await supabase
+            .from("sales_leads")
+            .select("id, business_name, city, assigned_agent_id, last_reply_at")
+            .eq("status", "payment_sent")
+            .lt("last_reply_at", oneDayAgo)
+            .limit(10);
+
+          for (const lead of paymentStale ?? []) {
+            if (!lead.assigned_agent_id) continue;
+            alertPromises.push(
+              fetch(`${baseUrl}/api/admin/alerts/send`, {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  agent_id:      lead.assigned_agent_id,
+                  alert_type:    "payment_follow_up",
+                  urgency:       "high",
+                  lead_id:       lead.id,
+                  business_name: lead.business_name,
+                  city:          lead.city,
+                  shadow_mode:   process.env.ALERT_SHADOW_MODE === "true",
+                }),
+              }).catch(() => {})
+            );
+          }
+
+          // hot_lead: interested leads with activity in the last 4h
+          const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+          const { data: hotLeads } = await supabase
+            .from("sales_leads")
+            .select("id, business_name, city, assigned_agent_id, last_reply_at")
+            .eq("status", "interested")
+            .gte("last_reply_at", fourHoursAgo)
+            .limit(10);
+
+          for (const lead of hotLeads ?? []) {
+            if (!lead.assigned_agent_id) continue;
+            alertPromises.push(
+              fetch(`${baseUrl}/api/admin/alerts/send`, {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  agent_id:      lead.assigned_agent_id,
+                  alert_type:    "hot_lead",
+                  urgency:       "high",
+                  lead_id:       lead.id,
+                  business_name: lead.business_name,
+                  city:          lead.city,
+                  shadow_mode:   process.env.ALERT_SHADOW_MODE === "true",
+                }),
+              }).catch(() => {})
+            );
+          }
+
+          await Promise.allSettled(alertPromises);
+        } catch { /* never throws — hook is fire-and-forget */ }
+      });
+    }
+
     return NextResponse.json({
       success: true,
       summary: details,

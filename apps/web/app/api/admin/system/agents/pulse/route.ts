@@ -108,6 +108,28 @@ export async function POST(req: NextRequest) {
       issues.unshift("Database unavailable");
     }
 
+    // ── Alert hook (fire-and-forget, never blocks, additive) ─────────────────
+    // Fires system_failure personal SMS alert to Jason when status is critical.
+    // Always sends to SYSTEM_ALERT_PHONE (+13302069639) regardless of shadow mode.
+    // Guarded by ENABLE_INTERNAL_ALERTS flag.
+    if (process.env.ENABLE_INTERNAL_ALERTS === "true" && status === "critical") {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const JASON_AGENT_ID = process.env.JASON_AGENT_ID || "";
+      Promise.resolve().then(() =>
+        fetch(`${baseUrl}/api/admin/alerts/send`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent_id:     JASON_AGENT_ID,
+            alert_type:   "system_failure",
+            urgency:      "critical",
+            custom_body:  `⚠️ SYSTEM CRITICAL: ${issues.slice(0, 3).join(" | ")} — ${new Date().toLocaleTimeString("en-US", { timeZone: "America/New_York" })} EST`,
+            shadow_mode:  false, // system_failure ALWAYS goes to Jason, never shadow-routed
+          }),
+        }).catch(() => {})
+      );
+    }
+
     // ─── Return health status ───────────────────────────────────────────────────
     return NextResponse.json({
       success: true,

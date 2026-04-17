@@ -543,6 +543,39 @@ export async function POST() {
       console.error("[echo] failed to log run:", logErr);
     }
 
+    // ── Alert hook (fire-and-forget, never blocks, additive) ─────────────────
+    // Fires start_of_day personal SMS alerts ONLY on the 8am EST run.
+    // Reads all sales_agents from profiles and alerts each one.
+    // Guarded by ENABLE_INTERNAL_ALERTS flag.
+    const currentHour = new Date().getHours(); // UTC; cron fires at 8am EST = 13:00 UTC
+    if (process.env.ENABLE_INTERNAL_ALERTS === "true" && currentHour === 13) {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      Promise.resolve().then(async () => {
+        try {
+          const { data: agents } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .eq("role", "sales_agent");
+
+          const alertPromises = (agents ?? []).map(agent =>
+            fetch(`${baseUrl}/api/admin/alerts/send`, {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agent_id:     agent.id,
+                alert_type:   "start_of_day",
+                urgency:      "medium",
+                custom_body:  `☀️ Good morning, ${(agent.full_name ?? "Agent").split(" ")[0]}! Your leads are loaded and ready. Open your dashboard: home-reach.com/agent`,
+                shadow_mode:  process.env.ALERT_SHADOW_MODE === "true",
+              }),
+            }).catch(() => {})
+          );
+
+          await Promise.allSettled(alertPromises);
+        } catch { /* never throws — hook is fire-and-forget */ }
+      });
+    }
+
     return NextResponse.json({
       success: true,
       summary: details,

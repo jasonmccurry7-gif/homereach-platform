@@ -204,6 +204,74 @@ export async function POST(req: NextRequest) {
 
     const successful = sentCount.filter((r) => r.success).length;
 
+    // ── Alert hook (fire-and-forget, never blocks, additive) ─────────────────
+    // Fires reply_waiting + hot_lead personal SMS alerts to agents' personal phones
+    // when leads require attention. Completely separate from the Twilio identity
+    // outreach above. Guarded by ENABLE_INTERNAL_ALERTS flag.
+    if (process.env.ENABLE_INTERNAL_ALERTS === "true") {
+      const { origin } = new URL(req.url);
+      Promise.resolve().then(async () => {
+        try {
+          const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+
+          // Hot leads: replied within 4h
+          const { data: hotLeads } = await db
+            .from("sales_leads")
+            .select("id, business_name, city, assigned_agent_id, status, last_reply_at")
+            .in("status", ["replied", "interested"])
+            .gte("last_reply_at", fourHoursAgo)
+            .eq("do_not_contact", false)
+            .limit(20);
+
+          const alertPromises: Promise<unknown>[] = [];
+
+          for (const lead of hotLeads ?? []) {
+            if (!lead.assigned_agent_id) continue;
+
+            // reply_waiting
+            if (lead.status === "replied") {
+              alertPromises.push(
+                fetch(`${origin}/api/admin/alerts/send`, {
+                  method:  "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    agent_id:      lead.assigned_agent_id,
+                    alert_type:    "reply_waiting",
+                    urgency:       "critical",
+                    lead_id:       lead.id,
+                    business_name: lead.business_name,
+                    city:          lead.city,
+                    shadow_mode:   process.env.ALERT_SHADOW_MODE === "true",
+                  }),
+                }).catch(() => {})
+              );
+            }
+
+            // hot_lead for interested
+            if (lead.status === "interested") {
+              alertPromises.push(
+                fetch(`${origin}/api/admin/alerts/send`, {
+                  method:  "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    agent_id:      lead.assigned_agent_id,
+                    alert_type:    "hot_lead",
+                    urgency:       "high",
+                    lead_id:       lead.id,
+                    business_name: lead.business_name,
+                    city:          lead.city,
+                    shadow_mode:   process.env.ALERT_SHADOW_MODE === "true",
+                  }),
+                }).catch(() => {})
+              );
+            }
+          }
+
+          await Promise.allSettled(alertPromises);
+        } catch { /* never throws — hook is fire-and-forget */ }
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       nudges_sent: successful,

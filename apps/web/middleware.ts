@@ -7,6 +7,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // Hierarchy:
 //   /admin/*          — admin role only (ADMIN_DEV_BYPASS=true bypasses in dev)
 //   /admin/agent-view — also accessible to sales_agent role
+//   /agent/*          — admin + sales_agent (mobile agent experience, feature-flagged)
 //   /dashboard/*      — any authenticated user
 //   /api/auth/*       — always public (Supabase callback)
 //   /login /signup    — public; authenticated users are redirected by role
@@ -14,7 +15,7 @@ import { NextResponse, type NextRequest } from "next/server";
 //
 // Roles:
 //   admin       → /admin (full OS)
-//   sales_agent → /admin/agent-view (restricted)
+//   sales_agent → /admin/agent-view (restricted) + /agent/* (mobile)
 //   client      → /dashboard
 //   nonprofit   → /dashboard
 //   sponsor     → /dashboard
@@ -25,6 +26,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PROTECTED = {
   admin:     /^\/admin(\/|$)/,
+  agent:     /^\/agent(\/|$)/,
   dashboard: /^\/dashboard(\/|$)/,
 };
 
@@ -89,6 +91,19 @@ export async function middleware(request: NextRequest) {
     }
 
     // Everyone else who is not admin and not a sales_agent goes to /dashboard
+    if (role !== "admin" && role !== "sales_agent") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
+  // ── Agent mobile routes (/agent/*) ───────────────────────────────────────
+  // Protected: admin + sales_agent only. Feature flag enforced in layout.tsx.
+  if (PROTECTED.agent.test(pathname)) {
+    if (!user) {
+      return NextResponse.redirect(
+        new URL(`/login?redirect=${encodeURIComponent(pathname)}`, request.url)
+      );
+    }
     if (role !== "admin" && role !== "sales_agent") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
