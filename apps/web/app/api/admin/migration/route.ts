@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // POST   /api/admin/migration      — create migrated client
 // GET    /api/admin/migration      — list all migrated clients
+// PATCH  /api/admin/migration?id=X — update an existing migrated client
 // DELETE /api/admin/migration?id=X — permanently remove a migrated client
 //
 // Uses Supabase service client (not Drizzle) — Drizzle requires a direct
@@ -166,6 +167,114 @@ export async function GET() {
   } catch (err) {
     console.error("[GET /api/admin/migration]", err);
     return NextResponse.json({ error: "Failed to load migration records" }, { status: 500 });
+  }
+}
+
+// ── PATCH — update an existing migrated client ───────────────────────────────
+
+const PatchSchema = z.object({
+  businessName:    z.string().min(1).optional(),
+  contactName:     z.string().optional(),
+  phone:           z.string().optional(),
+  email:           z.string().optional(),
+  city:            z.string().optional(),
+  category:        z.string().optional(),
+  spotType:        z.enum(["front", "back", "anchor", "full_card"]).optional(),
+  monthlyPrice:    z.number().min(0).optional(),
+  contractStart:   z.string().optional(),
+  remainingMonths: z.number().min(0).optional(),
+  migrationStatus: z.enum(["legacy_active", "legacy_pending", "new_system"]).optional(),
+  notes:           z.string().optional(),
+});
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const sessionClient = await createClient();
+    const { data: { user } } = await sessionClient.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const id = req.nextUrl.searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+    const body  = await req.json();
+    const patch = PatchSchema.parse(body);
+
+    const db = createServiceClient();
+
+    // Load existing row to merge meta
+    const { data: existing } = await db
+      .from("businesses")
+      .select("id, name, phone, email, notes")
+      .eq("id", id)
+      .single();
+
+    if (!existing) return NextResponse.json({ error: "Record not found" }, { status: 404 });
+    if (!existing.notes?.includes("[migration_meta]")) {
+      return NextResponse.json({ error: "Not a migration record" }, { status: 403 });
+    }
+
+    // Parse existing meta
+    let existingMeta: Record<string, unknown> = {};
+    try {
+      const metaStr = existing.notes.split("[migration_meta]")[1];
+      existingMeta = JSON.parse(metaStr ?? "{}");
+    } catch { /* keep empty */ }
+
+    const existingUserNotes = existing.notes.split("[migration_meta]")[0]?.trim() ?? "";
+
+    // Merge patch into meta
+    const contractStart = patch.contractStart ?? (existingMeta.contractStart as string);
+    const remainingMonths = patch.remainingMonths ?? (existingMeta.remainingMonths as number) ?? 12;
+    const contractEndDate = (() => {
+      const d = new Date(contractStart);
+      d.setMonth(d.getMonth() + remainingMonths);
+      return d.toISOString().split("T")[0];
+    })();
+    const migrationStatus = patch.migrationStatus ?? (existingMeta.migrationStatus as string) ?? "legacy_active";
+
+    const updatedMeta = {
+      ...existingMeta,
+      ...(patch.contactName    !== undefined && { contactName:     patch.contactName }),
+      ...(patch.spotType       !== undefined && { spotType:        patch.spotType }),
+      ...(patch.monthlyPrice   !== undefined && { monthlyPrice:    patch.monthlyPrice }),
+      ...(patch.city           !== undefined && { city:            patch.city }),
+      ...(patch.category       !== undefined && { category:        patch.category }),
+      ...(patch.contractStart  !== undefined && { contractStart:   patch.contractStart }),
+      ...(patch.remainingMonths !== undefined && { remainingMonths: patch.remainingMonths }),
+      contractEnd:        contractEndDate,
+      migrationStatus:    migrationStatus,
+      billingPrevented:   migrationStatus !== "new_system",
+      appearsInDashboard: migrationStatus !== "legacy_pending",
+    };
+
+    const userNotes = patch.notes !== undefined ? patch.notes : existingUserNotes;
+    const newNotes  = userNotes
+      ? `${userNotes}\n\n[migration_meta]${JSON.stringify(updatedMeta)}`
+      : `[migration_meta]${JSON.stringify(updatedMeta)}`;
+
+    const dbUpdate: Record<string, unknown> = { notes: newNotes };
+    if (patch.businessName) dbUpdate.name  = patch.businessName;
+    if (patch.phone        !== undefined) dbUpdate.phone = patch.phone;
+    if (patch.email        !== undefined) dbUpdate.email = patch.email;
+    if (patch.migrationStatus) {
+      dbUpdate.status = patch.migrationStatus === "legacy_pending" ? "pending" : "active";
+    }
+
+    const { error } = await db
+      .from("businesses")
+      .update(dbUpdate)
+      .eq("id", id);
+
+    if (error) {
+      console.error("[PATCH /api/admin/migration]", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, id });
+  } catch (err) {
+    console.error("[PATCH /api/admin/migration]", err);
+    if (err instanceof z.ZodError) return NextResponse.json({ error: err.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "Failed to update migration record" }, { status: 500 });
   }
 }
 

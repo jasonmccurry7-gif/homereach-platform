@@ -335,20 +335,81 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
 
 // ── Client Card ───────────────────────────────────────────────────────────
 
-function ClientCard({ client, onStatusChange, onRemove }: {
+function ClientCard({ client, onStatusChange, onRemove, onUpdate }: {
   client: MigratedClient;
   onStatusChange: (id: string, status: ClientMigrationStatus) => void;
   onRemove: (id: string, name: string) => void;
+  onUpdate: (id: string, patch: Partial<MigratedClient & { contractStart: string; remainingMonths: number }>) => Promise<void>;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded,   setExpanded]   = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [editing,    setEditing]    = useState(false);
+  const [saving,     setSaving]     = useState(false);
+
+  // Edit state — pre-populated from current client
+  const [editCity,     setEditCity]     = useState(client.city);
+  const [editCategory, setEditCategory] = useState(client.category);
+  const [editCustomCat, setEditCustomCat] = useState("");
+  const [editSpot,     setEditSpot]     = useState(client.spotType);
+  const [editPrice,    setEditPrice]    = useState(String(client.monthlyPrice));
+  const [editContact,  setEditContact]  = useState(client.contactName);
+  const [editPhone,    setEditPhone]    = useState(client.phone);
+  const [editEmail,    setEditEmail]    = useState(client.email);
+  const [editBizName,  setEditBizName]  = useState(client.businessName);
+  const [editNotes,    setEditNotes]    = useState(client.notes ?? "");
+  const [editStart,    setEditStart]    = useState(client.contract.startDate);
+  const [editMonths,   setEditMonths]   = useState(String(client.contract.remainingMonths));
+
+  function openEdit() {
+    // Reset to current values each time
+    setEditBizName(client.businessName);
+    setEditContact(client.contactName);
+    setEditPhone(client.phone);
+    setEditEmail(client.email);
+    setEditCity(client.city);
+    setEditCategory(client.category);
+    setEditCustomCat("");
+    setEditSpot(client.spotType);
+    setEditPrice(String(client.monthlyPrice));
+    setEditNotes(client.notes ?? "");
+    setEditStart(client.contract.startDate);
+    setEditMonths(String(client.contract.remainingMonths));
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    setSaving(true);
+    const resolvedCategory = editCategory === "Other"
+      ? (editCustomCat.trim() || "Other")
+      : editCategory;
+    // Resolve city label from either the label itself or the id
+    const cityObj   = CITY_OPTIONS.find(c => c.id === editCity || c.label === editCity);
+    const cityLabel = cityObj?.label ?? editCity;
+    await onUpdate(client.id, {
+      businessName:    editBizName,
+      contactName:     editContact,
+      phone:           editPhone,
+      email:           editEmail,
+      city:            cityLabel,
+      category:        resolvedCategory,
+      spotType:        editSpot as typeof client.spotType,
+      monthlyPrice:    Number(editPrice),
+      notes:           editNotes,
+      contractStart:   editStart,
+      remainingMonths: Number(editMonths),
+    });
+    setSaving(false);
+    setEditing(false);
+  }
 
   return (
     <div className={cn(
       "bg-gray-900 border rounded-2xl p-5 transition",
-      client.contract.isNearingRenewal
-        ? "border-amber-800/50"
-        : "border-gray-800"
+      editing
+        ? "border-blue-600"
+        : client.contract.isNearingRenewal
+          ? "border-amber-800/50"
+          : "border-gray-800"
     )}>
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
@@ -366,16 +427,24 @@ function ClientCard({ client, onStatusChange, onRemove }: {
             {client.contactName} · {client.city} · {client.category}
           </p>
           <p className="text-xs text-gray-500">
-            {SPOT_TYPE_META[client.spotType].label} spot ·{" "}
+            {SPOT_TYPE_META[client.spotType as keyof typeof SPOT_TYPE_META]?.label ?? client.spotType} spot ·{" "}
             <span className="text-white font-semibold">${client.monthlyPrice}/mo</span>
           </p>
         </div>
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="text-xs text-gray-500 hover:text-gray-300 shrink-0"
-        >
-          {expanded ? "▲ Less" : "▼ More"}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => { if (editing) { setEditing(false); } else { openEdit(); setExpanded(true); } }}
+            className={cn("text-xs transition", editing ? "text-gray-500 hover:text-gray-300" : "text-blue-400 hover:text-blue-300")}
+          >
+            {editing ? "✕ Cancel" : "✏️ Edit"}
+          </button>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-gray-500 hover:text-gray-300"
+          >
+            {expanded ? "▲" : "▼"}
+          </button>
+        </div>
       </div>
 
       {/* Contract bar */}
@@ -383,21 +452,87 @@ function ClientCard({ client, onStatusChange, onRemove }: {
         <ContractBar contract={client.contract} />
       </div>
 
-      {/* Expanded details */}
-      {expanded && (
+      {/* ── Edit form ── */}
+      {editing && (
+        <div className="mt-4 border-t border-blue-800/40 pt-4 space-y-3">
+          <p className="text-xs text-blue-400 font-semibold uppercase tracking-wide">Editing — {client.businessName}</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <EditField label="Business Name">
+              <input value={editBizName} onChange={e => setEditBizName(e.target.value)} />
+            </EditField>
+            <EditField label="Contact Name">
+              <input value={editContact} onChange={e => setEditContact(e.target.value)} />
+            </EditField>
+            <EditField label="Phone">
+              <input value={editPhone} onChange={e => setEditPhone(e.target.value)} />
+            </EditField>
+            <EditField label="Email">
+              <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
+            </EditField>
+            <EditField label="City">
+              <select value={editCity} onChange={e => setEditCity(e.target.value)}>
+                <option value="">Select city…</option>
+                {CITY_OPTIONS.map(c => <option key={c.id} value={c.label}>{c.label}</option>)}
+              </select>
+            </EditField>
+            <EditField label="Category">
+              <select value={editCategory} onChange={e => { setEditCategory(e.target.value); if (e.target.value !== "Other") setEditCustomCat(""); }}>
+                <option value="">Select category…</option>
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </EditField>
+            {editCategory === "Other" && (
+              <EditField label="Specify category">
+                <input value={editCustomCat} onChange={e => setEditCustomCat(e.target.value)} placeholder="e.g. Auto Detailing…" />
+              </EditField>
+            )}
+            <EditField label="Spot Type">
+              <select value={editSpot} onChange={e => setEditSpot(e.target.value)}>
+                {Object.entries(SPOT_TYPE_META).map(([key, meta]) => (
+                  <option key={key} value={key}>{meta.label}</option>
+                ))}
+              </select>
+            </EditField>
+            <EditField label="Monthly Price ($)">
+              <input type="number" min={0} value={editPrice} onChange={e => setEditPrice(e.target.value)} />
+            </EditField>
+            <EditField label="Contract Start">
+              <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)} />
+            </EditField>
+            <EditField label="Remaining Months">
+              <input type="number" min={1} max={60} value={editMonths} onChange={e => setEditMonths(e.target.value)} />
+            </EditField>
+          </div>
+
+          <EditField label="Notes">
+            <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} placeholder="Notes…" />
+          </EditField>
+
+          <button
+            onClick={saveEdit}
+            disabled={saving}
+            className={cn(
+              "w-full py-3 rounded-xl font-semibold text-sm transition",
+              saving ? "bg-gray-700 text-gray-400 cursor-wait" : "bg-blue-600 hover:bg-blue-500 text-white"
+            )}
+          >
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      )}
+
+      {/* Expanded details (read-only) */}
+      {expanded && !editing && (
         <div className="mt-4 space-y-3 border-t border-gray-800 pt-4">
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
               <p className="text-gray-500">Phone</p>
-              <p className="text-white">{client.phone}</p>
+              <p className="text-white">{client.phone || "—"}</p>
             </div>
             <div>
               <p className="text-gray-500">Email</p>
-              <p className="text-white">{client.email}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Spot ID</p>
-              <p className="text-white">{client.spotId ?? "Not yet assigned"}</p>
+              <p className="text-white break-all">{client.email || "—"}</p>
             </div>
             <div>
               <p className="text-gray-500">Migrated by</p>
@@ -407,12 +542,6 @@ function ClientCard({ client, onStatusChange, onRemove }: {
               <p className="text-gray-500">Dashboard</p>
               <p className={client.appearsInDashboard ? "text-green-400" : "text-gray-500"}>
                 {client.appearsInDashboard ? "✓ Visible" : "✗ Hidden"}
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-500">ROI Dashboard</p>
-              <p className={client.appearsInROI ? "text-green-400" : "text-gray-500"}>
-                {client.appearsInROI ? "✓ Visible" : "✗ Hidden"}
               </p>
             </div>
           </div>
@@ -560,6 +689,55 @@ export function MigrationClient({ initialClients }: Props) {
     showToast(`Status updated to ${MIGRATION_STATUS_META[status].label}`);
   }
 
+  async function handleUpdate(
+    id: string,
+    patch: Partial<MigratedClient & { contractStart: string; remainingMonths: number }>
+  ) {
+    try {
+      const res = await fetch(`/api/admin/migration?id=${encodeURIComponent(id)}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(patch),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) {
+        showToast(`⚠️ Save failed: ${data.error ?? "unknown error"}`);
+        return;
+      }
+      // Optimistically update local state
+      setClients(prev => prev.map(c => {
+        if (c.id !== id) return c;
+        const months = patch.remainingMonths ?? c.contract.remainingMonths;
+        const start  = patch.contractStart   ?? c.contract.startDate;
+        const endD   = new Date(start);
+        endD.setMonth(endD.getMonth() + months);
+        const endDate = endD.toISOString().split("T")[0];
+        return {
+          ...c,
+          businessName:    patch.businessName    ?? c.businessName,
+          contactName:     patch.contactName     ?? c.contactName,
+          phone:           patch.phone           ?? c.phone,
+          email:           patch.email           ?? c.email,
+          city:            patch.city            ?? c.city,
+          category:        patch.category        ?? c.category,
+          spotType:        (patch.spotType       ?? c.spotType) as typeof c.spotType,
+          monthlyPrice:    patch.monthlyPrice    ?? c.monthlyPrice,
+          notes:           patch.notes           ?? c.notes,
+          contract: {
+            ...c.contract,
+            startDate:       start,
+            endDate,
+            remainingMonths: months,
+            isNearingRenewal: Math.ceil((new Date(endDate).getTime() - Date.now()) / 86400000) <= 60,
+          },
+        };
+      }));
+      showToast(`✅ ${patch.businessName ?? "Client"} updated`);
+    } catch {
+      showToast("⚠️ Network error — changes not saved");
+    }
+  }
+
   async function handleRemove(id: string, name: string) {
     try {
       const res = await fetch(`/api/admin/migration?id=${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -695,6 +873,7 @@ export function MigrationClient({ initialClients }: Props) {
               client={client}
               onStatusChange={handleStatusChange}
               onRemove={handleRemove}
+              onUpdate={handleUpdate}
             />
           ))}
         </div>
@@ -742,6 +921,21 @@ function Field({
       {React.cloneElement(children, {
         className: cn(
           "w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600",
+          "focus:outline-none focus:border-blue-500",
+          children.props.className
+        ),
+      })}
+    </div>
+  );
+}
+
+function EditField({ label, children }: { label: string; children: React.ReactElement }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-blue-300/70">{label}</label>
+      {React.cloneElement(children, {
+        className: cn(
+          "w-full bg-gray-800 border border-blue-700/50 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600",
           "focus:outline-none focus:border-blue-500",
           children.props.className
         ),
