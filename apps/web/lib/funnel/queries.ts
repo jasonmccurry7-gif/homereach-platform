@@ -6,6 +6,55 @@ import { createServiceClient } from "@/lib/supabase/service";
 // Uses Supabase JS client (HTTP) — reliable in Vercel serverless.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Migrated client spot counts ───────────────────────────────────────────────
+// Migrated clients store city/category/spotType in a [migration_meta] JSON blob
+// in the notes field (city_id is null). This helper parses them and returns a
+// nested map: cityName → categoryName → spotType → count.
+// Only "legacy_active" and "new_system" statuses occupy real spots.
+// "legacy_pending" does NOT count — not yet confirmed.
+
+type MigratedCountMap = Record<string, Record<string, Record<string, number>>>;
+
+async function getMigratedCounts(
+  supabase: ReturnType<typeof createServiceClient>
+): Promise<MigratedCountMap> {
+  try {
+    const { data } = await supabase
+      .from("businesses")
+      .select("notes")
+      .like("notes", "%[migration_meta]%");
+
+    const result: MigratedCountMap = {};
+
+    for (const row of data ?? []) {
+      try {
+        const metaStr = row.notes?.split("[migration_meta]")[1];
+        const meta = JSON.parse(metaStr ?? "{}") as Record<string, unknown>;
+
+        // Pending clients don't occupy a spot yet
+        if (meta.migrationStatus === "legacy_pending") continue;
+
+        // Normalize "Ravenna, OH" → "Ravenna"
+        const rawCity  = (meta.city  as string) ?? "";
+        const cityName = rawCity.split(",")[0].trim();
+        const category = ((meta.category as string) ?? "").trim();
+        const spotType = ((meta.spotType as string) ?? "front").trim();
+
+        if (!cityName || !category) continue;
+
+        result[cityName] ??= {};
+        result[cityName][category] ??= {};
+        result[cityName][category][spotType] =
+          (result[cityName][category][spotType] ?? 0) + 1;
+      } catch { /* skip malformed rows */ }
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
+
 export type CityWithAvailability = {
   id: string;
   name: string;
@@ -90,6 +139,22 @@ export async function getActiveCities(): Promise<CityWithAvailability[]> {
     } catch { /* fallback to 10 remaining if query fails */ }
   }
 
+  // Add migrated client spots (city_id is null; city stored as text in migration_meta)
+  // Each unique city+category combo in migration_meta = 1 taken slot
+  const migratedCounts = await getMigratedCounts(supabase);
+  // Build a city name → city id lookup for matching
+  const cityNameToId: Record<string, string> = {};
+  for (const city of allCities) {
+    cityNameToId[city.name.toLowerCase()] = city.id;
+  }
+  for (const [cityName, categoryMap] of Object.entries(migratedCounts)) {
+    const cityId = cityNameToId[cityName.toLowerCase()];
+    if (!cityId) continue; // migrated city not in DB yet — skip
+    // Each distinct category in this city = 1 slot taken
+    const migSlots = Object.keys(categoryMap).length;
+    takenMap[cityId] = (takenMap[cityId] ?? 0) + migSlots;
+  }
+
   return allCities.map((city) => {
     const taken = takenMap[city.id] ?? 0;
     const remaining = Math.max(0, MAX_SPOTS_PER_CITY - taken);
@@ -141,6 +206,30 @@ export async function getCategoriesForCity(
   } catch {
     countMap = {};
   }
+
+  // Add migrated clients for this city (matched by city name)
+  // countMap keys are category UUIDs; migrated clients store category names.
+  // Build a categoryName → categoryId lookup from allCategories.
+  const catNameToId: Record<string, string> = {};
+  for (const cat of allCategories) {
+    catNameToId[cat.name.toLowerCase()] = cat.id;
+  }
+  try {
+    // Look up this city's name so we can match migrated records
+    const { data: cityRow } = await supabase
+      .from("cities").select("name").eq("id", cityId).single();
+    if (cityRow?.name) {
+      const migratedCounts = await getMigratedCounts(supabase);
+      const cityName = cityRow.name.toLowerCase();
+      const catMap = migratedCounts[cityRow.name] ?? migratedCounts[cityName] ?? {};
+      for (const [catName, spotTypes] of Object.entries(catMap)) {
+        const catId = catNameToId[catName.toLowerCase()];
+        if (!catId) continue;
+        const total = Object.values(spotTypes).reduce((s, n) => s + n, 0);
+        countMap[catId] = (countMap[catId] ?? 0) + total;
+      }
+    }
+  } catch { /* non-critical */ }
 
   const TOTAL_SPOTS_PER_CATEGORY = 10;
 
@@ -198,6 +287,33 @@ export async function getBundlesWithAvailability(
   } catch {
     countMap = {};
   }
+
+  // Add migrated clients — match by city name + category name, then by spotType
+  try {
+    const [cityRow, catRow] = await Promise.all([
+      supabase.from("cities").select("name").eq("id", cityId).single(),
+      supabase.from("categories").select("name").eq("id", categoryId).single(),
+    ]);
+    if (cityRow.data?.name && catRow.data?.name) {
+      const migratedCounts = await getMigratedCounts(supabase);
+      const cityName = cityRow.data.name;
+      const catName  = catRow.data.name;
+      // Look up the migrated spot-type counts for this city+category
+      const spotTypeCounts =
+        migratedCounts[cityName]?.[catName] ??
+        migratedCounts[cityName.toLowerCase()]?.[catName.toLowerCase()] ??
+        {};
+      // Map spotType → bundle IDs with matching spotType in their metadata
+      for (const bundle of rawBundles) {
+        const meta = (bundle.metadata ?? {}) as Record<string, unknown>;
+        const bundleSpotType = (meta.spotType as string) ?? "back";
+        const migCount = spotTypeCounts[bundleSpotType] ?? 0;
+        if (migCount > 0) {
+          countMap[bundle.id] = (countMap[bundle.id] ?? 0) + migCount;
+        }
+      }
+    }
+  } catch { /* non-critical */ }
 
   return rawBundles
     .map((bundle) => {
