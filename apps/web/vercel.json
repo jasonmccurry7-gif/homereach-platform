@@ -51,6 +51,10 @@
     {
       "path": "/api/admin/sales/follow-up-sequence",
       "schedule": "0 8 * * 1-5"
+    },
+    {
+      "path": "/api/admin/email/warmup/send",
+      "schedule": "0 7 * * *"
     }
   ]
 }
