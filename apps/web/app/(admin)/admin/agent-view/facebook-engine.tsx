@@ -1020,12 +1020,4 @@ function RingProgress({ value, max }: { value: number; max: number }) {
   );
 }
 
-function rotatePlaceholders(script: string, city: string, category: string): string {
-  return script
-    .replace(/\[CITY\]/g,     city     || "your city")
-    .replace(/\[CATEGORY\]/g, category || "your industry")
-    .replace(/\[NAME\]/g,     "there")
-    .replace(/\[BUSINESS\]/g, "your business")
-    .replace(/\[TOPIC\]/g,    "your business/services")
-    .replace(/\[POST\]/g,     "our recent conversation");
-}
+// rotatePlaceholders is defined at the top of this file (line 96) — duplicate removed.
