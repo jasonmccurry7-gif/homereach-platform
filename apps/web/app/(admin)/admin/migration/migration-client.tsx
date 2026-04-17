@@ -32,12 +32,21 @@ type FormState = typeof BLANK_FORM;
 // ── Cities / Categories for dropdowns ────────────────────────────────────
 
 const CITY_OPTIONS = [
-  { id: "city-medina",  label: "Medina, OH"  },
-  { id: "city-stow",    label: "Stow, OH"    },
-  { id: "city-hudson",  label: "Hudson, OH"  },
-  { id: "city-akron",   label: "Akron, OH"   },
-  { id: "city-canton",  label: "Canton, OH"  },
-  { id: "city-wooster", label: "Wooster, OH" },
+  { id: "city-medina",          label: "Medina, OH"          },
+  { id: "city-stow",            label: "Stow, OH"            },
+  { id: "city-hudson",          label: "Hudson, OH"          },
+  { id: "city-akron",           label: "Akron, OH"           },
+  { id: "city-canton",          label: "Canton, OH"          },
+  { id: "city-wooster",         label: "Wooster, OH"         },
+  { id: "city-cuyahoga-falls",  label: "Cuyahoga Falls, OH"  },
+  { id: "city-kent",            label: "Kent, OH"            },
+  { id: "city-brunswick",       label: "Brunswick, OH"       },
+  { id: "city-strongsville",    label: "Strongsville, OH"    },
+  { id: "city-north-canton",    label: "North Canton, OH"    },
+  { id: "city-massillon",       label: "Massillon, OH"       },
+  { id: "city-wadsworth",       label: "Wadsworth, OH"       },
+  { id: "city-norton",          label: "Norton, OH"          },
+  { id: "city-barberton",       label: "Barberton, OH"       },
 ];
 
 const CATEGORY_OPTIONS = [
