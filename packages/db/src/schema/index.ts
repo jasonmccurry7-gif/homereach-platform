@@ -51,3 +51,6 @@ export * from "./growth";
 
 // Sales execution system — outbound leads + event tracking (Migration 20)
 export * from "./sales";
+
+// Sales Intelligence Q&A — Migrations 048-050 (feature-flagged: ENABLE_QA_SYSTEM)
+export * from "./qa";
