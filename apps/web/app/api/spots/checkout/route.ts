@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import Stripe from "stripe";
+import { checkCanonicalAvailability } from "@/lib/spots/canonical-availability";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/spots/checkout
@@ -54,25 +55,36 @@ export async function POST(req: Request) {
       .select("id, name, state, founding_eligible").eq("id", cityId).single();
     if (!city) return NextResponse.json({ error: "City not found" }, { status: 404 });
 
-    // 3. Check availability via orders joined through businesses
-    // Count active/pending orders for this city+category+bundle combo
-    try {
-      const { data: activeBizIds } = await db.from("businesses")
-        .select("id")
-        .eq("city_id", cityId)
-        .eq("category_id", categoryId);
-      if (activeBizIds && activeBizIds.length > 0) {
-        const bizIds = activeBizIds.map((b: { id: string }) => b.id);
-        const { count: takenCount } = await db.from("orders")
-          .select("id", { count: "exact" })
-          .eq("bundle_id", bundleId)
-          .in("business_id", bizIds)
-          .in("status", ["pending", "paid", "active"]);
-        if ((takenCount ?? 0) >= maxSpots) {
-          return NextResponse.json({ error: "This spot is no longer available." }, { status: 409 });
-        }
-      }
-    } catch { /* non-critical check — proceed if availability query fails */ }
+    // 3. CANONICAL AVAILABILITY CHECK — fail-closed.
+    //
+    // Unified source of truth across deny-list, spot_assignments, orders,
+    // and legacy migration metadata. Replaces the earlier query that only
+    // looked at `orders` and silently passed through on errors (which is
+    // how the Wooster + Pressure Washing double-book became possible).
+    //
+    // Any non-available result — including query errors — blocks the
+    // checkout. Never create a business row or an order when availability
+    // is uncertain.
+    const availability = await checkCanonicalAvailability({
+      cityId,
+      categoryId,
+      supa: db,
+    });
+    if (!availability.available) {
+      console.warn(
+        "[api/spots/checkout] blocked by canonical availability:",
+        { cityId, categoryId, source: availability.source, detail: availability.detail },
+      );
+      return NextResponse.json(
+        {
+          error:
+            availability.message ??
+            "This spot is no longer available.",
+          source: availability.source,
+        },
+        { status: availability.source === "query_error" ? 503 : 409 },
+      );
+    }
 
     // 4. Resolve or create business
     let businessId: string;
