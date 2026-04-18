@@ -2,12 +2,25 @@
 // HomeReach — Q&A Route Guards
 //
 // Centralized guard helpers used by every /api/admin/qa/* route handler.
-// Keeps feature-flag gating and auth verification in one place.
+//
+// Auth model:
+//   1. The user-scoped Supabase client (from @/lib/supabase/server) is used
+//      ONLY to call supa.auth.getUser() — proves the request has a valid
+//      session cookie.
+//   2. All subsequent reads and writes (including the profile role lookup)
+//      use the SERVICE-ROLE client, which bypasses RLS. This matches the
+//      pattern used by the existing Echo / Sentinel / Stripe webhook routes.
+//   3. RLS policies in migration 050 are retained as defense-in-depth for
+//      any direct DB access that does use user JWT (e.g. future client-side
+//      Supabase queries); server routes sidestep them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createUserScopedClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { isQaEnabled } from "./env";
+
+type ServiceSupa = ReturnType<typeof createServiceClient>;
 
 /**
  * Return 404 when the Q&A system is disabled. Call at the top of every
@@ -21,24 +34,22 @@ export function qaFlagGate(): NextResponse | null {
 }
 
 /**
- * Resolve the authenticated user + their agent_identities row.
- * Returns a 401 response if unauthenticated.
+ * Resolve the authenticated user + their role from profiles.
+ * Returns a service-role Supabase client for route handlers to use.
  */
 export async function requireAgent(): Promise<
   | {
       ok: true;
       agentId: string;
       isAdmin: boolean;
-      supa: Awaited<ReturnType<typeof createClient>>;
+      supa: ServiceSupa;
     }
   | { ok: false; response: NextResponse }
 > {
-  const supa = await createClient();
-
-  // ADMIN_DEV_BYPASS is intentionally NOT honored by Q&A routes — we always
-  // require a real Supabase session. This is slightly stricter than existing
-  // admin routes and matches the V1a security note in the blueprint.
-  const { data: userData, error } = await supa.auth.getUser();
+  // 1) Prove the request has a valid Supabase session (user-scoped client
+  //    reads the session cookie; this does not touch any RLS-gated tables).
+  const userScoped = await createUserScopedClient();
+  const { data: userData, error } = await userScoped.auth.getUser();
   if (error || !userData?.user) {
     return {
       ok: false,
@@ -48,10 +59,9 @@ export async function requireAgent(): Promise<
 
   const userId = userData.user.id;
 
-  // Canonical HomeReach auth pattern: profiles(id, role) is the source of truth.
-  // Matches the RLS policies in 20_sales_execution_system.sql and 21_crm_full_schema.sql:
-  //   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-  const { data: profile } = await supa
+  // 2) Look up the profile with the service-role client (bypasses RLS).
+  const svc = createServiceClient();
+  const { data: profile } = await svc
     .from("profiles")
     .select("id, role")
     .eq("id", userId)
@@ -60,7 +70,10 @@ export async function requireAgent(): Promise<
   if (!profile) {
     return {
       ok: false,
-      response: new NextResponse("Unknown agent", { status: 403 }),
+      response: new NextResponse(
+        "No profile row for auth user — contact admin",
+        { status: 403 },
+      ),
     };
   }
 
@@ -68,13 +81,13 @@ export async function requireAgent(): Promise<
     ok: true,
     agentId: (profile as any).id as string,
     isAdmin: ((profile as any).role as string) === "admin",
-    supa,
+    supa: svc,
   };
 }
 
 /** Shorthand for when a route requires admin. */
 export async function requireAdmin(): Promise<
-  | { ok: true; agentId: string; supa: Awaited<ReturnType<typeof createClient>> }
+  | { ok: true; agentId: string; supa: ServiceSupa }
   | { ok: false; response: NextResponse }
 > {
   const guard = await requireAgent();
