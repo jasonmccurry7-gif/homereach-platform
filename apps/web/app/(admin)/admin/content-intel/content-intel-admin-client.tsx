@@ -40,6 +40,17 @@ type CompetitorInsight = {
   insight_text: string; rationale: string | null; source_url: string | null;
   apex_score: number; status: string; created_at: string;
 };
+type Signal = {
+  id: string; signal_type: string; category: string; location: string | null;
+  severity: string | null; intensity_score: number; headline: string;
+  description: string | null; source: string;
+  effective_at: string | null; expires_at: string | null; created_at: string;
+};
+type Pattern = {
+  id: string; category: string; pattern: string;
+  source_count: number; win_count: number; weight: number;
+  last_win_at: string | null; created_at: string;
+};
 
 async function getJson<T>(url: string): Promise<{ enabled: boolean; rows: T[] }> {
   const res = await fetch(url, { cache: "no-store" });
@@ -49,7 +60,7 @@ async function getJson<T>(url: string): Promise<{ enabled: boolean; rows: T[] }>
   return { enabled: true, rows: Array.isArray(j?.rows) ? j.rows : [] };
 }
 
-type Tab = "queue" | "insights" | "topics" | "channels" | "top_channels" | "competitors" | "competitor_insights";
+type Tab = "queue" | "insights" | "topics" | "channels" | "top_channels" | "competitors" | "competitor_insights" | "signals" | "patterns";
 
 export default function ContentIntelAdminClient() {
   const [tab, setTab] = useState<Tab>("queue");
@@ -61,9 +72,11 @@ export default function ContentIntelAdminClient() {
   const [topChans,  setTopChans]  = useState<TopChannel[]>([]);
   const [competitors,setCompetitors] = useState<Competitor[]>([]);
   const [compIns,   setCompIns]   = useState<CompetitorInsight[]>([]);
+  const [signals,   setSignals]   = useState<Signal[]>([]);
+  const [patterns,  setPatterns]  = useState<Pattern[]>([]);
 
   async function loadAll() {
-    const [q, i, t, c, tc, cm, ci] = await Promise.all([
+    const [q, i, t, c, tc, cm, ci, sg, pt] = await Promise.all([
       getJson<QueueRow>("/api/admin/content-intel/queue"),
       getJson<Insight>("/api/admin/content-intel/insights"),
       getJson<Topic>("/api/admin/content-intel/config/topics"),
@@ -71,10 +84,13 @@ export default function ContentIntelAdminClient() {
       getJson<TopChannel>("/api/admin/content-intel/top-channels"),
       getJson<Competitor>("/api/admin/content-intel/config/competitors"),
       getJson<CompetitorInsight>("/api/admin/content-intel/competitor-insights"),
+      getJson<Signal>("/api/admin/content-intel/signals"),
+      getJson<Pattern>("/api/admin/content-intel/patterns"),
     ]);
     setEnabled(q.enabled && i.enabled);
     setQueue(q.rows); setInsights(i.rows); setTopics(t.rows); setChannels(c.rows);
     setTopChans(tc.rows); setCompetitors(cm.rows); setCompIns(ci.rows);
+    setSignals(sg.rows); setPatterns(pt.rows);
   }
   useEffect(() => { loadAll(); }, []);
 
@@ -113,7 +129,7 @@ export default function ContentIntelAdminClient() {
       </header>
 
       <nav className="mb-4 flex gap-2 border-b overflow-x-auto">
-        {(["queue", "insights", "top_channels", "competitor_insights", "topics", "channels", "competitors"] as const).map((k) => (
+        {(["queue", "insights", "signals", "patterns", "top_channels", "competitor_insights", "topics", "channels", "competitors"] as const).map((k) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -124,12 +140,63 @@ export default function ContentIntelAdminClient() {
 
       {tab === "queue" && <QueueTable rows={queue} />}
       {tab === "insights" && <InsightsTable rows={insights} onAction={approve} />}
+      {tab === "signals" && <SignalsTable rows={signals} />}
+      {tab === "patterns" && <PatternsTable rows={patterns} />}
       {tab === "top_channels" && <TopChannelsTable rows={topChans} />}
       {tab === "competitor_insights" && <CompetitorInsightsTable rows={compIns} />}
       {tab === "topics" && <TopicsTable rows={topics} onRefresh={loadAll} />}
       {tab === "channels" && <ChannelsTable rows={channels} onRefresh={loadAll} />}
       {tab === "competitors" && <CompetitorsTable rows={competitors} onRefresh={loadAll} />}
     </div>
+  );
+}
+
+// ─── Market Signals (NOAA weather alerts, etc.) ───────────────────────────────
+function SignalsTable({ rows }: { rows: Signal[] }) {
+  if (!rows.length) return <p className="text-sm text-gray-500">No active market signals. NOAA poll runs daily at 5 AM.</p>;
+  return (
+    <ul className="space-y-2">
+      {rows.map((s) => (
+        <li key={s.id} className="rounded border bg-white p-3 text-sm">
+          <div className="flex items-center justify-between">
+            <div className="text-xs uppercase text-gray-500">
+              {s.signal_type} · {s.category} · {s.source}
+              {s.location ? ` · ${s.location}` : ""}
+            </div>
+            <div className="text-xs font-mono">intensity {s.intensity_score}/5{s.severity ? ` · ${s.severity}` : ""}</div>
+          </div>
+          <div className="mt-1 font-semibold">{s.headline}</div>
+          {s.description && <p className="mt-1 text-xs text-gray-700 whitespace-pre-wrap">{s.description.slice(0, 500)}</p>}
+          {s.expires_at && <p className="mt-1 text-xs text-gray-500">Expires {new Date(s.expires_at).toLocaleString()}</p>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ─── Promoted Patterns (from weekly pattern detector) ─────────────────────────
+function PatternsTable({ rows }: { rows: Pattern[] }) {
+  if (!rows.length) return <p className="text-sm text-gray-500">No patterns yet. Weekly pattern detector runs Sundays. Needs at least 5 competitor insights in the last 30 days.</p>;
+  return (
+    <table className="w-full text-sm">
+      <thead className="bg-gray-50 text-left"><tr>
+        <th className="p-2">Pattern</th><th className="p-2">Category</th>
+        <th className="p-2">Sources</th><th className="p-2">Wins</th>
+        <th className="p-2">Weight</th><th className="p-2">First seen</th>
+      </tr></thead>
+      <tbody>
+        {rows.map((p) => (
+          <tr key={p.id} className="border-t">
+            <td className="p-2 font-medium">{p.pattern}</td>
+            <td className="p-2">{p.category}</td>
+            <td className="p-2">{p.source_count}</td>
+            <td className="p-2">{p.win_count}</td>
+            <td className="p-2 font-mono">{Number(p.weight).toFixed(2)}</td>
+            <td className="p-2 text-xs text-gray-500">{new Date(p.created_at).toLocaleDateString()}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
