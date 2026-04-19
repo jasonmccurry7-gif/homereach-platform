@@ -368,8 +368,10 @@ async function runCompetitorRound(args: {
   let insightsExtracted = 0;
   let insightsAfterApex = 0;
 
+  // Include any competitor marked for youtube, even if no channel_id/handle —
+  // search falls back to c.name as the query in that case.
   const ytCompetitors = competitors.filter(
-    (c: any) => Array.isArray(c.content_source) && c.content_source.includes("youtube") && (c.youtube_channel_id || c.youtube_handle),
+    (c: any) => Array.isArray(c.content_source) && c.content_source.includes("youtube"),
   );
 
   for (const c of ytCompetitors) {
