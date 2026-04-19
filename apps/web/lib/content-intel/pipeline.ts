@@ -1,18 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeReach — Content Intelligence Pipeline Orchestrator
 //
-// Runs once per scheduled trigger:
-//   1. Load active topics + trusted channels + ingestion rules
-//   2. For today's rotated category subset + every forced-include channel:
-//        search YouTube → score → dedup against ci_ingestion_queue
-//   3. Cap total candidates at CONTENT_INTEL_DAILY_CAP (default 15)
-//   4. Fetch transcripts; skip videos without transcripts
-//   5. Extract insights (Claude Haiku). For translate_saas channels, translate.
-//   6. APEX filter (>=15), persist surviving insights
-//   7. Generate capped artifacts (3 actions / 2 scripts / 1 offer / 1 auto / 1 enh)
-//   8. Write everything; mark queue rows processed
+// Runs once per scheduled trigger.
 //
-// Returns a run summary the cron endpoint forwards as JSON.
+// Two ingestion rounds:
+//   ROUND A — Source channels: rotated verticals from ci_category_topics +
+//             forced-include trusted channels (Dan Martell). Produces
+//             insights → execution artifacts.
+//   ROUND B — Competitor channels: each active ci_competitor_sources row
+//             with content_source containing 'youtube'. Produces
+//             ci_competitor_insights (no artifacts; admin review only).
+//
+// Critical design:
+//   • Artifacts (actions/scripts/offers/automations/enhancements) are
+//     generated ONCE per run at the end, from the pooled + ranked insights.
+//     Strict cap: 3/2/1/1/1 per run (matches spec).
+//   • Competitor insights are filtered by APEX but do NOT produce artifacts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createServiceClient } from "@/lib/supabase/service";
@@ -39,13 +42,17 @@ export type PipelineSummary = {
   insightsExtracted: number;
   insightsAfterApex: number;
   artifacts: { actions: number; scripts: number; offers: number; automations: number; enhancements: number };
+  competitors: {
+    sourcesProcessed: number;
+    videosFetched: number;
+    insightsExtracted: number;
+    insightsAfterApex: number;
+  };
   skippedReasons: Record<string, number>;
   errors: string[];
 };
 
-/** 6 verticals rotated so we don't exceed the daily cap (6*3=18 > 15). */
 const VERTICAL_ROTATION: Record<number, string[]> = {
-  // day-of-week (0=Sun…6=Sat) → categories to search (Dan Martell always added)
   0: ["pressure_washing", "lawn_care", "window_cleaning"],
   1: ["pressure_washing", "lawn_care", "gutter_cleaning"],
   2: ["pressure_washing", "pest_control",  "roofing"],
@@ -62,10 +69,11 @@ export async function runPipeline(): Promise<PipelineSummary> {
   const supa: Supa = createServiceClient();
 
   // ── 1) Load config ─────────────────────────────────────────────────────────
-  const [rulesResp, topicsResp, channelsResp] = await Promise.all([
+  const [rulesResp, topicsResp, channelsResp, competitorsResp] = await Promise.all([
     supa.from("ci_ingestion_rules").select("*").eq("id", "default").maybeSingle(),
     supa.from("ci_category_topics").select("*").eq("active_flag", true),
-    supa.from("ci_trusted_channels").select("*"),
+    supa.from("ci_trusted_channels").select("*").eq("active_flag", true),
+    supa.from("ci_competitor_sources").select("*").eq("active_flag", true),
   ]);
   const rules = rulesResp.data ?? {
     min_recency_days: 60, max_videos_per_cat: 3, min_relevance_score: 3.5,
@@ -73,6 +81,7 @@ export async function runPipeline(): Promise<PipelineSummary> {
   };
   const topics = topicsResp.data ?? [];
   const channels = channelsResp.data ?? [];
+  const competitors = competitorsResp.data ?? [];
   const dailyCap = Math.min(getDailyVideoCap(), Number(rules.daily_video_cap ?? 15));
 
   const trustedChannelIds = new Set<string>(channels.filter((c: any) => c.channel_id).map((c: any) => c.channel_id));
@@ -96,10 +105,10 @@ export async function runPipeline(): Promise<PipelineSummary> {
 
   // ── 3) Search YouTube per (category, top topic) + Dan Martell forced ───────
   const sinceIso = new Date(Date.now() - Number(rules.min_recency_days ?? 60) * 86_400_000).toISOString();
-  const candidates: Array<YTVideoCandidate & { category: string; isForced: boolean; score: number }> = [];
+  type SourceCandidate = YTVideoCandidate & { category: string; isForced: boolean; score: number };
+  const sourceCandidates: SourceCandidate[] = [];
   let searched = 0;
 
-  // Per-category: pick top 2 topics by priority → search each with maxResults=5
   for (const category of categoriesProcessed) {
     const catTopics = topics
       .filter((t: any) => t.category === category)
@@ -124,7 +133,7 @@ export async function runPipeline(): Promise<PipelineSummary> {
           if (score.total < Number(rules.min_relevance_score ?? 3.5)) {
             bump(skippedReasons, "score_too_low"); continue;
           }
-          candidates.push({ ...r, category, isForced: false, score: score.total });
+          sourceCandidates.push({ ...r, category, isForced: false, score: score.total });
         }
       } catch (err: any) {
         errors.push(`search(${category}/${topic.search_term}): ${err?.message ?? String(err)}`);
@@ -132,11 +141,10 @@ export async function runPipeline(): Promise<PipelineSummary> {
     }
   }
 
-  // Forced-include channels (Dan Martell + guest appearances)
   for (const ch of channels.filter((c: any) => c.force_include)) {
     try {
       const results = await searchYouTube({
-        query: ch.channel_id ? "" : ch.channel_name, // if we have a channelId we constrain by it
+        query: ch.channel_id ? "" : ch.channel_name,
         channelId: ch.channel_id || undefined,
         publishedAfter: sinceIso,
         maxResults: 5,
@@ -150,11 +158,10 @@ export async function runPipeline(): Promise<PipelineSummary> {
           excludeKeywords: (rules.exclude_keywords as string[]) ?? [],
           trustedChannelIds, trustedChannelNames, channelTrustMap,
         });
-        if (score.total < Number(rules.min_relevance_score ?? 3.5)) {
-          // Forced-include bypasses the min score for Dan Martell
-          if (!ch.force_include) { bump(skippedReasons, "score_too_low_forced"); continue; }
+        if (score.total < Number(rules.min_relevance_score ?? 3.5) && !ch.force_include) {
+          bump(skippedReasons, "score_too_low_forced"); continue;
         }
-        candidates.push({
+        sourceCandidates.push({
           ...r,
           category: resolveChannelCategory(ch.category),
           isForced: true,
@@ -167,8 +174,8 @@ export async function runPipeline(): Promise<PipelineSummary> {
   }
 
   // ── 4) Dedup + cap ─────────────────────────────────────────────────────────
-  const byId = new Map<string, (typeof candidates)[number]>();
-  for (const c of candidates) {
+  const byId = new Map<string, SourceCandidate>();
+  for (const c of sourceCandidates) {
     const existing = byId.get(c.videoId);
     if (!existing || c.score > existing.score || (!existing.isForced && c.isForced)) {
       byId.set(c.videoId, c);
@@ -176,7 +183,6 @@ export async function runPipeline(): Promise<PipelineSummary> {
   }
   const unique = Array.from(byId.values());
 
-  // Dedup against ci_ingestion_queue (never re-ingest)
   const ids = unique.map((u) => u.videoId);
   let alreadySeen = new Set<string>();
   if (ids.length) {
@@ -185,11 +191,9 @@ export async function runPipeline(): Promise<PipelineSummary> {
   }
   const fresh = unique.filter((u) => !alreadySeen.has(u.videoId));
 
-  // Take top by score, forced first, then slice to dailyCap
   fresh.sort((a, b) => (Number(b.isForced) - Number(a.isForced)) || (b.score - a.score));
   const picked = fresh.slice(0, dailyCap);
 
-  // ── 5) Persist queue rows (status='scored') ────────────────────────────────
   if (picked.length) {
     await supa.from("ci_ingestion_queue").insert(
       picked.map((p) => ({
@@ -208,12 +212,15 @@ export async function runPipeline(): Promise<PipelineSummary> {
     );
   }
 
-  // ── 6) Transcripts + 7) Extract + 8) Filter + 9) Artifacts ────────────────
+  // ── 5-7) Per-video: transcribe → extract → translate → APEX filter ─────────
+  // ── but POOL insights for later single artifact generation ────────────────
   let transcriptsFetched = 0;
   let insightsExtracted = 0;
   let insightsAfterApex = 0;
-  const artifacts = { actions: 0, scripts: 0, offers: 0, automations: 0, enhancements: 0 };
   const aiOff = isContentIntelAiDisabled();
+
+  // Global pool of filtered insights (with DB ids) across ALL videos this run
+  const allRankedInsights: Array<FilteredInsight & { id: string }> = [];
 
   for (const p of picked) {
     const t = await fetchTranscript(p.videoId);
@@ -229,7 +236,7 @@ export async function runPipeline(): Promise<PipelineSummary> {
       .update({ status: "transcribed", transcript: t.text, transcript_source: t.source })
       .eq("video_id", p.videoId);
 
-    if (aiOff) continue; // UI-only mode: stop here
+    if (aiOff) continue;
 
     const ext = await extractInsights({ category: p.category, videoTitle: p.title, transcript: t.text });
     if (!ext.ok) {
@@ -267,7 +274,8 @@ export async function runPipeline(): Promise<PipelineSummary> {
       continue;
     }
 
-    // Insert insights
+    // Insert insights (still per-video, because apex_score is GENERATED ALWAYS
+    // and requires persisted rows to get ids back)
     const { data: insertedIns } = await supa
       .from("ci_insights")
       .insert(
@@ -285,29 +293,41 @@ export async function runPipeline(): Promise<PipelineSummary> {
           status: "pending",
         })),
       )
-      .select("id, insight_text");
+      .select("id");
 
-    const ranked = (insertedIns ?? []).map((row: any, idx: number) => ({
-      ...surviving[idx],
-      id: row.id as string,
-    }));
-
-    const gen = generateArtifacts(ranked);
-    if (gen.actions.length)      await supa.from("ci_actions").insert(gen.actions);
-    if (gen.scripts.length)      await supa.from("ci_scripts").insert(gen.scripts);
-    if (gen.offers.length)       await supa.from("ci_offers").insert(gen.offers);
-    if (gen.automations.length)  await supa.from("ci_automations").insert(gen.automations);
-    if (gen.enhancements.length) await supa.from("ci_enhancements").insert(gen.enhancements);
-    artifacts.actions      += gen.actions.length;
-    artifacts.scripts      += gen.scripts.length;
-    artifacts.offers       += gen.offers.length;
-    artifacts.automations  += gen.automations.length;
-    artifacts.enhancements += gen.enhancements.length;
+    // Collect into the GLOBAL pool (not yet turned into artifacts)
+    (insertedIns ?? []).forEach((row: any, idx: number) => {
+      allRankedInsights.push({ ...surviving[idx], id: row.id as string });
+    });
 
     await supa.from("ci_ingestion_queue")
       .update({ status: "processed", processed_at: new Date().toISOString() })
       .eq("video_id", p.videoId);
   }
+
+  // ── 8) SINGLE pooled artifact generation — strict per-run cap (3/2/1/1/1) ──
+  allRankedInsights.sort((a, b) => b.apex_score - a.apex_score);
+  const artifacts = { actions: 0, scripts: 0, offers: 0, automations: 0, enhancements: 0 };
+  if (allRankedInsights.length > 0) {
+    const gen = generateArtifacts(allRankedInsights);
+    if (gen.actions.length)      await supa.from("ci_actions").insert(gen.actions);
+    if (gen.scripts.length)      await supa.from("ci_scripts").insert(gen.scripts);
+    if (gen.offers.length)       await supa.from("ci_offers").insert(gen.offers);
+    if (gen.automations.length)  await supa.from("ci_automations").insert(gen.automations);
+    if (gen.enhancements.length) await supa.from("ci_enhancements").insert(gen.enhancements);
+    artifacts.actions      = gen.actions.length;
+    artifacts.scripts      = gen.scripts.length;
+    artifacts.offers       = gen.offers.length;
+    artifacts.automations  = gen.automations.length;
+    artifacts.enhancements = gen.enhancements.length;
+  }
+
+  // ── 9) ROUND B — competitor ingestion (YouTube-only in V1) ────────────────
+  const compStats = await runCompetitorRound({
+    supa, competitors, rules, sinceIso,
+    trustedChannelIds, trustedChannelNames, channelTrustMap,
+    aiOff, errors, skippedReasons,
+  });
 
   return {
     ok: true,
@@ -321,9 +341,218 @@ export async function runPipeline(): Promise<PipelineSummary> {
     insightsExtracted,
     insightsAfterApex,
     artifacts,
+    competitors: compStats,
     skippedReasons,
     errors,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Competitor round
+// ─────────────────────────────────────────────────────────────────────────────
+async function runCompetitorRound(args: {
+  supa: Supa;
+  competitors: any[];
+  rules: any;
+  sinceIso: string;
+  trustedChannelIds: Set<string>;
+  trustedChannelNames: Set<string>;
+  channelTrustMap: Map<string, number>;
+  aiOff: boolean;
+  errors: string[];
+  skippedReasons: Record<string, number>;
+}): Promise<{ sourcesProcessed: number; videosFetched: number; insightsExtracted: number; insightsAfterApex: number }> {
+  const { supa, competitors, sinceIso, aiOff, errors, skippedReasons } = args;
+  let sourcesProcessed = 0;
+  let videosFetched = 0;
+  let insightsExtracted = 0;
+  let insightsAfterApex = 0;
+
+  const ytCompetitors = competitors.filter(
+    (c: any) => Array.isArray(c.content_source) && c.content_source.includes("youtube") && (c.youtube_channel_id || c.youtube_handle),
+  );
+
+  for (const c of ytCompetitors) {
+    sourcesProcessed++;
+    try {
+      const results = await searchYouTube({
+        query: c.youtube_channel_id ? "" : (c.youtube_handle || c.name),
+        channelId: c.youtube_channel_id || undefined,
+        publishedAfter: sinceIso,
+        maxResults: 3,
+      });
+      videosFetched += results.length;
+
+      for (const v of results) {
+        // Dedup: if we've already seen this video from the source round, skip.
+        const { data: seen } = await supa.from("ci_ingestion_queue").select("video_id").eq("video_id", v.videoId).maybeSingle();
+        if (seen) continue;
+
+        const t = await fetchTranscript(v.videoId);
+        if (!t) { bump(skippedReasons, "competitor_no_transcript"); continue; }
+        if (aiOff) continue;
+
+        const ext = await extractCompetitorInsights({
+          category: c.category === "*" ? "competitor" : c.category,
+          videoTitle: v.title,
+          transcript: t.text,
+          competitorName: c.name,
+          competitorType: c.competitor_type,
+        });
+        if (!ext.ok) {
+          errors.push(`competitor_extract(${v.videoId}): ${ext.error}`);
+          bump(skippedReasons, "competitor_extract_failed");
+          continue;
+        }
+        insightsExtracted += ext.insights.length;
+
+        // APEX filter — same ≥15 threshold
+        const kept = ext.insights.filter(
+          (i) => i.revenue_score + i.speed_score + i.ease_score + i.advantage_score >= 15,
+        );
+        insightsAfterApex += kept.length;
+
+        if (kept.length) {
+          await supa.from("ci_competitor_insights").insert(
+            kept.map((i) => ({
+              competitor_id: c.id,
+              competitor_name: c.name,
+              category: c.category === "*" ? "competitor" : c.category,
+              insight_type: i.insight_type,
+              insight_text: i.insight_text,
+              rationale: i.rationale,
+              source_url: `https://www.youtube.com/watch?v=${v.videoId}`,
+              source_video_id: null,  // not in ci_ingestion_queue
+              revenue_score: i.revenue_score,
+              speed_score: i.speed_score,
+              ease_score: i.ease_score,
+              advantage_score: i.advantage_score,
+              status: "pending",
+            })),
+          );
+        }
+      }
+
+      // Update last_ingested_at
+      await supa.from("ci_competitor_sources")
+        .update({ last_ingested_at: new Date().toISOString() })
+        .eq("id", c.id);
+    } catch (err: any) {
+      errors.push(`competitor(${c.name}): ${err?.message ?? String(err)}`);
+    }
+  }
+
+  return { sourcesProcessed, videosFetched, insightsExtracted, insightsAfterApex };
+}
+
+// ── Competitor insight extractor (separate from regular extractor to tag type)
+type CompetitorInsight = {
+  insight_type: "offer" | "messaging" | "funnel" | "pricing" | "positioning" | "tactic";
+  insight_text: string;
+  rationale: string;
+  revenue_score: number;
+  speed_score: number;
+  ease_score: number;
+  advantage_score: number;
+};
+
+async function extractCompetitorInsights(args: {
+  category: string;
+  videoTitle: string;
+  transcript: string;
+  competitorName: string;
+  competitorType: string | null;
+}): Promise<{ ok: true; insights: CompetitorInsight[] } | { ok: false; error: string }> {
+  const { getAnthropicKey, getExtractorModel } = await import("./env");
+  const SYSTEM = `You are HomeReach's competitor intelligence extractor.
+You read a YouTube transcript from a competitor (${args.competitorName}, type: ${args.competitorType ?? "unknown"}).
+Extract 3-8 tactical insights HomeReach can adapt. Focus on:
+  - offers they're running (free quote, guarantees, bundles, discounts)
+  - messaging angles (pain points they target, hooks they use)
+  - funnel steps (lead magnet → call → close)
+  - pricing structures (flat, tiered, subscription)
+  - positioning (what they claim makes them different)
+  - tactics (specific moves: door knocking, paid ads, referral, retention)
+
+STRICT RULES:
+- NO fluff, NO brand worship, NO generic advice.
+- Each insight must be concrete and TRANSFERABLE to HomeReach.
+- Classify each insight as one of: offer, messaging, funnel, pricing, positioning, tactic.
+- Score each 1-5 on: revenue, speed, ease, advantage. Be strict.
+
+Respond with ONLY valid JSON:
+{"insights":[{"insight_type":"offer|messaging|funnel|pricing|positioning|tactic","insight_text":"...","rationale":"...","revenue_score":1-5,"speed_score":1-5,"ease_score":1-5,"advantage_score":1-5}]}`;
+
+  const transcript = args.transcript.length > 40_000 ? args.transcript.slice(0, 40_000) : args.transcript;
+  let res: Response;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": getAnthropicKey(),
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: getExtractorModel(),
+        max_tokens: 1500,
+        system: SYSTEM,
+        messages: [{ role: "user", content: `Video title: ${args.videoTitle}\n\nTranscript:\n${transcript}\n\nReturn JSON only.` }],
+      }),
+    });
+  } catch (err: any) {
+    return { ok: false, error: `network: ${err?.message ?? String(err)}` };
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return { ok: false, error: `http ${res.status}: ${text.slice(0, 200)}` };
+  }
+
+  const json = (await res.json().catch(() => null)) as any;
+  if (!json) return { ok: false, error: "non-json response" };
+  const text = (json.content || [])
+    .filter((b: any) => b?.type === "text")
+    .map((b: any) => b.text)
+    .join("")
+    .trim();
+
+  let parsed: any;
+  try { parsed = JSON.parse(text); }
+  catch {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return { ok: false, error: "no JSON in response" };
+    try { parsed = JSON.parse(m[0]); }
+    catch (e: any) { return { ok: false, error: `parse: ${e?.message ?? "bad json"}` }; }
+  }
+  if (!parsed || !Array.isArray(parsed.insights)) return { ok: false, error: "missing insights array" };
+
+  const valid = new Set(["offer", "messaging", "funnel", "pricing", "positioning", "tactic"]);
+  const insights: CompetitorInsight[] = parsed.insights
+    .filter((i: any) =>
+      typeof i?.insight_text === "string" &&
+      valid.has(i?.insight_type) &&
+      Number.isFinite(i?.revenue_score) && Number.isFinite(i?.speed_score) &&
+      Number.isFinite(i?.ease_score) && Number.isFinite(i?.advantage_score),
+    )
+    .slice(0, 8)
+    .map((i: any) => ({
+      insight_type: i.insight_type,
+      insight_text: String(i.insight_text).slice(0, 800),
+      rationale: String(i.rationale ?? "").slice(0, 500),
+      revenue_score: clamp(i.revenue_score),
+      speed_score: clamp(i.speed_score),
+      ease_score: clamp(i.ease_score),
+      advantage_score: clamp(i.advantage_score),
+    }));
+
+  return { ok: true, insights };
+}
+
+function clamp(n: any): number {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 1;
+  return Math.max(1, Math.min(5, Math.round(v)));
 }
 
 function bump(rec: Record<string, number>, key: string) {

@@ -17,6 +17,9 @@ const WIN_THEME_DELTA     = 0.15;
 const FAIL_THEME_DELTA    = -0.10;
 const WIN_CHANNEL_DELTA   = 0.05;
 const FAIL_CHANNEL_DELTA  = -0.05;
+// performance_score lives on 1..10 scale; use a larger delta than trust_score
+const WIN_PERF_DELTA      = 0.30;
+const FAIL_PERF_DELTA     = -0.20;
 
 export async function applyOutcome(args: {
   eventId: string;
@@ -47,30 +50,38 @@ export async function applyOutcome(args: {
     });
   }
 
-  // 2) Channel trust
+  // 2) Channel trust + performance_score
   if (origin.channel_name) {
-    await supa.rpc("ci_bump_channel_trust", {
-      p_name: origin.channel_name,
-      p_delta: chDelta,
-    }).then(() => void 0).catch(async () => {
-      // Fallback if the RPC doesn't exist: read-modify-write
-      const { data } = await supa
-        .from("ci_trusted_channels")
-        .select("id, trust_score")
-        .ilike("channel_name", origin.channel_name!)
-        .maybeSingle();
-      if (data) {
-        const next = clamp((data as any).trust_score + chDelta, 1, 5);
-        await supa.from("ci_trusted_channels")
-          .update({ trust_score: Math.round(next) })
-          .eq("id", (data as any).id);
-      }
-    });
+    const perfDelta = args.outcome === "win" ? WIN_PERF_DELTA : FAIL_PERF_DELTA;
+    // Read-modify-write: update both trust_score (1-5) and performance_score (1-10).
+    const { data: chan } = await supa
+      .from("ci_trusted_channels")
+      .select("id, trust_score, performance_score")
+      .ilike("channel_name", origin.channel_name)
+      .maybeSingle();
+    if (chan) {
+      const nextTrust = Math.round(clamp(Number((chan as any).trust_score ?? 3) + chDelta, 1, 5));
+      const nextPerf  = Math.round(clamp(Number((chan as any).performance_score ?? 5) + perfDelta, 1, 10) * 10) / 10;
+      await supa.from("ci_trusted_channels")
+        .update({
+          trust_score: nextTrust,
+          performance_score: nextPerf,
+          last_used: new Date().toISOString(),
+        })
+        .eq("id", (chan as any).id);
+    }
     await supa.from("ci_weight_deltas").insert({
       target_type: "channel",
       target_key: origin.channel_name,
       delta: chDelta,
-      reason: `${args.outcome} on ${args.itemType}`,
+      reason: `${args.outcome} on ${args.itemType} (trust)`,
+      source_event_id: args.eventId,
+    });
+    await supa.from("ci_weight_deltas").insert({
+      target_type: "channel",
+      target_key: origin.channel_name,
+      delta: perfDelta,
+      reason: `${args.outcome} on ${args.itemType} (performance)`,
       source_event_id: args.eventId,
     });
   }
