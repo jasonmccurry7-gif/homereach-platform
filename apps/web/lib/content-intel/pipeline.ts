@@ -511,7 +511,8 @@ Respond with ONLY valid JSON:
       },
       body: JSON.stringify({
         model: getExtractorModel(),
-        max_tokens: 1500,
+        // 2500 tokens ≈ 8000 chars — enough room for 8 insights without truncation.
+        max_tokens: 2500,
         system: SYSTEM,
         messages: [{ role: "user", content: `Video title: ${args.videoTitle}\n\nTranscript:\n${transcript}\n\nReturn JSON only.` }],
       }),
