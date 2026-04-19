@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { ciFlagGate, requireAgent } from "@/lib/content-intel/guards";
+import { HOME_SERVICE_CATEGORIES } from "@/lib/content-intel/categories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +15,13 @@ export async function GET() {
   const auth = await requireAgent();
   if (!auth.ok) return auth.response;
 
+  // Sales dashboard only shows home-service verticals. Dan Martell / scaling
+  // content lives under admin-only categories and is not returned here.
   const { data, error } = await auth.supa
     .from("ci_actions")
     .select("id, category, title, steps, status, created_at")
     .eq("status", "pending")
+    .in("category", [...HOME_SERVICE_CATEGORIES])
     .order("created_at", { ascending: false })
     .limit(10);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

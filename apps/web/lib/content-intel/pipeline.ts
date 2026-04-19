@@ -23,6 +23,7 @@ import { translateInsight } from "./translator";
 import { filterByApex, generateArtifacts, type FilteredInsight } from "./apex-filter";
 import { scoreVideo } from "./scorer";
 import { searchYouTube, type YTVideoCandidate } from "./youtube";
+import { resolveChannelCategory } from "./categories";
 
 type Supa = ReturnType<typeof createServiceClient>;
 
@@ -144,7 +145,7 @@ export async function runPipeline(): Promise<PipelineSummary> {
       for (const r of results) {
         const score = scoreVideo({
           video: r,
-          category: ch.category || "sales_scaling",
+          category: resolveChannelCategory(ch.category),
           categoryKeywords: ["sales", "lead", "pricing", "retention", "scaling"],
           excludeKeywords: (rules.exclude_keywords as string[]) ?? [],
           trustedChannelIds, trustedChannelNames, channelTrustMap,
@@ -155,7 +156,7 @@ export async function runPipeline(): Promise<PipelineSummary> {
         }
         candidates.push({
           ...r,
-          category: ch.category || "sales_scaling",
+          category: resolveChannelCategory(ch.category),
           isForced: true,
           score: score.total,
         });
