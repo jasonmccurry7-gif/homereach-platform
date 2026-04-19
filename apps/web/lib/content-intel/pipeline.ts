@@ -368,11 +368,21 @@ async function runCompetitorRound(args: {
   let insightsExtracted = 0;
   let insightsAfterApex = 0;
 
-  // Include any competitor marked for youtube, even if no channel_id/handle —
-  // search falls back to c.name as the query in that case.
-  const ytCompetitors = competitors.filter(
-    (c: any) => Array.isArray(c.content_source) && c.content_source.includes("youtube"),
-  );
+  // Include any competitor marked for youtube. Cap at 5 per run, rotate by
+  // oldest-processed-first so all 20 cycle through over ~4 days. Keeps a run
+  // comfortably under Vercel's 300s serverless cap.
+  const COMPETITORS_PER_RUN = 5;
+  const ytCompetitors = competitors
+    .filter((c: any) => Array.isArray(c.content_source) && c.content_source.includes("youtube"))
+    .sort((a: any, b: any) => {
+      // priority desc, then oldest last_ingested_at first (nulls first = never-processed wins)
+      const p = Number(b.priority_score) - Number(a.priority_score);
+      if (p !== 0) return p;
+      const ai = a.last_ingested_at ? Date.parse(a.last_ingested_at) : 0;
+      const bi = b.last_ingested_at ? Date.parse(b.last_ingested_at) : 0;
+      return ai - bi;
+    })
+    .slice(0, COMPETITORS_PER_RUN);
 
   for (const c of ytCompetitors) {
     sourcesProcessed++;
@@ -385,14 +395,16 @@ async function runCompetitorRound(args: {
       });
       videosFetched += results.length;
 
-      for (const v of results) {
-        // Dedup: if we've already seen this video from the source round, skip.
+      // Process this competitor's videos in parallel — each video is ~10-15s
+      // sequentially (transcript + Claude); parallel cuts that to a single
+      // video's worth of latency per competitor.
+      const processVideo = async (v: (typeof results)[number]) => {
         const { data: seen } = await supa.from("ci_ingestion_queue").select("video_id").eq("video_id", v.videoId).maybeSingle();
-        if (seen) continue;
+        if (seen) return;
 
         const t = await fetchTranscript(v.videoId);
-        if (!t) { bump(skippedReasons, "competitor_no_transcript"); continue; }
-        if (aiOff) continue;
+        if (!t) { bump(skippedReasons, "competitor_no_transcript"); return; }
+        if (aiOff) return;
 
         const ext = await extractCompetitorInsights({
           category: c.category === "*" ? "competitor" : c.category,
@@ -404,11 +416,10 @@ async function runCompetitorRound(args: {
         if (!ext.ok) {
           errors.push(`competitor_extract(${v.videoId}): ${ext.error}`);
           bump(skippedReasons, "competitor_extract_failed");
-          continue;
+          return;
         }
         insightsExtracted += ext.insights.length;
 
-        // APEX filter — same ≥15 threshold
         const kept = ext.insights.filter(
           (i) => i.revenue_score + i.speed_score + i.ease_score + i.advantage_score >= 15,
         );
@@ -424,7 +435,7 @@ async function runCompetitorRound(args: {
               insight_text: i.insight_text,
               rationale: i.rationale,
               source_url: `https://www.youtube.com/watch?v=${v.videoId}`,
-              source_video_id: null,  // not in ci_ingestion_queue
+              source_video_id: null,
               revenue_score: i.revenue_score,
               speed_score: i.speed_score,
               ease_score: i.ease_score,
@@ -433,7 +444,10 @@ async function runCompetitorRound(args: {
             })),
           );
         }
-      }
+      };
+
+      // Run all of this competitor's videos concurrently
+      await Promise.all(results.map(processVideo));
 
       // Update last_ingested_at
       await supa.from("ci_competitor_sources")
