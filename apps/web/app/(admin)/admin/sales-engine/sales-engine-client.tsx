@@ -17,15 +17,17 @@ import { getTemperatureMeta }   from "@/lib/sales-engine/classifier";
 import { getEscalationMeta, getControlMeta } from "@/lib/sales-engine/escalation-engine";
 import { FOLLOW_UP_SCHEDULE }   from "@/lib/sales-engine/followup-engine";
 import { ALERT_CONFIG }         from "@/lib/sales-engine/alert-engine";
+import QaBoard                   from "@/components/qa/QaBoard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
-  leads:   SalesLead[];
-  stats:   SalesEngineStats;
-  alerts:  HotLeadAlert[];
+  leads:     SalesLead[];
+  stats:     SalesEngineStats;
+  alerts:    HotLeadAlert[];
+  qaEnabled?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -364,9 +366,9 @@ function AlertRow({ alert }: { alert: HotLeadAlert }) {
 // Main Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = "pipeline" | "alerts" | "config";
+type Tab = "pipeline" | "alerts" | "config" | "qa";
 
-export function SalesEngineClient({ leads, stats, alerts }: Props) {
+export function SalesEngineClient({ leads, stats, alerts, qaEnabled = false }: Props) {
   const [tab, setTab]     = useState<Tab>("pipeline");
   const [toastedId, setToasted] = useState<string | null>(null);
 
@@ -432,11 +434,12 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-gray-800">
+        <div className="flex gap-1 mb-6 border-b border-gray-800 overflow-x-auto">
           {([
             { key: "pipeline" as Tab, label: `Pipeline (${leads.length})` },
             { key: "alerts"   as Tab, label: `Alert Log (${alerts.length})` },
             { key: "config"   as Tab, label: "Engine Config" },
+            ...(qaEnabled ? [{ key: "qa" as Tab, label: "Q&A" }] : []),
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -630,6 +633,13 @@ Act now.`}</pre>
               </p>
             </div>
 
+          </div>
+        )}
+
+        {/* ── Tab: Q&A ─────────────────────────────────────────────────────── */}
+        {tab === "qa" && qaEnabled && (
+          <div className="rounded-xl border border-gray-800 bg-neutral-950 p-4">
+            <QaBoard isAdminView={true} />
           </div>
         )}
 

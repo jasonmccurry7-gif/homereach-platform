@@ -12,6 +12,7 @@ import { db, leads, conversations, orders, spotAssignments } from "@homereach/db
 import { desc, inArray, eq, and, gte, sum } from "drizzle-orm";
 import { classifyAll }      from "@/lib/sales-engine/classifier";
 import { getAllAlerts }     from "@/lib/sales-engine/alert-engine";
+import { isQaEnabled }      from "@/lib/qa/env";
 import { SalesEngineClient } from "./sales-engine-client";
 import type {
   SalesLead,
@@ -287,5 +288,10 @@ export default async function SalesEnginePage() {
   // ── 7. Stats ─────────────────────────────────────────────────────────────────
   const stats = computeRealStats(classifiedLeads, activeMrrCents, alerts);
 
-  return <SalesEngineClient leads={classifiedLeads} stats={stats} alerts={alerts} />;
+  return <SalesEngineClient
+    leads={classifiedLeads}
+    stats={stats}
+    alerts={alerts}
+    qaEnabled={isQaEnabled()}
+  />;
 }
