@@ -24,7 +24,6 @@ type HighPriorityLead = {
   signal_score: number;
   signal_tier: string;
   last_contacted_at: string | null;
-  next_follow_up_at: string | null;
 };
 
 async function safeFetch(url: string): Promise<HighPriorityLead[] | null> {

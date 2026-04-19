@@ -54,8 +54,9 @@ export async function rescoreAllLeads(): Promise<RescoreSummary> {
   const PAGE_SIZE = 500;
   for (let offset = 0; offset < cap; offset += PAGE_SIZE) {
     const { data, error } = await supa
-      .from("leads")
-      .select("id, state, category, buying_signal, last_contacted_at, last_reply_at, created_at, status")
+      .from("sales_leads")
+      .select("id, state, category, buying_signal, last_contacted_at, last_reply_at, created_at, status, do_not_contact")
+      .eq("do_not_contact", false)
       .range(offset, offset + PAGE_SIZE - 1)
       .order("created_at", { ascending: false });
     if (error) {
@@ -77,7 +78,7 @@ export async function rescoreAllLeads(): Promise<RescoreSummary> {
     // Apply updates — small batches to keep payloads reasonable
     for (const u of updates) {
       const { error: uErr } = await supa
-        .from("leads")
+        .from("sales_leads")
         .update({
           signal_score: u.signal_score,
           signal_tier: u.signal_tier,

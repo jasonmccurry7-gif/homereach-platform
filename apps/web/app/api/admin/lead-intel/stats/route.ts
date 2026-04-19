@@ -14,7 +14,7 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   const { data, error } = await auth.supa
-    .from("leads")
+    .from("sales_leads")
     .select("signal_tier, signal_score_computed_at")
     .not("signal_tier", "is", null)
     .limit(50000);

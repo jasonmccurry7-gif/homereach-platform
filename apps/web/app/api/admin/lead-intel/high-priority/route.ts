@@ -15,9 +15,10 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   const { data, error } = await auth.supa
-    .from("leads")
-    .select("id, business_name, contact_name, phone, email, address, city, state, category, status, signal_score, signal_tier, last_contacted_at, next_follow_up_at, signal_score_computed_at")
+    .from("sales_leads")
+    .select("id, business_name, contact_name, phone, email, address, city, state, category, status, signal_score, signal_tier, last_contacted_at, signal_score_computed_at")
     .eq("signal_tier", "high")
+    .eq("do_not_contact", false)
     .order("signal_score", { ascending: false })
     .order("last_contacted_at", { ascending: true, nullsFirst: true })
     .limit(25);
