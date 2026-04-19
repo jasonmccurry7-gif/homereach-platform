@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import SalesDashboardClient from "./sales-dashboard-client";
+import ContentIntelCards from "@/components/content-intel/ContentIntelCards";
 
 export const dynamic = "force-dynamic";
 
@@ -10,5 +11,11 @@ export default async function SalesDashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirect=/admin/sales-dashboard");
-  return <SalesDashboardClient />;
+  return (
+    <>
+      {/* Additive: renders null when ENABLE_CONTENT_INTEL is off. */}
+      <ContentIntelCards />
+      <SalesDashboardClient />
+    </>
+  );
 }
