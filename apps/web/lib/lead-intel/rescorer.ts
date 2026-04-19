@@ -75,20 +75,28 @@ export async function rescoreAllLeads(): Promise<RescoreSummary> {
       tierCounts[r.tier]++;
     }
 
-    // Apply updates — small batches to keep payloads reasonable
-    for (const u of updates) {
+    // Apply updates in chunks. Using upsert instead of 1-update-per-row drops
+    // DB round-trips from O(n) to O(n/500), which on 4k+ leads is the
+    // difference between ~230s and ~5s.
+    const nowIso = new Date().toISOString();
+    const UPSERT_CHUNK = 500;
+    for (let i = 0; i < updates.length; i += UPSERT_CHUNK) {
+      const chunk = updates.slice(i, i + UPSERT_CHUNK);
       const { error: uErr } = await supa
         .from("sales_leads")
-        .update({
-          signal_score: u.signal_score,
-          signal_tier: u.signal_tier,
-          signal_score_computed_at: new Date().toISOString(),
-        })
-        .eq("id", u.id);
+        .upsert(
+          chunk.map((u) => ({
+            id: u.id,
+            signal_score: u.signal_score,
+            signal_tier: u.signal_tier,
+            signal_score_computed_at: nowIso,
+          })),
+          { onConflict: "id" },
+        );
       if (uErr) {
-        errors.push(`update(${u.id}): ${uErr.message}`);
+        errors.push(`upsert(offset ${i}): ${uErr.message}`);
       } else {
-        leadsUpdated++;
+        leadsUpdated += chunk.length;
       }
     }
 
