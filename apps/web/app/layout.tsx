@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 import { validateEnv } from "@/lib/env";
+import { buildOrganizationLd, buildWebsiteLd } from "@/lib/seo/schema";
 
 // Validate all required environment variables at startup.
 // Throws immediately with a clear message if anything critical is missing.
@@ -48,9 +50,19 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
         <meta name="theme-color" content="#2563eb" />
+        {/* Site-wide JSON-LD. Per-page schemas are emitted by their own routes. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(buildOrganizationLd()) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(buildWebsiteLd()) }}
+        />
       </head>
       <body className="min-h-screen bg-white font-sans antialiased">
         {children}
+        <Analytics />
       </body>
     </html>
   );
