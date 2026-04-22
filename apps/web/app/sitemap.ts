@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { createServiceClient } from "@/lib/supabase/service";
+import { listPublishedPages } from "@/lib/seo/registry";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeReach sitemap
@@ -9,6 +10,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 //   - /[slug] city-category URLs for combinations that (a) have an active city
 //     in the DB, (b) have a matching category in the DB, and (c) are NOT
 //     currently locked in spot_assignments with status in ('pending','active').
+//   - Published seo_pages URLs when ENABLE_SEO_ENGINE is on (returns [] off).
 //
 // The filter honors the inventory-truth rule: we do not advertise URLs that
 // the hardcoded /[slug] page will render as available when the DB says the
@@ -82,5 +84,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     slugRoutes = [];
   }
 
-  return [...staticRoutes, ...slugRoutes];
+  // SEO engine: include published seo_pages URLs. Returns [] when
+  // ENABLE_SEO_ENGINE is off, so flag-off preserves the pre-engine sitemap.
+  let seoEngineRoutes: MetadataRoute.Sitemap = [];
+  try {
+    const published = await listPublishedPages();
+    seoEngineRoutes = published.map((page) => ({
+      url: `${base}/${page.slug}`,
+      lastModified: page.updated_at ? new Date(page.updated_at) : now,
+      changeFrequency: "weekly" as const,
+      priority: page.page_type === "city_category" ? 0.9 : 0.7,
+    }));
+  } catch {
+    seoEngineRoutes = [];
+  }
+
+  return [...staticRoutes, ...slugRoutes, ...seoEngineRoutes];
 }
