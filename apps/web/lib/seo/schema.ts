@@ -38,3 +38,97 @@ export function buildWebsiteLd(): JsonLd {
     url: base,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-page builders (added in Step 5 scaffolding for use by /advertise/*
+// render routes in Step 10). Each accepts a minimal set of inputs so builders
+// remain pure functions that don't reach into the registry.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ServiceLdInput = {
+  name: string;
+  description: string;
+  city: string;
+  category: string;
+  url: string;
+};
+
+/** Service JSON-LD for a category+city or anchor page. */
+export function buildServiceLd(input: ServiceLdInput): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: input.name,
+    description: input.description,
+    provider: {
+      "@type": "Organization",
+      name: "HomeReach",
+      url: getBaseUrl(),
+    },
+    areaServed: {
+      "@type": "City",
+      name: input.city,
+    },
+    serviceType: input.category,
+    url: input.url,
+  };
+}
+
+export type FaqPair = { question: string; answer: string };
+
+/** FAQPage JSON-LD built from a page's FAQ block. */
+export function buildFaqPageLd(pairs: FaqPair[]): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: pairs.map((p) => ({
+      "@type": "Question",
+      name: p.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: p.answer,
+      },
+    })),
+  };
+}
+
+export type BreadcrumbItem = { name: string; url: string };
+
+/** BreadcrumbList JSON-LD for site navigation context. */
+export function buildBreadcrumbLd(items: BreadcrumbItem[]): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, idx) => ({
+      "@type": "ListItem",
+      position: idx + 1,
+      name: item.name,
+      item: item.url,
+    })),
+  };
+}
+
+export type LocalBusinessLdInput = {
+  name: string;
+  url: string;
+  city: string;
+  region: string;
+  areaServed: string;
+};
+
+/** LocalBusiness JSON-LD for high-value pages that need local-intent signals. */
+export function buildLocalBusinessLd(input: LocalBusinessLdInput): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: input.name,
+    url: input.url,
+    address: {
+      "@type": "PostalAddress",
+      addressLocality: input.city,
+      addressRegion: input.region,
+      addressCountry: "US",
+    },
+    areaServed: input.areaServed,
+  };
+}
