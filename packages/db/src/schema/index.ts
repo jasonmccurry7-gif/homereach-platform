@@ -54,3 +54,6 @@ export * from "./sales";
 
 // Sales Intelligence Q&A — Migrations 048-050 (feature-flagged: ENABLE_QA_SYSTEM)
 export * from "./qa";
+
+// Political Command Center — Migration 059 (feature-flagged: ENABLE_POLITICAL)
+export * from "./political";

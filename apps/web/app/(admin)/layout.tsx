@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { isPoliticalEnabled } from "@/lib/political/env";
 import { AdminNav } from "./admin-nav";
 import AgentNav from "./agent-nav";
 
@@ -44,9 +45,14 @@ export default async function AdminLayout({
 
   const isAgent = role === "sales_agent";
 
+  // Additive: pass per-subsystem flags to the nav so optional entries render
+  // only when their flag is on. Default remains "off" so pre-existing nav
+  // entries are unaffected.
+  const enablePolitical = isPoliticalEnabled();
+
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {isAgent ? <AgentNav /> : <AdminNav />}
+      {isAgent ? <AgentNav /> : <AdminNav enablePolitical={enablePolitical} />}
       <main className="flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
     </div>
   );

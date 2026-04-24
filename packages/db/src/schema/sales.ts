@@ -15,6 +15,10 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { profiles } from "./users";
+// Forward-reference only for the sales_events.political_campaign_id column
+// added by migration 059. Lazy-referenced via `() => politicalCampaigns.id`
+// so Drizzle's dependency graph stays acyclic.
+import { politicalCampaigns } from "./political";
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -101,6 +105,13 @@ export const salesEvents = pgTable("sales_events", {
   message:      text("message"),
   revenueCents: integer("revenue_cents"),
   metadata:     jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  // Additive column from migration 059 — optional FK to political_campaigns
+  // so the Political Command Center can reuse this activity log without
+  // duplicating event infrastructure. Null for all non-political events.
+  politicalCampaignId: uuid("political_campaign_id").references(
+    () => politicalCampaigns.id,
+    { onDelete: "set null" },
+  ),
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

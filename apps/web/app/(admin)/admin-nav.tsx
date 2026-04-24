@@ -5,6 +5,17 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/actions/auth";
 
+// Optional additive item — only rendered when the parent layout passes
+// enablePolitical=true (which it does when ENABLE_POLITICAL=true at runtime).
+// Keeping this flag-gated on the server-side prop means the nav entry is
+// silently absent whenever the Political Command Center is off.
+const POLITICAL_NAV_ITEM = {
+  label: "Political",
+  href: "/admin/political",
+  emoji: "🗳️",
+  badge: "NEW",
+} as const;
+
 const NAV_GROUPS = [
   {
     label: "Command",
@@ -76,8 +87,28 @@ const NAV_GROUPS = [
   },
 ];
 
-export function AdminNav() {
+export interface AdminNavProps {
+  /**
+   * When true, injects a "Political" entry into the Sales Execution group.
+   * Default false — so calling AdminNav() with no props preserves the
+   * existing behavior exactly.
+   */
+  enablePolitical?: boolean;
+}
+
+export function AdminNav({ enablePolitical = false }: AdminNavProps = {}) {
   const pathname = usePathname();
+
+  // Build nav groups, injecting the Political item only when enabled.
+  // Placed inside "Sales Execution" because that's where political work
+  // lives day-to-day — adjacent to Agent Dialer / CRM / Sales Engine.
+  const navGroups = enablePolitical
+    ? NAV_GROUPS.map((group) =>
+        group.label === "Sales Execution"
+          ? { ...group, items: [...group.items, POLITICAL_NAV_ITEM] }
+          : group,
+      )
+    : NAV_GROUPS;
 
   return (
     <aside className="w-64 shrink-0 flex flex-col border-r border-gray-800 bg-gray-900 min-h-screen">
@@ -96,7 +127,7 @@ export function AdminNav() {
 
       {/* Nav groups */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        {NAV_GROUPS.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.label}>
             <p className="px-3 mb-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
               {group.label}
