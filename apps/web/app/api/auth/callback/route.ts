@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
           getAll() {
             return cookieStore.getAll();
           },
-          setAll(cookiesToSet) {
+          setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
             });
@@ -51,6 +51,7 @@ export async function GET(request: Request) {
     if (!error) {
       // Password reset: send to the reset-password page
       if (type === "recovery") {
+        console.log(`[auth/callback] recovery flow → /reset-password`);
         return NextResponse.redirect(`${origin}/reset-password`);
       }
 
@@ -66,11 +67,20 @@ export async function GET(request: Request) {
         destination = role === "admin" ? "/admin" : "/dashboard";
       }
 
+      console.log(
+        `[auth/callback] user=${user?.email ?? "(anon)"} role=${role ?? "(none)"}` +
+        ` next=${next} → destination=${destination}`,
+      );
       return NextResponse.redirect(`${origin}${destination}`);
     }
+
+    console.error(`[auth/callback] exchangeCodeForSession failed: ${error.message}`);
+  } else {
+    console.warn(`[auth/callback] no code in querystring — auth flow incomplete`);
   }
 
   // Auth failed — send to login with an error param
+  console.warn(`[auth/callback] auth failed — redirecting to /login with error`);
   return NextResponse.redirect(
     `${origin}/login?error=${encodeURIComponent("Authentication failed. Please try again.")}`
   );

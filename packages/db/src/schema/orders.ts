@@ -62,6 +62,11 @@ export const orders = pgTable("orders", {
     .default("0.00"),
   // Timestamps
   paidAt: timestamp("paid_at", { withTimezone: true }),
+  // Auto-release for stale pending orders. SQL default: NOW() + 30 minutes.
+  // Migration: supabase/migrations/075_orders_expires_and_webhook_idempotency.sql
+  // Read by lib/spots/canonical-availability.ts — pending orders past expires_at
+  // do not block new checkouts. NULL allowed for legacy orders pre-migration.
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

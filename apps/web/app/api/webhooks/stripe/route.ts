@@ -4,8 +4,9 @@ import {
   db, orders, businesses, marketingCampaigns,
   targetedRouteCampaigns, leads,
   spotAssignments, intakeSubmissions,
+  stripeWebhookEvents,
 } from "@homereach/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type Stripe from "stripe";
 import type { PricingSnapshot } from "@homereach/types";
 import {
@@ -47,6 +48,38 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+
+  // ── Idempotency check (Migration 075) ─────────────────────────────────────
+  // Stripe retries on 5xx — same event.id arrives multiple times. Dedup at the door.
+  // Failure-tolerant: if the table is missing (migration not yet applied), log and proceed.
+  try {
+    const [existing] = await db
+      .select({ status: stripeWebhookEvents.status })
+      .from(stripeWebhookEvents)
+      .where(eq(stripeWebhookEvents.id, event.id))
+      .limit(1);
+    if (existing?.status === "processed") {
+      console.log(`[stripe/webhook] idempotent skip — event ${event.id} already processed`);
+      return NextResponse.json({ received: true, idempotent: true });
+    }
+    await db
+      .insert(stripeWebhookEvents)
+      .values({
+        id: event.id,
+        eventType: event.type,
+        payload: event as unknown as Record<string, unknown>,
+        status: "received",
+      })
+      .onConflictDoNothing();
+  } catch (err) {
+    // Don't block delivery if the idempotency layer is down — better a duplicate than a drop.
+    console.warn(
+      `[stripe/webhook] idempotency layer error (proceeding):`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  console.log(`[stripe/webhook] processing event=${event.id} type=${event.type}`);
 
   // ── Event dispatch ─────────────────────────────────────────────────────────
 
@@ -108,10 +141,32 @@ export async function POST(req: Request) {
         console.log(`[stripe/webhook] unhandled event: ${event.type}`);
     }
 
+    // Mark processed in idempotency log (best-effort).
+    try {
+      await db
+        .update(stripeWebhookEvents)
+        .set({ status: "processed", processedAt: new Date() })
+        .where(eq(stripeWebhookEvents.id, event.id));
+    } catch {
+      // Non-fatal — table may not exist yet on first deploy after migration.
+    }
+
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error(`[stripe/webhook] error handling ${event.type}:`, err);
-    // Return 500 so Stripe retries
+    // Mark failed in idempotency log (best-effort).
+    try {
+      await db
+        .update(stripeWebhookEvents)
+        .set({
+          status: "failed",
+          error: err instanceof Error ? err.message : String(err),
+        })
+        .where(eq(stripeWebhookEvents.id, event.id));
+    } catch {
+      // Non-fatal.
+    }
+    // Return 500 so Stripe retries.
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 }
@@ -253,49 +308,159 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
  * customer.subscription.created
  * Fires after Stripe processes a successful subscription checkout.
  *
- * Actions:
- *   1. Find the spot_assignment by reservationId (from subscription metadata)
- *   2. Activate it: status → active, set activated_at + commitment_ends_at
- *   3. Link stripe_subscription_id + stripe_customer_id
- *   4. Activate the business: status → active
- *   5. Invite business to Supabase via inviteUserByEmail
- *   6. Create intake_submission record
- *   7. Send intake invitation email
+ * Activation chain — must complete every step or the customer is left in limbo:
+ *   1. Resolve a spot_assignments row (via reservationId, or orderId fallback).
+ *   2. Mark spot active; record subscriptionId + customerId; set commitment_ends_at.
+ *   3. Activate the business (status → active; persist stripeCustomerId).
+ *   4. Create intake_submission row (BEFORE invite — invite link points here).
+ *   5. Invite user via supabase.auth.admin.inviteUserByEmail with redirectTo = intake URL.
+ *   6. Send a separate intake email (defense in depth — invite may go to spam).
+ *
+ * Resilience (hotfix 2026-04-30, task #18):
+ *   - reservationId-missing path falls back to orderId metadata → looks up
+ *     business → finds-or-creates spot_assignments row in 'active' status.
+ *     Backward compatible with the legacy /api/spots/checkout flow which never
+ *     set reservationId (the silent-fail bug — paid customer never activated).
+ *   - Each step logs progress; failure of one step does not abort the chain.
  */
 async function handleSubscriptionCreated(sub: Stripe.Subscription) {
-  const reservationId = sub.metadata?.reservationId;
-  const businessId    = sub.metadata?.businessId;
+  const reservationId  = sub.metadata?.reservationId ?? null;
+  const orderIdMeta    = sub.metadata?.orderId       ?? null;
+  const businessIdMeta = sub.metadata?.businessId    ?? null;
 
-  if (!reservationId) {
-    console.error("[stripe/webhook] subscription.created — no reservationId in metadata", sub.id);
-    return;
-  }
+  console.log(
+    `[stripe/webhook] subscription.created — sub=${sub.id}` +
+    ` order=${orderIdMeta ?? "(none)"}` +
+    ` reservation=${reservationId ?? "(none)"}` +
+    ` business=${businessIdMeta ?? "(none)"}`,
+  );
 
-  // ── 1. Activate spot_assignment ───────────────────────────────────────────
+  // ── 1+2. Resolve and activate spot_assignments row ────────────────────────
+  let resolvedSpotId: string | null = null;
+  let resolvedBusinessId: string | null = businessIdMeta;
+
   const activatedAt      = new Date();
   const commitmentEndsAt = new Date(activatedAt.getTime() + 90 * 24 * 60 * 60 * 1000); // +90 days
 
-  await db
-    .update(spotAssignments)
-    .set({
-      status:              "active",
-      stripeSubscriptionId: sub.id,
-      stripeCustomerId:     sub.customer as string,
-      activatedAt,
-      commitmentEndsAt,
-      updatedAt:           new Date(),
-    })
-    .where(eq(spotAssignments.id, reservationId));
+  if (reservationId) {
+    const [updated] = await db
+      .update(spotAssignments)
+      .set({
+        status:              "active",
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId:     sub.customer as string,
+        activatedAt,
+        commitmentEndsAt,
+        updatedAt:           new Date(),
+      })
+      .where(eq(spotAssignments.id, reservationId))
+      .returning({ id: spotAssignments.id, businessId: spotAssignments.businessId });
 
-  // ── 2. Activate business ──────────────────────────────────────────────────
+    if (updated) {
+      resolvedSpotId = updated.id;
+      resolvedBusinessId = resolvedBusinessId ?? updated.businessId;
+      console.log(`[stripe/webhook] activated existing spot ${resolvedSpotId} via reservationId`);
+    } else {
+      console.warn(
+        `[stripe/webhook] reservationId ${reservationId} did not match any spot_assignments row — falling back to orderId path`,
+      );
+    }
+  }
+
+  // Fallback: derive spot from orderId when reservationId path didn't resolve.
+  if (!resolvedSpotId && orderIdMeta) {
+    const [order] = await db
+      .select({ id: orders.id, businessId: orders.businessId })
+      .from(orders)
+      .where(eq(orders.id, orderIdMeta))
+      .limit(1);
+
+    if (order) {
+      resolvedBusinessId = resolvedBusinessId ?? order.businessId;
+      const [biz] = await db
+        .select({
+          id:         businesses.id,
+          cityId:     businesses.cityId,
+          categoryId: businesses.categoryId,
+        })
+        .from(businesses)
+        .where(eq(businesses.id, order.businessId))
+        .limit(1);
+
+      if (biz?.cityId && biz?.categoryId) {
+        const [existingSpot] = await db
+          .select({ id: spotAssignments.id })
+          .from(spotAssignments)
+          .where(and(
+            eq(spotAssignments.businessId, biz.id),
+            eq(spotAssignments.cityId,     biz.cityId),
+            eq(spotAssignments.categoryId, biz.categoryId),
+          ))
+          .limit(1);
+
+        if (existingSpot) {
+          await db
+            .update(spotAssignments)
+            .set({
+              status:              "active",
+              stripeSubscriptionId: sub.id,
+              stripeCustomerId:     sub.customer as string,
+              activatedAt,
+              commitmentEndsAt,
+              updatedAt:           new Date(),
+            })
+            .where(eq(spotAssignments.id, existingSpot.id));
+          resolvedSpotId = existingSpot.id;
+          console.log(`[stripe/webhook] activated existing spot ${resolvedSpotId} via orderId fallback`);
+        } else {
+          const [newSpot] = await db
+            .insert(spotAssignments)
+            .values({
+              businessId:           biz.id,
+              cityId:               biz.cityId,
+              categoryId:           biz.categoryId,
+              status:               "active",
+              stripeSubscriptionId: sub.id,
+              stripeCustomerId:     sub.customer as string,
+              activatedAt,
+              commitmentEndsAt,
+            })
+            .returning({ id: spotAssignments.id });
+          resolvedSpotId = newSpot?.id ?? null;
+          console.log(
+            `[stripe/webhook] created new spot ${resolvedSpotId ?? "(insert failed)"} via orderId fallback`,
+          );
+        }
+      } else {
+        console.error(
+          `[stripe/webhook] order ${orderIdMeta} business ${biz?.id} missing cityId/categoryId — cannot create spot`,
+        );
+      }
+    } else {
+      console.error(`[stripe/webhook] orderId ${orderIdMeta} not found in orders table`);
+    }
+  }
+
+  if (!resolvedSpotId) {
+    console.error(
+      `[stripe/webhook] CRITICAL: subscription ${sub.id} could not resolve a spot.` +
+      ` Customer paid; spot not activated. Continuing to send emails so customer can recover.`,
+    );
+  }
+
+  // ── 3. Activate business ──────────────────────────────────────────────────
   let businessEmail: string | null = null;
   let businessName:  string | null = null;
 
-  if (businessId) {
+  if (resolvedBusinessId) {
     const [biz] = await db
-      .select({ email: businesses.email, name: businesses.name, stripeCustomerId: businesses.stripeCustomerId })
+      .select({
+        email:            businesses.email,
+        name:             businesses.name,
+        stripeCustomerId: businesses.stripeCustomerId,
+      })
       .from(businesses)
-      .where(eq(businesses.id, businessId))
+      .where(eq(businesses.id, resolvedBusinessId))
       .limit(1);
 
     if (biz) {
@@ -309,58 +474,71 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
           stripeCustomerId: biz.stripeCustomerId ?? (sub.customer as string),
           updatedAt:        new Date(),
         })
-        .where(eq(businesses.id, businessId));
+        .where(eq(businesses.id, resolvedBusinessId));
+
+      console.log(`[stripe/webhook] business ${resolvedBusinessId} marked active`);
     }
   }
 
-  // ── 3. Invite business user to Supabase ───────────────────────────────────
-  if (businessEmail && businessId) {
+  // ── 4. Create intake_submission FIRST — invite link points here ───────────
+  let intakeToken: string | null = null;
+  if (resolvedSpotId && resolvedBusinessId) {
+    try {
+      const [intake] = await db
+        .insert(intakeSubmissions)
+        .values({
+          spotAssignmentId: resolvedSpotId,
+          businessId:       resolvedBusinessId,
+          status:           "pending",
+        })
+        .returning({ accessToken: intakeSubmissions.accessToken })
+        .onConflictDoNothing();
+      intakeToken = intake?.accessToken ?? null;
+      console.log(
+        `[stripe/webhook] intake created — token=${intakeToken ?? "(conflict — row already exists)"}`,
+      );
+    } catch (err) {
+      console.error("[stripe/webhook] intake_submissions insert failed:", err);
+    }
+  }
+
+  // ── 5. Invite user to Supabase — redirect lands on intake URL ─────────────
+  // Pre-hotfix: redirectTo hardcoded to /dashboard → user lost mid-flow.
+  // Post-hotfix: redirectTo points at /intake/${token} → single click → intake.
+  if (businessEmail && resolvedBusinessId) {
     try {
       const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
       const supaAdmin = createServiceClient();
+      const redirectTo = intakeToken
+        ? `${appUrl}/intake/${intakeToken}`
+        : `${appUrl}/dashboard`;
 
       const { data: inviteData, error: inviteError } = await supaAdmin.auth.admin.inviteUserByEmail(
         businessEmail,
-        { redirectTo: `${appUrl}/dashboard` }
+        { redirectTo },
       );
 
       if (inviteError) {
-        console.error("[stripe/webhook] inviteUserByEmail failed:", inviteError.message);
-      } else if (inviteData?.user?.id) {
-        // Store supabase_user_id on the business for dashboard auth lookup
-        await db
-          .update(businesses)
-          .set({ supabaseUserId: inviteData.user.id, updatedAt: new Date() })
-          .where(eq(businesses.id, businessId));
+        console.error(`[stripe/webhook] inviteUserByEmail failed: ${inviteError.message}`);
+      } else {
+        console.log(
+          `[stripe/webhook] invite sent to ${businessEmail} — redirectTo=${redirectTo}`,
+        );
+        if (inviteData?.user?.id) {
+          await db
+            .update(businesses)
+            .set({ supabaseUserId: inviteData.user.id, updatedAt: new Date() })
+            .where(eq(businesses.id, resolvedBusinessId));
+        }
       }
     } catch (err) {
       console.error("[stripe/webhook] Supabase invite error:", err);
     }
   }
 
-  // ── 4. Create intake_submission ────────────────────────────────────────────
-  let intakeToken: string | null = null;
-  if (businessId) {
-    try {
-      const [intake] = await db
-        .insert(intakeSubmissions)
-        .values({
-          spotAssignmentId: reservationId,
-          businessId,
-          status:           "pending",
-        })
-        .returning({ accessToken: intakeSubmissions.accessToken })
-        .onConflictDoNothing();
-
-      intakeToken = intake?.accessToken ?? null;
-    } catch (err) {
-      console.error("[stripe/webhook] intake_submission creation error:", err);
-    }
-  }
-
-  // ── 5. Send intake invitation email ───────────────────────────────────────
+  // ── 6. Send intake invitation email — defense in depth ────────────────────
   if (businessEmail && intakeToken) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
     const intakeUrl = `${appUrl}/intake/${intakeToken}`;
 
     await sendEmail({
@@ -388,11 +566,14 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
         <p>— The HomeReach Team</p>
       `,
     }).catch((err) => console.error("[stripe/webhook] intake email error:", err));
+    console.log(`[stripe/webhook] intake email sent to ${businessEmail}`);
   }
 
   console.log(
-    `[stripe/webhook] subscription.created — spot ${reservationId} activated,` +
-    ` business ${businessId} active, intake created`
+    `[stripe/webhook] subscription.created COMPLETE — sub=${sub.id}` +
+    ` spot=${resolvedSpotId ?? "(none)"}` +
+    ` business=${resolvedBusinessId ?? "(none)"}` +
+    ` intake=${intakeToken ? "created" : "missing"}`,
   );
 }
 

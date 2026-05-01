@@ -13,7 +13,7 @@ import { checkCanonicalAvailability } from "@/lib/spots/canonical-availability";
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY not configured");
-  return new Stripe(key, { apiVersion: "2025-03-31.basil" });
+  return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
 }
 
 const SPOT_LABEL: Record<string, string> = {
@@ -109,6 +109,13 @@ export async function POST(req: Request) {
 
     // 5. Create pending order (reserves the spot)
     const finalPrice = lockedPrice ?? bundlePrice;
+    // Hotfix (Migration 075): explicit 30-min expires_at so abandoned checkouts
+    // don't permanently lock the spot. SQL default also covers this; explicit
+    // value documents the timeout intent at the call site.
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    console.log(
+      `[api/spots/checkout] creating pending order — business=${businessId} bundle=${bundleId} expires=${expiresAt}`,
+    );
     const { data: assignment, error: assignErr } = await db.from("orders")
       .insert({
         business_id:  businessId,
@@ -118,6 +125,7 @@ export async function POST(req: Request) {
         total:        (finalPrice / 100).toFixed(2),
         locked_price: finalPrice,
         pricing_type: pricingType ?? "founding",
+        expires_at:   expiresAt,
       })
       .select("id").single();
     if (assignErr || !assignment) return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500 });
