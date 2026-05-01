@@ -54,3 +54,6 @@ export * from "./sales";
 
 // Sales Intelligence Q&A — Migrations 048-050 (feature-flagged: ENABLE_QA_SYSTEM)
 export * from "./qa";
+
+// Stripe webhook idempotency — Migration 075 (intake/checkout hotfix)
+export * from "./webhooks";

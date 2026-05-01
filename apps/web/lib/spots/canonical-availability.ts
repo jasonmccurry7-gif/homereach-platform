@@ -149,17 +149,29 @@ export async function checkCanonicalAvailability(args: {
     if (bizErr) throw bizErr;
     const bizIds = (bizRows ?? []).map((b: any) => b.id);
     if (bizIds.length > 0) {
-      const { count, error: orderErr } = await supa
+      // Hotfix (Migration 075): pending orders past expires_at no longer block.
+      // Fetch candidates then filter expired pendings in JS — Supabase JS .or()
+      // with nested AND/OR is fragile; this is clearer and easier to audit.
+      const { data: orderRows, error: orderErr } = await supa
         .from("orders")
-        .select("id", { count: "exact", head: true })
+        .select("id, status, expires_at")
         .in("business_id", bizIds)
         .in("status", ["pending", "paid", "active"]);
       if (orderErr) throw orderErr;
-      if ((count ?? 0) > 0) {
+
+      const now = Date.now();
+      const blocking = (orderRows ?? []).filter((o: any) => {
+        if (o.status === "paid" || o.status === "active") return true;
+        // status === "pending" — only blocks if not yet expired
+        if (o.expires_at == null) return true; // legacy pre-migration row, fail-closed
+        return new Date(o.expires_at).getTime() > now;
+      });
+
+      if (blocking.length > 0) {
         return {
           available: false,
           source: "orders",
-          detail: `${count} pending/paid/active orders already exist`,
+          detail: `${blocking.length} non-expired pending/paid/active orders exist`,
           message:
             "This spot is currently in checkout by another buyer. Please try again in a few minutes.",
         };
