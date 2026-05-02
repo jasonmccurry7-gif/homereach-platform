@@ -9,6 +9,7 @@
 
 import twilio from "twilio";
 import type { OutreachChannel } from "@homereach/types";
+import { sendEmailViaPostmark, getActiveEmailProvider } from "./postmark";
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 
@@ -86,9 +87,34 @@ export async function sendSms(
   }
 }
 
-// ─── Email via Mailgun ────────────────────────────────────────────────────────
+// ─── Email Router (Mailgun default, Postmark when EMAIL_PROVIDER=postmark) ──
+//
+// Routes outbound email based on the EMAIL_PROVIDER env var:
+//   • "mailgun" (default) → sendEmailViaMailgun() below
+//   • "postmark"          → sendEmailViaPostmark() in ./postmark.ts
+//
+// To swap providers in production, set EMAIL_PROVIDER=postmark in Vercel env
+// vars + ensure POSTMARK_API_TOKEN + POSTMARK_FROM_EMAIL are also set.
+// No code change required to flip back — just unset the env var.
 
 export async function sendEmail(
+  options: EmailSendOptions
+): Promise<OutreachSendResult> {
+  const provider = getActiveEmailProvider();
+  if (provider === "postmark") {
+    const r = await sendEmailViaPostmark(options);
+    return {
+      success:    r.success,
+      externalId: r.externalId,
+      error:      r.error ? `[postmark] ${r.error}` : undefined,
+    };
+  }
+  return sendEmailViaMailgun(options);
+}
+
+// ─── Email via Mailgun ────────────────────────────────────────────────────────
+
+async function sendEmailViaMailgun(
   options: EmailSendOptions
 ): Promise<OutreachSendResult> {
   try {
