@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
 
     // ── SMS alert to Jason ────────────────────────────────────────────────────
     try {
-      const { sendSms } = await import("@homereach/services/outreach");
+      const { getOwnerIdentity, sendSms } = await import("@homereach/services/outreach");
+      const owner = getOwnerIdentity();
 
       const price  = data.totalPrice   != null ? `$${data.totalPrice.toLocaleString()}`    : "TBD";
       const homes  = data.totalHomes   != null ? data.totalHomes.toLocaleString() + " homes" : "";
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
         data.notes ? `Note: "${data.notes}"` : null,
       ].filter(Boolean).join("\n");
 
-      await sendSms({ body: lines, to: "+13302069639" });
+      await sendSms({ body: lines, to: owner.cellPhone, intent: "internal" });
     } catch (smsErr) {
       // Non-fatal — lead is already saved; log and continue
       console.error("[TargetedCampaign] SMS alert failed:", smsErr);

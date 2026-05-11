@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ function replyResponseDraft(
   return `${hi}! Thanks for getting back to me. I'd love to tell you more about how HomeReach works for businesses in ${loc}. Are you available for a quick 10-minute call sometime this week? I can send a calendar link if that's easier. — ${agent.first_name}`;
 }
 
-// ─── Format phone for signature (e.g. +13303044916 → (330) 304-4916) ─────────
+// ─── Format phone for signature (e.g. +13302069639 -> (330) 206-9639) ─────────
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   const d = digits.length === 11 ? digits.slice(1) : digits;
@@ -175,15 +175,17 @@ function formatPhone(raw: string): string {
 
 export async function GET(request: Request) {
   try {
-    const sessionClient = await createClient();
-    const db            = createServiceClient();
-
-    const { data: { user } } = await sessionClient.auth.getUser();
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
+
+    const db = createServiceClient();
 
     const url             = new URL(request.url);
     const agentIdOverride = url.searchParams.get("agent_id");
-    const effectiveUserId = agentIdOverride ?? user.id;
+    const effectiveUserId = isSalesAgent ? user.id : (agentIdOverride ?? user.id);
 
     // ── Load agent profile ────────────────────────────────────────────────────
     const { data: profile } = await db
@@ -237,11 +239,15 @@ export async function GET(request: Request) {
       : 200;
 
     // ── Build base query with city filter ────────────────────────────────────
-    const cityFilter = (query: ReturnType<typeof db.from>) => {
+    const cityFilter = (query: any) => {
+      let scopedQuery = query as any;
       if (hasTerritories) {
-        return (query as any).in("city", assignedCities);
+        scopedQuery = scopedQuery.in("city", assignedCities);
       }
-      return query;
+      if (isSalesAgent) {
+        scopedQuery = scopedQuery.or(`assigned_agent_id.is.null,assigned_agent_id.eq.${effectiveUserId}`);
+      }
+      return scopedQuery;
     };
 
     // ── Parallel data fetch ───────────────────────────────────────────────────
@@ -308,13 +314,13 @@ export async function GET(request: Request) {
 
     // ── Build tasks with AGENT-SPECIFIC messages ──────────────────────────────
 
-    const replies = (replyLeads ?? []).map(lead => ({
+    const replies = (replyLeads ?? []).map((lead: any) => ({
       lead,
       last_reply_at:     lead.last_reply_at,
       suggested_response: replyResponseDraft(agent, lead.business_name, lead.city ?? "", lead.contact_name),
     }));
 
-    const followups = (followUpLeads ?? []).map(lead => {
+    const followups = (followUpLeads ?? []).map((lead: any) => {
       const lastContacted = lead.last_contacted_at ? new Date(lead.last_contacted_at) : null;
       const daysSince     = lastContacted
         ? Math.max(1, Math.floor((now.getTime() - lastContacted.getTime()) / 86_400_000))
@@ -333,17 +339,17 @@ export async function GET(request: Request) {
       };
     });
 
-    const texts        = (textLeads ?? []).map(lead => ({
+    const texts        = (textLeads ?? []).map((lead: any) => ({
       lead,
       draft: { body: smsDraft(agent, lead.business_name, lead.city ?? "", lead.category ?? "", lead.contact_name) },
     }));
 
-    const emails       = (emailLeads ?? []).map(lead => ({
+    const emails       = (emailLeads ?? []).map((lead: any) => ({
       lead,
       draft: emailDraft(agent, lead.business_name, lead.city ?? "", lead.category ?? "", lead.contact_name),
     }));
 
-    const facebook_dms = (fbDmLeads ?? []).map(lead => ({
+    const facebook_dms = (fbDmLeads ?? []).map((lead: any) => ({
       lead,
       draft: { body: fbDmDraft(agent, lead.business_name, lead.city ?? "", lead.contact_name) },
     }));
@@ -390,8 +396,8 @@ export async function GET(request: Request) {
         revenue_today_cents: revenueToday,
       },
       targets: {
-        sms_daily:   20,
-        email_daily: 20,
+        sms_daily:   40,
+        email_daily: 40,
       },
     });
   } catch (err) {

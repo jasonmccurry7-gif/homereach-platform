@@ -199,7 +199,7 @@ export async function POST(req: Request) {
 
   // Process each city × category combo
   for (const city of CITIES) {
-    const cityName = city.split(" ")[0]; // "Wooster OH" → "Wooster"
+    const cityName = city.split(" ")[0] ?? city; // "Wooster OH" → "Wooster"
     const currentCount = cityTotals[cityName] ?? 0;
 
     if (currentCount >= MAX_PER_CITY) {
@@ -217,7 +217,7 @@ export async function POST(req: Request) {
       summary.categories_processed++;
 
       // Pick one query per run (rotate by hour to get variety)
-      const query = queries[Math.floor(Date.now() / 3_600_000) % queries.length];
+      const query = queries[Math.floor(Date.now() / 3_600_000) % queries.length] ?? queries[0]!;
 
       const results = await searchGoogleMaps(query, city);
 

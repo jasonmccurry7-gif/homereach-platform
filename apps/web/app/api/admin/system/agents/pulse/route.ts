@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     if (agentLimits) {
       for (const limit of agentLimits) {
         const maxLimit =
-          limit.channel === "email" ? 300 : limit.channel === "sms" ? 1000 : 100; // Example limits
+          limit.channel === "email" ? 30 : limit.channel === "sms" ? 30 : 30;
         if (limit.sent_count >= maxLimit * 0.9) {
           // Alert at 90%
           hitLimits.push(

@@ -26,6 +26,7 @@ import type {
 } from "./types";
 import type { IConversationRepository, UpsertConversationInput } from "./db/interfaces";
 import { getConversationRepository } from "./db/factory";
+import { getOwnerIdentity } from "@homereach/services/outreach";
 
 // ── OpenAI (optional — loaded lazily if OPENAI_API_KEY is present) ─────────────
 // Using dynamic import to avoid breaking the build when openai package isn't
@@ -123,7 +124,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "ready_to_buy",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nExcited to get this going! Here's your intake link to lock in your exclusive {{category}} spot in {{city}}:\n\n{{intakeLink}}\n\nTakes about 3 minutes. I'll confirm everything same day and you'll be set for your first mailing.\n\nTalk soon,\nJason",
+      "Hi {{firstName}},\n\nExcited to get this going! Here's your intake link to lock in your exclusive {{category}} spot in {{city}}:\n\n{{intakeLink}}\n\nTakes about 3 minutes. I'll confirm everything same day and you'll be set for your first mailing.\n\nTalk soon,\n{{ownerName}}",
     ],
   },
 
@@ -140,7 +141,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "interested",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nThanks for your interest! Here's how it works:\n\n• You get the exclusive {{category}} spot in {{city}} — no competitors allowed\n• 2,500+ homeowners receive the postcard every month\n• Starts at $299/month, no long-term contract required\n\nWant me to hold your spot while you review? I can send over the full details.\n\nJason",
+      "Hi {{firstName}},\n\nThanks for your interest! Here's how it works:\n\n• You get the exclusive {{category}} spot in {{city}} — no competitors allowed\n• 2,500+ homeowners receive the postcard every month\n• Starts at $299/month, no long-term contract required\n\nWant me to hold your spot while you review? I can send over the full details.\n\n{{ownerName}}",
     ],
   },
 
@@ -157,7 +158,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "objection",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nCompletely understand the hesitation — here's what I'd say:\n\n• No long-term contract. You can cancel after 3 months.\n• Most clients break even on their first new customer.\n• Your {{category}} spot in {{city}} is exclusive while you're in — no competitors.\n\nWhat's the main concern? I'm happy to address it directly.\n\nJason",
+      "Hi {{firstName}},\n\nCompletely understand the hesitation — here's what I'd say:\n\n• No long-term contract. You can cancel after 3 months.\n• Most clients break even on their first new customer.\n• Your {{category}} spot in {{city}} is exclusive while you're in — no competitors.\n\nWhat's the main concern? I'm happy to address it directly.\n\n{{ownerName}}",
     ],
   },
 
@@ -174,7 +175,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "asking_questions",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nHappy to answer your questions! Quick overview:\n\n• One business per category in {{city}} — fully exclusive\n• 2,500+ homeowners reached every month\n• Postcard design included, no design experience needed\n• Starts at $299/mo, cancel after 3 months\n\nWhat else can I clarify for you?\n\nJason",
+      "Hi {{firstName}},\n\nHappy to answer your questions! Quick overview:\n\n• One business per category in {{city}} — fully exclusive\n• 2,500+ homeowners reached every month\n• Postcard design included, no design experience needed\n• Starts at $299/mo, cancel after 3 months\n\nWhat else can I clarify for you?\n\n{{ownerName}}",
     ],
   },
 
@@ -190,7 +191,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "not_interested",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nAbsolutely no problem — I'll remove you from our list right away. If you ever want to revisit the {{category}} spot in {{city}}, just reach out.\n\nTake care,\nJason",
+      "Hi {{firstName}},\n\nAbsolutely no problem — I'll remove you from our list right away. If you ever want to revisit the {{category}} spot in {{city}}, just reach out.\n\nTake care,\n{{ownerName}}",
     ],
   },
 
@@ -206,7 +207,7 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "unknown",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nJust wanted to follow up and see if you had any questions about the {{category}} opportunity in {{city}}. Happy to jump on a quick call too.\n\nJason",
+      "Hi {{firstName}},\n\nJust wanted to follow up and see if you had any questions about the {{category}} opportunity in {{city}}. Happy to jump on a quick call too.\n\n{{ownerName}}",
     ],
   },
 ];
@@ -338,20 +339,21 @@ export class AutomationEngine {
       const firstName = ctx.leadName?.split(" ")[0] ?? "";
 
       // Try AI-powered contextual reply using full history first
-      autoReply = await AutomationEngine._generateContextualReply(
+      const contextualReply = await AutomationEngine._generateContextualReply(
         detected.type,
         channel,
         body,
         ctx.messages,
-        { firstName, city: ctx.city, category: ctx.category }
+        { firstName, city: ctx.city ?? "", category: ctx.category ?? "" }
       );
+      autoReply = contextualReply ?? undefined;
 
       // Fallback to template if AI fails
       if (!autoReply) {
         autoReply = AutomationEngine.generateResponse(detected.type, channel, {
           firstName,
-          city:       ctx.city,
-          category:   ctx.category,
+          city:       ctx.city ?? "",
+          category:   ctx.category ?? "",
         });
       }
     }
@@ -582,7 +584,7 @@ export class AutomationEngine {
     } else if (outbound.length > 0 && inbound.length > 0) {
       const lastOut = outbound[outbound.length - 1];
       const lastIn  = inbound[inbound.length - 1];
-      if (lastOut.sentAt > lastIn.sentAt) {
+      if (lastOut && lastIn && lastOut.sentAt > lastIn.sentAt) {
         score -= 10; // Outbound sent after last inbound = no response yet
       }
     }
@@ -652,14 +654,9 @@ export class AutomationEngine {
         AutomationEngine._smsRateLimiter.record(to);
       }
 
-      // ── 3. STOP compliance footer (TCPA) ────────────────────────────────────
-      const STOP_FOOTER = "\n\nReply STOP to opt out.";
-      const finalBody = opts.skipStopFooter || body.toLowerCase().includes("reply stop")
-        ? body
-        : body + STOP_FOOTER;
-
-      const { sendSms } = await import("@homereach/services/outreach");
-      const result = await sendSms({ to, body: finalBody });
+      const { appendSmsCompliance, sendSms } = await import("@homereach/services/outreach");
+      const finalBody = opts.skipStopFooter ? body : appendSmsCompliance(body);
+      const result = await sendSms({ to, body: finalBody, intent: "follow_up" });
       if (!result.success) {
         console.error(`[AutomationEngine] SMS to ${to} failed: ${result.error}`);
       }
@@ -708,12 +705,22 @@ export class AutomationEngine {
         }
       }
 
-      const { sendEmail } = await import("@homereach/services/outreach");
+      const {
+        appendEmailComplianceHtml,
+        appendEmailComplianceText,
+        getDefaultEmailIdentity,
+        sendEmail,
+      } = await import("@homereach/services/outreach");
+      const emailIdentity = getDefaultEmailIdentity();
       const result = await sendEmail({
         to,
         subject,
-        html: `<p>${body.replace(/\n/g, "<br/>")}</p>`,
-        text: body,
+        html: appendEmailComplianceHtml(`<p>${body.replace(/\n/g, "<br/>")}</p>`, to),
+        text: appendEmailComplianceText(body, to),
+        fromEmail: emailIdentity.fromEmail,
+        fromName: emailIdentity.fromName,
+        replyTo: emailIdentity.replyTo,
+        intent: "follow_up",
       });
 
       // Track delivery metrics for auto-pause logic
@@ -840,11 +847,19 @@ Do NOT add a sign-off or signature.`;
 
     if (!match) return "Hey — just following up! Let me know if you have any questions.";
 
-    const template = match.templates[Math.floor(Math.random() * match.templates.length)];
+    const template =
+      match.templates[Math.floor(Math.random() * match.templates.length)] ??
+      "Hey {{firstName}} - just following up. Let me know if you have any questions.";
+    const owner = getOwnerIdentity();
     return template
       .replace(/\{\{firstName\}\}/g, vars.firstName)
       .replace(/\{\{city\}\}/g,      vars.city)
       .replace(/\{\{category\}\}/g,  vars.category)
-      .replace(/\{\{intakeLink\}\}/g, vars.intakeLink);
+      .replace(/\{\{intakeLink\}\}/g, vars.intakeLink)
+      .replace(/\{\{ownerName\}\}/g, owner.name)
+      .replace(/\{\{ownerCellPhone\}\}/g, owner.cellPhone)
+      .replace(/\{\{ownerPersonalEmail\}\}/g, owner.personalEmail)
+      .replace(/\{\{ownerSecondaryEmail\}\}/g, owner.secondaryEmail)
+      .replace(/\{\{ownerDomainEmail\}\}/g, owner.domainEmail);
   }
 }

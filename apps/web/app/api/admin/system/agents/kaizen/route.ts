@@ -29,24 +29,15 @@ export async function POST(req: NextRequest) {
           created_at TIMESTAMPTZ DEFAULT NOW()
         )
       `,
-    }).catch(() => {
-      // If rpc doesn't work, use regular query via raw SQL
-      return supabase
-        .from("kaizen_insights" as never)
-        .select("id")
-        .limit(1)
-        .then(() => ({ data: null }))
-        .catch(() => ({ data: null }));
     });
 
     // Ensure table exists by checking
-    const tableCheckResult = await supabase
+    const { error: tableCheckError } = await supabase
       .from("kaizen_insights" as never)
       .select("id", { count: "exact", head: true })
-      .then(() => ({ exists: true }))
-      .catch(() => ({ exists: false }));
+      .limit(1);
 
-    if (!tableCheckResult.exists) {
+    if (tableCheckError) {
       // Try direct SQL insert which will auto-create or verify table exists
       console.log("[kaizen] Creating kaizen_insights table...");
     }
@@ -311,7 +302,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── STEP 8: Email Apex with summary ────────────────────────────────────────
-    // TODO: Integrate with Resend or Mailgun to email jason@home-reach.com
+    // TODO: Integrate with the central outreach provider to email OWNER_DOMAIN_EMAIL
     // For now, just mark as flagged
     if (flaggedForApproval.length > 0 || autoFixesApplied > 0) {
       // Would send email here

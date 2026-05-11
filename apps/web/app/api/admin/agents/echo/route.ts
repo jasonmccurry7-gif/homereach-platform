@@ -1,5 +1,15 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
+import {
+  appendEmailComplianceHtml,
+  appendEmailComplianceText,
+  appendSmsCompliance,
+  getDefaultEmailIdentity,
+  getOwnerIdentity,
+  sendEmail,
+  sendSms,
+} from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Echo Agent — Outbound Sales Messaging Engine
@@ -48,6 +58,8 @@ interface EchoResult {
   }>;
 }
 
+const OWNER_IDENTITY = getOwnerIdentity();
+
 // ─── Territory → Agent Mapping (Hardcoded Fallback) ────────────────────────────
 
 const TERRITORY_AGENT_MAP: Record<string, AgentIdentity> = {
@@ -93,36 +105,36 @@ const TERRITORY_AGENT_MAP: Record<string, AgentIdentity> = {
   // Jason's territory (largest)
   "Cuyahoga Falls": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
   "Hudson": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
   "Canton": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
   "Akron": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
 };
 
 // Default agent (Jason) for unmapped cities
 const DEFAULT_AGENT: AgentIdentity = {
   id: "jason-agent-id",
-  name: "Jason",
-  email: "jason@home-reach.com",
-  phone: "+13303044916",
+  name: OWNER_IDENTITY.name,
+  email: OWNER_IDENTITY.domainEmail,
+  phone: OWNER_IDENTITY.cellPhone,
 };
 
 // ─── SMS & Email Templates ────────────────────────────────────────────────────
@@ -183,8 +195,7 @@ async function resolveAgentIdentity(
         .select("from_name, from_email, twilio_phone")
         .eq("agent_id", lead.assigned_agent_id)
         .eq("is_active", true)
-        .single()
-        .catch(() => ({ data: null }));
+        .maybeSingle();
 
       if (data) {
         return {
@@ -320,7 +331,10 @@ async function sendViaMailgun(
 
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const details: EchoResult["summary"] = {
     leads_processed: 0,
@@ -333,7 +347,12 @@ export async function POST() {
 
   try {
 
-    // 1. Fetch up to 20 queued leads with agent assignment
+    const batchLimit = Number.parseInt(
+      process.env.OUTREACH_ECHO_BATCH_LIMIT ?? process.env.OUTREACH_AUTOMATION_BATCH_LIMIT ?? "10",
+      10,
+    );
+
+    // 1. Fetch a conservative batch of queued leads with agent assignment
     const { data: leads, error: leadsError } = await supabase
       .from("sales_leads")
       .select(
@@ -352,7 +371,7 @@ export async function POST() {
       .eq("do_not_contact", false)
       .eq("sms_opt_out", false)
       .order("score", { ascending: false }) // highest quality leads first
-      .limit(20);
+      .limit(Number.isFinite(batchLimit) && batchLimit > 0 ? batchLimit : 10);
 
     if (leadsError) {
       throw new Error(`Failed to fetch leads: ${leadsError.message}`);
@@ -415,10 +434,7 @@ export async function POST() {
             typedLead.category || "local",
             typedLead.city || "your area"
           );
-          // Add STOP message if not present
-          if (!message.includes("STOP")) {
-            message = `${message}\n\nReply STOP to unsubscribe.`;
-          }
+          message = appendSmsCompliance(message);
         } else {
           message = buildEmailBody(
             typedLead.business_name,
@@ -433,36 +449,41 @@ export async function POST() {
             typedLead.category || "local"
           );
           // Build HTML version
-          emailHtml = `
+          const emailBodyHtml = `
             <div style="font-family: Arial, sans-serif; max-width: 600px;">
               <p>${message.replace(/\n/g, "<br>")}</p>
-              <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
-              <p style="color: #999; font-size: 12px;">
-                You're receiving this because your business was identified as a match for HomeReach advertising.
-                <a href="https://home-reach.com/unsubscribe?email=${encodeURIComponent(typedLead.email || "")}">Unsubscribe</a>
-              </p>
             </div>
           `;
+          emailHtml = appendEmailComplianceHtml(emailBodyHtml, typedLead.email ?? undefined);
         }
 
         // Send directly via Twilio or Mailgun
         let sendResult: { success: boolean; messageId?: string; error?: string };
 
         if (channel === "sms") {
-          sendResult = await sendViaTwilio(
-            typedLead.phone!,
-            agent.phone,
-            message
-          );
+          const result = await sendSms({
+            to: typedLead.phone!,
+            fromNumber: agent.phone,
+            body: message,
+            intent: "prospecting",
+          });
+          sendResult = { success: result.success, messageId: result.externalId, error: result.error };
         } else {
-          sendResult = await sendViaMailgun(
-            typedLead.email!,
-            agent.email,
-            agent.name,
-            emailSubject!,
-            message,
-            emailHtml
-          );
+          const emailIdentity = getDefaultEmailIdentity({
+            fromEmail: agent.email,
+            fromName: agent.name,
+          });
+          const result = await sendEmail({
+            to: typedLead.email!,
+            fromEmail: agent.email,
+            fromName: agent.name,
+            replyTo: emailIdentity.replyTo,
+            subject: emailSubject!,
+            text: appendEmailComplianceText(message, typedLead.email ?? undefined),
+            html: emailHtml!,
+            intent: "prospecting",
+          });
+          sendResult = { success: result.success, messageId: result.externalId, error: result.error };
         }
 
         if (sendResult.success) {

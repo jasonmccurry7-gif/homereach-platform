@@ -5,7 +5,13 @@
 // All messaging is logged to console so nothing is lost if env vars are missing.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { sendEmail, sendSms } from "../outreach/index";
+import {
+  buildOwnerSignature,
+  getDefaultEmailIdentity,
+  getOwnerIdentity,
+  sendEmail,
+  sendSms,
+} from "../outreach/index";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -17,7 +23,8 @@ function getAdminEmail(): string {
   const email =
     process.env.ADMIN_NOTIFICATION_EMAIL ??
     process.env.ADMIN_EMAIL ??
-    process.env.MAILGUN_FROM_EMAIL;
+    process.env.MAILGUN_FROM_EMAIL ??
+    getOwnerIdentity().domainEmail;
 
   if (!email) {
     console.warn(
@@ -32,7 +39,7 @@ function getAdminEmail(): string {
 }
 
 function getAdminPhone(): string | null {
-  return process.env.ADMIN_PHONE ?? null;
+  return process.env.ADMIN_PHONE ?? getOwnerIdentity().cellPhone;
 }
 
 function getBaseUrl(): string {
@@ -40,7 +47,7 @@ function getBaseUrl(): string {
 }
 
 function getFromName(): string {
-  return process.env.MAILGUN_FROM_NAME ?? "HomeReach";
+  return getDefaultEmailIdentity().fromName;
 }
 
 // ── Helper: safe send (never throws, always logs) ─────────────────────────────
@@ -48,7 +55,16 @@ function getFromName(): string {
 async function safeEmail(to: string, subject: string, html: string, text: string) {
   console.log(`[targeted/messaging] email → ${to} | ${subject}`);
   try {
-    const result = await sendEmail({ to, subject, html, text });
+    const emailIdentity = getDefaultEmailIdentity();
+    const result = await sendEmail({
+      to,
+      subject,
+      html,
+      text,
+      fromEmail: emailIdentity.fromEmail,
+      fromName: emailIdentity.fromName,
+      replyTo: emailIdentity.replyTo,
+    });
     if (!result.success) {
       console.error(`[targeted/messaging] email failed: ${result.error}`);
     }
@@ -124,7 +140,7 @@ export async function sendIntakeLinkToLead(lead: {
   const baseUrl = getBaseUrl();
   const intakeUrl = `${baseUrl}/targeted/intake?token=${lead.intakeToken}`;
   const firstName = lead.name?.split(" ")[0] ?? "there";
-  const fromName = getFromName();
+  const signature = buildOwnerSignature();
 
   const subject = `Your HomeReach Campaign Setup — 5-minute form`;
   const html = `
@@ -137,9 +153,9 @@ export async function sendIntakeLinkToLead(lead: {
     <p style="color:#6b7280;font-size:13px">Link: <a href="${intakeUrl}">${intakeUrl}</a></p>
     <p>Once we have your info, we'll handle everything — design, printing, and delivery to ~500 homes around you.</p>
     <p>Any questions? Just reply to this email.</p>
-    <p>— The ${fromName} Team</p>
+    <p>${signature.replace(/\n/g, "<br>")}</p>
   `;
-  const text = `Hey ${firstName}, here's your intake link: ${intakeUrl}\n\nFill it out (5 min) and we'll handle the rest.`;
+  const text = `Hey ${firstName}, here's your intake link: ${intakeUrl}\n\nFill it out (5 min) and we'll handle the rest.\n\n${signature}`;
 
   return safeEmail(lead.email, subject, html, text);
 }

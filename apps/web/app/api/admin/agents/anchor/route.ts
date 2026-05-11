@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { getOwnerIdentity } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Anchor Agent — Client Retention & Renewal Management
@@ -55,6 +56,8 @@ interface AgentIdentity {
   phone: string;
 }
 
+const OWNER_IDENTITY = getOwnerIdentity();
+
 // ─── Territory → Agent Mapping ────────────────────────────────────────────────
 
 const TERRITORY_AGENT_MAP: Record<string, AgentIdentity> = {
@@ -64,16 +67,16 @@ const TERRITORY_AGENT_MAP: Record<string, AgentIdentity> = {
   "Ravenna": { name: "Josh", email: "josh@home-reach.com", phone: "+13304224396" },
   "Green": { name: "Chris", email: "chris@home-reach.com", phone: "+13305949713" },
   "Stow": { name: "Chris", email: "chris@home-reach.com", phone: "+13305949713" },
-  "Cuyahoga Falls": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
-  "Hudson": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
-  "Canton": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
-  "Akron": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
+  "Cuyahoga Falls": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
+  "Hudson": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
+  "Canton": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
+  "Akron": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
 };
 
 const DEFAULT_AGENT: AgentIdentity = {
-  name: "Jason",
-  email: "jason@home-reach.com",
-  phone: "+13303044916",
+  name: OWNER_IDENTITY.name,
+  email: OWNER_IDENTITY.domainEmail,
+  phone: OWNER_IDENTITY.cellPhone,
 };
 
 // ─── Helper: Get agent by city ────────────────────────────────────────────────
@@ -108,7 +111,7 @@ async function sendRetentionSms(
     // Find or create a temporary lead record for tracking
     // For now, we'll just call the event endpoint without a lead_id
     const payload = {
-      agent_id: agent.name === "Jason" ? "jason-agent-id" : `${agent.name.toLowerCase()}-agent-id`,
+      agent_id: agent.email === OWNER_IDENTITY.domainEmail ? "jason-agent-id" : `${agent.name.toLowerCase()}-agent-id`,
       action_type: "follow_up_sent",
       channel: "sms",
       city,
@@ -220,8 +223,7 @@ export async function POST() {
             .from("cities")
             .select("name")
             .eq("id", typedSpot.city_id)
-            .single()
-            .catch(() => ({ data: null }));
+            .maybeSingle();
 
           const cityName = cityData?.name || "your area";
 
@@ -240,8 +242,7 @@ export async function POST() {
             .from("businesses")
             .select("name, phone, email, city")
             .eq("id", typedSpot.business_id)
-            .single()
-            .catch(() => ({ data: null }));
+            .maybeSingle();
 
           if (!business?.phone) {
             details.errors++;
@@ -336,8 +337,7 @@ export async function POST() {
             .from("cities")
             .select("name")
             .eq("id", typedSpot.city_id)
-            .single()
-            .catch(() => ({ data: null }));
+            .maybeSingle();
 
           const cityName = cityData?.name || "your area";
 
@@ -346,8 +346,7 @@ export async function POST() {
             .from("businesses")
             .select("name, phone, email, city")
             .eq("id", typedSpot.business_id)
-            .single()
-            .catch(() => ({ data: null }));
+            .maybeSingle();
 
           if (!business?.phone) {
             details.errors++;

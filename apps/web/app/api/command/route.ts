@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getOwnerIdentity } from "@homereach/services/outreach";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 function getApprovedSenders(): Set<string> {
   const extra = (process.env.APEX_APPROVED_SENDERS ?? "")
     .split(",").map(s => s.trim()).filter(Boolean);
-  return new Set(["+13302069639", ...extra]); // Jason's personal cell only
+  return new Set([getOwnerIdentity().cellPhone, ...extra]); // owner personal cell only
 }
 
 function twimlMessage(text: string) {
@@ -38,7 +39,7 @@ function twimlOk() {
 export async function GET() {
   return new NextResponse(JSON.stringify({
     status: "APEX command line is live",
-    approved: ["+13302069639", "+13303044916"],
+    approved: Array.from(getApprovedSenders()),
     apex_number: process.env.APEX_COMMAND_NUMBER ?? "not set",
     cron_secret_set: !!process.env.CRON_SECRET,
   }), { headers: { "Content-Type": "application/json" } });

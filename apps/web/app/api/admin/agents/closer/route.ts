@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { getOwnerIdentity } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Closer Agent — Follow-up & Payment Link Delivery
@@ -45,6 +46,8 @@ interface CloserResult {
   }>;
 }
 
+const OWNER_IDENTITY = getOwnerIdentity();
+
 // ─── Territory → Agent Mapping (Hardcoded Fallback) ────────────────────────────
 
 const TERRITORY_AGENT_MAP: Record<string, AgentIdentity> = {
@@ -54,16 +57,16 @@ const TERRITORY_AGENT_MAP: Record<string, AgentIdentity> = {
   "Ravenna": { name: "Josh", email: "josh@home-reach.com", phone: "+13304224396" },
   "Green": { name: "Chris", email: "chris@home-reach.com", phone: "+13305949713" },
   "Stow": { name: "Chris", email: "chris@home-reach.com", phone: "+13305949713" },
-  "Cuyahoga Falls": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
-  "Hudson": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
-  "Canton": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
-  "Akron": { name: "Jason", email: "jason@home-reach.com", phone: "+13303044916" },
+  "Cuyahoga Falls": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
+  "Hudson": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
+  "Canton": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
+  "Akron": { name: OWNER_IDENTITY.name, email: OWNER_IDENTITY.domainEmail, phone: OWNER_IDENTITY.cellPhone },
 };
 
 const DEFAULT_AGENT: AgentIdentity = {
-  name: "Jason",
-  email: "jason@home-reach.com",
-  phone: "+13303044916",
+  name: OWNER_IDENTITY.name,
+  email: OWNER_IDENTITY.domainEmail,
+  phone: OWNER_IDENTITY.cellPhone,
 };
 
 // ─── Helper: Resolve Agent Identity ───────────────────────────────────────────
@@ -80,8 +83,7 @@ async function resolveAgentIdentity(
         .select("from_name, from_email, twilio_phone")
         .eq("agent_id", lead.assigned_agent_id)
         .eq("is_active", true)
-        .single()
-        .catch(() => ({ data: null }));
+        .maybeSingle();
 
       if (data) {
         return {
@@ -118,8 +120,7 @@ async function hasRecentPaymentLink(
     .eq("action_type", "payment_link_created")
     .gte("created_at", sevenDaysAgo)
     .limit(1)
-    .single()
-    .catch(() => ({ data: null }));
+    .maybeSingle();
 
   return !!data;
 }

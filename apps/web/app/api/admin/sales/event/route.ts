@@ -1,6 +1,16 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import {
+  appendEmailComplianceHtml,
+  appendEmailComplianceText,
+  appendSmsCompliance,
+  getDefaultEmailIdentity,
+  renderOwnerTemplate,
+  sendEmail,
+  sendSms,
+} from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/event
@@ -12,6 +22,15 @@ const SEND_ACTIONS = new Set([
   "text_sent", "email_sent", "facebook_sent", "follow_up_sent",
   "sms_sent", "fb_message_sent",
 ]);
+
+type OutreachSystemControls = {
+  all_paused?: boolean;
+  sms_paused?: boolean;
+  email_paused?: boolean;
+  facebook_paused?: boolean;
+  outreach_test_mode?: boolean;
+  sms_prospecting_live_enabled?: boolean;
+};
 
 // ─── Direct Twilio SMS (supports per-agent from number) ───────────────────────
 async function sendViaTwilio(
@@ -107,52 +126,124 @@ async function sendViaMailgun(options: {
 // ─── Main Handler ──────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
+
     const supabase = createServiceClient();
     const body = await request.json();
 
-    const {
+    let {
       agent_id, lead_id, action_type, channel, city, category,
       message, revenue_cents, metadata,
       to_address, subject,
     } = body;
 
+    if (isSalesAgent) {
+      agent_id = user.id;
+    }
+
     if (!action_type) {
       return NextResponse.json({ error: "action_type required" }, { status: 400 });
     }
 
-    let sendResult: { success: boolean; externalId?: string; error?: string } | null = null;
+    if (isSalesAgent && lead_id) {
+      const { data: leadOwner, error: leadOwnerError } = await supabase
+        .from("sales_leads")
+        .select("assigned_agent_id")
+        .eq("id", lead_id)
+        .maybeSingle();
+
+      if (leadOwnerError) {
+        return NextResponse.json({ error: leadOwnerError.message }, { status: 500 });
+      }
+      if (!leadOwner) {
+        return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+      }
+      if (leadOwner.assigned_agent_id && leadOwner.assigned_agent_id !== user.id) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
+    let sendResult: {
+      success: boolean;
+      externalId?: string;
+      error?: string;
+      provider?: string;
+      testMode?: boolean;
+    } | null = null;
     let actualSent = false;
 
     // ── Actually send outbound messages ─────────────────────────────────────
     if (SEND_ACTIONS.has(action_type) && lead_id && message) {
       // Check system pause
-      const { data: sysCtrl } = await supabase
+      const { data: sysCtrlRaw } = await supabase
         .from("system_controls")
-        .select("all_paused")
+        .select("*")
         .eq("id", 1)
-        .single();
+        .maybeSingle();
+      const sysCtrl = sysCtrlRaw as OutreachSystemControls | null;
+      const testMode = Boolean(sysCtrl?.outreach_test_mode);
 
       if (sysCtrl?.all_paused) {
         return NextResponse.json({ error: "System is paused. Cannot send." }, { status: 403 });
+      }
+      const outboundChannel =
+        channel === "sms" || action_type === "text_sent" || action_type === "sms_sent"
+          ? "sms"
+          : channel === "facebook" || action_type === "facebook_sent" || action_type === "fb_message_sent"
+            ? "facebook"
+            : "email";
+
+      if (outboundChannel === "sms" && sysCtrl?.sms_paused) {
+        return NextResponse.json({ error: "SMS outreach is paused." }, { status: 403 });
+      }
+      if (outboundChannel === "email" && sysCtrl?.email_paused) {
+        return NextResponse.json({ error: "Email outreach is paused." }, { status: 403 });
+      }
+      if (outboundChannel === "facebook" && sysCtrl?.facebook_paused) {
+        return NextResponse.json({ error: "Facebook outreach is paused." }, { status: 403 });
+      }
+      if (
+        outboundChannel === "sms" &&
+        !testMode &&
+        !(sysCtrl?.sms_prospecting_live_enabled ?? false)
+      ) {
+        return NextResponse.json({
+          error: "Prospecting SMS live sending is disabled until Twilio/A2P approval is confirmed.",
+        }, { status: 403 });
       }
 
       // Get lead contact info
       const { data: lead } = await supabase
         .from("sales_leads")
-        .select("phone, email, do_not_contact, sms_opt_out, is_quarantined, business_name")
+        .select("phone, email, email_status, do_not_contact, sms_opt_out, is_quarantined, business_name, assigned_agent_id")
         .eq("id", lead_id)
         .single();
 
+      if (isSalesAgent && lead?.assigned_agent_id && lead.assigned_agent_id !== user.id) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
       if (lead?.do_not_contact)
         return NextResponse.json({ error: "Lead is DNC. Cannot send." }, { status: 403 });
       if (lead?.is_quarantined)
         return NextResponse.json({ error: "Lead is quarantined. Cannot send." }, { status: 403 });
       if (channel === "sms" && lead?.sms_opt_out)
         return NextResponse.json({ error: "Lead has opted out of SMS." }, { status: 403 });
+      if (
+        channel === "email" &&
+        ["bounced_permanent", "complained", "unsubscribed"].includes(String(lead?.email_status ?? ""))
+      ) {
+        return NextResponse.json({ error: "Lead email is suppressed." }, { status: 403 });
+      }
 
       // Resolve agent identity (from DB, fallback to env vars)
-      let fromEmail    = process.env.MAILGUN_FROM_EMAIL ?? "jason@home-reach.com";
-      let fromName     = "HomeReach";
+      const defaultEmailIdentity = getDefaultEmailIdentity();
+      let fromEmail    = defaultEmailIdentity.fromEmail;
+      let fromName     = defaultEmailIdentity.fromName;
+      let replyToEmail = defaultEmailIdentity.replyTo;
       let agentPhone   = process.env.TWILIO_PHONE_NUMBER ?? "";
 
       if (agent_id) {
@@ -168,69 +259,78 @@ export async function POST(request: Request) {
 
         const { data: identity } = await supabase
           .from("agent_identities")
-          .select("from_email, from_name, twilio_phone, is_active")
+          .select("from_email, from_name, reply_to_email, twilio_phone, is_active")
           .eq("agent_id", agent_id)
           .maybeSingle();
 
         if (identity?.is_active) {
           if (identity.from_email)  fromEmail  = identity.from_email;
           if (identity.from_name)   fromName   = identity.from_name;
+          if (identity.reply_to_email) replyToEmail = identity.reply_to_email;
           if (identity.twilio_phone) agentPhone = identity.twilio_phone;
         }
 
-        // Daily rate limit check
-        const sendChannel = channel === "sms" ? "sms" : "email";
-        const { data: limitCheck } = await supabase.rpc("check_and_increment_send_count", {
-          p_agent_id: agent_id,
-          p_channel:  sendChannel,
-        });
-        const limit = limitCheck as { allowed: boolean; reason?: string; limit?: number } | null;
-        if (limit && !limit.allowed) {
-          return NextResponse.json({
-            error: `Daily ${sendChannel} limit reached (${limit.limit}/day). Try again tomorrow.`,
-            limit_info: limit,
-          }, { status: 429 });
+        if (!testMode && outboundChannel !== "facebook") {
+          // Daily rate limit check
+          const sendChannel = outboundChannel === "sms" ? "sms" : "email";
+          const { data: limitCheck } = await supabase.rpc("check_and_increment_send_count", {
+            p_agent_id: agent_id,
+            p_channel:  sendChannel,
+          });
+          const limit = limitCheck as { allowed: boolean; reason?: string; limit?: number } | null;
+          if (limit && !limit.allowed) {
+            return NextResponse.json({
+              error: `Daily ${sendChannel} limit reached (${limit.limit}/day). Try again tomorrow.`,
+              limit_info: limit,
+            }, { status: 429 });
+          }
         }
         // Note: dedup hash is inserted AFTER successful send (see below)
       }
 
       // Resolve destination address
-      const dest = to_address ?? (channel === "sms" ? lead?.phone : lead?.email);
+      const dest = to_address ?? (outboundChannel === "sms" ? lead?.phone : lead?.email);
       if (!dest) {
         return NextResponse.json({
-          error: `No ${channel} contact info for this lead.`,
+          error: `No ${outboundChannel} contact info for this lead.`,
         }, { status: 400 });
       }
 
       // Send
-      const isSms = channel === "sms" || action_type === "text_sent" || action_type === "sms_sent";
-      const isEmail = channel === "email" || action_type === "email_sent";
+      const isSms = outboundChannel === "sms";
+      const isEmail = outboundChannel === "email";
+      message = renderOwnerTemplate(message, {
+        business_name: lead?.business_name ?? "",
+        city: city ?? "",
+        category: category ?? "",
+      });
 
       if (isSms) {
-        const smsBody = message.includes("STOP")
-          ? message
-          : `${message}\n\nReply STOP to unsubscribe.`;
-        sendResult = await sendViaTwilio(dest, agentPhone, smsBody);
+        const smsBody = appendSmsCompliance(message);
+        sendResult = await sendSms({
+          to: dest,
+          body: smsBody,
+          fromNumber: agentPhone || undefined,
+          intent: "prospecting",
+          testMode,
+        });
       } else if (isEmail) {
         const emailSubject = subject ?? `HomeReach — grow your business in ${city ?? "your area"}`;
-        const emailHtml = `
+        const emailContentHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
             <p>${message.replace(/\n/g, "<br>")}</p>
-            <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
-            <p style="color: #999; font-size: 12px;">
-              You're receiving this because your business was identified as a match for HomeReach advertising.
-              <a href="https://home-reach.com/unsubscribe?email=${encodeURIComponent(dest)}">Unsubscribe</a>
-            </p>
           </div>
         `;
-        sendResult = await sendViaMailgun({
+        sendResult = await sendEmail({
           to:        dest,
           subject:   emailSubject,
-          html:      emailHtml,
-          text:      message,
+          html:      appendEmailComplianceHtml(emailContentHtml, dest),
+          text:      appendEmailComplianceText(message, dest),
           fromEmail,
           fromName,
-          replyTo:   fromEmail,
+          replyTo:   replyToEmail,
+          intent:    "prospecting",
+          testMode,
         });
       }
 
@@ -274,6 +374,8 @@ export async function POST(request: Request) {
       ...(metadata ?? {}),
       ...(sendResult ? { send_result: sendResult } : {}),
       ...(actualSent ? { actually_sent: true } : {}),
+      ...(sendResult?.provider ? { provider: sendResult.provider } : {}),
+      ...(sendResult?.testMode ? { test_mode: true } : {}),
     };
 
     // ── Insert sales_event ────────────────────────────────────────────────────

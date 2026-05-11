@@ -21,6 +21,8 @@ export interface PostmarkSendOptions {
   html: string;
   text?: string;
   replyTo?: string;
+  fromEmail?: string;
+  fromName?: string;
   /** Optional Postmark message stream — defaults to 'outbound' (transactional). */
   messageStream?: string;
   /** Optional tags — useful for filtering events later. */
@@ -71,9 +73,11 @@ export async function sendEmailViaPostmark(
 ): Promise<PostmarkSendResult> {
   try {
     const cfg = getPostmarkConfig();
+    const fromEmail = options.fromEmail ?? cfg.fromEmail;
+    const fromName = options.fromName ?? cfg.fromName;
 
     const body: Record<string, unknown> = {
-      From: `${cfg.fromName} <${cfg.fromEmail}>`,
+      From: `${fromName} <${fromEmail}>`,
       To: options.to,
       Subject: options.subject,
       HtmlBody: options.html,
@@ -125,7 +129,9 @@ export async function sendEmailViaPostmark(
  * Used by the future router in ./index.ts (not yet wired). For now, callers
  * who explicitly want Postmark can import sendEmailViaPostmark() directly.
  */
-export function getActiveEmailProvider(): "mailgun" | "postmark" {
-  const v = (process.env.EMAIL_PROVIDER ?? "mailgun").toLowerCase();
-  return v === "postmark" ? "postmark" : "mailgun";
+export function getActiveEmailProvider(): "resend" | "mailgun" | "postmark" {
+  const v = (process.env.EMAIL_PROVIDER ?? "resend").toLowerCase();
+  if (v === "postmark") return "postmark";
+  if (v === "mailgun") return "mailgun";
+  return "resend";
 }

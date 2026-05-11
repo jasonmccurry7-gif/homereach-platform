@@ -2,6 +2,8 @@
 // Shared Types for Agent System
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { getOwnerIdentity } from "@homereach/services/outreach";
+
 export interface AgentIdentity {
   id: string;
   name: string;
@@ -31,6 +33,8 @@ export type Territory =
   | "Hudson"
   | "Canton"
   | "Akron";
+
+const OWNER_IDENTITY = getOwnerIdentity();
 
 export const AGENT_TERRITORIES: Record<Territory, AgentIdentity> = {
   "Wooster": {
@@ -71,35 +75,35 @@ export const AGENT_TERRITORIES: Record<Territory, AgentIdentity> = {
   },
   "Cuyahoga Falls": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
   "Hudson": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
   "Canton": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
   "Akron": {
     id: "jason-agent-id",
-    name: "Jason",
-    email: "jason@home-reach.com",
-    phone: "+13303044916",
+    name: OWNER_IDENTITY.name,
+    email: OWNER_IDENTITY.domainEmail,
+    phone: OWNER_IDENTITY.cellPhone,
   },
 };
 
 export const DEFAULT_AGENT: AgentIdentity = {
   id: "jason-agent-id",
-  name: "Jason",
-  email: "jason@home-reach.com",
-  phone: "+13303044916",
+  name: OWNER_IDENTITY.name,
+  email: OWNER_IDENTITY.domainEmail,
+  phone: OWNER_IDENTITY.cellPhone,
 };
 
 /**

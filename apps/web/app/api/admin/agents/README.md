@@ -298,8 +298,8 @@ Agents are assigned to territories (Ohio cities). This mapping is hardcoded as a
 | Wooster, Medina | Heather | heather@home-reach.com | +13306626331 |
 | Massillon, Ravenna | Josh | josh@home-reach.com | +13304224396 |
 | Green, Stow | Chris | chris@home-reach.com | +13305949713 |
-| Cuyahoga Falls, Hudson, Canton, Akron | Jason | jason@home-reach.com | +13303044916 |
-| Any other city | Jason (default) | jason@home-reach.com | +13303044916 |
+| Cuyahoga Falls, Hudson, Canton, Akron | Jason McCurry | Jason@home-reach.com | +13302069639 |
+| Any other city | Jason McCurry (default) | Jason@home-reach.com | +13302069639 |
 
 ### To Override Territory Assignment
 

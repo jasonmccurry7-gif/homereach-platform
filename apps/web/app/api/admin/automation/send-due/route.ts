@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { sendSms, sendEmail } from "@homereach/services/outreach";
+import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import {
+  appendEmailComplianceHtml,
+  appendEmailComplianceText,
+  appendSmsCompliance,
+  getDefaultEmailIdentity,
+  getOutreachSafetyConfig,
+  isWithinOutreachWindow,
+  renderOwnerTemplate,
+  sendSms,
+  sendEmail,
+} from "@homereach/services/outreach";
 import crypto from "crypto";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -11,32 +22,81 @@ import crypto from "crypto";
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
+  return renderOwnerTemplate(template, vars);
 }
 
 function hashMessage(body: string): string {
   return crypto.createHash("sha256").update(body).digest("hex");
 }
 
+type OutreachSystemControls = {
+  all_paused?: boolean;
+  sms_paused?: boolean;
+  email_paused?: boolean;
+  outreach_test_mode?: boolean;
+  manual_approval_mode?: boolean;
+  sms_prospecting_live_enabled?: boolean;
+  automation_batch_limit?: number;
+  default_time_zone?: string;
+  weekday_only?: boolean;
+  business_start_minutes?: number;
+  business_end_minutes?: number;
+};
+
 export async function POST(req: NextRequest) {
   try {
-  // Allow cron or admin to trigger
-  const secret = req.headers.get("x-cron-secret");
-  const isCron = secret === process.env.CRON_SECRET;
-  const supabase = await createClient();
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
 
-  // Check system pause
-  const { data: sysCtrl } = await supabase
+  const supabase = createServiceClient();
+  const safety = getOutreachSafetyConfig();
+
+  const { data: sysCtrlRaw } = await supabase
     .from("system_controls")
-    .select("all_paused")
+    .select("*")
     .eq("id", 1)
-    .single();
+    .maybeSingle();
+  const sysCtrl = sysCtrlRaw as OutreachSystemControls | null;
+  const testMode = Boolean(sysCtrl?.outreach_test_mode ?? safety.testMode);
+  const manualApprovalMode = Boolean(sysCtrl?.manual_approval_mode ?? safety.manualApprovalMode);
+
+  if (manualApprovalMode) {
+    return NextResponse.json({
+      ok: false,
+      reason: "manual_approval_mode",
+      processed: 0,
+    });
+  }
+
+  if (!testMode && !isWithinOutreachWindow(
+    new Date(),
+    sysCtrl?.default_time_zone ?? safety.defaultTimeZone,
+    {
+      weekdayOnly: sysCtrl?.weekday_only ?? safety.weekdayOnly,
+      businessStartMinutes: sysCtrl?.business_start_minutes ?? safety.businessStartMinutes,
+      businessEndMinutes: sysCtrl?.business_end_minutes ?? safety.businessEndMinutes,
+    },
+  )) {
+    return NextResponse.json({
+      ok: false,
+      reason: "outside_outreach_window",
+      processed: 0,
+      window: {
+        timezone: sysCtrl?.default_time_zone ?? safety.defaultTimeZone,
+        weekday_only: sysCtrl?.weekday_only ?? safety.weekdayOnly,
+        start_minutes: sysCtrl?.business_start_minutes ?? safety.businessStartMinutes,
+        end_minutes: sysCtrl?.business_end_minutes ?? safety.businessEndMinutes,
+      },
+    });
+  }
 
   if (sysCtrl?.all_paused) {
     return NextResponse.json({ ok: false, reason: "system_paused", processed: 0 });
   }
 
   const now = new Date().toISOString();
+  const envBatchLimit = Number.parseInt(process.env.OUTREACH_AUTOMATION_BATCH_LIMIT ?? "10", 10);
+  const batchLimit = sysCtrl?.automation_batch_limit ?? envBatchLimit;
 
   // Fetch due enrollments (active, sequence active, not paused agent)
   const { data: due, error: dueErr } = await supabase
@@ -52,7 +112,7 @@ export async function POST(req: NextRequest) {
     .eq("status", "active")
     .lte("next_send_at", now)
     .eq("auto_sequences.status", "active")
-    .limit(50);  // Batch of 50 per run
+    .limit(Number.isFinite(batchLimit) && batchLimit > 0 ? batchLimit : 10);  // Conservative batch per cron run
 
   if (dueErr) return NextResponse.json({ error: dueErr.message }, { status: 500 });
   if (!due?.length) return NextResponse.json({ processed: 0, sent: 0, skipped: 0 });
@@ -61,14 +121,14 @@ export async function POST(req: NextRequest) {
   let skipped = 0;
   const errors: string[] = [];
 
-  for (const enrollment of due) {
-    const lead = enrollment.sales_leads as {
+  for (const enrollment of [...due].sort(() => Math.random() - 0.5)) {
+    const lead = enrollment.sales_leads as unknown as {
       id: string; business_name: string; contact_name: string | null;
       email: string | null; phone: string | null; city: string | null;
       category: string | null; do_not_contact: boolean; sms_opt_out: boolean;
       is_quarantined: boolean;
     };
-    const sequence = enrollment.auto_sequences as {
+    const sequence = enrollment.auto_sequences as unknown as {
       id: string; channel: string; stop_on_reply: boolean; status: string;
     };
 
@@ -85,6 +145,24 @@ export async function POST(req: NextRequest) {
       await supabase.from("auto_enrollments").update({
         status: "stopped", stopped_at: now, stop_reason: "sms_opt_out",
       }).eq("id", enrollment.id);
+      skipped++;
+      continue;
+    }
+
+    const sendChannel = sequence.channel === "sms" ? "sms" : "email";
+    if (sendChannel === "sms" && sysCtrl?.sms_paused) {
+      skipped++;
+      continue;
+    }
+    if (sendChannel === "email" && sysCtrl?.email_paused) {
+      skipped++;
+      continue;
+    }
+    if (
+      sendChannel === "sms" &&
+      !testMode &&
+      !(sysCtrl?.sms_prospecting_live_enabled ?? safety.smsProspectingLiveEnabled)
+    ) {
       skipped++;
       continue;
     }
@@ -110,15 +188,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Fallback to system defaults
-    if (!fromEmail) fromEmail = process.env.MAILGUN_FROM_EMAIL ?? null;
-    if (!fromName)  fromName  = process.env.MAILGUN_FROM_NAME  ?? "HomeReach";
+    const defaultEmail = getDefaultEmailIdentity({ fromEmail, fromName });
+    if (!fromEmail) fromEmail = defaultEmail.fromEmail;
+    if (!fromName)  fromName  = defaultEmail.fromName;
     if (!twilioPhone) twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? null;
 
     // Check agent daily send limit
-    if (agentId) {
+    if (agentId && !testMode) {
       const { data: limitCheck } = await supabase.rpc("check_and_increment_send_count", {
         p_agent_id: agentId,
-        p_channel:  sequence.channel,
+        p_channel:  sendChannel,
       });
       const check = limitCheck as { allowed: boolean; reason?: string } | null;
       if (check && !check.allowed) {
@@ -163,7 +242,7 @@ export async function POST(req: NextRequest) {
       .insert({
         agent_id: agentId ?? process.env.ADMIN_SYSTEM_USER_ID,
         lead_id:  lead.id,
-        channel:  sequence.channel,
+        channel:  sendChannel,
         msg_hash: msgHash,
       });
 
@@ -174,49 +253,45 @@ export async function POST(req: NextRequest) {
     }
 
     // ── ACTUALLY SEND ──────────────────────────────────────────────────────
-    let sendResult: { success: boolean; externalId?: string; error?: string };
+    let sendResult: {
+      success: boolean;
+      externalId?: string;
+      error?: string;
+      provider?: string;
+      testMode?: boolean;
+    };
 
     // Add compliance footer
-    const smsBody  = `${bodyRendered}\n\nReply STOP to unsubscribe.`;
-    const emailHtml = `
+    const smsBody  = appendSmsCompliance(bodyRendered);
+    const emailBodyHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px;">
         <p>${bodyRendered.replace(/\n/g, "<br>")}</p>
-        <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
-        <p style="color: #999; font-size: 12px;">
-          You're receiving this because your business was identified as a match for HomeReach advertising.
-          <a href="https://home-reach.com/unsubscribe?email=${encodeURIComponent(toAddress)}">Unsubscribe</a>
-        </p>
       </div>
+    `;
+    const emailHtml = `
+      ${appendEmailComplianceHtml(emailBodyHtml, toAddress)}
     `;
 
     if (sequence.channel === "sms") {
-      sendResult = await sendSms({ to: toAddress, body: smsBody });
+      sendResult = await sendSms({
+        to: toAddress,
+        body: smsBody,
+        fromNumber: twilioPhone ?? undefined,
+        intent: "prospecting",
+        testMode,
+      });
     } else {
-      // Use agent's from_email if available, else fallback
-      const emailFrom = fromEmail!;
-      const overrideEnv = fromEmail ? {
-        ...process.env,
-        MAILGUN_FROM_EMAIL: emailFrom,
-        MAILGUN_FROM_NAME:  fromName ?? "HomeReach",
-      } : {};
-      // Temporarily patch env for this send (Mailgun reads from process.env)
-      const origEmail = process.env.MAILGUN_FROM_EMAIL;
-      const origName  = process.env.MAILGUN_FROM_NAME;
-      if (fromEmail) {
-        process.env.MAILGUN_FROM_EMAIL = fromEmail;
-        process.env.MAILGUN_FROM_NAME  = fromName ?? "HomeReach";
-      }
       sendResult = await sendEmail({
         to:      toAddress,
         subject: subjectRendered,
         html:    emailHtml,
-        text:    smsBody,
-        replyTo: fromEmail ?? undefined,
+        text:    appendEmailComplianceText(bodyRendered, toAddress),
+        fromEmail: fromEmail ?? undefined,
+        fromName: fromName ?? undefined,
+        replyTo: defaultEmail.replyTo,
+        intent: "prospecting",
+        testMode,
       });
-      if (fromEmail) {
-        process.env.MAILGUN_FROM_EMAIL = origEmail;
-        process.env.MAILGUN_FROM_NAME  = origName;
-      }
     }
 
     // Log result
@@ -244,7 +319,13 @@ export async function POST(req: NextRequest) {
         city:        lead.city,
         category:    lead.category,
         message:     bodyRendered,
-        metadata:    { auto: true, sequence_id: enrollment.sequence_id, external_id: sendResult.externalId },
+        metadata:    {
+          auto: true,
+          sequence_id: enrollment.sequence_id,
+          external_id: sendResult.externalId,
+          provider: sendResult.provider,
+          test_mode: sendResult.testMode ?? false,
+        },
       });
       await supabase.rpc("increment_lead_messages", { lead_uuid: lead.id });
       sent++;
@@ -262,7 +343,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (nextStep) {
-      const nextSendAt = new Date(Date.now() + nextStep.delay_hours * 60 * 60 * 1000).toISOString();
+      const jitterMinutes = Math.floor(Math.random() * 45) + 5;
+      const nextSendAt = new Date(
+        Date.now() + nextStep.delay_hours * 60 * 60 * 1000 + jitterMinutes * 60 * 1000,
+      ).toISOString();
       await supabase.from("auto_enrollments").update({
         current_step: nextStep.step_number,
         next_send_at: nextSendAt,
@@ -288,10 +372,19 @@ export async function POST(req: NextRequest) {
 
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const now = new Date().toISOString();
+
+  const { data: controls } = await supabase
+    .from("system_controls")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
 
   const { count: dueNow } = await supabase
     .from("auto_enrollments")
@@ -313,6 +406,7 @@ export async function GET() {
     due_now: dueNow ?? 0,
     active_total: activeTotal ?? 0,
     sender_health: health ?? [],
+    controls,
   });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

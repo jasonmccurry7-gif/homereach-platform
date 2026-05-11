@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/system/pause — current pause state (system + all sequences + agents)
@@ -10,10 +11,17 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
 
   const [sysResult, seqResult, agentResult] = await Promise.all([
-    supabase.from("system_controls").select("all_paused, pause_reason, paused_at").eq("id", 1).single(),
+    supabase
+      .from("system_controls")
+      .select("all_paused, sms_paused, email_paused, facebook_paused, outreach_test_mode, manual_approval_mode, sms_prospecting_live_enabled, pause_reason, paused_at")
+      .eq("id", 1)
+      .single(),
     supabase.from("auto_sequences").select("id, name, channel, status, pause_reason, paused_at"),
     supabase.from("agent_pause_controls").select("agent_id, paused, reason, paused_at, profiles:agent_id(full_name)"),
   ]);
@@ -33,16 +41,19 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const body = await req.json();
-  const { scope, id, paused, reason } = body;
+  const { scope, id, paused, reason, enabled } = body;
 
   // Get admin identity
   const { data: { user } } = await supabase.auth.getUser();
   const adminId = user?.id ?? null;
 
-  if (!["system", "sequence", "agent"].includes(scope)) {
-    return NextResponse.json({ error: "scope must be: system | sequence | agent" }, { status: 400 });
+  if (!["system", "sequence", "agent", "channel", "control"].includes(scope)) {
+    return NextResponse.json({ error: "scope must be: system | sequence | agent | channel | control" }, { status: 400 });
   }
 
   const now = new Date().toISOString();
@@ -56,6 +67,8 @@ export async function POST(req: NextRequest) {
         paused_by:    paused ? adminId : null,
         paused_at:    paused ? now : null,
         pause_reason: paused ? (reason ?? "Admin pause") : null,
+        updated_by:    adminId,
+        updated_at:    now,
       })
       .eq("id", 1);
 
@@ -73,6 +86,61 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, scope: "system", paused });
+  }
+
+  if (scope === "channel") {
+    const channel = String(id ?? body.channel ?? "").toLowerCase();
+    const columns: Record<string, string> = {
+      sms: "sms_paused",
+      email: "email_paused",
+      facebook: "facebook_paused",
+    };
+    const column = columns[channel];
+    if (!column) {
+      return NextResponse.json({ error: "id must be one of: sms | email | facebook" }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from("system_controls")
+      .update({
+        [column]: Boolean(paused),
+        updated_by: adminId,
+        updated_at: now,
+        pause_reason: paused ? (reason ?? `${channel}_pause`) : null,
+      })
+      .eq("id", 1);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, scope: "channel", id: channel, paused: Boolean(paused) });
+  }
+
+  if (scope === "control") {
+    const control = String(id ?? body.control ?? "").toLowerCase();
+    const columns: Record<string, string> = {
+      test_mode: "outreach_test_mode",
+      manual_approval: "manual_approval_mode",
+      sms_live: "sms_prospecting_live_enabled",
+      email_rotation: "email_rotation_enabled",
+    };
+    const column = columns[control];
+    if (!column) {
+      return NextResponse.json({
+        error: "id must be one of: test_mode | manual_approval | sms_live | email_rotation",
+      }, { status: 400 });
+    }
+
+    const nextValue = typeof enabled === "boolean" ? enabled : Boolean(paused);
+    const { error } = await supabase
+      .from("system_controls")
+      .update({
+        [column]: nextValue,
+        updated_by: adminId,
+        updated_at: now,
+      })
+      .eq("id", 1);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, scope: "control", id: control, enabled: nextValue });
   }
 
   // ── Sequence pause ─────────────────────────────────────────────────────────
