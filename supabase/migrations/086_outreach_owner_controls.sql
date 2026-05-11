@@ -41,6 +41,8 @@ alter table public.system_controls
   add column if not exists business_end_minutes integer not null default 1050,
   add column if not exists weekday_only boolean not null default true,
   add column if not exists default_time_zone text not null default 'America/New_York',
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now(),
   add column if not exists updated_by uuid;
 
 insert into public.system_controls (id)
