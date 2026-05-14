@@ -1,53 +1,59 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Route Protection Middleware
 //
 // Hierarchy:
-//   /admin/*          — admin role only (ADMIN_DEV_BYPASS=true bypasses in dev)
-//   /admin/agent-view — also accessible to sales_agent role
-//   /agent/*          — admin + sales_agent (mobile agent experience, feature-flagged)
-//   /dashboard/*      — any authenticated user
-//   /api/auth/*       — always public (Supabase callback)
-//   /login /signup    — public; authenticated users are redirected by role
-//   /                 — public (marketing)
-//
-// Roles:
-//   admin       → /admin (full OS)
-//   sales_agent → /admin/agent-view (restricted) + /agent/* (mobile)
-//   client      → /dashboard
-//   nonprofit   → /dashboard
-//   sponsor     → /dashboard
+//   /admin/*          - admin role only (ADMIN_DEV_BYPASS=true bypasses in dev)
+//   /admin/agent-view - also accessible to sales_agent role
+//   /agent/*          - admin + sales_agent (mobile agent experience, feature-flagged)
+//   /dashboard/*      - any authenticated user
+//   /api/auth/*       - always public (Supabase callback)
+//   /login /signup    - public; authenticated users are redirected by role
+//   /                 - public (marketing)
 //
 // Auth state is read from the Supabase session cookie.
 // User role is stored in the JWT custom claim `user_role` (set via DB trigger).
-// ─────────────────────────────────────────────────────────────────────────────
 
 const PROTECTED = {
-  admin:     /^\/admin(\/|$)/,
-  agent:     /^\/agent(\/|$)/,
+  admin: /^\/admin(\/|$)/,
+  agent: /^\/agent(\/|$)/,
   dashboard: /^\/dashboard(\/|$)/,
 };
 
-// Routes inside /admin accessible to sales_agent role
-const AGENT_ALLOWED_ROUTES = /^\/admin\/(agent-view|ad-designer|roi-preview|products|bundles|crm|sales-dashboard|sales-engine|facebook)(\/|$)|^\/admin\/agent-view$/;
+// Routes inside /admin accessible to sales_agent role.
+const AGENT_ALLOWED_ROUTES =
+  /^\/admin\/(agent-view|ad-designer|roi-preview|products|bundles|crm|sales-dashboard|sales-engine|facebook)(\/|$)|^\/admin\/agent-view$/;
+
+function safeAuthRedirectPath(request: NextRequest): string | null {
+  const redirect = request.nextUrl.searchParams.get("redirect");
+  if (!redirect || !redirect.startsWith("/") || redirect.startsWith("//")) return null;
+
+  try {
+    const target = new URL(redirect, request.url);
+    if (target.origin !== request.nextUrl.origin) return null;
+    if (target.pathname.startsWith("/api/")) return null;
+    if (target.pathname === "/login" || target.pathname === "/signup") return null;
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return null;
+  }
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const devBypass = process.env.ADMIN_DEV_BYPASS === "true";
 
-  // ── Always allow: Supabase auth callback ─────────────────────────────────
+  // Always allow Supabase auth callbacks.
   if (pathname.startsWith("/api/auth/")) {
     return NextResponse.next({ request });
   }
 
-  // ── Dev bypass: skip ALL auth logic for admin routes (dev only) ──────────
+  // Dev bypass: skip all auth logic for admin routes in local/dev only.
   if (devBypass && PROTECTED.admin.test(pathname)) {
     return NextResponse.next({ request });
   }
 
-  // ── Build Supabase client ─────────────────────────────────────────────────
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -77,7 +83,6 @@ export async function middleware(request: NextRequest) {
 
   const role = user?.app_metadata?.user_role as string | undefined;
 
-  // ── Admin routes ──────────────────────────────────────────────────────────
   if (PROTECTED.admin.test(pathname)) {
     if (!user) {
       return NextResponse.redirect(
@@ -85,19 +90,15 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    // sales_agent can only access designated sales tool routes
     if (role === "sales_agent" && !AGENT_ALLOWED_ROUTES.test(pathname)) {
       return NextResponse.redirect(new URL("/admin/agent-view", request.url));
     }
 
-    // Everyone else who is not admin and not a sales_agent goes to /dashboard
     if (role !== "admin" && role !== "sales_agent") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
   }
 
-  // ── Agent mobile routes (/agent/*) ───────────────────────────────────────
-  // Protected: admin + sales_agent only. Feature flag enforced in layout.tsx.
   if (PROTECTED.agent.test(pathname)) {
     if (!user) {
       return NextResponse.redirect(
@@ -109,7 +110,6 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // ── Dashboard routes ──────────────────────────────────────────────────────
   if (PROTECTED.dashboard.test(pathname)) {
     if (!user) {
       return NextResponse.redirect(
@@ -118,8 +118,12 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // ── Redirect authenticated users away from auth pages ────────────────────
   if (user && (pathname === "/login" || pathname === "/signup")) {
+    const requestedRedirect = safeAuthRedirectPath(request);
+    if (requestedRedirect) {
+      return NextResponse.redirect(new URL(requestedRedirect, request.url));
+    }
+
     let destination: string;
     if (role === "admin") {
       destination = "/admin";
@@ -136,13 +140,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths EXCEPT:
-     *   - _next/static (static files)
-     *   - _next/image (image optimization)
-     *   - favicon.ico
-     *   - public assets (svg, png, jpg, etc.)
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

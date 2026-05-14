@@ -214,6 +214,23 @@ const ENV_SPECS: EnvSpec[] = [
   },
 
   // ── Notifications ─────────────────────────────────────────────────────────────
+  // Political candidate intelligence providers (optional, additive)
+  { key: "FEC_API_KEY", required: false, productionOnly: false },
+  { key: "GOOGLE_CIVIC_API_KEY", required: false, productionOnly: false },
+  { key: "DEMOCRACY_WORKS_API_KEY", required: false, productionOnly: false },
+  { key: "DEMOCRACY_WORKS_API_BASE_URL", required: false, productionOnly: false },
+  { key: "BALLOTPEDIA_API_KEY", required: false, productionOnly: false },
+  { key: "BALLOTPEDIA_CANDIDATES_ENDPOINT", required: false, productionOnly: false },
+  { key: "STATE_SOS_FEED_CONFIG_JSON", required: false, productionOnly: false },
+  { key: "STATE_BOE_FEED_CONFIG_JSON", required: false, productionOnly: false },
+  { key: "MUNICIPAL_ELECTION_FEED_CONFIG_JSON", required: false, productionOnly: false },
+  { key: "SERPAPI_KEY", required: false, productionOnly: false },
+  { key: "ENABLE_CANDIDATE_SERPAPI", required: false, productionOnly: false, validValues: ["true", "false"] },
+  { key: "ENABLE_CANDIDATE_SERPAPI_DEFAULT_SYNC", required: false, productionOnly: false, validValues: ["true", "false"] },
+  { key: "CANDIDATE_SERPAPI_MIN_REFRESH_HOURS", required: false, productionOnly: false },
+  { key: "CANDIDATE_INTEL_WEBHOOK_SECRET", required: false, productionOnly: false },
+  { key: "MAPBOX_ACCESS_TOKEN", required: false, productionOnly: false },
+
   {
     // Canonical admin notification address. Used by nonprofit, intake, and targeted
     // routes to alert the operator of new leads, intake submissions, and applications.
