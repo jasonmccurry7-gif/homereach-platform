@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Bot, CalendarDays, FileText, MapPinned, ShieldCheck } from "lucide-react";
+import { AmyActonCampaignCommandCenter } from "../_components/AmyActonCampaignCommandCenter";
 import { CampaignReadinessChecklist } from "../_components/CampaignReadinessChecklist";
 import { PoliticalCandidateAgentChat } from "../_components/PoliticalCandidateAgentChat";
 import {
@@ -182,6 +183,10 @@ export default async function PoliticalCandidateAgentOverviewPage() {
           />
         </section>
       )}
+
+      <section className="mt-10">
+        <AmyActonCampaignCommandCenter />
+      </section>
 
       {liveRows.length > 0 && (
         <section className="mt-10 rounded-lg border border-blue-300/20 bg-blue-950/25 p-5">

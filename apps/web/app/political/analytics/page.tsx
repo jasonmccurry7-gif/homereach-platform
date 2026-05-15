@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PoliticalMailCommandCenter } from "@/app/(admin)/admin/political/_components/PoliticalMailCommandCenter";
+import { AmyActonCampaignCommandCenter } from "../_components/AmyActonCampaignCommandCenter";
 import { loadPoliticalMailCommandCenter } from "@/lib/political/mail-command-center";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ export default async function PoliticalAnalyticsPage() {
 
   return (
     <section className="mx-auto max-w-7xl px-5 py-8">
+      <div className="mb-6">
+        <AmyActonCampaignCommandCenter compact />
+      </div>
       <PoliticalMailCommandCenter data={data} audience="customer" />
     </section>
   );
