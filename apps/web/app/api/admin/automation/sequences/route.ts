@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+const VALID_BUSINESS_LINES = new Set([
+  "targeted_mailing",
+  "inventory_procurement",
+  "political",
+  "unknown",
+]);
+
+function normalizeBusinessLine(value: unknown) {
+  return typeof value === "string" && VALID_BUSINESS_LINES.has(value)
+    ? value
+    : "targeted_mailing";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/automation/sequences — list all sequences with step counts
 // POST /api/admin/automation/sequences — create new sequence
@@ -13,7 +26,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("auto_sequences")
     .select(`
-      id, name, channel, category, city, status, stop_on_reply, description, created_at,
+      id, name, channel, business_line, category, city, status, stop_on_reply, description, created_at,
       auto_sequence_steps ( id, step_number, delay_hours, subject, body )
     `)
     .order("created_at");
@@ -54,6 +67,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   const { name, channel, category, city, stop_on_reply, description, steps } = body;
+  const business_line = normalizeBusinessLine(body.business_line);
 
   if (!name || !channel) {
     return NextResponse.json({ error: "name and channel required" }, { status: 400 });
@@ -62,7 +76,7 @@ export async function POST(req: NextRequest) {
   // Create sequence
   const { data: seq, error: seqErr } = await supabase
     .from("auto_sequences")
-    .insert({ name, channel, category, city, stop_on_reply: stop_on_reply ?? true, description })
+    .insert({ name, channel, business_line, category, city, stop_on_reply: stop_on_reply ?? true, description })
     .select()
     .single();
 

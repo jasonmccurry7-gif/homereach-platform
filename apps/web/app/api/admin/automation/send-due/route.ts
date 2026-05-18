@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { recordOutboundRevenueMessage } from "@/lib/revenue-messaging/outbound";
 import {
   appendEmailComplianceHtml,
   appendEmailComplianceText,
@@ -35,6 +36,7 @@ type OutreachSystemControls = {
   email_paused?: boolean;
   outreach_test_mode?: boolean;
   manual_approval_mode?: boolean;
+  procurement_email_automation_enabled?: boolean;
   sms_prospecting_live_enabled?: boolean;
   automation_batch_limit?: number;
   default_time_zone?: string;
@@ -42,6 +44,18 @@ type OutreachSystemControls = {
   business_start_minutes?: number;
   business_end_minutes?: number;
 };
+
+type AutomationBusinessLine =
+  | "targeted_mailing"
+  | "inventory_procurement"
+  | "political"
+  | "unknown";
+
+function normalizeBusinessLine(value: unknown): AutomationBusinessLine {
+  return value === "inventory_procurement" || value === "political" || value === "unknown"
+    ? value
+    : "targeted_mailing";
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,14 +73,10 @@ export async function POST(req: NextRequest) {
   const sysCtrl = sysCtrlRaw as OutreachSystemControls | null;
   const testMode = Boolean(sysCtrl?.outreach_test_mode ?? safety.testMode);
   const manualApprovalMode = Boolean(sysCtrl?.manual_approval_mode ?? safety.manualApprovalMode);
-
-  if (manualApprovalMode) {
-    return NextResponse.json({
-      ok: false,
-      reason: "manual_approval_mode",
-      processed: 0,
-    });
-  }
+  const procurementEmailAutomationEnabled = Boolean(
+    sysCtrl?.procurement_email_automation_enabled ??
+    process.env.PROCUREMENT_EMAIL_AUTOMATION_ENABLED === "true",
+  );
 
   if (!testMode && !isWithinOutreachWindow(
     new Date(),
@@ -98,12 +108,14 @@ export async function POST(req: NextRequest) {
   const envBatchLimit = Number.parseInt(process.env.OUTREACH_AUTOMATION_BATCH_LIMIT ?? "10", 10);
   const batchLimit = sysCtrl?.automation_batch_limit ?? envBatchLimit;
 
-  // Fetch due enrollments (active, sequence active, not paused agent)
-  const { data: due, error: dueErr } = await supabase
+  // Fetch due enrollments (active, sequence active, not paused agent).
+  // When manual approval mode is on, only the explicitly enabled procurement
+  // email business line is pulled into the batch.
+  let dueQuery = supabase
     .from("auto_enrollments")
     .select(`
       id, sequence_id, lead_id, agent_id, current_step,
-      auto_sequences!inner ( id, channel, stop_on_reply, status ),
+      auto_sequences!inner ( id, channel, business_line, stop_on_reply, status ),
       sales_leads!inner (
         id, business_name, contact_name, email, phone, city, category,
         do_not_contact, sms_opt_out, is_quarantined
@@ -111,7 +123,15 @@ export async function POST(req: NextRequest) {
     `)
     .eq("status", "active")
     .lte("next_send_at", now)
-    .eq("auto_sequences.status", "active")
+    .eq("auto_sequences.status", "active");
+
+  if (manualApprovalMode) {
+    dueQuery = dueQuery
+      .eq("auto_sequences.business_line", "inventory_procurement")
+      .eq("auto_sequences.channel", "email");
+  }
+
+  const { data: due, error: dueErr } = await dueQuery
     .limit(Number.isFinite(batchLimit) && batchLimit > 0 ? batchLimit : 10);  // Conservative batch per cron run
 
   if (dueErr) return NextResponse.json({ error: dueErr.message }, { status: 500 });
@@ -129,8 +149,9 @@ export async function POST(req: NextRequest) {
       is_quarantined: boolean;
     };
     const sequence = enrollment.auto_sequences as unknown as {
-      id: string; channel: string; stop_on_reply: boolean; status: string;
+      id: string; channel: string; business_line?: string | null; stop_on_reply: boolean; status: string;
     };
+    const businessLine = normalizeBusinessLine(sequence.business_line);
 
     // Safety checks
     if (lead.do_not_contact || lead.is_quarantined) {
@@ -150,6 +171,20 @@ export async function POST(req: NextRequest) {
     }
 
     const sendChannel = sequence.channel === "sms" ? "sms" : "email";
+    const isProcurementEmail = businessLine === "inventory_procurement" && sendChannel === "email";
+
+    if (manualApprovalMode && !isProcurementEmail) {
+      skipped++;
+      continue;
+    }
+    if (isProcurementEmail && !procurementEmailAutomationEnabled) {
+      skipped++;
+      continue;
+    }
+    if (businessLine === "political") {
+      skipped++;
+      continue;
+    }
     if (sendChannel === "sms" && sysCtrl?.sms_paused) {
       skipped++;
       continue;
@@ -167,8 +202,9 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Get agent identity
-    const agentId = enrollment.agent_id;
+    // Procurement email automation intentionally avoids territory/city sender
+    // routing so the inventory product has one clear, auditable sender path.
+    const agentId = isProcurementEmail ? null : enrollment.agent_id;
     let fromEmail: string | null = null;
     let fromName: string | null = null;
     let twilioPhone: string | null = null;
@@ -188,7 +224,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Fallback to system defaults
-    const defaultEmail = getDefaultEmailIdentity({ fromEmail, fromName });
+    const defaultEmail = getDefaultEmailIdentity({
+      fromEmail: isProcurementEmail
+        ? process.env.PROCUREMENT_FROM_EMAIL ?? process.env.DEFAULT_FROM_EMAIL ?? fromEmail
+        : fromEmail,
+      fromName: isProcurementEmail
+        ? process.env.PROCUREMENT_FROM_NAME ?? "HomeReach Procurement Intelligence"
+        : fromName,
+    });
     if (!fromEmail) fromEmail = defaultEmail.fromEmail;
     if (!fromName)  fromName  = defaultEmail.fromName;
     if (!twilioPhone) twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? null;
@@ -231,6 +274,12 @@ export async function POST(req: NextRequest) {
       contact_name:  lead.contact_name  ?? lead.business_name ?? "there",
       city:          lead.city          ?? "your area",
       category:      lead.category      ?? "your business",
+      dashboard_url: process.env.NEXT_PUBLIC_SITE_URL
+        ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/inventory-purchasing`
+        : "https://www.home-reach.com/inventory-purchasing",
+      savings_audit_url: process.env.NEXT_PUBLIC_SITE_URL
+        ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/find-my-savings`
+        : "https://www.home-reach.com/find-my-savings",
     };
     const bodyRendered    = renderTemplate(step.body, vars);
     const subjectRendered = step.subject ? renderTemplate(step.subject, vars) : "HomeReach — grow your business";
@@ -290,6 +339,13 @@ export async function POST(req: NextRequest) {
         fromName: fromName ?? undefined,
         replyTo: defaultEmail.replyTo,
         intent: "prospecting",
+        tags: [isProcurementEmail ? "inventory-procurement" : "outreach"],
+        metadata: {
+          business_line: businessLine,
+          sequence_id: enrollment.sequence_id,
+          enrollment_id: enrollment.id,
+          territory_routing: isProcurementEmail ? "false" : "true",
+        },
         testMode,
       });
     }
@@ -325,8 +381,37 @@ export async function POST(req: NextRequest) {
           external_id: sendResult.externalId,
           provider: sendResult.provider,
           test_mode: sendResult.testMode ?? false,
+          business_line: businessLine,
+          territory_routing: isProcurementEmail ? false : Boolean(enrollment.agent_id),
         },
       });
+      if (sendChannel === "email") {
+        await recordOutboundRevenueMessage({
+          businessLine,
+          sourceSystem: "sales_leads",
+          sourceId: lead.id,
+          channel: "email",
+          body: bodyRendered,
+          to: toAddress,
+          from: fromEmail,
+          subject: subjectRendered,
+          provider: sendResult.provider,
+          providerMessageId: sendResult.externalId,
+          contactName: lead.contact_name,
+          contactEmail: lead.email,
+          organizationName: lead.business_name,
+          city: lead.city,
+          category: lead.category,
+          assignedTo: agentId,
+          metadata: {
+            auto: true,
+            sequence_id: enrollment.sequence_id,
+            enrollment_id: enrollment.id,
+            product: isProcurementEmail ? "inventory_procurement" : "targeted_mailing",
+            territory_routing: isProcurementEmail ? false : Boolean(enrollment.agent_id),
+          },
+        });
+      }
       await supabase.rpc("increment_lead_messages", { lead_uuid: lead.id });
       sent++;
     } else {
