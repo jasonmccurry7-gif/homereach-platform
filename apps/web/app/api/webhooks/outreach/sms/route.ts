@@ -2,6 +2,7 @@ import { db, outreachContacts, outreachReplies, outreachMessages } from "@homere
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { createServiceClient } from "@/lib/supabase/service";
+import { processInboundRevenueMessage } from "@/lib/revenue-messaging/inbound";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/outreach/sms
@@ -97,6 +98,20 @@ export async function POST(req: Request) {
   }
 
   // ── Store reply ────────────────────────────────────────────────────────────
+  try {
+    await processInboundRevenueMessage({
+      channel: "sms",
+      from,
+      to: formData.get("To"),
+      body,
+      provider: "twilio",
+      providerMessageId: messageSid,
+      rawPayload: Object.fromEntries(formData.entries()),
+    });
+  } catch (err) {
+    console.error("[sms/webhook] revenue messaging bridge failed:", err);
+  }
+
   // Find contact by phone number
   const [contact] = await db
     .select()
