@@ -41,7 +41,7 @@ DELIVERABLES
 ✓ Territory Mapping
   - Heather: Wooster, Medina
   - Josh: Massillon, Ravenna
-  - Chris: Green, Stow
+  - Chelsi: Green, Stow
   - Jason: Cuyahoga Falls, Hudson, Canton, Akron (default for unmapped)
   - Fallback: Hardcoded in types.ts, upgradeable to agent_identities table
 

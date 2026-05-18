@@ -89,17 +89,17 @@ const TERRITORY_AGENT_MAP: Record<string, AgentIdentity> = {
     email: "josh@home-reach.com",
     phone: "+13304224396",
   },
-  // Chris's territory
+  // Chelsi's territory
   "Green": {
-    id: "chris-agent-id",
-    name: "Chris",
-    email: "chris@home-reach.com",
+    id: "chelsi-agent-id",
+    name: "Chelsi",
+    email: "chelsi@home-reach.com",
     phone: "+13305949713",
   },
   "Stow": {
-    id: "chris-agent-id",
-    name: "Chris",
-    email: "chris@home-reach.com",
+    id: "chelsi-agent-id",
+    name: "Chelsi",
+    email: "chelsi@home-reach.com",
     phone: "+13305949713",
   },
   // Jason's territory (largest)

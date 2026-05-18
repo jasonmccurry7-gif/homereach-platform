@@ -62,15 +62,15 @@ export const AGENT_TERRITORIES: Record<Territory, AgentIdentity> = {
     phone: "+13304224396",
   },
   "Green": {
-    id: "chris-agent-id",
-    name: "Chris",
-    email: "chris@home-reach.com",
+    id: "chelsi-agent-id",
+    name: "Chelsi",
+    email: "chelsi@home-reach.com",
     phone: "+13305949713",
   },
   "Stow": {
-    id: "chris-agent-id",
-    name: "Chris",
-    email: "chris@home-reach.com",
+    id: "chelsi-agent-id",
+    name: "Chelsi",
+    email: "chelsi@home-reach.com",
     phone: "+13305949713",
   },
   "Cuyahoga Falls": {
