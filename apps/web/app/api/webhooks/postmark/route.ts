@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/postmark
@@ -162,7 +162,7 @@ export async function POST(req: Request) {
   const recipient = (payload.Recipient ?? payload.Email ?? "").toLowerCase() || null;
 
   try {
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // 1. Always log the event
     const { error: logErr } = await supabase.from("email_events").insert({
