@@ -7,6 +7,8 @@ export interface PoliticalRouteSummary {
   carrierRouteId: string;
   routeType: string | null;
   households: number;
+  deliveryPoints: number;
+  businessCount: number | null;
   county: string | null;
   city: string | null;
   source: string | null;

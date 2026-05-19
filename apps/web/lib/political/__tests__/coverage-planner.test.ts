@@ -18,6 +18,8 @@ function route(
     carrierRouteId: `C00${id}`,
     routeType: "city",
     households,
+    deliveryPoints: households,
+    businessCount: null,
     county: "Franklin",
     city: "Worthington",
     source: "test",
@@ -49,8 +51,8 @@ describe("coverage planner", () => {
     const ranked = rankCoverageRoutes([route("1", 300), route("2", 900), route("3", 600)]);
 
     expect(ranked.map((r) => r.id)).toEqual(["2", "3", "1"]);
-    expect(ranked[0].densityScore).toBe(100);
-    expect(ranked[2].densityScore).toBe(33);
+    expect(ranked[0]!.densityScore).toBe(100);
+    expect(ranked[2]!.densityScore).toBe(33);
   });
 
   it("summarizes selected coverage and gaps", () => {

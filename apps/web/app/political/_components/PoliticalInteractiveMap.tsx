@@ -133,8 +133,31 @@ interface RouteUnit {
   polygon: string;
   centroid: [number, number];
   confidence: DataLabel;
+  source: string | null;
+  importedAt: string | null;
+  geometryStatus: "demo_cell" | "approximate_imported_counts" | "licensed_polygon";
   overlaps: Record<PoliticalMode, string>;
 }
+
+interface RouteCatalogRecord {
+  id: string;
+  state: string;
+  zip5: string;
+  carrierRouteId: string;
+  routeType: string | null;
+  households: number;
+  deliveryPoints: number;
+  county: string | null;
+  city: string | null;
+  source: string | null;
+  importedAt: string | null;
+  label: string;
+}
+
+type RouteCatalogLoadState =
+  | { status: "idle" | "loading"; routes: RouteCatalogRecord[]; note: string | null }
+  | { status: "ready"; routes: RouteCatalogRecord[]; note: string | null }
+  | { status: "empty" | "error"; routes: RouteCatalogRecord[]; note: string | null };
 
 interface CampaignStats {
   households: number;
@@ -147,6 +170,14 @@ interface CampaignStats {
   total: number;
   margin: number;
   confidence: DataLabel;
+}
+
+interface RouteSourceStatus {
+  status: RouteCatalogLoadState["status"];
+  importedRouteCount: number;
+  sourceLabels: string[];
+  latestImportedAt: string | null;
+  note: string | null;
 }
 
 interface CampaignHealth {
@@ -2288,6 +2319,63 @@ function routePolygon([x, y]: [number, number], seed: number, size: number) {
   return points.join(" ");
 }
 
+function normalizeRoutePlace(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/\bcounty\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function routeTypeForMap(routeType: string | null): RouteUnit["routeType"] {
+  const normalized = (routeType ?? "").toLowerCase();
+  if (normalized.includes("rural") || normalized === "r" || normalized.includes("highway")) return "rural";
+  if (normalized.includes("city") || normalized === "c") return "city";
+  return "general";
+}
+
+function confidenceForImportedRoute(route: RouteCatalogRecord): DataLabel {
+  const source = (route.source ?? "").toLowerCase();
+  if (source.includes("usps") || source.includes("eddm")) return "Exact";
+  if (source.includes("vendor") || source.includes("partner") || source.includes("licensed")) return "Paid Vendor Data";
+  return "Estimated";
+}
+
+function combinedRouteConfidence(routes: RouteUnit[]): DataLabel {
+  if (routes.length === 0) return "Unavailable";
+  const weights: Record<DataLabel, number> = {
+    Exact: 6,
+    "Paid Vendor Data": 5,
+    "Public Aggregate": 4,
+    Estimated: 3,
+    "Demo/Sample": 2,
+    Unavailable: 1,
+  };
+  return routes.reduce<DataLabel>(
+    (lowest, route) => (weights[route.confidence] < weights[lowest] ? route.confidence : lowest),
+    "Exact",
+  );
+}
+
+function routeSourceStatus(catalog: RouteCatalogLoadState): RouteSourceStatus {
+  const sourceLabels = Array.from(
+    new Set(catalog.routes.map((route) => route.source).filter((source): source is string => Boolean(source))),
+  ).slice(0, 4);
+  const latestImportedAt = catalog.routes
+    .map((route) => route.importedAt)
+    .filter((date): date is string => Boolean(date))
+    .sort()
+    .at(-1) ?? null;
+
+  return {
+    status: catalog.status,
+    importedRouteCount: catalog.routes.length,
+    sourceLabels,
+    latestImportedAt,
+    note: catalog.note,
+  };
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(Math.round(value));
 }
@@ -2897,7 +2985,12 @@ function buildWhatIfOptions(
   ];
 }
 
-function buildMapData(stateKey: StateKey, mode: PoliticalMode, activeDistrictLayer: OfficialDistrictLayerKey) {
+function buildMapData(
+  stateKey: StateKey,
+  mode: PoliticalMode,
+  activeDistrictLayer: OfficialDistrictLayerKey,
+  routeCatalog: RouteCatalogRecord[] = [],
+) {
   const state = STATES[stateKey];
   const counties = allCounties.filter((county) => normalizeId(county.id, 5).startsWith(state.fips));
   const selectedState = allStates.find((candidate) => normalizeId(candidate.id, 2) === state.fips);
@@ -2951,7 +3044,70 @@ function buildMapData(stateKey: StateKey, mode: PoliticalMode, activeDistrictLay
     };
   });
 
-  const routes: RouteUnit[] = countyRows.flatMap((countyRow) => {
+  const importedRouteUsageByCounty = new Map<string, number>();
+  const importedRoutes: RouteUnit[] = routeCatalog.flatMap((route, routeIndex) => {
+    if (route.state.toUpperCase() !== state.shortLabel) return [];
+
+    const routeCounty = normalizeRoutePlace(route.county);
+    const routeCity = normalizeRoutePlace(route.city);
+    const matchedCounty =
+      countyRows.find((countyRow) => normalizeRoutePlace(countyRow.countyName) === routeCounty) ??
+      countyRows.find((countyRow) => {
+        const countyName = normalizeRoutePlace(countyRow.countyName);
+        return Boolean(routeCounty && (countyName.includes(routeCounty) || routeCounty.includes(countyName)));
+      }) ??
+      countyRows.find((countyRow) => {
+        const countyName = normalizeRoutePlace(countyRow.countyName);
+        return Boolean(routeCity && (countyName.includes(routeCity) || routeCity.includes(countyName)));
+      }) ??
+      countyRows[Math.abs(hashText(route.id || route.label || `${route.zip5}-${route.carrierRouteId}`)) % Math.max(1, countyRows.length)];
+
+    if (!matchedCounty) return [];
+
+    const usageIndex = importedRouteUsageByCounty.get(matchedCounty.countyId) ?? 0;
+    importedRouteUsageByCounty.set(matchedCounty.countyId, usageIndex + 1);
+
+    const seed = hashText(`${route.id}-${route.zip5}-${route.carrierRouteId}`);
+    const ring = Math.floor(usageIndex / 10);
+    const angle = (Math.PI * 2 * (usageIndex % 10)) / 10 + (seed % 13) * 0.04;
+    const distance = 10 + (usageIndex % 4) * 7 + ring * 3;
+    const centroid: [number, number] = [
+      matchedCounty.centroid[0] + Math.cos(angle) * distance,
+      matchedCounty.centroid[1] + Math.sin(angle) * distance,
+    ];
+    const officialDistrictUnitId =
+      officialDistrictShapes.length > 0 ? officialDistrictUnitIdAtPoint(centroid, officialDistrictShapes) : null;
+    const households = Math.max(0, Math.round(route.households));
+    const deliveryPoints = Math.max(households, Math.round(route.deliveryPoints || route.households));
+
+    return [
+      {
+        id: `imported-${route.id || `${route.state}-${route.zip5}-${route.carrierRouteId}-${routeIndex}`}`,
+        label: route.label || `${route.zip5}-${route.carrierRouteId}`,
+        countyId: matchedCounty.countyId,
+        countyName: route.county || matchedCounty.countyName,
+        zip5: route.zip5,
+        carrierRouteId: route.carrierRouteId,
+        routeType: routeTypeForMap(route.routeType),
+        households,
+        deliveryPoints,
+        polygon: routePolygon(centroid, seed, 11),
+        centroid,
+        confidence: confidenceForImportedRoute(route),
+        source: route.source,
+        importedAt: route.importedAt,
+        geometryStatus: "approximate_imported_counts" as const,
+        overlaps: {
+          county: matchedCounty.unitByMode.county.id,
+          zipcode: matchedCounty.unitByMode.zipcode.id,
+          city: matchedCounty.unitByMode.city.id,
+          district: officialDistrictUnitId ?? matchedCounty.unitByMode.district.id,
+        },
+      },
+    ];
+  });
+
+  const demoRoutes: RouteUnit[] = countyRows.flatMap((countyRow) => {
     const routeCount = 2 + (hashText(countyRow.countyId) % 3);
     return Array.from({ length: routeCount }, (_, index) => {
       const seed = hashText(`${countyRow.countyId}-${index}`);
@@ -2980,6 +3136,9 @@ function buildMapData(stateKey: StateKey, mode: PoliticalMode, activeDistrictLay
         polygon: routePolygon(centroid, seed, 13),
         centroid,
         confidence: "Demo/Sample",
+        source: "HomeReach demo route-cell generator",
+        importedAt: null,
+        geometryStatus: "demo_cell",
         overlaps: {
           county: countyRow.unitByMode.county.id,
           zipcode: countyRow.unitByMode.zipcode.id,
@@ -2989,6 +3148,7 @@ function buildMapData(stateKey: StateKey, mode: PoliticalMode, activeDistrictLay
       };
     });
   });
+  const routes = importedRoutes.length > 0 ? importedRoutes : demoRoutes;
 
   if (mode === "district" && officialDistrictShapes.length > 0) {
     units.clear();
@@ -3042,6 +3202,11 @@ export function PoliticalInteractiveMap() {
   const [proposalStatus, setProposalStatus] = useState<MapActionStatus>("idle");
   const [checkoutStatus, setCheckoutStatus] = useState<MapActionStatus>("idle");
   const [exportStatus, setExportStatus] = useState<MapActionStatus>("idle");
+  const [routeCatalog, setRouteCatalog] = useState<RouteCatalogLoadState>({
+    status: "idle",
+    routes: [],
+    note: null,
+  });
 
   function changeMapMode(nextMode: PoliticalMode) {
     setMode(nextMode);
@@ -3053,9 +3218,10 @@ export function PoliticalInteractiveMap() {
     [activePoliticalLayers],
   );
   const mapData = useMemo(
-    () => buildMapData(stateKey, mode, activeDistrictLayer),
-    [activeDistrictLayer, stateKey, mode],
+    () => buildMapData(stateKey, mode, activeDistrictLayer, routeCatalog.status === "ready" ? routeCatalog.routes : []),
+    [activeDistrictLayer, routeCatalog.routes, routeCatalog.status, stateKey, mode],
   );
+  const routeSource = useMemo(() => routeSourceStatus(routeCatalog), [routeCatalog]);
   const selectedRouteSet = useMemo(() => new Set(selectedRouteIds), [selectedRouteIds]);
   const selectedPoliticalUnitDirectSet = useMemo(
     () => new Set(selectedPoliticalUnitDirectIds),
@@ -3095,7 +3261,7 @@ export function PoliticalInteractiveMap() {
       postage: pricing.postage,
       total: pricing.total,
       margin: pricing.service,
-      confidence: selectedRoutes.length > 0 ? "Demo/Sample" as DataLabel : "Unavailable" as DataLabel,
+      confidence: combinedRouteConfidence(selectedRoutes),
     };
   }, [dropCount, mapData.units, selectedRoutes]);
   const health = useMemo(
@@ -3123,6 +3289,81 @@ export function PoliticalInteractiveMap() {
 
   const hoveredPolitical = hoveredPoliticalId ? mapData.units.get(hoveredPoliticalId) ?? null : null;
   const hoveredRoute = hoveredRouteId ? mapData.routes.find((route) => route.id === hoveredRouteId) ?? null : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    const state = STATES[stateKey];
+    setRouteCatalog({ status: "loading", routes: [], note: "Checking imported USPS route catalog." });
+
+    fetch(`/api/political/routes/coverage?state=${state.shortLabel}&limit=250`, {
+      cache: "no-store",
+    })
+      .then((response) => response.json())
+      .then((result: {
+        ok?: boolean;
+        routes?: Array<{
+          id?: string;
+          state?: string;
+          zip5?: string;
+          carrierRouteId?: string;
+          routeType?: string | null;
+          households?: number;
+          deliveryPoints?: number;
+          county?: string | null;
+          city?: string | null;
+          source?: string | null;
+          importedAt?: string | null;
+          label?: string;
+        }>;
+        note?: string | null;
+      }) => {
+        if (cancelled) return;
+        const routes = (result.routes ?? [])
+          .filter((route) => route.state && route.zip5 && route.carrierRouteId)
+          .map<RouteCatalogRecord>((route) => {
+            const households = Math.max(0, Math.round(Number(route.households ?? 0)));
+            const deliveryPoints = Math.max(households, Math.round(Number(route.deliveryPoints ?? households)));
+
+            return {
+              id: String(route.id ?? `${route.state}-${route.zip5}-${route.carrierRouteId}`),
+              state: String(route.state ?? state.shortLabel).toUpperCase(),
+              zip5: String(route.zip5 ?? ""),
+              carrierRouteId: String(route.carrierRouteId ?? ""),
+              routeType: route.routeType ?? null,
+              households,
+              deliveryPoints,
+              county: route.county ?? null,
+              city: route.city ?? null,
+              source: route.source ?? null,
+              importedAt: route.importedAt ?? null,
+              label: String(route.label ?? `${route.zip5}-${route.carrierRouteId}`),
+            };
+          });
+
+        setRouteCatalog({
+          status: result.ok && routes.length > 0 ? "ready" : "empty",
+          routes,
+          note: result.note ?? (routes.length > 0 ? null : "No imported USPS route catalog rows were found for this state."),
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRouteCatalog({
+          status: "error",
+          routes: [],
+          note: "Imported USPS route catalog could not be loaded. Demo route cells remain active.",
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stateKey]);
+
+  useEffect(() => {
+    setSelectedRouteIds([]);
+    setHoveredRouteId(null);
+  }, [routeCatalog.status, stateKey]);
 
   useEffect(() => {
     setSelectedPoliticalUnitDirectIds([]);
@@ -3215,6 +3456,7 @@ export function PoliticalInteractiveMap() {
       stats,
       totalCost: stats.total,
       dataConfidence: stats.confidence,
+      routeSource,
       generatedAt: new Date().toISOString(),
     };
 
@@ -3317,7 +3559,18 @@ export function PoliticalInteractiveMap() {
       return;
     }
 
-    const header = ["route_id", "zip5", "carrier_route", "county", "households", "delivery_points", "data_confidence"];
+    const header = [
+      "route_id",
+      "zip5",
+      "carrier_route",
+      "county",
+      "households",
+      "delivery_points",
+      "data_confidence",
+      "source",
+      "imported_at",
+      "geometry_status",
+    ];
     const rows = selectedRoutes.map((route) => [
       route.id,
       route.zip5,
@@ -3326,6 +3579,9 @@ export function PoliticalInteractiveMap() {
       route.households,
       route.deliveryPoints,
       route.confidence,
+      route.source ?? "",
+      route.importedAt ?? "",
+      route.geometryStatus,
     ]);
     const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
     downloadTextFile("homereach-political-routes.csv", csv, "text/csv;charset=utf-8");
@@ -3354,7 +3610,11 @@ export function PoliticalInteractiveMap() {
       drops: dropCount,
       generatedAt: new Date().toISOString(),
       dataConfidence: stats.confidence,
-      warning: "Public map summary only. Demo/sample counts are not production checkout values.",
+      routeSource,
+      warning:
+        stats.confidence === "Demo/Sample"
+          ? "Public map summary only. Demo/sample counts are not production checkout values."
+          : "Route counts are imported, but route polygons remain approximate until licensed carrier-route geometry is loaded.",
       stats,
       selectedRoutes: selectedRoutes.map((route) => ({
         id: route.id,
@@ -3364,6 +3624,9 @@ export function PoliticalInteractiveMap() {
         households: route.households,
         deliveryPoints: route.deliveryPoints,
         confidence: route.confidence,
+        source: route.source,
+        importedAt: route.importedAt,
+        geometryStatus: route.geometryStatus,
       })),
       readiness,
     };
@@ -3496,6 +3759,7 @@ export function PoliticalInteractiveMap() {
           hoveredRoute={hoveredRoute}
           activePoliticalLayers={activePoliticalLayers}
           activeUspsLayers={activeUspsLayers}
+          routeSource={routeSource}
           onPoliticalHover={setHoveredPoliticalId}
           onRouteHover={setHoveredRouteId}
           onPoliticalSelect={selectPoliticalUnit}
@@ -3530,13 +3794,14 @@ export function PoliticalInteractiveMap() {
         onApplyWhatIf={applyWhatIf}
       />
 
-      <CampaignPlanDrawer
-        selectedRoutes={selectedRoutes}
-        stats={stats}
-        confidence={stats.confidence}
-        readiness={readiness}
-        actionFeedback={actionFeedback}
-        exportStatus={exportStatus}
+        <CampaignPlanDrawer
+          selectedRoutes={selectedRoutes}
+          stats={stats}
+          confidence={stats.confidence}
+          routeSource={routeSource}
+          readiness={readiness}
+          actionFeedback={actionFeedback}
+          exportStatus={exportStatus}
         onExportCsv={exportRoutesCsv}
         onExportSummary={exportPlanSummary}
       />
@@ -3560,6 +3825,7 @@ export function PoliticalInteractiveMap() {
           hoveredRoute={hoveredRoute}
           activePoliticalLayers={activePoliticalLayers}
           activeUspsLayers={activeUspsLayers}
+          routeSource={routeSource}
           health={health}
           stats={stats}
           timeline={timeline}
@@ -3909,6 +4175,7 @@ function SyncedMapController({
   hoveredRoute,
   activePoliticalLayers,
   activeUspsLayers,
+  routeSource,
   onPoliticalHover,
   onRouteHover,
   onPoliticalSelect,
@@ -3925,6 +4192,7 @@ function SyncedMapController({
   hoveredRoute: RouteUnit | null;
   activePoliticalLayers: string[];
   activeUspsLayers: string[];
+  routeSource: RouteSourceStatus;
   onPoliticalHover: (id: string | null) => void;
   onRouteHover: (id: string | null) => void;
   onPoliticalSelect: (id: string) => void;
@@ -4000,6 +4268,7 @@ function SyncedMapController({
           selectedPoliticalUnitIds={selectedPoliticalUnitIds}
           selectedRouteSet={selectedRouteSet}
           activeUspsLayers={activeUspsLayers}
+          routeSource={routeSource}
           onViewChange={setMapView}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
@@ -4283,6 +4552,7 @@ function WarRoomOverlay({
   hoveredRoute,
   activePoliticalLayers,
   activeUspsLayers,
+  routeSource,
   health,
   stats,
   timeline,
@@ -4307,6 +4577,7 @@ function WarRoomOverlay({
   hoveredRoute: RouteUnit | null;
   activePoliticalLayers: string[];
   activeUspsLayers: string[];
+  routeSource: RouteSourceStatus;
   health: CampaignHealth;
   stats: CampaignStats;
   timeline: TimelineItem[];
@@ -4362,6 +4633,7 @@ function WarRoomOverlay({
             hoveredRoute={hoveredRoute}
             activePoliticalLayers={activePoliticalLayers}
             activeUspsLayers={activeUspsLayers}
+            routeSource={routeSource}
             onPoliticalHover={onPoliticalHover}
             onRouteHover={onRouteHover}
             onPoliticalSelect={onPoliticalSelect}
@@ -4633,6 +4905,7 @@ function USPSMap({
   selectedPoliticalUnitIds,
   selectedRouteSet,
   activeUspsLayers,
+  routeSource,
   onViewChange,
   onZoomIn,
   onZoomOut,
@@ -4646,6 +4919,7 @@ function USPSMap({
   selectedPoliticalUnitIds: Set<string>;
   selectedRouteSet: Set<string>;
   activeUspsLayers: string[];
+  routeSource: RouteSourceStatus;
   onViewChange: (view: MapViewState) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -4654,12 +4928,23 @@ function USPSMap({
   onSelect: (route: RouteUnit) => void;
 }) {
   const showRoutes = activeUspsLayers.includes("Carrier Route Overlay") || activeUspsLayers.includes("EDDM Route Overlay");
+  const hasImportedRoutes = routeSource.status === "ready" && routeSource.importedRouteCount > 0;
+  const latestImportLabel = routeSource.latestImportedAt
+    ? new Date(routeSource.latestImportedAt).toLocaleDateString()
+    : null;
+  const sourceLabel = routeSource.sourceLabels.length > 0 ? routeSource.sourceLabels.join(", ") : "No imported source";
 
   return (
     <MapContainer
       title="USPS Mail Execution Map"
-      subtitle="Demo carrier-route cells synchronized to political geography selection"
-      badge="Demo, not USPS boundaries"
+      subtitle={
+        hasImportedRoutes
+          ? `${formatNumber(routeSource.importedRouteCount)} imported USPS route-count rows loaded. Visual cells remain approximate until licensed polygons are imported.`
+          : routeSource.status === "loading"
+            ? "Checking imported USPS route catalog before falling back to demo planning cells."
+            : "Demo carrier-route cells synchronized to political geography selection"
+      }
+      badge={hasImportedRoutes ? "USPS counts loaded" : "Demo, not USPS boundaries"}
       icon={Mail}
       mapView={mapView}
       onZoomIn={onZoomIn}
@@ -4701,7 +4986,11 @@ function USPSMap({
                     onMouseEnter={() => onHover(route.id)}
                     onMouseLeave={() => onHover(null)}
                   >
-                    <title>{route.label}</title>
+                    <title>
+                      {hasImportedRoutes
+                        ? `${route.label} - ${formatNumber(route.deliveryPoints)} delivery points from ${route.source ?? "imported route catalog"}${route.importedAt ? `, imported ${new Date(route.importedAt).toLocaleDateString()}` : ""}. Geometry is approximate until licensed polygons are loaded.`
+                        : `${route.label} - demo/sample planning cell`}
+                    </title>
                   </polygon>
                 );
               })}
@@ -4709,19 +4998,33 @@ function USPSMap({
         )}
       </InteractiveMapSvg>
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-bold">
-        <LegendChip color="#f59e0b" label="Selected demo cell" />
-        <LegendChip color="#38bdf8" label="Synced demo cell" />
-        <LegendChip color="#e0f2fe" label="Demo cell" />
+        <LegendChip color="#f59e0b" label={hasImportedRoutes ? "Selected route count" : "Selected demo cell"} />
+        <LegendChip color="#38bdf8" label={hasImportedRoutes ? "Synced imported count" : "Synced demo cell"} />
+        <LegendChip color="#e0f2fe" label={hasImportedRoutes ? "Approx route cell" : "Demo cell"} />
       </div>
-      <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100/85">
-        <div className="flex items-center gap-2 font-black text-amber-100">
-          <AlertTriangle className="h-4 w-4" />
-          Route geometry is demo/sample
+      <div
+        className={`mt-3 rounded-xl border p-3 text-xs leading-5 ${
+          hasImportedRoutes
+            ? "border-blue-300/20 bg-blue-500/10 text-blue-100/85"
+            : "border-amber-300/20 bg-amber-500/10 text-amber-100/85"
+        }`}
+      >
+        <div className={`flex items-center gap-2 font-black ${hasImportedRoutes ? "text-blue-100" : "text-amber-100"}`}>
+          {hasImportedRoutes ? <Database className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+          {hasImportedRoutes ? "USPS route counts loaded" : "Route geometry is demo/sample"}
         </div>
-        <p className="mt-1">
-          These cells are planning placeholders. Production mail counts must use USPS EDDM or licensed carrier-route
-          polygons, deliverable address counts, and exclusions before quoting or checkout.
-        </p>
+        {hasImportedRoutes ? (
+          <p className="mt-1">
+            Counts are coming from {sourceLabel}
+            {latestImportLabel ? `, last imported ${latestImportLabel}` : ""}. The map draws approximate cells because
+            production carrier-route boundary polygons are a separate licensed import.
+          </p>
+        ) : (
+          <p className="mt-1">
+            These cells are planning placeholders. Production mail counts must use USPS EDDM or licensed carrier-route
+            polygons, deliverable address counts, and exclusions before quoting or checkout.
+          </p>
+        )}
       </div>
     </MapContainer>
   );
@@ -5116,6 +5419,7 @@ function CampaignPlanDrawer({
   selectedRoutes,
   stats,
   confidence,
+  routeSource,
   readiness,
   actionFeedback,
   exportStatus,
@@ -5125,6 +5429,7 @@ function CampaignPlanDrawer({
   selectedRoutes: RouteUnit[];
   stats: { households: number; deliveryPoints: number; printQuantity: number; total: number };
   confidence: DataLabel;
+  routeSource: RouteSourceStatus;
   readiness: PlanReadinessItem[];
   actionFeedback: ActionFeedback | null;
   exportStatus: MapActionStatus;
@@ -5134,8 +5439,8 @@ function CampaignPlanDrawer({
   return (
     <footer className="border-t border-white/10 bg-slate-950 p-4">
       <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr_1fr]">
-        <DataSourcePanel confidence={confidence} />
-        <MissingDataPanel />
+        <DataSourcePanel confidence={confidence} routeSource={routeSource} />
+        <MissingDataPanel routeSource={routeSource} />
         <ProposalActionPanel
           selectedRoutes={selectedRoutes}
           stats={stats}
@@ -5150,7 +5455,7 @@ function CampaignPlanDrawer({
   );
 }
 
-function DataSourcePanel({ confidence }: { confidence: DataLabel }) {
+function DataSourcePanel({ confidence, routeSource }: { confidence: DataLabel; routeSource: RouteSourceStatus }) {
   const sourceLinks = [
     { label: "Ohio SOS districts", href: OHIO_SOS_DISTRICT_MAPS_URL },
     { label: "Illinois boundaries", href: ILLINOIS_BOUNDARIES_URL },
@@ -5160,6 +5465,7 @@ function DataSourcePanel({ confidence }: { confidence: DataLabel }) {
     { label: "Ohio GIS boundaries", href: OHIO_MUNICIPAL_BOUNDARIES_URL },
     { label: "USPS EDDM", href: USPS_EDDM_URL },
   ];
+  const hasImportedRoutes = routeSource.status === "ready" && routeSource.importedRouteCount > 0;
 
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
@@ -5171,6 +5477,19 @@ function DataSourcePanel({ confidence }: { confidence: DataLabel }) {
         County boundaries are public aggregate geometry. Ohio county red/blue/mixed coloring uses 2024 presidential
         county returns and is only shown on source-backed county mode. City, ZIP, district, and USPS route toggles stay
         neutral until matching aggregate election results are imported for that exact geography.
+      </p>
+      <p className="mt-2 rounded-lg border border-white/10 bg-slate-950/60 p-3 text-xs leading-5 text-slate-300">
+        USPS route counts:{" "}
+        <span className="font-black text-white">
+          {hasImportedRoutes
+            ? `${formatNumber(routeSource.importedRouteCount)} imported rows active`
+            : routeSource.status === "loading"
+              ? "checking route catalog"
+              : "demo/sample cells active"}
+        </span>
+        . {hasImportedRoutes
+          ? "Imported counts can support route-count planning; licensed polygons are still required for production boundary display."
+          : "Import USPS EDDM or licensed carrier-route rows before using this map as a production quote source."}
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {["Public Aggregate", "Estimated", "Demo/Sample", confidence].map((label, index) => (
@@ -5195,7 +5514,8 @@ function DataSourcePanel({ confidence }: { confidence: DataLabel }) {
   );
 }
 
-function MissingDataPanel() {
+function MissingDataPanel({ routeSource }: { routeSource: RouteSourceStatus }) {
+  const hasImportedRoutes = routeSource.status === "ready" && routeSource.importedRouteCount > 0;
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
       <div className="flex items-center gap-2 text-sm font-black text-white">
@@ -5206,9 +5526,18 @@ function MissingDataPanel() {
         <li>Refresh Ohio, Illinois, and Tennessee district layers on a scheduled source-check cadence.</li>
         <li>Import Ohio municipal, township, and school district FeatureServer layers.</li>
         <li>Load Census tract, block group, place, and ZCTA geometry.</li>
-        <li>Verify USPS EDDM or licensed carrier-route polygons before production pricing.</li>
+        <li>
+          {hasImportedRoutes
+            ? "Import licensed USPS carrier-route polygons when exact route boundary display is required."
+            : "Import USPS EDDM route counts or licensed carrier-route data before production pricing."}
+        </li>
         <li>Use county BOE precinct/ward files with source lineage and compliance review.</li>
       </ul>
+      {routeSource.note && (
+        <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100/85">
+          {routeSource.note}
+        </p>
+      )}
     </section>
   );
 }
