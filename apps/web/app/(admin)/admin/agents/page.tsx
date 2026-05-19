@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 import { createClient } from "@/lib/supabase/server"
+import { getUnifiedActionCenter } from "@/lib/ai-orchestration/action-center"
 import { getDashboardAgentMatrix, getDashboardAgentSummary } from "@/lib/ai-orchestration/dashboard-agents"
 import AgentsDashboard from "./agents-dashboard"
 
@@ -33,6 +34,7 @@ export default async function AgentsPage() {
     .limit(1)
 
   const dashboardAgents = getDashboardAgentMatrix()
+  const actionCenter = await getUnifiedActionCenter(18)
 
   return (
     <AgentsDashboard
@@ -42,6 +44,7 @@ export default async function AgentsPage() {
       kaisenInsights={kaisenInsights?.[0] || null}
       dashboardAgents={dashboardAgents}
       dashboardAgentSummary={getDashboardAgentSummary(dashboardAgents)}
+      actionCenter={actionCenter}
     />
   )
 }

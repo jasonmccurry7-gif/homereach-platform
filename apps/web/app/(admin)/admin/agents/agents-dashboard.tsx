@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import type { DashboardAgentRuntime } from "@/lib/ai-orchestration/dashboard-agents"
+import type { UnifiedActionCenter, UnifiedActionItem } from "@/lib/ai-orchestration/action-center"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -53,6 +54,7 @@ interface Props {
   kaisenInsights: KaizenInsights | null
   dashboardAgents: DashboardAgentRuntime[]
   dashboardAgentSummary: DashboardAgentSummary
+  actionCenter: UnifiedActionCenter
 }
 
 interface DashboardAgentSummary {
@@ -328,6 +330,147 @@ function DashboardAgentMatrix({
             </article>
           )
         })}
+      </div>
+    </section>
+  )
+}
+
+function actionUrgencyClass(urgency: UnifiedActionItem["urgency"]) {
+  if (urgency === "critical") return "border-red-700/50 bg-red-950/30 text-red-200"
+  if (urgency === "high") return "border-orange-700/50 bg-orange-950/30 text-orange-200"
+  if (urgency === "medium") return "border-amber-700/50 bg-amber-950/20 text-amber-100"
+  return "border-gray-700 bg-gray-900/50 text-gray-300"
+}
+
+function actionStatusClass(status: UnifiedActionItem["status"]) {
+  if (status === "blocked") return "bg-red-900/30 text-red-300 border-red-700/40"
+  if (status === "needs_review") return "bg-blue-900/30 text-blue-300 border-blue-700/40"
+  if (status === "ready") return "bg-green-900/30 text-green-300 border-green-700/40"
+  return "bg-gray-800 text-gray-300 border-gray-700"
+}
+
+function formatStatus(status: string) {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActionCenter }) {
+  const [expanded, setExpanded] = useState<string | null>(actionCenter.items[0]?.id ?? null)
+  const visibleItems = actionCenter.items.slice(0, 10)
+
+  return (
+    <section className="mb-8 rounded-2xl border border-emerald-900/40 bg-emerald-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-emerald-300">
+            Phase 2 Unified Action Center
+          </p>
+          <h2 className="text-2xl font-bold text-white">What Needs Action Now</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            A single queue for cross-dashboard approvals, blockers, hot replies, contract deadlines, and AI review items.
+            Every action is human-controlled in this phase.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Actions</p>
+            <p className="text-2xl font-bold text-white">{actionCenter.summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
+            <p className="text-xs text-red-400">Critical</p>
+            <p className="text-2xl font-bold text-red-300">{actionCenter.summary.critical}</p>
+          </div>
+          <div className="rounded-xl border border-orange-800/40 bg-orange-950/30 p-3">
+            <p className="text-xs text-orange-400">High</p>
+            <p className="text-2xl font-bold text-orange-300">{actionCenter.summary.high}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
+            <p className="text-xs text-blue-400">Review</p>
+            <p className="text-2xl font-bold text-blue-300">{actionCenter.summary.needsReview}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3">
+            <p className="text-xs text-amber-400">Human Gate</p>
+            <p className="text-2xl font-bold text-amber-300">{actionCenter.summary.humanApprovalRequired}</p>
+          </div>
+        </div>
+      </div>
+
+      {visibleItems.length === 0 ? (
+        <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-5">
+          <p className="font-semibold text-emerald-200">No immediate cross-dashboard actions found.</p>
+          <p className="mt-1 text-sm text-emerald-100/70">
+            The action center will populate from approvals, political replies, Gov Contracts deadlines, sales lead activity,
+            failed webhooks, and agent readiness blockers.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {visibleItems.map((item) => {
+            const isExpanded = expanded === item.id
+            return (
+              <article key={item.id} className={cn("rounded-xl border p-4", actionUrgencyClass(item.urgency))}>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isExpanded ? null : item.id)}
+                  className="flex w-full flex-col gap-3 text-left md:flex-row md:items-start md:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                        {item.urgency}
+                      </span>
+                      <span className={cn("rounded-full border px-2 py-1 text-xs font-bold", actionStatusClass(item.status))}>
+                        {formatStatus(item.status)}
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                        {item.dashboard}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-white">{item.title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-gray-300">{item.reason}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <a
+                      href={item.route}
+                      className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-gray-200"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      Open
+                    </a>
+                    <span className="rounded-lg border border-white/10 px-3 py-2 text-xs text-gray-300">
+                      {isExpanded ? "Hide" : "Details"}
+                    </span>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="mt-4 grid gap-3 border-t border-white/10 pt-4 text-sm md:grid-cols-3">
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Recommended action</p>
+                      <p className="leading-6 text-gray-200">{item.recommendedAction}</p>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Expected impact</p>
+                      <p className="leading-6 text-gray-200">{item.impact}</p>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Control rule</p>
+                      <p className="leading-6 text-gray-200">
+                        {item.requiresHumanApproval ? "Human approval required before execution." : "Informational action only."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col gap-2 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+        <span>Generated {new Date(actionCenter.generatedAt).toLocaleString()}</span>
+        <span>
+          Sources online: {actionCenter.sourceHealth.filter((source) => source.status === "ok").length}/{actionCenter.sourceHealth.length}
+        </span>
       </div>
     </section>
   )
@@ -657,6 +800,7 @@ export default function AgentsDashboard({
   kaisenInsights,
   dashboardAgents,
   dashboardAgentSummary,
+  actionCenter,
 }: Props) {
   // Check if agent registry is initialized
   if (!agents || agents.length === 0) {
@@ -666,6 +810,7 @@ export default function AgentsDashboard({
           <h1 className="text-3xl font-bold mb-2">APEX — Agent Command Center</h1>
           <p className="text-gray-400 mb-8">16-Agent Autonomous System</p>
 
+          <UnifiedActionCenterPanel actionCenter={actionCenter} />
           <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 
           <div className="p-8 bg-gray-900/50 border border-gray-800 rounded-xl text-center">
@@ -725,6 +870,7 @@ export default function AgentsDashboard({
           avgCompletion={avgCompletion}
         />
 
+        <UnifiedActionCenterPanel actionCenter={actionCenter} />
         <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 
         {/* Main Content: 2-Column Layout */}

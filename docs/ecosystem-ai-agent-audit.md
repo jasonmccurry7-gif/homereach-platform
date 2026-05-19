@@ -186,3 +186,56 @@ Only after logs, approvals, suppression, and rollback are proven:
 - No database migrations were added in this phase.
 - No existing APEX agents were removed or renamed.
 - The new readiness matrix exposes blockers and safe next phases so the platform can progress toward autonomy without hidden risk.
+
+## Phase 2 Implementation
+
+Phase 2 adds a unified Action Center foundation to the existing `/admin/agents` command center and exposes the same data through `/api/admin/ai-orchestration/action-center`.
+
+The Action Center reads existing systems where available:
+
+- Dashboard agent readiness blockers
+- Revenue message approval queue
+- Political inbound message threads requiring human follow-up
+- AI suggestions waiting for review
+- Gov Contracts deadlines and bid-room approvals
+- Failed revenue webhook events
+- Hot sales leads and payment follow-up items
+- Procurement email sequence health
+
+This is intentionally human-controlled. It does not send messages, place procurement orders, submit bids, trigger checkout, or approve political outreach. It only normalizes the highest-value work into one queue.
+
+Phase 2 action cards show:
+
+- Dashboard
+- Urgency
+- Status
+- Reason
+- Recommended action
+- Expected impact
+- Human approval requirement
+- Link to the existing dashboard/workflow
+
+## Phase 2 Enhancement Opportunities
+
+Next improvements should keep building on this shared Action Center instead of creating more dashboard-specific queues:
+
+1. Add durable action records
+   - Create a shared `unified_action_items` or `home_reach_action_items` table only after validating the generated queue shape in production.
+   - This would allow snooze, assign, resolve, comment, and audit history.
+
+2. Add morning/evening briefings
+   - Generate concise summaries from the same Action Center data.
+   - Deliver first in-dashboard, then email/SMS after notification safeguards are verified.
+
+3. Add action resolution hooks
+   - Allow safe actions like "mark reviewed", "open proposal", "assign owner", or "snooze".
+   - Keep send/order/bid/payment actions approval-gated.
+
+4. Feed dashboard agents from the queue
+   - Each dashboard agent should consume only its relevant actions and produce recommendations, not mutate production state.
+
+5. Add SLA thresholds
+   - Political replies: immediate Jason handoff.
+   - Hot sales replies: same-day follow-up.
+   - Gov Contracts deadlines: 7-day, 48-hour, 24-hour risk tiers.
+   - Failed webhooks: high priority until reviewed.
