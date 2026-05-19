@@ -239,3 +239,42 @@ Next improvements should keep building on this shared Action Center instead of c
    - Hot sales replies: same-day follow-up.
    - Gov Contracts deadlines: 7-day, 48-hour, 24-hour risk tiers.
    - Failed webhooks: high priority until reviewed.
+
+## Phase 3 Implementation
+
+Phase 3 makes the unified Action Center durable without changing the underlying revenue, outreach, procurement, political, or Gov Contracts execution systems.
+
+Additive database tables:
+
+- `unified_action_items`
+  - Stores one durable row per generated action source key.
+  - Preserves generated source details, urgency, owner, dashboard route, human approval requirements, snooze state, and resolution state.
+- `unified_action_events`
+  - Stores audit events for comments, snoozes, resolves, dismissals, reopen events, and future workflow notes.
+
+New admin-only API behavior:
+
+- `GET /api/admin/ai-orchestration/action-center`
+  - Still generates the queue from existing systems.
+  - Upserts generated actions into the durable queue when migration 097 is present.
+  - Falls back to the generated queue if the durable tables are not applied yet.
+- `PATCH /api/admin/ai-orchestration/action-center`
+  - Supports `resolve`, `snooze`, `dismiss`, `reopen`, and `comment`.
+  - Writes an audit event for every state change.
+
+New UI controls on `/admin/agents`:
+
+- Resolve
+- Snooze 24h
+- Add Note
+- Dismiss
+
+Safety boundary:
+
+- These controls only manage Action Center state.
+- They do not send messages, place procurement orders, submit government bids, change pricing, create checkouts, approve political outreach, or mutate protected revenue flows.
+
+Operational note:
+
+- Migration 097 must be applied in Supabase before durable persistence is active in production.
+- Until the migration is applied, the Action Center continues to work as a generated queue and reports the durable source as unavailable.

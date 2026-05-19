@@ -353,46 +353,125 @@ function formatStatus(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+function summarizeVisibleActions(items: UnifiedActionItem[]): UnifiedActionCenter["summary"] {
+  return {
+    total: items.length,
+    critical: items.filter((item) => item.urgency === "critical").length,
+    high: items.filter((item) => item.urgency === "high").length,
+    needsReview: items.filter((item) => item.status === "needs_review").length,
+    blocked: items.filter((item) => item.status === "blocked").length,
+    humanApprovalRequired: items.filter((item) => item.requiresHumanApproval).length,
+  }
+}
+
 function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActionCenter }) {
+  const [items, setItems] = useState<UnifiedActionItem[]>(actionCenter.items)
   const [expanded, setExpanded] = useState<string | null>(actionCenter.items[0]?.id ?? null)
-  const visibleItems = actionCenter.items.slice(0, 10)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [notes, setNotes] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    setItems(actionCenter.items)
+    setExpanded((current) => {
+      if (current && actionCenter.items.some((item) => item.id === current)) return current
+      return actionCenter.items[0]?.id ?? null
+    })
+  }, [actionCenter])
+
+  const summary = summarizeVisibleActions(items)
+  const visibleItems = items.slice(0, 10)
+
+  const mutateAction = useCallback(
+    async (
+      item: UnifiedActionItem,
+      operation: "resolve" | "snooze" | "dismiss" | "comment",
+      options: { note?: string; snoozeHours?: number } = {}
+    ) => {
+      const key = `${item.id}:${operation}`
+      setBusyKey(key)
+      setActionError(null)
+
+      try {
+        const response = await fetch("/api/admin/ai-orchestration/action-center", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceKey: item.id,
+            operation,
+            note: options.note,
+            snoozeHours: options.snoozeHours,
+          }),
+        })
+        const data = await response.json()
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Action update failed")
+        }
+
+        if (operation === "comment") {
+          setItems((current) =>
+            current.map((currentItem) =>
+              currentItem.id === item.id
+                ? { ...currentItem, commentCount: (currentItem.commentCount ?? 0) + 1 }
+                : currentItem
+            )
+          )
+          setNotes((current) => ({ ...current, [item.id]: "" }))
+        } else {
+          setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))
+          setExpanded((current) => (current === item.id ? null : current))
+        }
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : "Action update failed")
+      } finally {
+        setBusyKey(null)
+      }
+    },
+    []
+  )
 
   return (
     <section className="mb-8 rounded-2xl border border-emerald-900/40 bg-emerald-950/10 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-emerald-300">
-            Phase 2 Unified Action Center
+            Phase 3 Durable Action Center
           </p>
           <h2 className="text-2xl font-bold text-white">What Needs Action Now</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
             A single queue for cross-dashboard approvals, blockers, hot replies, contract deadlines, and AI review items.
-            Every action is human-controlled in this phase.
+            You can now resolve, snooze, dismiss, and comment without triggering any live execution.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Actions</p>
-            <p className="text-2xl font-bold text-white">{actionCenter.summary.total}</p>
+            <p className="text-2xl font-bold text-white">{summary.total}</p>
           </div>
           <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
             <p className="text-xs text-red-400">Critical</p>
-            <p className="text-2xl font-bold text-red-300">{actionCenter.summary.critical}</p>
+            <p className="text-2xl font-bold text-red-300">{summary.critical}</p>
           </div>
           <div className="rounded-xl border border-orange-800/40 bg-orange-950/30 p-3">
             <p className="text-xs text-orange-400">High</p>
-            <p className="text-2xl font-bold text-orange-300">{actionCenter.summary.high}</p>
+            <p className="text-2xl font-bold text-orange-300">{summary.high}</p>
           </div>
           <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
             <p className="text-xs text-blue-400">Review</p>
-            <p className="text-2xl font-bold text-blue-300">{actionCenter.summary.needsReview}</p>
+            <p className="text-2xl font-bold text-blue-300">{summary.needsReview}</p>
           </div>
           <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3">
             <p className="text-xs text-amber-400">Human Gate</p>
-            <p className="text-2xl font-bold text-amber-300">{actionCenter.summary.humanApprovalRequired}</p>
+            <p className="text-2xl font-bold text-amber-300">{summary.humanApprovalRequired}</p>
           </div>
         </div>
       </div>
+
+      {actionError && (
+        <div className="mb-4 rounded-xl border border-red-800/40 bg-red-950/30 p-3 text-sm text-red-200">
+          {actionError}
+        </div>
+      )}
 
       {visibleItems.length === 0 ? (
         <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-5">
@@ -421,6 +500,11 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
                       <span className={cn("rounded-full border px-2 py-1 text-xs font-bold", actionStatusClass(item.status))}>
                         {formatStatus(item.status)}
                       </span>
+                      {item.commentCount ? (
+                        <span className="rounded-full border border-emerald-700/40 bg-emerald-900/20 px-2 py-1 text-xs font-bold text-emerald-200">
+                          {item.commentCount} note{item.commentCount === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
                       <span className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
                         {item.dashboard}
                       </span>
@@ -443,20 +527,69 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
                 </button>
 
                 {isExpanded && (
-                  <div className="mt-4 grid gap-3 border-t border-white/10 pt-4 text-sm md:grid-cols-3">
-                    <div>
-                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Recommended action</p>
-                      <p className="leading-6 text-gray-200">{item.recommendedAction}</p>
+                  <div className="mt-4 border-t border-white/10 pt-4 text-sm">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div>
+                        <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Recommended action</p>
+                        <p className="leading-6 text-gray-200">{item.recommendedAction}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Expected impact</p>
+                        <p className="leading-6 text-gray-200">{item.impact}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Control rule</p>
+                        <p className="leading-6 text-gray-200">
+                          {item.requiresHumanApproval ? "Human approval required before execution." : "Informational action only."}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Queue state: {formatStatus(item.durableState ?? "open")}
+                          {item.snoozedUntil ? ` until ${new Date(item.snoozedUntil).toLocaleString()}` : ""}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Expected impact</p>
-                      <p className="leading-6 text-gray-200">{item.impact}</p>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Control rule</p>
-                      <p className="leading-6 text-gray-200">
-                        {item.requiresHumanApproval ? "Human approval required before execution." : "Informational action only."}
-                      </p>
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
+                      <textarea
+                        value={notes[item.id] ?? ""}
+                        onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))}
+                        placeholder="Add an internal note before resolving, dismissing, or commenting."
+                        className="min-h-[84px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-emerald-500"
+                      />
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-1">
+                        <button
+                          type="button"
+                          disabled={busyKey === `${item.id}:resolve`}
+                          onClick={() => mutateAction(item, "resolve", { note: notes[item.id] })}
+                          className="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Resolve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyKey === `${item.id}:snooze`}
+                          onClick={() => mutateAction(item, "snooze", { note: notes[item.id], snoozeHours: 24 })}
+                          className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Snooze 24h
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyKey === `${item.id}:comment` || !(notes[item.id] ?? "").trim()}
+                          onClick={() => mutateAction(item, "comment", { note: notes[item.id] })}
+                          className="rounded-lg border border-blue-700/40 bg-blue-900/30 px-3 py-2 text-xs font-bold text-blue-100 transition hover:bg-blue-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Add Note
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyKey === `${item.id}:dismiss`}
+                          onClick={() => mutateAction(item, "dismiss", { note: notes[item.id] })}
+                          className="rounded-lg border border-gray-700 bg-gray-950/60 px-3 py-2 text-xs font-bold text-gray-300 transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

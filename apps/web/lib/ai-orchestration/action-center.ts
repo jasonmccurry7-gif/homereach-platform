@@ -3,6 +3,8 @@ import { getDashboardAgentMatrix } from "./dashboard-agents";
 
 export type UnifiedActionUrgency = "critical" | "high" | "medium" | "low";
 export type UnifiedActionStatus = "needs_review" | "blocked" | "ready" | "watch";
+export type UnifiedActionDurableState = "open" | "snoozed" | "resolved" | "dismissed" | "archived";
+export type UnifiedActionOperation = "resolve" | "snooze" | "dismiss" | "reopen" | "comment";
 
 export interface UnifiedActionItem {
   id: string;
@@ -19,6 +21,20 @@ export interface UnifiedActionItem {
   requiresHumanApproval: boolean;
   createdAt?: string | null;
   dueAt?: string | null;
+  durableId?: string | null;
+  durableState?: UnifiedActionDurableState;
+  snoozedUntil?: string | null;
+  resolvedAt?: string | null;
+  resolutionNote?: string | null;
+  commentCount?: number;
+}
+
+export interface UnifiedActionMutationInput {
+  sourceKey: string;
+  operation: UnifiedActionOperation;
+  actorId?: string | null;
+  note?: string | null;
+  snoozeHours?: number | null;
 }
 
 export interface UnifiedActionCenterSummary {
@@ -65,6 +81,14 @@ function summarize(items: UnifiedActionItem[]): UnifiedActionCenterSummary {
 
 function hasSupabaseEnv() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+function operationToEventType(operation: UnifiedActionOperation) {
+  if (operation === "resolve") return "resolved";
+  if (operation === "snooze") return "snoozed";
+  if (operation === "dismiss") return "dismissed";
+  if (operation === "reopen") return "reopened";
+  return "commented";
 }
 
 export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionCenter> {
@@ -384,8 +408,106 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
     }
   }
 
-  const sorted = sortActions(items).slice(0, limit);
+  const durableItems = await applyDurableActionState(supabase, items, sourceHealth);
+  const sorted = sortActions(durableItems).slice(0, limit);
   return { generatedAt: nowIso(), summary: summarize(sorted), items: sorted, sourceHealth };
+}
+
+export async function updateUnifiedActionItem(input: UnifiedActionMutationInput) {
+  if (!hasSupabaseEnv()) {
+    return {
+      ok: false,
+      error: "Supabase is not configured for durable action updates.",
+    };
+  }
+
+  const sourceKey = input.sourceKey?.trim();
+  if (!sourceKey) {
+    return { ok: false, error: "sourceKey is required." };
+  }
+
+  const supabase = createServiceClient();
+  const now = nowIso();
+
+  try {
+    const { data: existing, error: existingError } = await supabase
+      .from("unified_action_items")
+      .select("id,source_key,state")
+      .eq("source_key", sourceKey)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existing) {
+      return {
+        ok: false,
+        error: "This action has not been generated into the durable queue yet. Refresh the Action Center and try again.",
+      };
+    }
+
+    const note = input.note?.trim() || null;
+    const update: Record<string, any> = { updated_at: now };
+
+    if (input.operation === "resolve") {
+      update.state = "resolved";
+      update.resolved_at = now;
+      update.resolved_by = input.actorId ?? null;
+      update.resolution_note = note;
+      update.snoozed_until = null;
+    } else if (input.operation === "snooze") {
+      const requestedSnoozeHours = Number(input.snoozeHours ?? 24);
+      const snoozeHours = Number.isFinite(requestedSnoozeHours)
+        ? Math.min(Math.max(requestedSnoozeHours, 1), 24 * 30)
+        : 24;
+      update.state = "snoozed";
+      update.snoozed_until = new Date(Date.now() + snoozeHours * 60 * 60 * 1000).toISOString();
+    } else if (input.operation === "dismiss") {
+      update.state = "dismissed";
+      update.resolved_at = now;
+      update.resolved_by = input.actorId ?? null;
+      update.resolution_note = note;
+      update.snoozed_until = null;
+    } else if (input.operation === "reopen") {
+      update.state = "open";
+      update.snoozed_until = null;
+      update.resolved_at = null;
+      update.resolved_by = null;
+      update.resolution_note = null;
+    }
+
+    const { error: updateError } = await supabase
+      .from("unified_action_items")
+      .update(update)
+      .eq("source_key", sourceKey);
+
+    if (updateError) throw updateError;
+
+    const { error: eventError } = await supabase.from("unified_action_events").insert({
+      action_item_id: existing.id,
+      source_key: sourceKey,
+      event_type: operationToEventType(input.operation),
+      actor_id: input.actorId ?? null,
+      note,
+      metadata: {
+        priorState: existing.state,
+        snoozeHours: input.operation === "snooze" ? input.snoozeHours ?? 24 : null,
+      },
+    });
+
+    if (eventError) throw eventError;
+
+    return {
+      ok: true,
+      sourceKey,
+      operation: input.operation,
+      state: update.state ?? existing.state,
+      snoozedUntil: update.snoozed_until ?? null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function sortActions(items: UnifiedActionItem[]) {
@@ -399,4 +521,99 @@ function sortActions(items: UnifiedActionItem[]) {
     const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return bCreated - aCreated;
   });
+}
+
+async function applyDurableActionState(
+  supabase: ReturnType<typeof createServiceClient>,
+  items: UnifiedActionItem[],
+  sourceHealth: UnifiedActionCenter["sourceHealth"]
+) {
+  if (items.length === 0) return items;
+
+  try {
+    const rows = items.map((item) => ({
+      source_key: item.id,
+      source: item.source,
+      dashboard: item.dashboard,
+      route: item.route,
+      title: item.title,
+      reason: item.reason,
+      recommended_action: item.recommendedAction,
+      impact: item.impact,
+      urgency: item.urgency,
+      status: item.status,
+      owner: item.owner,
+      requires_human_approval: item.requiresHumanApproval,
+      source_created_at: item.createdAt ?? null,
+      due_at: item.dueAt ?? null,
+      last_seen_at: nowIso(),
+      source_snapshot: {
+        generatedId: item.id,
+        generatedAt: nowIso(),
+      },
+    }));
+
+    const { error: upsertError } = await supabase
+      .from("unified_action_items")
+      .upsert(rows, { onConflict: "source_key" });
+
+    if (upsertError) throw upsertError;
+
+    const sourceKeys = items.map((item) => item.id);
+    const { data: durableRows, error: readError } = await supabase
+      .from("unified_action_items")
+      .select("id,source_key,state,snoozed_until,resolved_at,resolution_note")
+      .in("source_key", sourceKeys);
+
+    if (readError) throw readError;
+
+    const { data: commentRows } = await supabase
+      .from("unified_action_events")
+      .select("source_key")
+      .in("source_key", sourceKeys)
+      .eq("event_type", "commented");
+
+    const commentCounts = new Map<string, number>();
+    for (const row of commentRows ?? []) {
+      if (!row.source_key) continue;
+      commentCounts.set(row.source_key, (commentCounts.get(row.source_key) ?? 0) + 1);
+    }
+
+    const durableBySource = new Map((durableRows ?? []).map((row) => [row.source_key, row]));
+    const now = Date.now();
+
+    sourceHealth.push({ source: "unified_action_items", status: "ok" });
+
+    return items
+      .map((item) => {
+        const durable = durableBySource.get(item.id);
+        if (!durable) return item;
+
+        return {
+          ...item,
+          durableId: durable.id,
+          durableState: durable.state,
+          snoozedUntil: durable.snoozed_until,
+          resolvedAt: durable.resolved_at,
+          resolutionNote: durable.resolution_note,
+          commentCount: commentCounts.get(item.id) ?? 0,
+        };
+      })
+      .filter((item) => {
+        if (item.durableState === "resolved" || item.durableState === "dismissed" || item.durableState === "archived") {
+          return false;
+        }
+        if (item.durableState === "snoozed" && item.snoozedUntil) {
+          return new Date(item.snoozedUntil).getTime() <= now;
+        }
+        return true;
+      });
+  } catch (error) {
+    sourceHealth.push({
+      source: "unified_action_items",
+      status: "unavailable",
+      note: error instanceof Error ? error.message : String(error),
+    });
+    return items;
+  }
 }
