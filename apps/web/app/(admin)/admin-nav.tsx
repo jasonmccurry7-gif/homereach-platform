@@ -80,7 +80,7 @@ export function AdminNav() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 shrink-0 flex flex-col border-r border-gray-800 bg-gray-900 min-h-screen">
+    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col overflow-hidden border-r border-gray-800 bg-gray-900">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-800">
         <Link href="/os" className="flex items-center gap-2.5">
@@ -141,7 +141,7 @@ export function AdminNav() {
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-gray-800 space-y-1">
+      <div className="shrink-0 px-5 py-4 border-t border-gray-800 space-y-1">
         <Link
           href="/"
           className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
@@ -151,13 +151,14 @@ export function AdminNav() {
         <form action={signOut}>
           <button
             type="submit"
+            aria-label="Log out of HomeReach admin"
             className="flex w-full items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
           >
             <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25z" clipRule="evenodd" />
               <path fillRule="evenodd" d="M19 10a.75.75 0 0 0-.75-.75H8.704l1.048-1.06a.75.75 0 1 0-1.064-1.056l-2.5 2.5a.75.75 0 0 0 0 1.062l2.5 2.5a.75.75 0 0 0 1.064-1.056l-1.048-1.06h9.546A.75.75 0 0 0 19 10z" clipRule="evenodd" />
             </svg>
-            Sign out
+            Log out
           </button>
         </form>
       </div>

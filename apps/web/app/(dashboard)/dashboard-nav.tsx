@@ -36,7 +36,7 @@ export function DashboardNav({ role, userEmail }: { role: string; userEmail?: st
   ];
 
   return (
-    <aside className="w-60 shrink-0 flex flex-col border-r border-gray-200 bg-white">
+    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white">
       {/* Brand */}
       <div className="px-5 py-5 border-b border-gray-100">
         <Link href="/" className="flex items-center gap-2.5 group">
@@ -88,7 +88,7 @@ export function DashboardNav({ role, userEmail }: { role: string; userEmail?: st
       </nav>
 
       {/* Footer — user + logout */}
-      <div className="border-t border-gray-100 px-3 py-4 space-y-1">
+      <div className="shrink-0 border-t border-gray-100 px-3 py-4 space-y-1">
         {userEmail && (
           <div className="px-3 py-2">
             <p className="text-xs text-gray-400 truncate">{userEmail}</p>
@@ -97,13 +97,14 @@ export function DashboardNav({ role, userEmail }: { role: string; userEmail?: st
         <form action={signOut}>
           <button
             type="submit"
+            aria-label="Log out of HomeReach"
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
           >
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25z" clipRule="evenodd" />
               <path fillRule="evenodd" d="M19 10a.75.75 0 0 0-.75-.75H8.704l1.048-1.06a.75.75 0 1 0-1.064-1.056l-2.5 2.5a.75.75 0 0 0 0 1.062l2.5 2.5a.75.75 0 0 0 1.064-1.056l-1.048-1.06h9.546A.75.75 0 0 0 19 10z" clipRule="evenodd" />
             </svg>
-            Sign out
+            Log out
           </button>
         </form>
       </div>
