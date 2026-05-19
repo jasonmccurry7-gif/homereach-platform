@@ -562,6 +562,8 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
     total: requests.length,
     pending: requests.filter((request) => request.approvalStatus === "pending").length,
     approved: requests.filter((request) => request.approvalStatus === "approved").length,
+    handoffReady: requests.filter((request) => request.executorStatus === "handoff_ready").length,
+    handoffQueued: requests.filter((request) => request.executorStatus === "handoff_queued").length,
     critical: requests.filter((request) => request.riskLevel === "critical").length,
     high: requests.filter((request) => request.riskLevel === "high").length,
   }
@@ -597,6 +599,8 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
               ? {
                   ...item,
                   approvalStatus: decision === "approve" ? "approved" : "rejected",
+                  executorStatus: data.executorStatus ?? item.executorStatus,
+                  cannotExecuteReason: data.cannotExecuteReason ?? item.cannotExecuteReason,
                   decisionNote: notes[request.id],
                 }
               : item
@@ -611,20 +615,61 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
     [notes]
   )
 
+  const queueHandoff = useCallback(
+    async (request: AutopilotApprovalRequest) => {
+      const key = `${request.id}:queue_internal_handoff`
+      setBusyKey(key)
+      setError(null)
+      try {
+        const response = await fetch("/api/admin/ai-orchestration/autopilot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId: request.id,
+            operation: "queue_internal_handoff",
+            note: notes[request.id],
+          }),
+        })
+        const data = await response.json()
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Safe handoff queue failed")
+        }
+
+        setRequests((current) =>
+          current.map((item) =>
+            item.id === request.id
+              ? {
+                  ...item,
+                  executorStatus: data.executorStatus ?? "handoff_queued",
+                  cannotExecuteReason: data.message ?? "Safe internal handoff queued.",
+                }
+              : item
+          )
+        )
+        setNotes((current) => ({ ...current, [request.id]: "" }))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Safe handoff queue failed")
+      } finally {
+        setBusyKey(null)
+      }
+    },
+    [notes]
+  )
+
   return (
     <section className="mb-8 rounded-2xl border border-violet-900/40 bg-violet-950/10 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-violet-300">
-            Phase 5 Human-Approved Autopilot
+            Phase 6 Assisted Autopilot
           </p>
-          <h2 className="text-2xl font-bold text-white">Approval Gates Before Execution</h2>
+          <h2 className="text-2xl font-bold text-white">Approval Gates + Safe Internal Handoffs</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            This turns high-value AI recommendations into explicit approval requests. Approving a gate records your decision
-            and audit trail only; it does not send outreach, place orders, submit bids, or change checkout.
+            This turns high-value AI recommendations into explicit approval requests, then lets approved low-risk gates move
+            into an internal work queue. It still does not send outreach, place orders, submit bids, or change checkout.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Gates</p>
             <p className="text-2xl font-bold text-white">{summary.total}</p>
@@ -636,6 +681,14 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
           <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-3">
             <p className="text-xs text-emerald-300">Approved</p>
             <p className="text-2xl font-bold text-emerald-200">{summary.approved}</p>
+          </div>
+          <div className="rounded-xl border border-violet-800/40 bg-violet-950/30 p-3">
+            <p className="text-xs text-violet-300">Ready</p>
+            <p className="text-2xl font-bold text-violet-200">{summary.handoffReady}</p>
+          </div>
+          <div className="rounded-xl border border-purple-800/40 bg-purple-950/30 p-3">
+            <p className="text-xs text-purple-300">Queued</p>
+            <p className="text-2xl font-bold text-purple-200">{summary.handoffQueued}</p>
           </div>
           <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
             <p className="text-xs text-red-300">Critical</p>
@@ -709,6 +762,19 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
                     className="rounded-lg bg-violet-400 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Approve Gate
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      busyKey === `${request.id}:queue_internal_handoff` ||
+                      request.approvalStatus !== "approved" ||
+                      request.executorStatus === "handoff_queued" ||
+                      request.executorStatus === "blocked"
+                    }
+                    onClick={() => queueHandoff(request)}
+                    className="rounded-lg bg-emerald-400 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Queue Handoff
                   </button>
                   <button
                     type="button"

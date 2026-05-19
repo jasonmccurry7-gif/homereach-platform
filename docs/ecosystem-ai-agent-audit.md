@@ -350,3 +350,40 @@ Safety boundary:
 Next step:
 
 - Add narrow safe executors one at a time only after each source workflow has tests, rollback, suppression/permission checks, and a second explicit approval if the action is high-risk.
+
+## Phase 6 Implementation
+
+Phase 6 adds the first assisted-autopilot execution surface as a safe internal handoff queue. This remains intentionally conservative.
+
+Additive database table:
+
+- `ai_autopilot_execution_runs`
+  - Stores queued internal handoffs for already approved low/medium-risk gates.
+  - Captures request linkage, executor key, status, preview payload, guardrails, rollback note, and audit metadata.
+  - Does not call Twilio, Postmark, Stripe, SAM.gov submission, supplier ordering, checkout, pricing, political outreach, or any customer-facing workflow.
+
+Migration updates:
+
+- Expands `ai_autopilot_approval_requests.executor_status` with `handoff_ready` and `handoff_queued`.
+- Expands `ai_autopilot_approval_events.event_type` with execution queue/block/completion/failure events.
+
+Route update:
+
+- `POST /api/admin/ai-orchestration/autopilot`
+  - Admin-only.
+  - Accepts `operation=queue_internal_handoff`.
+  - Requires an approved gate.
+  - Blocks high-risk, political, Gov Contracts, and messaging gates until workflow-specific executors exist.
+
+UI update:
+
+- `/admin/agents` now shows Phase 6 Assisted Autopilot metrics:
+  - Ready gates
+  - Queued handoffs
+- Approved safe gates expose a `Queue Handoff` button.
+
+Safety boundary:
+
+- Queueing a handoff creates an internal admin work record only.
+- External systems and protected revenue/campaign workflows are not executed.
+- High-risk gates remain approval-only until each source workflow has tests, rollback, suppression/permission checks, and a second explicit approval.

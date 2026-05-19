@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/api-guards";
 import {
   decideAutopilotApproval,
   getAutopilotControlCenter,
+  queueAutopilotInternalHandoff,
   type AutopilotDecision,
 } from "@/lib/ai-orchestration/autopilot";
 
@@ -50,6 +51,38 @@ export async function PATCH(req: Request) {
   const result = await decideAutopilotApproval({
     requestId: body.requestId,
     decision: body.decision,
+    note: body.note,
+    actorId: guard.user?.id ?? null,
+  });
+
+  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+}
+
+export async function POST(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
+  let body: {
+    requestId?: string;
+    operation?: "queue_internal_handoff";
+    note?: string;
+  };
+
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  if (!body.requestId || body.operation !== "queue_internal_handoff") {
+    return NextResponse.json(
+      { ok: false, error: "requestId and operation=queue_internal_handoff are required." },
+      { status: 400 }
+    );
+  }
+
+  const result = await queueAutopilotInternalHandoff({
+    requestId: body.requestId,
     note: body.note,
     actorId: guard.user?.id ?? null,
   });
