@@ -2,6 +2,10 @@ import Link from "next/link";
 import { Bot, CalendarDays, FileText, MapPinned, ShieldCheck } from "lucide-react";
 import { AmyActonCampaignCommandCenter } from "../_components/AmyActonCampaignCommandCenter";
 import { CampaignReadinessChecklist } from "../_components/CampaignReadinessChecklist";
+import {
+  CandidateAgentLaunchQueue,
+  type CandidateAgentLaunchQueueItem,
+} from "../_components/CandidateAgentLaunchQueue";
 import { PoliticalCandidateAgentChat } from "../_components/PoliticalCandidateAgentChat";
 import {
   buildCandidateLaunchReadiness,
@@ -102,7 +106,7 @@ type CandidateAgentDashboard = Awaited<ReturnType<typeof loadCandidateAgentDashb
 
 async function loadPublicAgentDashboard(): Promise<CandidateAgentDashboard | null> {
   try {
-    return await loadCandidateAgentDashboard(12);
+    return await loadCandidateAgentDashboard(40);
   } catch {
     return null;
   }
@@ -122,6 +126,60 @@ export default async function PoliticalCandidateAgentOverviewPage() {
       })
     : PUBLIC_ACTON_READINESS;
   const primaryReadinessName = primaryReadinessRow?.candidate.candidateName ?? "Dr. Amy Acton";
+  const liveLaunchQueueItems: CandidateAgentLaunchQueueItem[] = liveRows.map((row) => {
+    const readiness = buildCandidateLaunchReadiness({
+      candidate: row.candidate,
+      latestResearch: row.latestResearch,
+      latestPlan: row.latestPlan,
+    });
+
+    return {
+      id: row.candidate.id,
+      candidateName: row.candidate.candidateName,
+      officeSought: row.candidate.officeSought ?? "Office pending",
+      party: row.candidate.partyOptionalPublic ?? "Party/committee pending",
+      geography: row.candidate.geographyValue ?? row.candidate.state,
+      electionLabel: row.candidate.electionYear
+        ? `${row.candidate.electionYear}`
+        : row.candidate.electionDate ?? "Election pending",
+      raceType: row.candidate.districtType ?? row.candidate.geographyType ?? "race pending",
+      campaignStatus: row.candidate.candidateStatus,
+      agentStatus: row.agent?.status.replaceAll("_", " ") ?? "agent not assigned",
+      nextAction: row.nextAction,
+      confidenceScore:
+        row.latestPlan?.confidenceScore ??
+        row.latestResearch?.confidenceScore ??
+        row.agent?.confidenceScore ??
+        0,
+      planStatus: row.latestPlan ? row.latestPlan.status.replaceAll("_", " ") : "pending",
+      hasResearch: Boolean(row.latestResearch),
+      hasPlan: Boolean(row.latestPlan),
+      hasCampaignWebsite: Boolean(row.candidate.campaignWebsite),
+      hasSource: Boolean(row.candidate.sourceUrl),
+      readiness,
+    };
+  });
+  const fallbackActonQueueItem: CandidateAgentLaunchQueueItem = {
+    id: "public-acton-source-backed-profile",
+    candidateName: "Dr. Amy Acton",
+    officeSought: "Governor",
+    party: "Democrat",
+    geography: "Ohio statewide",
+    electionLabel: "2026",
+    raceType: "statewide",
+    campaignStatus: "active",
+    agentStatus: "source-backed public profile",
+    nextAction: PUBLIC_ACTON_READINESS.nextRequiredAction,
+    confidenceScore: PUBLIC_ACTON_READINESS.score,
+    planStatus: "draft planning only",
+    hasResearch: true,
+    hasPlan: true,
+    hasCampaignWebsite: true,
+    hasSource: true,
+    readiness: PUBLIC_ACTON_READINESS,
+  };
+  const launchQueueItems =
+    liveLaunchQueueItems.length > 0 ? liveLaunchQueueItems : [fallbackActonQueueItem];
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-10">
@@ -185,94 +243,16 @@ export default async function PoliticalCandidateAgentOverviewPage() {
       )}
 
       <section className="mt-10">
-        <AmyActonCampaignCommandCenter />
+        <CandidateAgentLaunchQueue items={launchQueueItems} />
       </section>
 
-      {liveRows.length > 0 && (
-        <section className="mt-10 rounded-lg border border-blue-300/20 bg-blue-950/25 p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-200">
-                Live launch-agent workspaces
-              </p>
-              <h2 className="mt-2 text-2xl font-black text-white">
-                Candidate records with assigned planning agents
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                These cards read from the same candidate-agent tables used by the Political Command dashboard. Operator actions stay human-reviewed inside admin-only workspaces.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            {liveRows.slice(0, 4).map((row) => (
-              <article key={row.candidate.id} className="rounded-lg border border-white/10 bg-slate-950/65 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-black text-white">{row.candidate.candidateName}</h3>
-                    <p className="mt-1 text-sm text-slate-300">
-                      {row.candidate.officeSought ?? "Office pending"} / {row.candidate.geographyValue ?? row.candidate.state}
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold capitalize text-slate-200">
-                    {row.agent?.status.replaceAll("_", " ") ?? "agent not assigned"}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <AgentWorkspaceMetric
-                    label="Confidence"
-                    value={`${row.latestPlan?.confidenceScore ?? row.latestResearch?.confidenceScore ?? row.agent?.confidenceScore ?? 0}%`}
-                  />
-                  <AgentWorkspaceMetric
-                    label="Plan"
-                    value={row.latestPlan ? row.latestPlan.status.replaceAll("_", " ") : "Pending"}
-                  />
-                  <AgentWorkspaceMetric label="Next Action" value={row.nextAction} />
-                </div>
-                <div className="mt-3">
-                  <AgentWorkspaceMetric
-                    label="Launch Package"
-                    value={`${buildCandidateLaunchReadiness({
-                      candidate: row.candidate,
-                      latestResearch: row.latestResearch,
-                      latestPlan: row.latestPlan,
-                    }).score}% ready`}
-                  />
-                </div>
-
-                <div className="mt-4 rounded-lg border border-emerald-300/15 bg-emerald-950/20 p-3 text-xs leading-5 text-emerald-50">
-                  Guardrails active: geography, public sources, USPS logistics, budget, timing, and production readiness only. Human approval remains required.
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link
-                    href="/political/maps"
-                    className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-500"
-                  >
-                    Validate Map
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
+      <section className="mt-10">
+        <AmyActonCampaignCommandCenter />
+      </section>
 
       <section className="mt-10">
         <PoliticalCandidateAgentChat />
       </section>
     </main>
-  );
-}
-
-function AgentWorkspaceMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
-      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</div>
-      <div className="mt-2 truncate text-sm font-bold capitalize text-white" title={value}>
-        {value}
-      </div>
-    </div>
   );
 }
