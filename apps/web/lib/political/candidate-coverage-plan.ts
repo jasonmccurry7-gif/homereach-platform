@@ -9,6 +9,18 @@ import type { DistrictType } from "./queries";
 import type { OhioCandidateSelectorOption } from "./ohio-candidate-selector";
 
 export type CandidateCoverageTier = "standard" | "expanded" | "premium" | "command";
+export type CandidateCoverageDistrictLayer = "congressional" | "state_senate" | "state_house";
+
+export interface CandidateCoverageMapHighlight {
+  kind: "statewide_counties" | "official_district";
+  title: string;
+  summary: string;
+  countyNames: string[];
+  districtLayer?: CandidateCoverageDistrictLayer;
+  districtNumber?: string;
+  sourceLabel: string;
+  readinessLabel: string;
+}
 
 export interface CandidateCoveragePhase {
   phaseNumber: number;
@@ -38,6 +50,7 @@ export interface CandidateAgentCoverageOption {
   totalEstimateCents: number;
   costPerHouseholdCents: number;
   recommendedGeographies: string[];
+  mapHighlight: CandidateCoverageMapHighlight;
   phases: CandidateCoveragePhase[];
   whyThisPlan: string;
   operationalComplexity: "low" | "medium" | "high";
@@ -62,6 +75,181 @@ const STATEWIDE_OHIO_PLANNING_HOUSEHOLDS = 4_900_000;
 const STATE_SENATE_PLANNING_HOUSEHOLDS = 170_000;
 const STATE_HOUSE_PLANNING_HOUSEHOLDS = 58_000;
 const APPEALS_DISTRICT_PLANNING_HOUSEHOLDS = 330_000;
+
+const NEUTRAL_STATEWIDE_COUNTIES_BY_TIER: Record<CandidateCoverageTier, string[]> = {
+  standard: ["Franklin", "Cuyahoga", "Hamilton", "Summit", "Lucas", "Montgomery"],
+  expanded: ["Franklin", "Cuyahoga", "Hamilton", "Summit", "Lucas", "Montgomery", "Stark", "Lorain", "Mahoning", "Butler", "Delaware", "Lake"],
+  premium: [
+    "Franklin",
+    "Cuyahoga",
+    "Hamilton",
+    "Summit",
+    "Lucas",
+    "Montgomery",
+    "Stark",
+    "Lorain",
+    "Mahoning",
+    "Butler",
+    "Delaware",
+    "Lake",
+    "Warren",
+    "Medina",
+    "Portage",
+    "Fairfield",
+    "Licking",
+    "Clark",
+    "Greene",
+    "Wood",
+  ],
+  command: [
+    "Franklin",
+    "Cuyahoga",
+    "Hamilton",
+    "Summit",
+    "Lucas",
+    "Montgomery",
+    "Stark",
+    "Lorain",
+    "Mahoning",
+    "Butler",
+    "Delaware",
+    "Lake",
+    "Warren",
+    "Medina",
+    "Portage",
+    "Fairfield",
+    "Licking",
+    "Clark",
+    "Greene",
+    "Wood",
+    "Trumbull",
+    "Erie",
+    "Wayne",
+    "Richland",
+    "Ashland",
+    "Knox",
+    "Tuscarawas",
+    "Columbiana",
+    "Ashtabula",
+    "Geauga",
+    "Pickaway",
+    "Madison",
+    "Union",
+  ],
+};
+
+const DEMOCRATIC_STATEWIDE_COUNTIES_BY_TIER: Record<CandidateCoverageTier, string[]> = {
+  standard: ["Franklin", "Cuyahoga", "Hamilton", "Summit", "Lucas", "Montgomery"],
+  expanded: ["Franklin", "Cuyahoga", "Hamilton", "Summit", "Lucas", "Montgomery", "Lorain", "Mahoning", "Delaware", "Lake"],
+  premium: [
+    "Franklin",
+    "Cuyahoga",
+    "Hamilton",
+    "Summit",
+    "Lucas",
+    "Montgomery",
+    "Lorain",
+    "Mahoning",
+    "Delaware",
+    "Lake",
+    "Warren",
+    "Butler",
+    "Stark",
+    "Portage",
+    "Athens",
+    "Wood",
+  ],
+  command: [
+    "Franklin",
+    "Cuyahoga",
+    "Hamilton",
+    "Summit",
+    "Lucas",
+    "Montgomery",
+    "Lorain",
+    "Mahoning",
+    "Delaware",
+    "Lake",
+    "Warren",
+    "Butler",
+    "Stark",
+    "Portage",
+    "Athens",
+    "Wood",
+    "Trumbull",
+    "Erie",
+    "Fairfield",
+    "Licking",
+    "Clark",
+    "Greene",
+    "Medina",
+    "Ashtabula",
+    "Jefferson",
+    "Belmont",
+  ],
+};
+
+const REPUBLICAN_STATEWIDE_COUNTIES_BY_TIER: Record<CandidateCoverageTier, string[]> = {
+  standard: ["Delaware", "Warren", "Butler", "Clermont", "Medina", "Stark"],
+  expanded: ["Delaware", "Warren", "Butler", "Clermont", "Medina", "Stark", "Lake", "Mahoning", "Trumbull", "Lorain", "Fairfield", "Licking"],
+  premium: [
+    "Delaware",
+    "Warren",
+    "Butler",
+    "Clermont",
+    "Medina",
+    "Stark",
+    "Lake",
+    "Mahoning",
+    "Trumbull",
+    "Lorain",
+    "Fairfield",
+    "Licking",
+    "Franklin",
+    "Cuyahoga",
+    "Hamilton",
+    "Greene",
+    "Miami",
+    "Portage",
+    "Wood",
+    "Allen",
+    "Hancock",
+  ],
+  command: [
+    "Delaware",
+    "Warren",
+    "Butler",
+    "Clermont",
+    "Medina",
+    "Stark",
+    "Lake",
+    "Mahoning",
+    "Trumbull",
+    "Lorain",
+    "Fairfield",
+    "Licking",
+    "Franklin",
+    "Cuyahoga",
+    "Hamilton",
+    "Greene",
+    "Miami",
+    "Portage",
+    "Wood",
+    "Allen",
+    "Hancock",
+    "Wayne",
+    "Richland",
+    "Ashland",
+    "Knox",
+    "Tuscarawas",
+    "Columbiana",
+    "Ashtabula",
+    "Geauga",
+    "Pickaway",
+    "Madison",
+    "Union",
+  ],
+};
 
 const STATEWIDE_TIERS: Array<{
   key: CandidateCoverageTier;
@@ -342,6 +530,67 @@ function whyForTier(option: OhioCandidateSelectorOption, key: CandidateCoverageT
   return `This is the highest-coverage operational path for ${option.candidateName}, designed for maximum geographic visibility before final USPS verification and human approval.`;
 }
 
+function districtNumberFromGeography(value: string) {
+  const match = value.match(/district\s*0?(\d+)/i);
+  return match?.[1] ?? null;
+}
+
+function districtLayerForOption(option: OhioCandidateSelectorOption): CandidateCoverageDistrictLayer | null {
+  const office = option.officeSought.toLowerCase();
+  if (office.includes("state senator") || office.includes("senate district")) return "state_senate";
+  if (office.includes("state representative") || office.includes("house district")) return "state_house";
+  if (office.includes("u.s. representative") || office.includes("congress")) return "congressional";
+  return null;
+}
+
+function statewideCountySetForOption(option: OhioCandidateSelectorOption, tier: CandidateCoverageTier) {
+  const party = option.party.toLowerCase();
+  if (party.includes("democrat")) return DEMOCRATIC_STATEWIDE_COUNTIES_BY_TIER[tier];
+  if (party.includes("republican")) return REPUBLICAN_STATEWIDE_COUNTIES_BY_TIER[tier];
+  return NEUTRAL_STATEWIDE_COUNTIES_BY_TIER[tier];
+}
+
+function formatTierLabel(tier: CandidateCoverageTier) {
+  if (tier === "standard") return "Standard";
+  if (tier === "expanded") return "Expanded";
+  if (tier === "premium") return "Premium";
+  return "Command";
+}
+
+function buildMapHighlight(option: OhioCandidateSelectorOption, tier: CandidateCoverageTier): CandidateCoverageMapHighlight {
+  const layer = districtLayerForOption(option);
+  const districtNumber = districtNumberFromGeography(option.geography);
+
+  if (!isStatewide(option) && layer && districtNumber) {
+    return {
+      kind: "official_district",
+      title: `${option.geography} selected coverage preview`,
+      summary:
+        tier === "standard"
+          ? "The highlighted official district shape shows the race boundary; the standard tier concentrates the first route clusters inside that district."
+          : `The highlighted official district shape stays constant while ${tier} coverage increases route saturation and mail-wave repetition inside the district.`,
+      countyNames: [],
+      districtLayer: layer,
+      districtNumber,
+      sourceLabel: "Ohio Secretary of State district geometry",
+      readinessLabel: "Official district boundary shown; USPS carrier-route counts still required before quoting.",
+    };
+  }
+
+  const counties = statewideCountySetForOption(option, tier);
+  return {
+    kind: "statewide_counties",
+    title: `${formatTierLabel(tier)} Ohio county coverage preview`,
+    summary:
+      tier === "standard"
+        ? "The highlighted counties show the initial high-efficiency planning footprint for this lower-budget option."
+        : `The highlighted counties expand the Ohio planning footprint for the ${tier} option while keeping final USPS quote locks in place.`,
+    countyNames: counties,
+    sourceLabel: "Census county geometry with HomeReach planning tiers",
+    readinessLabel: "County highlights are planning footprints, not final USPS carrier-route selections.",
+  };
+}
+
 export function buildCandidateCoveragePlan(option: OhioCandidateSelectorOption): CandidateAgentCoveragePlan {
   const universe = resolveUniverse(option);
   const tiers = isStatewide(option) ? STATEWIDE_TIERS : DISTRICT_TIERS;
@@ -380,6 +629,7 @@ export function buildCandidateCoveragePlan(option: OhioCandidateSelectorOption):
       totalEstimateCents,
       costPerHouseholdCents: households > 0 ? Math.round(totalEstimateCents / households) : 0,
       recommendedGeographies: geographies.slice(0, tier.key === "standard" ? 2 : tier.key === "expanded" ? 3 : 5),
+      mapHighlight: buildMapHighlight(option, tier.key),
       phases,
       whyThisPlan: whyForTier(option, tier.key),
       operationalComplexity: tier.complexity,

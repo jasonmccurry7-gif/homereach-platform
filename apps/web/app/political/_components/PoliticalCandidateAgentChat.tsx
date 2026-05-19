@@ -20,8 +20,10 @@ import {
 import type {
   CandidateAgentCoverageOption,
   CandidateAgentCoveragePlan,
+  CandidateCoverageTier,
 } from "@/lib/political/candidate-coverage-plan";
 import type { OhioCandidateSelectorOption } from "@/lib/political/ohio-candidate-selector";
+import { CandidateCoverageMapPreview } from "./CandidateCoverageMapPreview";
 
 type MessageRole = "agent" | "user";
 type AgentStatus = "ready" | "thinking" | "error";
@@ -88,6 +90,7 @@ export function PoliticalCandidateAgentChat({
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [input, setInput] = useState("");
   const [agentStatus, setAgentStatus] = useState<AgentStatus>("ready");
+  const [selectedOptionKey, setSelectedOptionKey] = useState<CandidateCoverageTier>("standard");
   const [statusMessage, setStatusMessage] = useState(
     "Ready for a campaign-specific chat about the selected candidate profile.",
   );
@@ -113,6 +116,7 @@ export function PoliticalCandidateAgentChat({
   useEffect(() => {
     setInput("");
     setAgentStatus("ready");
+    setSelectedOptionKey("standard");
     setStatusMessage("Ready for a campaign-specific chat about the selected candidate profile.");
     setMessages([
       {
@@ -369,7 +373,13 @@ export function PoliticalCandidateAgentChat({
 
           <div className="mt-5 grid gap-4">
             {coveragePlan.options.map((option) => (
-              <CoverageOptionCard key={option.key} candidate={candidate} option={option} />
+              <CoverageOptionCard
+                key={option.key}
+                candidate={candidate}
+                option={option}
+                selected={selectedOptionKey === option.key}
+                onSelect={() => setSelectedOptionKey(option.key)}
+              />
             ))}
           </div>
 
@@ -407,12 +417,22 @@ function AgentMetric({
 function CoverageOptionCard({
   candidate,
   option,
+  selected,
+  onSelect,
 }: {
   candidate: OhioCandidateSelectorOption;
   option: CandidateAgentCoverageOption;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   return (
-    <article className="rounded-lg border border-white/10 bg-slate-900/80 p-4">
+    <article
+      className={
+        selected
+          ? "rounded-lg border border-blue-300/40 bg-blue-950/40 p-4 shadow-lg shadow-blue-950/30"
+          : "rounded-lg border border-white/10 bg-slate-900/80 p-4"
+      }
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-200">
@@ -421,8 +441,22 @@ function CoverageOptionCard({
           <h4 className="mt-1 text-lg font-black text-white">{option.title}</h4>
           <p className="mt-2 text-sm leading-6 text-slate-300">{option.tagline}</p>
         </div>
-        <div className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
-          {option.coveragePct}% coverage model
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onSelect}
+            aria-pressed={selected}
+            className={
+              selected
+                ? "rounded-md bg-blue-600 px-3 py-2 text-xs font-black text-white"
+                : "rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-black text-slate-100 transition hover:border-blue-300/30 hover:bg-blue-500/15"
+            }
+          >
+            {selected ? "Selected Option" : "Select Option"}
+          </button>
+          <div className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
+            {option.coveragePct}% coverage model
+          </div>
         </div>
       </div>
 
@@ -435,7 +469,9 @@ function CoverageOptionCard({
         <PlanMetric icon={DollarSign} label="Per home" value={centsFromCents(option.costPerHouseholdCents)} />
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_0.85fr]">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <CandidateCoverageMapPreview option={option} selected={selected} />
+
         <div className="rounded-lg border border-white/10 bg-slate-950 p-3">
           <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Recommended geography</div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -447,7 +483,9 @@ function CoverageOptionCard({
           </div>
           <p className="mt-3 text-xs leading-5 text-slate-400">{option.whyThisPlan}</p>
         </div>
+      </div>
 
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_0.85fr]">
         <div className="rounded-lg border border-white/10 bg-slate-950 p-3">
           <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Estimate detail</div>
           <div className="mt-2 text-2xl font-black text-white">{moneyFromCents(option.totalEstimateCents)}</div>
