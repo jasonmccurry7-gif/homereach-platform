@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   CheckCircle2,
@@ -31,6 +31,13 @@ interface ChatMessage {
   text: string;
 }
 
+interface ChatApiResponse {
+  ok: boolean;
+  reply?: string;
+  mode?: "ai" | "fallback";
+  error?: string;
+}
+
 const MONEY = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -54,62 +61,83 @@ function number(value: number) {
   return INTEGER.format(value);
 }
 
-function buildAgentReply(prompt: string): string {
-  const normalized = prompt.toLowerCase();
-
-  if (normalized.includes("cost") || normalized.includes("price") || normalized.includes("voter")) {
-    return "Cost per voter is modeled as total postcard investment divided by aggregate estimated voter reach. The postcard price stays inside the HomeReach political model, with the Acton statewide options currently resolving to $0.54 per postcard because the volume is statewide-scale.";
-  }
-
-  if (normalized.includes("city") || normalized.includes("cities") || normalized.includes("map")) {
-    return "The plans use public geography and delivery density, starting with Columbus, Cleveland, Cincinnati, Toledo, Dayton, Akron, Youngstown, and then adding suburban or campus-region layers depending on the campaign path. No city is selected from individual voter prediction.";
-  }
-
-  if (normalized.includes("compliance") || normalized.includes("limit") || normalized.includes("guardrail")) {
-    return "The agent is constrained to public candidate context, aggregate households, public election timing, route logistics, and pricing. It does not score individual voters, infer ideology, target sensitive demographics, or send anything without human approval.";
-  }
-
-  if (normalized.includes("next") || normalized.includes("approve") || normalized.includes("proposal")) {
-    return "Next best action: pick one base path, validate route counts in the map, confirm household capacity, then generate a human-reviewed proposal with phases, creative briefs, pricing, and compliance notes.";
-  }
-
-  return "I loaded Dr. Amy Acton for Governor and generated 4 campaign paths: statewide foundation, metro trust corridor, suburban visibility ring, and ballot-window acceleration. Each path includes households, estimated voter reach, cities, drops, postcard price, total investment, and aggregate cost per voter.";
-}
-
 export function PoliticalCandidateAgentChat() {
   const summary = useMemo(() => summarizeAmyActonRecommendations(), []);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [input, setInput] = useState("");
   const [agentStatus, setAgentStatus] = useState<AgentStatus>("ready");
-  const [statusMessage, setStatusMessage] = useState("Ready to help with campaign planning.");
+  const [statusMessage, setStatusMessage] = useState("Ready for a real chat about the selected campaign profile.");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "agent-initial",
       role: "agent",
-      text: "Dr. Amy Acton is loaded as the candidate profile. I built 4 compliant mail campaign paths for the Ohio governor race using public aggregate geography, household reach, election timing, and HomeReach pricing.",
+      text: "Dr. Amy Acton is loaded as the selected candidate profile. Type a question and I will answer from the campaign context, route-safe geography, pricing model, readiness gates, and compliance rules.",
     },
   ]);
 
-  function sendMessage(value = input) {
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [agentStatus, messages]);
+
+  async function sendMessage(value = input) {
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed || agentStatus === "thinking") return;
 
     const timestamp = `${Date.now()}`;
+    const userMessage: ChatMessage = { id: `user-${timestamp}`, role: "user", text: trimmed };
+    const outgoingMessages = [...messages, userMessage];
+
     setAgentStatus("thinking");
-    setStatusMessage("Reviewing campaign context and route-safe recommendations...");
-    setMessages((current) => [...current, { id: `user-${timestamp}`, role: "user", text: trimmed }]);
+    setStatusMessage("Reading the selected campaign context and preparing a reply...");
+    setMessages(outgoingMessages);
     setInput("");
 
-    window.setTimeout(() => {
-      try {
-        const reply = buildAgentReply(trimmed);
-        setMessages((current) => [...current, { id: `agent-${timestamp}`, role: "agent", text: reply }]);
-        setAgentStatus("ready");
-        setStatusMessage("Ready. Human approval is required before proposal, outreach, or production handoff.");
-      } catch {
-        setAgentStatus("error");
-        setStatusMessage("The agent could not complete that answer. Continue in Plan or request human support.");
+    try {
+      const response = await fetch("/api/political/candidate-agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate: "amy-acton",
+          message: trimmed,
+          messages: outgoingMessages.map((message) => ({
+            role: message.role,
+            text: message.text,
+          })),
+        }),
+      });
+      const data = (await response.json()) as ChatApiResponse;
+
+      if (!response.ok || !data.ok || !data.reply) {
+        throw new Error(data.error ?? "The campaign agent could not answer.");
       }
-    }, 260);
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: `agent-${timestamp}`,
+          role: "agent",
+          text: data.reply ?? "I could not generate a useful answer from the selected campaign context.",
+        },
+      ]);
+      setAgentStatus("ready");
+      setStatusMessage(
+        data.mode === "ai"
+          ? "Reply generated from the selected campaign context. Human approval is still required for proposal, outreach, or production."
+          : "Live AI was unavailable, so I answered from the loaded campaign context and readiness rules.",
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The agent could not complete that answer.";
+      setMessages((current) => [
+        ...current,
+        {
+          id: `agent-error-${timestamp}`,
+          role: "agent",
+          text: `${message} You can keep asking, or use Plan/Maps while a HomeReach operator verifies campaign data.`,
+        },
+      ]);
+      setAgentStatus("error");
+      setStatusMessage("The chat endpoint hit an error. Your message stayed in the thread.");
+    }
   }
 
   return (
@@ -168,20 +196,35 @@ export function PoliticalCandidateAgentChat() {
           </div>
 
           <div className="mt-5 space-y-3">
-            <div className="h-72 overflow-y-auto rounded-lg border border-white/10 bg-slate-900/80 p-3">
+            <div className="h-[420px] overflow-y-auto rounded-lg border border-white/10 bg-slate-900/80 p-3">
               <div className="space-y-3">
                 {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={
-                      message.role === "user"
-                        ? "ml-auto max-w-[86%] rounded-lg bg-blue-600 px-3 py-2 text-sm leading-6 text-white"
-                        : "max-w-[92%] rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm leading-6 text-slate-200"
-                    }
-                  >
-                    {message.text}
+                  <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                    <div
+                      className={
+                        message.role === "user"
+                          ? "max-w-[86%] rounded-lg bg-blue-600 px-3 py-2 text-sm leading-6 text-white"
+                          : "max-w-[92%] rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm leading-6 text-slate-200"
+                      }
+                    >
+                      <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em] opacity-70">
+                        {message.role === "user" ? "You" : "Campaign AI Agent"}
+                      </div>
+                      <div className="whitespace-pre-wrap">{message.text}</div>
+                    </div>
                   </div>
                 ))}
+                {agentStatus === "thinking" && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[92%] rounded-lg border border-blue-300/15 bg-blue-500/10 px-3 py-2 text-sm leading-6 text-blue-50">
+                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Campaign AI Agent is typing
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
               </div>
             </div>
 
@@ -192,7 +235,7 @@ export function PoliticalCandidateAgentChat() {
                   type="button"
                   onClick={() => sendMessage(prompt)}
                   disabled={agentStatus === "thinking"}
-                  className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-blue-300/30 hover:bg-blue-500/15"
+                  className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-blue-300/30 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {prompt}
                 </button>
@@ -200,25 +243,38 @@ export function PoliticalCandidateAgentChat() {
             </div>
 
             <form
-              className="flex gap-2"
+              className="grid gap-2 sm:grid-cols-[1fr_auto]"
               onSubmit={(event) => {
                 event.preventDefault();
                 sendMessage();
               }}
             >
-              <input
+              <label className="sr-only" htmlFor="campaign-agent-chat-input">
+                Type a message to the campaign AI agent
+              </label>
+              <textarea
+                id="campaign-agent-chat-input"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Ask the Acton launch agent..."
-                className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-300 focus:outline-none"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                rows={3}
+                placeholder="Type a question, for example: Which strategy should we present first, and why?"
+                disabled={agentStatus === "thinking"}
+                className="min-h-24 min-w-0 resize-y rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm leading-6 text-white placeholder:text-slate-500 focus:border-blue-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               />
               <button
                 type="submit"
                 aria-label="Send message to candidate campaign launch agent"
-                disabled={agentStatus === "thinking"}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-red-600 text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+                disabled={agentStatus === "thinking" || input.trim().length === 0}
+                className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-3 text-sm font-black text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-slate-700"
               >
                 {agentStatus === "thinking" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Send
               </button>
             </form>
 
