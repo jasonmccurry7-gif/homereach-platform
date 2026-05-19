@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
+import type { DashboardAgentRuntime } from "@/lib/ai-orchestration/dashboard-agents"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -50,6 +51,16 @@ interface Props {
   stats: AgentDailyStat[]
   runLogs: AgentRunLog[]
   kaisenInsights: KaizenInsights | null
+  dashboardAgents: DashboardAgentRuntime[]
+  dashboardAgentSummary: DashboardAgentSummary
+}
+
+interface DashboardAgentSummary {
+  total: number
+  ready: number
+  partial: number
+  blocked: number
+  averageReadiness: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,7 +165,7 @@ function StatBar({
   avgCompletion: number
 }) {
   return (
-    <div className="grid grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
         <p className="text-xs text-gray-500 mb-1">TOTAL AGENTS</p>
         <p className="text-3xl font-bold text-white">{totalAgents}</p>
@@ -174,6 +185,151 @@ function StatBar({
         </p>
       </div>
     </div>
+  )
+}
+
+function getDashboardAgentStatusClass(status: DashboardAgentRuntime["status"]) {
+  if (status === "ready") return "bg-green-900/30 text-green-300 border-green-700/40"
+  if (status === "blocked") return "bg-red-900/30 text-red-300 border-red-700/40"
+  return "bg-amber-900/30 text-amber-300 border-amber-700/40"
+}
+
+function formatAutonomy(level: string) {
+  return level
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function DashboardAgentMatrix({
+  agents,
+  summary,
+}: {
+  agents: DashboardAgentRuntime[]
+  summary: DashboardAgentSummary
+}) {
+  return (
+    <section className="mb-8 rounded-2xl border border-blue-900/40 bg-blue-950/20 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-blue-300">
+            Phase 1 AI Orchestration Layer
+          </p>
+          <h2 className="text-2xl font-bold text-white">Dashboard Agent Readiness Matrix</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            This does not replace the existing APEX agents. It assigns each major HomeReach dashboard a clear AI agent owner,
+            autonomy level, guardrails, missing setup, and the next safe build phase.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Dashboards</p>
+            <p className="text-2xl font-bold text-white">{summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-green-800/40 bg-green-950/30 p-3">
+            <p className="text-xs text-green-400">Ready</p>
+            <p className="text-2xl font-bold text-green-300">{summary.ready}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3">
+            <p className="text-xs text-amber-400">Partial</p>
+            <p className="text-2xl font-bold text-amber-300">{summary.partial}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
+            <p className="text-xs text-blue-400">Avg Ready</p>
+            <p className="text-2xl font-bold text-blue-300">{summary.averageReadiness}%</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {agents.map((agent) => {
+          const blockers = [
+            ...agent.missingRequiredEnv.map((key) => `Missing required env: ${key}`),
+            ...(agent.manualBlockers ?? []),
+          ]
+
+          return (
+            <article
+              key={agent.id}
+              className="rounded-xl border border-gray-800/70 bg-gray-950/70 p-4 shadow-lg shadow-black/10"
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    {agent.dashboard}
+                  </p>
+                  <h3 className="mt-1 text-lg font-bold text-white">{agent.name}</h3>
+                  <a className="mt-1 block text-xs font-semibold text-blue-300 hover:text-blue-200" href={agent.route}>
+                    Open {agent.route}
+                  </a>
+                </div>
+                <span
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs font-bold uppercase",
+                    getDashboardAgentStatusClass(agent.status)
+                  )}
+                >
+                  {agent.status}
+                </span>
+              </div>
+
+              <p className="mb-4 text-sm leading-6 text-gray-400">{agent.mission}</p>
+
+              <div className="mb-4 grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+                  <p className="text-xs text-gray-500">Current</p>
+                  <p className="text-sm font-semibold text-gray-200">{formatAutonomy(agent.currentAutonomy)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+                  <p className="text-xs text-gray-500">Target</p>
+                  <p className="text-sm font-semibold text-gray-200">{formatAutonomy(agent.targetAutonomy)}</p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="mb-1 flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Readiness</span>
+                  <span className="font-semibold text-gray-300">{agent.readinessScore}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-gray-800">
+                  <div className="h-full rounded-full bg-blue-500" style={{ width: `${agent.readinessScore}%` }} />
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <p className="mb-1 font-semibold uppercase tracking-[0.12em] text-gray-500">Next phase</p>
+                  <p className="leading-5 text-gray-300">{agent.phaseNext}</p>
+                </div>
+
+                {blockers.length > 0 && (
+                  <div>
+                    <p className="mb-1 font-semibold uppercase tracking-[0.12em] text-amber-400">Blocks autonomy</p>
+                    <ul className="space-y-1">
+                      {blockers.slice(0, 3).map((blocker) => (
+                        <li key={blocker} className="leading-5 text-amber-100/80">
+                          {blocker}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div>
+                  <p className="mb-1 font-semibold uppercase tracking-[0.12em] text-gray-500">Guardrails</p>
+                  <ul className="space-y-1">
+                    {agent.guardrails.slice(0, 2).map((guardrail) => (
+                      <li key={guardrail} className="leading-5 text-gray-400">
+                        {guardrail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -499,14 +655,18 @@ export default function AgentsDashboard({
   stats,
   runLogs,
   kaisenInsights,
+  dashboardAgents,
+  dashboardAgentSummary,
 }: Props) {
   // Check if agent registry is initialized
   if (!agents || agents.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white p-8">
+      <div className="min-h-screen bg-gray-950 text-white p-4 sm:p-8">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-3xl font-bold mb-2">APEX — Agent Command Center</h1>
           <p className="text-gray-400 mb-8">16-Agent Autonomous System</p>
+
+          <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 
           <div className="p-8 bg-gray-900/50 border border-gray-800 rounded-xl text-center">
             <p className="text-lg text-gray-400 mb-2">
@@ -549,7 +709,7 @@ export default function AgentsDashboard({
   ]
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-8">
+    <div className="min-h-screen bg-gray-950 text-white p-4 sm:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -565,10 +725,12 @@ export default function AgentsDashboard({
           avgCompletion={avgCompletion}
         />
 
+        <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
+
         {/* Main Content: 2-Column Layout */}
-        <div className="grid grid-cols-3 gap-8 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           {/* Left: Agent Grid (2/3) */}
-          <div className="col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6">
             {layers.map((layer) => {
               const layerAgents = agentsByLayer[layer]
               if (layerAgents.length === 0) return null
@@ -604,7 +766,7 @@ export default function AgentsDashboard({
           </div>
 
           {/* Right: Live Activity Feed (1/3) */}
-          <div className="col-span-1">
+          <div className="lg:col-span-1">
             <ActivityFeed runLogs={runLogs} />
           </div>
         </div>

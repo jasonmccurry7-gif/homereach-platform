@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 import { createClient } from "@/lib/supabase/server"
+import { getDashboardAgentMatrix, getDashboardAgentSummary } from "@/lib/ai-orchestration/dashboard-agents"
 import AgentsDashboard from "./agents-dashboard"
 
 export default async function AgentsPage() {
@@ -31,12 +32,16 @@ export default async function AgentsPage() {
     .order("created_at", { ascending: false })
     .limit(1)
 
+  const dashboardAgents = getDashboardAgentMatrix()
+
   return (
     <AgentsDashboard
       agents={agents || []}
       stats={stats || []}
       runLogs={runLogs || []}
       kaisenInsights={kaisenInsights?.[0] || null}
+      dashboardAgents={dashboardAgents}
+      dashboardAgentSummary={getDashboardAgentSummary(dashboardAgents)}
     />
   )
 }
