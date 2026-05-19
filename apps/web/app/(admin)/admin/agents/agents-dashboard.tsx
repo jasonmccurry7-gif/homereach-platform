@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import type { DashboardAgentRuntime } from "@/lib/ai-orchestration/dashboard-agents"
 import type { UnifiedActionCenter, UnifiedActionItem } from "@/lib/ai-orchestration/action-center"
+import type { DashboardMonitorRun, OperationalBriefing } from "@/lib/ai-orchestration/briefings"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -55,6 +56,8 @@ interface Props {
   dashboardAgents: DashboardAgentRuntime[]
   dashboardAgentSummary: DashboardAgentSummary
   actionCenter: UnifiedActionCenter
+  operationalBriefings: OperationalBriefing[]
+  monitorRuns: DashboardMonitorRun[]
 }
 
 interface DashboardAgentSummary {
@@ -353,6 +356,13 @@ function formatStatus(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+function monitorStatusClass(status: OperationalBriefing["status"]) {
+  if (status === "critical") return "border-red-800/50 bg-red-950/30 text-red-200"
+  if (status === "failed") return "border-red-800/50 bg-red-950/30 text-red-200"
+  if (status === "warning") return "border-amber-800/50 bg-amber-950/30 text-amber-100"
+  return "border-emerald-800/40 bg-emerald-950/20 text-emerald-100"
+}
+
 function summarizeVisibleActions(items: UnifiedActionItem[]): UnifiedActionCenter["summary"] {
   return {
     total: items.length,
@@ -362,6 +372,164 @@ function summarizeVisibleActions(items: UnifiedActionItem[]): UnifiedActionCente
     blocked: items.filter((item) => item.status === "blocked").length,
     humanApprovalRequired: items.filter((item) => item.requiresHumanApproval).length,
   }
+}
+
+function OperationalBriefingPanel({
+  initialBriefings,
+  initialMonitorRuns,
+}: {
+  initialBriefings: OperationalBriefing[]
+  initialMonitorRuns: DashboardMonitorRun[]
+}) {
+  const [briefings, setBriefings] = useState<OperationalBriefing[]>(initialBriefings)
+  const [monitorRuns, setMonitorRuns] = useState<DashboardMonitorRun[]>(initialMonitorRuns)
+  const [isRunning, setIsRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setBriefings(initialBriefings)
+    setMonitorRuns(initialMonitorRuns)
+  }, [initialBriefings, initialMonitorRuns])
+
+  const latest = briefings[0]
+
+  const runBriefing = useCallback(async () => {
+    setIsRunning(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/briefings/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "manual" }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Briefing run failed")
+      }
+      if (data.briefing) setBriefings((current) => [data.briefing, ...current].slice(0, 4))
+      if (data.monitorRun) setMonitorRuns((current) => [data.monitorRun, ...current].slice(0, 6))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Briefing run failed")
+    } finally {
+      setIsRunning(false)
+    }
+  }, [])
+
+  return (
+    <section className="mb-8 rounded-2xl border border-sky-900/40 bg-sky-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-sky-300">
+            Phase 4 AI Briefings
+          </p>
+          <h2 className="text-2xl font-bold text-white">Morning and Evening Monitor Briefing</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            Scheduled monitor snapshots turn the Action Center into an executive briefing. This is dashboard-only:
+            no messages, orders, bids, or payments are executed.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={runBriefing}
+          disabled={isRunning}
+          className="rounded-xl bg-sky-400 px-4 py-3 text-sm font-bold text-gray-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isRunning ? "Running..." : "Run Briefing"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-800/40 bg-red-950/30 p-3 text-sm text-red-200">
+          {error}
+        </div>
+      )}
+
+      {!latest ? (
+        <div className="rounded-xl border border-sky-800/30 bg-sky-950/20 p-5">
+          <p className="font-semibold text-sky-100">No operational briefing has been generated yet.</p>
+          <p className="mt-1 text-sm text-sky-100/70">
+            Run the first briefing manually, then the scheduled monitor can keep snapshots fresh.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+          <article className={cn("rounded-xl border p-4", monitorStatusClass(latest.status))}>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                {formatStatus(latest.status)}
+              </span>
+              <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                {formatStatus(latest.briefingType)}
+              </span>
+              <span className="text-xs text-gray-400">{new Date(latest.createdAt).toLocaleString()}</span>
+            </div>
+            <h3 className="text-xl font-bold text-white">{latest.headline}</h3>
+            <p className="mt-2 text-sm leading-6 text-gray-300">{latest.summary}</p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="text-xs text-gray-500">Actions</p>
+                <p className="text-2xl font-bold text-white">{latest.actionSummary.total}</p>
+              </div>
+              <div className="rounded-lg border border-red-800/30 bg-red-950/20 p-3">
+                <p className="text-xs text-red-300">Critical</p>
+                <p className="text-2xl font-bold text-red-200">{latest.actionSummary.critical}</p>
+              </div>
+              <div className="rounded-lg border border-orange-800/30 bg-orange-950/20 p-3">
+                <p className="text-xs text-orange-300">High</p>
+                <p className="text-2xl font-bold text-orange-200">{latest.actionSummary.high}</p>
+              </div>
+              <div className="rounded-lg border border-amber-800/30 bg-amber-950/20 p-3">
+                <p className="text-xs text-amber-300">Human Gates</p>
+                <p className="text-2xl font-bold text-amber-200">{latest.actionSummary.humanApprovalRequired}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Next actions</p>
+                <div className="space-y-2">
+                  {latest.nextActions.slice(0, 4).map((action, index) => (
+                    <p key={`${action}-${index}`} className="rounded-lg border border-white/10 bg-black/20 p-2 text-sm text-gray-200">
+                      {action}
+                    </p>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Risks / wins</p>
+                <div className="space-y-2">
+                  {[...latest.risks.slice(0, 2), ...latest.wins.slice(0, 2)].map((item, index) => (
+                    <p key={`${item}-${index}`} className="rounded-lg border border-white/10 bg-black/20 p-2 text-sm text-gray-300">
+                      {item}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <aside className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+            <h3 className="mb-3 text-lg font-bold text-white">Monitor Runs</h3>
+            <div className="space-y-2">
+              {monitorRuns.slice(0, 5).map((run) => (
+                <div key={run.id} className="rounded-lg border border-gray-800 bg-black/20 p-3">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className={cn("rounded-full border px-2 py-1 text-xs font-bold uppercase", monitorStatusClass(run.status))}>
+                      {formatStatus(run.status)}
+                    </span>
+                    <span className="text-xs text-gray-500">{formatRelativeTime(run.createdAt)}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white">{formatStatus(run.runType)} monitor</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-400">{run.summary}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      )}
+    </section>
+  )
 }
 
 function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActionCenter }) {
@@ -934,6 +1102,8 @@ export default function AgentsDashboard({
   dashboardAgents,
   dashboardAgentSummary,
   actionCenter,
+  operationalBriefings,
+  monitorRuns,
 }: Props) {
   // Check if agent registry is initialized
   if (!agents || agents.length === 0) {
@@ -943,6 +1113,7 @@ export default function AgentsDashboard({
           <h1 className="text-3xl font-bold mb-2">APEX — Agent Command Center</h1>
           <p className="text-gray-400 mb-8">16-Agent Autonomous System</p>
 
+          <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
           <UnifiedActionCenterPanel actionCenter={actionCenter} />
           <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 
@@ -1003,6 +1174,7 @@ export default function AgentsDashboard({
           avgCompletion={avgCompletion}
         />
 
+        <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
         <UnifiedActionCenterPanel actionCenter={actionCenter} />
         <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 

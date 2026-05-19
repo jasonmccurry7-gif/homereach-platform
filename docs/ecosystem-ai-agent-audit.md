@@ -278,3 +278,41 @@ Operational note:
 
 - Migration 097 must be applied in Supabase before durable persistence is active in production.
 - Until the migration is applied, the Action Center continues to work as a generated queue and reports the durable source as unavailable.
+
+## Phase 4 Implementation
+
+Phase 4 adds scheduled monitor snapshots and dashboard-only AI operational briefings on top of the durable Action Center.
+
+Additive database tables:
+
+- `ai_dashboard_monitor_runs`
+  - Stores each monitor run, status, source health, action totals, and dashboard-agent readiness counts.
+  - Designed for morning/evening cron runs and manual admin-triggered runs.
+- `ai_operational_briefings`
+  - Stores concise executive briefings generated from Action Center state.
+  - Includes headline, summary, top actions, risks, wins, next actions, and delivery status.
+
+New routes:
+
+- `GET /api/admin/ai-orchestration/briefings`
+  - Admin-only read endpoint for recent briefings and monitor runs.
+- `GET|POST /api/admin/ai-orchestration/briefings/run`
+  - Admin or cron guarded.
+  - Generates one dashboard-only briefing and one monitor snapshot.
+  - `GET` is used by Vercel Cron and infers morning/evening from Eastern time.
+  - `POST` is used by the admin UI for manual briefing runs.
+
+New UI:
+
+- `/admin/agents` now includes a Phase 4 briefing panel above the Action Center.
+- The panel shows latest monitor status, critical/high/human-gate counts, next actions, risks/wins, recent monitor runs, and a safe manual "Run Briefing" button.
+
+New schedule:
+
+- `apps/web/vercel.json` schedules `/api/admin/ai-orchestration/briefings/run` at 8:00 AM and 5:00 PM Eastern-oriented weekday windows.
+
+Safety boundary:
+
+- Briefings are dashboard-only.
+- No email/SMS delivery is enabled by this phase.
+- No messages, orders, bids, pricing, checkout, political outreach, supplier actions, or customer-facing commitments are executed.
