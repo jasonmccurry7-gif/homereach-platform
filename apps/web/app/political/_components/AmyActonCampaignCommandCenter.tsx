@@ -545,7 +545,7 @@ export function AmyActonCampaignCommandCenter({ compact = false }: { compact?: b
             </p>
           </div>
           <a
-            href="/political/candidate-agent"
+            href="/political/candidate-agent?candidate=amy-acton"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-black text-white transition hover:bg-blue-500"
           >
             <Bot className="h-4 w-4" />

@@ -104,6 +104,23 @@ const PUBLIC_ACTON_READINESS: CandidateLaunchReadiness = {
 
 type CandidateAgentDashboard = Awaited<ReturnType<typeof loadCandidateAgentDashboard>>;
 
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+function first(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+function isActonSelection(value: string) {
+  return value === "amy-acton" || value === "acton" || value === "public-acton-source-backed-profile";
+}
+
+function isAmyActonName(value: string) {
+  return /amy\s+acton|dr\.?\s+amy\s+acton/i.test(value);
+}
+
 async function loadPublicAgentDashboard(): Promise<CandidateAgentDashboard | null> {
   try {
     return await loadCandidateAgentDashboard(40);
@@ -112,21 +129,30 @@ async function loadPublicAgentDashboard(): Promise<CandidateAgentDashboard | nul
   }
 }
 
-export default async function PoliticalCandidateAgentOverviewPage() {
+export default async function PoliticalCandidateAgentOverviewPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const selectedCandidate = first(sp.candidate);
+  const actonSelected = isActonSelection(selectedCandidate);
   const dashboard = await loadPublicAgentDashboard();
   const liveRows = dashboard?.schemaReady
     ? dashboard.rows.filter((row) => row.agent || row.latestPlan || row.latestResearch)
     : [];
-  const primaryReadinessRow = liveRows[0] ?? null;
+  const actonRows = liveRows.filter((row) => isAmyActonName(row.candidate.candidateName));
+  const visibleRows = actonSelected
+    ? actonRows
+    : liveRows.filter((row) => !isAmyActonName(row.candidate.candidateName));
+  const primaryReadinessRow = visibleRows[0] ?? null;
   const primaryReadiness = primaryReadinessRow
     ? buildCandidateLaunchReadiness({
         candidate: primaryReadinessRow.candidate,
         latestResearch: primaryReadinessRow.latestResearch,
         latestPlan: primaryReadinessRow.latestPlan,
       })
-    : PUBLIC_ACTON_READINESS;
-  const primaryReadinessName = primaryReadinessRow?.candidate.candidateName ?? "Dr. Amy Acton";
-  const liveLaunchQueueItems: CandidateAgentLaunchQueueItem[] = liveRows.map((row) => {
+    : actonSelected
+      ? PUBLIC_ACTON_READINESS
+      : null;
+  const primaryReadinessName = primaryReadinessRow?.candidate.candidateName ?? "Selected candidate";
+  const liveLaunchQueueItems: CandidateAgentLaunchQueueItem[] = visibleRows.map((row) => {
     const readiness = buildCandidateLaunchReadiness({
       candidate: row.candidate,
       latestResearch: row.latestResearch,
@@ -179,7 +205,11 @@ export default async function PoliticalCandidateAgentOverviewPage() {
     readiness: PUBLIC_ACTON_READINESS,
   };
   const launchQueueItems =
-    liveLaunchQueueItems.length > 0 ? liveLaunchQueueItems : [fallbackActonQueueItem];
+    liveLaunchQueueItems.length > 0
+      ? liveLaunchQueueItems
+      : actonSelected
+        ? [fallbackActonQueueItem]
+        : [];
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-10">
@@ -233,6 +263,52 @@ export default async function PoliticalCandidateAgentOverviewPage() {
         ))}
       </section>
 
+      <section className="mt-10 rounded-lg border border-blue-300/15 bg-slate-950 p-5 shadow-2xl shadow-blue-950/20">
+        <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-200">
+              Candidate selection
+            </p>
+            <h2 className="mt-2 text-2xl font-black text-white">
+              Load a candidate before showing candidate-specific intelligence.
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+              The dashboard stays generic until a candidate profile is selected. Candidate-specific research,
+              strategy, creative, readiness gates, and chat context only appear after selection.
+            </p>
+          </div>
+          <form action="/political/candidate-agent" className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_auto]">
+            <label className="sr-only" htmlFor="candidate">
+              Candidate profile
+            </label>
+            <select
+              id="candidate"
+              name="candidate"
+              defaultValue={actonSelected ? "amy-acton" : ""}
+              className="h-11 rounded-lg border border-white/10 bg-slate-900 px-3 text-sm font-bold text-white outline-none transition focus:border-blue-300/60"
+            >
+              <option value="">Select candidate profile</option>
+              <option value="amy-acton">Amy Acton - Ohio Governor</option>
+            </select>
+            <button
+              type="submit"
+              className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-500"
+            >
+              Load Candidate
+            </button>
+          </form>
+        </div>
+        {actonSelected ? (
+          <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-50">
+            Candidate-specific Acton intelligence is visible because the candidate profile is selected.
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+            No candidate-specific campaign intelligence is displayed in this default view.
+          </div>
+        )}
+      </section>
+
       {primaryReadiness && (
         <section className="mt-10">
           <CampaignReadinessChecklist
@@ -246,13 +322,17 @@ export default async function PoliticalCandidateAgentOverviewPage() {
         <CandidateAgentLaunchQueue items={launchQueueItems} />
       </section>
 
-      <section className="mt-10">
-        <AmyActonCampaignCommandCenter />
-      </section>
+      {actonSelected && (
+        <>
+          <section className="mt-10">
+            <AmyActonCampaignCommandCenter />
+          </section>
 
-      <section className="mt-10">
-        <PoliticalCandidateAgentChat />
-      </section>
+          <section className="mt-10">
+            <PoliticalCandidateAgentChat />
+          </section>
+        </>
+      )}
     </main>
   );
 }

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { CommandPanel, MetricBand, PublicHero, TimelinePreview } from "./_components/PublicCommand";
-import { PoliticalCandidateAgentChat } from "./_components/PoliticalCandidateAgentChat";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -36,13 +35,14 @@ export default async function PoliticalLanding() {
           <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-200">
-                Live candidate agent
+                Candidate AI agent
               </p>
               <h2 className="mt-2 text-2xl font-black text-white">
-                Dr. Amy Acton for Ohio Governor is loaded and ready to chat.
+                Select a candidate before loading campaign-specific intelligence.
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                The agent shows four compliant mail campaign paths with cities, households, drops, postcard cost, aggregate voter reach, and cost per voter. It uses public campaign/election context and aggregate geography only.
+                The agent can show compliant mail campaign paths with cities, households, drops, postcard cost,
+                aggregate reach, and campaign readiness gates after a candidate profile is selected.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -50,7 +50,7 @@ export default async function PoliticalLanding() {
                 href="/political/candidate-agent"
                 className="rounded-lg bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-500"
               >
-                Chat with Campaign AI Agent
+                Open Candidate Selector
               </Link>
               <Link
                 href="/political/maps"
@@ -70,8 +70,6 @@ export default async function PoliticalLanding() {
             { label: "Control", value: "Live", detail: "coverage and pricing engine" },
           ]}
         />
-
-        <PoliticalCandidateAgentChat />
 
         <div className="grid gap-4 lg:grid-cols-3">
           <CommandPanel
