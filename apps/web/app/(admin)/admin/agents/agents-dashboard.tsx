@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import type { DashboardAgentRuntime } from "@/lib/ai-orchestration/dashboard-agents"
+import type { AutopilotApprovalRequest, AutopilotControlCenter } from "@/lib/ai-orchestration/autopilot"
 import type { UnifiedActionCenter, UnifiedActionItem } from "@/lib/ai-orchestration/action-center"
 import type { DashboardMonitorRun, OperationalBriefing } from "@/lib/ai-orchestration/briefings"
 
@@ -56,6 +57,7 @@ interface Props {
   dashboardAgents: DashboardAgentRuntime[]
   dashboardAgentSummary: DashboardAgentSummary
   actionCenter: UnifiedActionCenter
+  autopilotControl: AutopilotControlCenter
   operationalBriefings: OperationalBriefing[]
   monitorRuns: DashboardMonitorRun[]
 }
@@ -363,6 +365,20 @@ function monitorStatusClass(status: OperationalBriefing["status"]) {
   return "border-emerald-800/40 bg-emerald-950/20 text-emerald-100"
 }
 
+function autopilotRiskClass(risk: AutopilotApprovalRequest["riskLevel"]) {
+  if (risk === "critical") return "border-red-700/50 bg-red-950/30 text-red-200"
+  if (risk === "high") return "border-orange-700/50 bg-orange-950/30 text-orange-200"
+  if (risk === "medium") return "border-amber-700/50 bg-amber-950/20 text-amber-100"
+  return "border-gray-700 bg-gray-900/50 text-gray-300"
+}
+
+function autopilotStatusClass(status: AutopilotApprovalRequest["approvalStatus"]) {
+  if (status === "approved") return "bg-emerald-900/30 text-emerald-300 border-emerald-700/40"
+  if (status === "rejected") return "bg-red-900/30 text-red-300 border-red-700/40"
+  if (status === "executed") return "bg-purple-900/30 text-purple-300 border-purple-700/40"
+  return "bg-blue-900/30 text-blue-300 border-blue-700/40"
+}
+
 function summarizeVisibleActions(items: UnifiedActionItem[]): UnifiedActionCenter["summary"] {
   return {
     total: items.length,
@@ -528,6 +544,201 @@ function OperationalBriefingPanel({
           </aside>
         </div>
       )}
+    </section>
+  )
+}
+
+function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCenter }) {
+  const [requests, setRequests] = useState<AutopilotApprovalRequest[]>(control.requests)
+  const [notes, setNotes] = useState<Record<string, string>>({})
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setRequests(control.requests)
+  }, [control])
+
+  const summary = {
+    total: requests.length,
+    pending: requests.filter((request) => request.approvalStatus === "pending").length,
+    approved: requests.filter((request) => request.approvalStatus === "approved").length,
+    critical: requests.filter((request) => request.riskLevel === "critical").length,
+    high: requests.filter((request) => request.riskLevel === "high").length,
+  }
+
+  const decide = useCallback(
+    async (request: AutopilotApprovalRequest, decision: "approve" | "reject" | "comment") => {
+      const key = `${request.id}:${decision}`
+      setBusyKey(key)
+      setError(null)
+      try {
+        const response = await fetch("/api/admin/ai-orchestration/autopilot", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId: request.id,
+            decision,
+            note: notes[request.id],
+          }),
+        })
+        const data = await response.json()
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Autopilot decision failed")
+        }
+
+        if (decision === "comment") {
+          setNotes((current) => ({ ...current, [request.id]: "" }))
+          return
+        }
+
+        setRequests((current) =>
+          current.map((item) =>
+            item.id === request.id
+              ? {
+                  ...item,
+                  approvalStatus: decision === "approve" ? "approved" : "rejected",
+                  decisionNote: notes[request.id],
+                }
+              : item
+          )
+        )
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Autopilot decision failed")
+      } finally {
+        setBusyKey(null)
+      }
+    },
+    [notes]
+  )
+
+  return (
+    <section className="mb-8 rounded-2xl border border-violet-900/40 bg-violet-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-violet-300">
+            Phase 5 Human-Approved Autopilot
+          </p>
+          <h2 className="text-2xl font-bold text-white">Approval Gates Before Execution</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            This turns high-value AI recommendations into explicit approval requests. Approving a gate records your decision
+            and audit trail only; it does not send outreach, place orders, submit bids, or change checkout.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Gates</p>
+            <p className="text-2xl font-bold text-white">{summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
+            <p className="text-xs text-blue-300">Pending</p>
+            <p className="text-2xl font-bold text-blue-200">{summary.pending}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-3">
+            <p className="text-xs text-emerald-300">Approved</p>
+            <p className="text-2xl font-bold text-emerald-200">{summary.approved}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
+            <p className="text-xs text-red-300">Critical</p>
+            <p className="text-2xl font-bold text-red-200">{summary.critical}</p>
+          </div>
+          <div className="rounded-xl border border-orange-800/40 bg-orange-950/30 p-3">
+            <p className="text-xs text-orange-300">High</p>
+            <p className="text-2xl font-bold text-orange-200">{summary.high}</p>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-800/40 bg-red-950/30 p-3 text-sm text-red-200">
+          {error}
+        </div>
+      )}
+
+      {requests.length === 0 ? (
+        <div className="rounded-xl border border-violet-800/30 bg-violet-950/20 p-5">
+          <p className="font-semibold text-violet-100">No autopilot approval gates are waiting.</p>
+          <p className="mt-1 text-sm text-violet-100/70">
+            Gates appear when Action Center recommendations require explicit human approval.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {requests.slice(0, 8).map((request) => (
+            <article key={request.id} className={cn("rounded-xl border p-4", autopilotRiskClass(request.riskLevel))}>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                      {request.riskLevel}
+                    </span>
+                    <span className={cn("rounded-full border px-2 py-1 text-xs font-bold", autopilotStatusClass(request.approvalStatus))}>
+                      {formatStatus(request.approvalStatus)}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                      {formatStatus(request.executorStatus)}
+                    </span>
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                      {request.dashboard}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white">{request.title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-gray-300">{request.requestedAction}</p>
+                  <p className="mt-2 text-xs leading-5 text-gray-400">{request.guardrailSummary}</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">{request.cannotExecuteReason}</p>
+                </div>
+                <a
+                  href={request.route}
+                  className="rounded-lg bg-white px-3 py-2 text-center text-xs font-bold text-gray-950 transition hover:bg-gray-200"
+                >
+                  Open Workflow
+                </a>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
+                <textarea
+                  value={notes[request.id] ?? ""}
+                  onChange={(event) => setNotes((current) => ({ ...current, [request.id]: event.target.value }))}
+                  placeholder="Decision note for the approval audit trail."
+                  className="min-h-[76px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-violet-500"
+                />
+                <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+                  <button
+                    type="button"
+                    disabled={busyKey === `${request.id}:approve` || request.approvalStatus === "approved"}
+                    onClick={() => decide(request, "approve")}
+                    className="rounded-lg bg-violet-400 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Approve Gate
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyKey === `${request.id}:reject` || request.approvalStatus === "rejected"}
+                    onClick={() => decide(request, "reject")}
+                    className="rounded-lg border border-red-800/40 bg-red-950/30 px-3 py-2 text-xs font-bold text-red-100 transition hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyKey === `${request.id}:comment` || !(notes[request.id] ?? "").trim()}
+                    onClick={() => decide(request, "comment")}
+                    className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Add Note
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col gap-2 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+        <span>Generated {new Date(control.generatedAt).toLocaleString()}</span>
+        <span>
+          Sources online: {control.sourceHealth.filter((source) => source.status === "ok").length}/{control.sourceHealth.length}
+        </span>
+      </div>
     </section>
   )
 }
@@ -1102,6 +1313,7 @@ export default function AgentsDashboard({
   dashboardAgents,
   dashboardAgentSummary,
   actionCenter,
+  autopilotControl,
   operationalBriefings,
   monitorRuns,
 }: Props) {
@@ -1114,6 +1326,7 @@ export default function AgentsDashboard({
           <p className="text-gray-400 mb-8">16-Agent Autonomous System</p>
 
           <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
+          <HumanApprovedAutopilotPanel control={autopilotControl} />
           <UnifiedActionCenterPanel actionCenter={actionCenter} />
           <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 
@@ -1175,6 +1388,7 @@ export default function AgentsDashboard({
         />
 
         <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
+        <HumanApprovedAutopilotPanel control={autopilotControl} />
         <UnifiedActionCenterPanel actionCenter={actionCenter} />
         <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 

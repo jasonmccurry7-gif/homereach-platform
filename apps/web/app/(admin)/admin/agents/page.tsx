@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 import { createClient } from "@/lib/supabase/server"
 import { getUnifiedActionCenter } from "@/lib/ai-orchestration/action-center"
+import { getAutopilotControlCenter } from "@/lib/ai-orchestration/autopilot"
 import { getRecentDashboardMonitorRuns, getRecentOperationalBriefings } from "@/lib/ai-orchestration/briefings"
 import { getDashboardAgentMatrix, getDashboardAgentSummary } from "@/lib/ai-orchestration/dashboard-agents"
 import AgentsDashboard from "./agents-dashboard"
@@ -35,8 +36,9 @@ export default async function AgentsPage() {
     .limit(1)
 
   const dashboardAgents = getDashboardAgentMatrix()
-  const [actionCenter, operationalBriefings, monitorRuns] = await Promise.all([
+  const [actionCenter, autopilotControl, operationalBriefings, monitorRuns] = await Promise.all([
     getUnifiedActionCenter(18),
+    getAutopilotControlCenter(10),
     getRecentOperationalBriefings(4),
     getRecentDashboardMonitorRuns(6),
   ])
@@ -50,6 +52,7 @@ export default async function AgentsPage() {
       dashboardAgents={dashboardAgents}
       dashboardAgentSummary={getDashboardAgentSummary(dashboardAgents)}
       actionCenter={actionCenter}
+      autopilotControl={autopilotControl}
       operationalBriefings={operationalBriefings}
       monitorRuns={monitorRuns}
     />

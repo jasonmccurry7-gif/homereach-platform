@@ -316,3 +316,37 @@ Safety boundary:
 - Briefings are dashboard-only.
 - No email/SMS delivery is enabled by this phase.
 - No messages, orders, bids, pricing, checkout, political outreach, supplier actions, or customer-facing commitments are executed.
+
+## Phase 5 Implementation
+
+Phase 5 adds a human-approved autopilot control layer. This is the first shared approval gate for future assisted-autopilot behavior across dashboards.
+
+Additive database tables:
+
+- `ai_autopilot_approval_requests`
+  - Stores one approval request per generated Action Center source key.
+  - Captures source dashboard, route, requested action, expected impact, risk level, approval status, execution mode, executor status, guardrail summary, and decision notes.
+- `ai_autopilot_approval_events`
+  - Stores audit events for approval, rejection, comments, and future execution events.
+
+New route:
+
+- `GET|PATCH /api/admin/ai-orchestration/autopilot`
+  - `GET` materializes Action Center items requiring human approval into approval gates.
+  - `PATCH` records `approve`, `reject`, or `comment` decisions.
+
+New UI:
+
+- `/admin/agents` now includes a Phase 5 Human-Approved Autopilot panel.
+- The panel shows pending/approved gates, risk levels, guardrails, source workflow links, notes, and explicit Approve Gate / Reject / Add Note controls.
+
+Safety boundary:
+
+- Approving a gate records intent only.
+- `executor_status` defaults to `approval_only`.
+- No live executor is connected in this phase.
+- No email/SMS, procurement order, Gov bid, pricing change, checkout, political outreach, subcontractor commitment, or customer-facing commitment is triggered.
+
+Next step:
+
+- Add narrow safe executors one at a time only after each source workflow has tests, rollback, suppression/permission checks, and a second explicit approval if the action is high-risk.
