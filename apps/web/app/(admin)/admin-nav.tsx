@@ -14,6 +14,7 @@ const NAV_GROUPS = [
       { label: "Dashboard",      href: "/admin",              emoji: "🏠" },
       { label: "Leads",          href: "/admin/leads",              emoji: "🎯" },
       { label: "Targeted Campaigns", href: "/admin/targeted-campaigns", emoji: "📬", badge: "NEW" },
+      { label: "Gov Contracts",  href: "/admin/gov-contracts", emoji: "GC", badge: "NEW" },
       { label: "Inbox",          href: "/admin/inbox",         emoji: "💬" },
     ],
   },

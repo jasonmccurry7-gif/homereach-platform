@@ -230,6 +230,8 @@ const ENV_SPECS: EnvSpec[] = [
   { key: "CANDIDATE_SERPAPI_MIN_REFRESH_HOURS", required: false, productionOnly: false },
   { key: "CANDIDATE_INTEL_WEBHOOK_SECRET", required: false, productionOnly: false },
   { key: "MAPBOX_ACCESS_TOKEN", required: false, productionOnly: false },
+  { key: "SAM_GOV_API_KEY", required: false, productionOnly: false },
+  { key: "SAM_GOV_OPPORTUNITIES_URL", required: false, productionOnly: false },
 
   {
     // Canonical admin notification address. Used by nonprofit, intake, and targeted
