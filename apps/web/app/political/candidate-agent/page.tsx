@@ -12,6 +12,13 @@ import {
   type CandidateLaunchReadiness,
 } from "@/lib/political/candidate-readiness";
 import { loadCandidateAgentDashboard } from "@/lib/political/candidate-launch-agent";
+import {
+  buildOhioCandidateSelectorOptions,
+  findOhioCandidateSelectorOption,
+  formatOhioCandidateSelectorLabel,
+  optionValueForCandidateRow,
+  type OhioCandidateSelectorOption,
+} from "@/lib/political/ohio-candidate-selector";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "AI Campaign Agent - HomeReach Political" };
@@ -129,19 +136,124 @@ async function loadPublicAgentDashboard(): Promise<CandidateAgentDashboard | nul
   }
 }
 
+function buildPrebuiltCandidateReadiness(
+  option: OhioCandidateSelectorOption,
+): CandidateLaunchReadiness {
+  return {
+    score: option.sourceUrl ? 18 : 12,
+    statusLabel: "Prebuilt profile",
+    checkoutEnabled: false,
+    approvalEnabled: false,
+    productionEnabled: false,
+    proposalDraftAllowed: false,
+    nextRequiredAction:
+      "Verify campaign contact, official boundary, USPS route counts, and final print/postage pricing before proposal or checkout.",
+    gates: [
+      {
+        key: "source",
+        label: "Source verified",
+        status: option.sourceUrl ? "review" : "blocked",
+        detail: `${option.sourceLabel}. This selector entry is a planning profile, not a finished campaign package.`,
+        action: "Confirm official campaign and election source freshness before quoting.",
+      },
+      {
+        key: "contact",
+        label: "Campaign contact verified",
+        status: "blocked",
+        detail: "No verified campaign manager/contact record is attached to this public selector profile yet.",
+        action: "Attach verified contact fields in the admin candidate record.",
+      },
+      {
+        key: "boundary",
+        label: "Boundary verified",
+        status: option.geography.includes("statewide") ? "review" : "blocked",
+        detail: `${option.geography} is loaded as the planning geography. Official boundary files still need verification before quoting.`,
+        action: "Attach official boundary/source timestamp for the race geography.",
+      },
+      {
+        key: "usps",
+        label: "USPS counts loaded",
+        status: "blocked",
+        detail: "No production USPS EDDM/carrier-route counts are attached to this selector profile.",
+        action: "Load route polygons, deliverable counts, exclusions, and source timestamp.",
+      },
+      {
+        key: "quote",
+        label: "Quote verified",
+        status: "blocked",
+        detail: "Print, postage, list/data, and total campaign pricing are not locked.",
+        action: "Generate a verified quote after USPS counts and mail quantity are attached.",
+      },
+      {
+        key: "approval",
+        label: "Human approval",
+        status: "blocked",
+        detail: "No HomeReach operator approval is attached to this prebuilt profile.",
+        action: "Review strategy, source freshness, compliance, pricing, and creative before release.",
+      },
+      {
+        key: "checkout",
+        label: "Checkout enabled",
+        status: "blocked",
+        detail: "Checkout is locked until all readiness gates pass.",
+        action: "Finish source, contact, boundary, USPS, quote, and approval gates before checkout.",
+      },
+    ],
+  };
+}
+
+function buildPrebuiltQueueItem(
+  option: OhioCandidateSelectorOption,
+  readiness: CandidateLaunchReadiness,
+): CandidateAgentLaunchQueueItem {
+  return {
+    id: option.value,
+    candidateName: option.candidateName,
+    officeSought: option.officeSought,
+    party: option.party,
+    geography: option.geography,
+    electionLabel: option.electionLabel,
+    raceType: option.raceType,
+    campaignStatus: option.campaignStatus,
+    agentStatus: "queued prebuilt profile",
+    nextAction: readiness.nextRequiredAction,
+    confidenceScore: readiness.score,
+    planStatus: "verification required",
+    hasResearch: Boolean(option.sourceUrl),
+    hasPlan: false,
+    hasCampaignWebsite: false,
+    hasSource: Boolean(option.sourceUrl),
+    readiness,
+  };
+}
+
 export default async function PoliticalCandidateAgentOverviewPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const selectedCandidate = first(sp.candidate);
-  const actonSelected = isActonSelection(selectedCandidate);
   const dashboard = await loadPublicAgentDashboard();
   const liveRows = dashboard?.schemaReady
     ? dashboard.rows.filter((row) => row.agent || row.latestPlan || row.latestResearch)
     : [];
+  const candidateOptions = buildOhioCandidateSelectorOptions(liveRows.map((row) => row.candidate));
+  const selectedCandidateOption = findOhioCandidateSelectorOption(candidateOptions, selectedCandidate);
+  const actonSelected =
+    Boolean(selectedCandidateOption?.isAmyActon) || isActonSelection(selectedCandidate);
   const actonRows = liveRows.filter((row) => isAmyActonName(row.candidate.candidateName));
-  const visibleRows = actonSelected
-    ? actonRows
+  const selectedLiveRows = selectedCandidateOption?.liveCandidateId
+    ? liveRows.filter((row) => row.candidate.id === selectedCandidateOption.liveCandidateId)
+    : selectedCandidateOption
+      ? liveRows.filter((row) => optionValueForCandidateRow(row.candidate) === selectedCandidateOption.value)
+      : [];
+  const visibleRows = selectedCandidateOption
+    ? actonSelected
+      ? actonRows
+      : selectedLiveRows
     : liveRows.filter((row) => !isAmyActonName(row.candidate.candidateName));
   const primaryReadinessRow = visibleRows[0] ?? null;
+  const prebuiltReadiness =
+    selectedCandidateOption && !actonSelected && !primaryReadinessRow
+      ? buildPrebuiltCandidateReadiness(selectedCandidateOption)
+      : null;
   const primaryReadiness = primaryReadinessRow
     ? buildCandidateLaunchReadiness({
         candidate: primaryReadinessRow.candidate,
@@ -150,8 +262,11 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
       })
     : actonSelected
       ? PUBLIC_ACTON_READINESS
-      : null;
-  const primaryReadinessName = primaryReadinessRow?.candidate.candidateName ?? "Selected candidate";
+      : prebuiltReadiness;
+  const primaryReadinessName =
+    primaryReadinessRow?.candidate.candidateName ??
+    selectedCandidateOption?.candidateName ??
+    "Selected candidate";
   const liveLaunchQueueItems: CandidateAgentLaunchQueueItem[] = visibleRows.map((row) => {
     const readiness = buildCandidateLaunchReadiness({
       candidate: row.candidate,
@@ -204,10 +319,16 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
     hasSource: true,
     readiness: PUBLIC_ACTON_READINESS,
   };
+  const fallbackSelectedQueueItem =
+    selectedCandidateOption && !actonSelected && prebuiltReadiness
+      ? buildPrebuiltQueueItem(selectedCandidateOption, prebuiltReadiness)
+      : null;
   const launchQueueItems =
     liveLaunchQueueItems.length > 0
       ? liveLaunchQueueItems
-      : actonSelected
+      : fallbackSelectedQueueItem
+        ? [fallbackSelectedQueueItem]
+        : actonSelected
         ? [fallbackActonQueueItem]
         : [];
 
@@ -273,7 +394,7 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
               Load a candidate before showing candidate-specific intelligence.
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              The dashboard stays generic until a candidate profile is selected. Candidate-specific research,
+              Choose from the top 30 Ohio prebuilt campaign profiles. The dashboard stays generic until a candidate profile is selected. Candidate-specific research,
               strategy, creative, readiness gates, and chat context only appear after selection.
             </p>
           </div>
@@ -284,11 +405,15 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
             <select
               id="candidate"
               name="candidate"
-              defaultValue={actonSelected ? "amy-acton" : ""}
+              defaultValue={selectedCandidateOption?.value ?? ""}
               className="h-11 rounded-lg border border-white/10 bg-slate-900 px-3 text-sm font-bold text-white outline-none transition focus:border-blue-300/60"
             >
               <option value="">Select candidate profile</option>
-              <option value="amy-acton">Amy Acton - Ohio Governor</option>
+              {candidateOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {formatOhioCandidateSelectorLabel(option)}
+                </option>
+              ))}
             </select>
             <button
               type="submit"
@@ -301,6 +426,12 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
         {actonSelected ? (
           <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-50">
             Candidate-specific Acton intelligence is visible because the candidate profile is selected.
+          </div>
+        ) : selectedCandidateOption ? (
+          <div className="mt-4 rounded-lg border border-blue-300/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-50">
+            {selectedCandidateOption.candidateName} is loaded as a prebuilt planning profile for{" "}
+            {selectedCandidateOption.officeSought}. Final proposal, checkout, and USPS quote actions stay locked until
+            contact, source, boundary, route-count, pricing, and human-approval gates are complete.
           </div>
         ) : (
           <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
