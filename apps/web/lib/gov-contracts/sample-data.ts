@@ -173,6 +173,7 @@ export function buildSampleGovContractsDashboard(): GovContractDashboardData {
     opportunities,
     sync: {
       configured: false,
+      databaseReady: false,
       status: "sample_data",
       lastRunAt: null,
       message:

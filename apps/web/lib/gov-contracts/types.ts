@@ -111,6 +111,7 @@ export interface GovContractDashboardData {
   opportunities: GovContractOpportunity[];
   sync: {
     configured: boolean;
+    databaseReady: boolean;
     status: "ready" | "not_configured" | "sample_data" | "error";
     lastRunAt: string | null;
     message: string;

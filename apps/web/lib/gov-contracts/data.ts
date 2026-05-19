@@ -191,6 +191,7 @@ export async function loadGovContractDashboard(filters: GovContractDashboardFilt
       summary: buildSummary(opportunities),
       sync: {
         configured: Boolean(process.env.SAM_GOV_API_KEY),
+        databaseReady: true,
         status: process.env.SAM_GOV_API_KEY ? "ready" : "not_configured",
         lastRunAt: latestRun?.created_at ?? null,
         message:
@@ -209,6 +210,8 @@ export async function loadGovContractDashboard(filters: GovContractDashboardFilt
       summary: buildSummary(opportunities),
       sync: {
         ...sample.sync,
+        configured: Boolean(process.env.SAM_GOV_API_KEY),
+        databaseReady: false,
         status: "sample_data",
         message:
           "Gov Contracts tables are not reachable yet, so this admin view is using clearly labeled sample planning records.",

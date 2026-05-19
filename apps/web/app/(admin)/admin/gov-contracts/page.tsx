@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { loadGovContractDashboard } from "@/lib/gov-contracts/data";
 import type { GovContractDashboardFilters, GovContractOpportunity } from "@/lib/gov-contracts/types";
+import { GovContractsSyncControl } from "./_components/GovContractsSyncControl";
 import { OpportunityStatusActions } from "./_components/OpportunityStatusActions";
 
 export const dynamic = "force-dynamic";
@@ -183,6 +184,12 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
         <SummaryCard label="Bids in progress" value={String(data.summary.bidsInProgress)} detail="Active pursuit work" />
         <SummaryCard label="Pipeline value" value={formatCurrency(data.summary.estimatedPipelineValueCents)} detail="Estimated or award values" />
       </section>
+
+      <GovContractsSyncControl
+        samConfigured={data.sync.configured}
+        databaseReady={data.sync.databaseReady}
+        lastRunAt={data.sync.lastRunAt}
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
