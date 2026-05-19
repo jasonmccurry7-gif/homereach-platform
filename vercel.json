@@ -4,5 +4,11 @@
   "buildCommand": "pnpm turbo run build --filter=@homereach/web...",
   "outputDirectory": "apps/web/.next",
   "installCommand": "pnpm install",
-  "devCommand": "pnpm turbo run dev --filter=@homereach/web..."
+  "devCommand": "pnpm turbo run dev --filter=@homereach/web...",
+  "crons": [
+    {
+      "path": "/api/admin/gov-contracts/cron/home-services",
+      "schedule": "0 12 * * 1-5"
+    }
+  ]
 }

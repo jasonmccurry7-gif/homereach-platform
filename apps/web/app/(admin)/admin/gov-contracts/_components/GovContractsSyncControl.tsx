@@ -77,6 +77,10 @@ export function GovContractsSyncControl({
             Run a controlled Ohio SAM.gov import after the database tables and API key are available. This only imports and
             scores opportunities; it never submits bids or creates outside commitments.
           </p>
+          <p className="mt-2 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
+            Home services focus is scheduled for weekdays at 12:00 UTC through Vercel Cron, with manual sync available here
+            anytime.
+          </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
