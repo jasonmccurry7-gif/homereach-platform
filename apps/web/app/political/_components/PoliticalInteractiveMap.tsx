@@ -267,6 +267,15 @@ const DISTRICT_LAYER_BY_LABEL: Partial<Record<string, OfficialDistrictLayerKey>>
   "State House District": "state_house",
 };
 
+const PRIMARY_POLITICAL_LAYER_BY_MODE: Record<PoliticalMode, string> = {
+  county: "County",
+  zipcode: "ZIP Code",
+  city: "City",
+  district: "Congressional District",
+};
+
+const PRIMARY_POLITICAL_MODE_LAYERS = new Set(Object.values(PRIMARY_POLITICAL_LAYER_BY_MODE));
+
 const DISTRICT_LAYER_MODE_BY_LABEL: Partial<Record<string, PoliticalMode>> = {
   "ZIP Code": "zipcode",
   County: "county",
@@ -2058,6 +2067,21 @@ function resolveActiveDistrictLayer(activePoliticalLayers: string[]): OfficialDi
   return "congressional";
 }
 
+function activeLayersForMode(current: string[], nextMode: PoliticalMode) {
+  const primaryLayer = PRIMARY_POLITICAL_LAYER_BY_MODE[nextMode];
+  const hasActiveDistrictSource = current.some((layer) => Boolean(DISTRICT_LAYER_BY_LABEL[layer]));
+
+  if (nextMode === "district" && hasActiveDistrictSource) return current;
+  if (current.includes(primaryLayer)) return current;
+
+  return [
+    ...current.filter(
+      (layer) => !PRIMARY_POLITICAL_MODE_LAYERS.has(layer) && !DISTRICT_LAYER_BY_LABEL[layer],
+    ),
+    primaryLayer,
+  ];
+}
+
 function getOfficialDistrictLayer(
   stateKey: StateKey,
   layerKey: OfficialDistrictLayerKey,
@@ -2213,7 +2237,7 @@ function buildOfficialDistrictShapes(
           district,
           label: `${state.shortLabel} ${districtLayerNoun(layer.key)} ${district}`,
           summary:
-            stateKey === "ohio"
+            stateKey === "ohio" && layer.key === "congressional"
               ? OHIO_CONGRESSIONAL_DISTRICT_SUMMARIES[district] ?? "Official congressional district boundary"
               : districtFeature.properties?.label ?? "Official district boundary",
           layerKey: layer.key,
@@ -3019,6 +3043,11 @@ export function PoliticalInteractiveMap() {
   const [checkoutStatus, setCheckoutStatus] = useState<MapActionStatus>("idle");
   const [exportStatus, setExportStatus] = useState<MapActionStatus>("idle");
 
+  function changeMapMode(nextMode: PoliticalMode) {
+    setMode(nextMode);
+    setActivePoliticalLayers((current) => activeLayersForMode(current, nextMode));
+  }
+
   const activeDistrictLayer = useMemo(
     () => resolveActiveDistrictLayer(activePoliticalLayers),
     [activePoliticalLayers],
@@ -3425,15 +3454,17 @@ export function PoliticalInteractiveMap() {
           searchResults={searchHits}
           onSearchChange={setMapSearch}
           onSelectSearchHit={selectSearchHit}
-          onModeChange={setMode}
+          onModeChange={changeMapMode}
           politicalLayers={activePoliticalLayers}
           uspsLayers={activeUspsLayers}
           onTogglePolitical={(layer) => {
             setActivePoliticalLayers((current) => {
               const isActive = current.includes(layer);
               if (DISTRICT_LAYER_BY_LABEL[layer]) {
-                const withoutDistrictLayers = current.filter((item) => !DISTRICT_LAYER_BY_LABEL[item]);
-                return isActive ? withoutDistrictLayers : [...withoutDistrictLayers, layer];
+                const withoutDistrictLayers = current.filter(
+                  (item) => !DISTRICT_LAYER_BY_LABEL[item] && !PRIMARY_POLITICAL_MODE_LAYERS.has(item),
+                );
+                return [...withoutDistrictLayers, layer];
               }
               return isActive ? current.filter((item) => item !== layer) : [...current, layer];
             });
@@ -3758,6 +3789,7 @@ function LayerTogglePanel({
                 key={key}
                 type="button"
                 aria-pressed={mode === key}
+                data-testid={`political-mode-${key}`}
                 onClick={() => onModeChange(key)}
                 className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-black transition ${
                   mode === key
@@ -3918,6 +3950,7 @@ function SyncedMapController({
               key={key}
               type="button"
               aria-pressed={stateKey === key}
+              data-testid={`political-state-${key}`}
               onClick={() => {
                 setStateKey(key);
                 resetView();

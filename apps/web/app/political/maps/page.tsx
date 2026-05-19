@@ -25,7 +25,7 @@ export default function PoliticalMapsPage() {
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <CommandPanel
             title="Map Operating Model"
-            body="The map starts with real county geometry, uses Ohio's official 2026-2032 congressional district layer in District mode, and keeps USPS cells marked as demo until carrier-route polygons are imported."
+            body="The map starts with real county geometry, loads official Ohio, Illinois, and Tennessee congressional, state senate, and state house district polygons in District mode, and keeps USPS cells marked as demo until carrier-route polygons are imported."
           >
             <div className="grid gap-3 sm:grid-cols-3">
               {["Coverage %", "Cost per household", "Route gaps"].map((label) => (
