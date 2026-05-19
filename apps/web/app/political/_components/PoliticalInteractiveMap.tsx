@@ -4444,6 +4444,7 @@ function PoliticalMap({
                             opacity={selected || synced ? 0.98 : 0.92}
                             pointerEvents="all"
                             className="cursor-pointer transition hover:opacity-100"
+                            onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
                               if (shouldSuppressClick()) return;
@@ -4501,6 +4502,7 @@ function PoliticalMap({
                       opacity={selected || synced ? 0.96 : 0.9}
                       pointerEvents="all"
                       className="cursor-pointer transition hover:opacity-100"
+                      onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation();
                         if (shouldSuppressClick()) return;
@@ -4526,6 +4528,7 @@ function PoliticalMap({
                     key={marker.id}
                     transform={`translate(${x},${y})`}
                     className="cursor-pointer"
+                    onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (shouldSuppressClick()) return;
@@ -4656,6 +4659,7 @@ function USPSMap({
                     opacity={selected || synced ? 0.96 : 0.78}
                     pointerEvents="all"
                     className="cursor-pointer transition hover:opacity-100"
+                    onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (shouldSuppressClick()) return;
