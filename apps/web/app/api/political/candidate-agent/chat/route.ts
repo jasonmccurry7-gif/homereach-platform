@@ -1,22 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   answerCandidateAgentChat,
+  resolveCandidateAgentChatContext,
   type CandidateAgentChatMessage,
 } from "@/lib/political/candidate-agent-chat";
 import { isPoliticalEnabled } from "@/lib/political/env";
+import type { OhioCandidateSelectorOption } from "@/lib/political/ohio-candidate-selector";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 type ChatPayload = {
   candidate?: string;
+  candidateProfile?: Partial<OhioCandidateSelectorOption>;
   message?: string;
   messages?: CandidateAgentChatMessage[];
 };
-
-function isSupportedCandidate(candidate: string | undefined) {
-  return candidate === "amy-acton" || candidate === "acton" || candidate === "public-acton-source-backed-profile";
-}
 
 export async function POST(req: NextRequest) {
   if (!isPoliticalEnabled()) {
@@ -36,7 +35,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!isSupportedCandidate(payload.candidate)) {
+  const context = resolveCandidateAgentChatContext(payload.candidate, payload.candidateProfile);
+
+  if (!context) {
     return NextResponse.json(
       {
         ok: false,
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
   const result = await answerCandidateAgentChat(
     message,
     Array.isArray(payload.messages) ? payload.messages : [],
+    context,
   );
 
   return NextResponse.json({

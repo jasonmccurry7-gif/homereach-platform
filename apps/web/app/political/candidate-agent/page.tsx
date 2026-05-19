@@ -12,6 +12,7 @@ import {
   type CandidateLaunchReadiness,
 } from "@/lib/political/candidate-readiness";
 import { loadCandidateAgentDashboard } from "@/lib/political/candidate-launch-agent";
+import { buildCandidateCoveragePlan } from "@/lib/political/candidate-coverage-plan";
 import {
   buildOhioCandidateSelectorOptions,
   findOhioCandidateSelectorOption,
@@ -236,6 +237,9 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
     : [];
   const candidateOptions = buildOhioCandidateSelectorOptions(liveRows.map((row) => row.candidate));
   const selectedCandidateOption = findOhioCandidateSelectorOption(candidateOptions, selectedCandidate);
+  const candidateCoveragePlan = selectedCandidateOption
+    ? buildCandidateCoveragePlan(selectedCandidateOption)
+    : null;
   const actonSelected =
     Boolean(selectedCandidateOption?.isAmyActon) || isActonSelection(selectedCandidate);
   const actonRows = liveRows.filter((row) => isAmyActonName(row.candidate.candidateName));
@@ -440,6 +444,15 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
         )}
       </section>
 
+      {selectedCandidateOption && candidateCoveragePlan && (
+        <section className="mt-10">
+          <PoliticalCandidateAgentChat
+            candidate={selectedCandidateOption}
+            coveragePlan={candidateCoveragePlan}
+          />
+        </section>
+      )}
+
       {primaryReadiness && (
         <section className="mt-10">
           <CampaignReadinessChecklist
@@ -454,15 +467,9 @@ export default async function PoliticalCandidateAgentOverviewPage({ searchParams
       </section>
 
       {actonSelected && (
-        <>
-          <section className="mt-10">
-            <AmyActonCampaignCommandCenter />
-          </section>
-
-          <section className="mt-10">
-            <PoliticalCandidateAgentChat />
-          </section>
-        </>
+        <section className="mt-10">
+          <AmyActonCampaignCommandCenter />
+        </section>
       )}
     </main>
   );

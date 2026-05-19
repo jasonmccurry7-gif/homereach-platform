@@ -1,14 +1,23 @@
 import {
-  AMY_ACTON_CAMPAIGN_PROFILE,
-  AMY_ACTON_CAMPAIGN_RECOMMENDATIONS,
-  summarizeAmyActonRecommendations,
-} from "./candidate-agent-recommendations";
+  buildCandidateCoveragePlan,
+  type CandidateAgentCoveragePlan,
+} from "./candidate-coverage-plan";
+import {
+  findOhioCandidateSelectorOption,
+  OHIO_TOP_CANDIDATE_SELECTOR_OPTIONS,
+  type OhioCandidateSelectorOption,
+} from "./ohio-candidate-selector";
 
 export type CandidateAgentChatRole = "agent" | "user";
 
 export interface CandidateAgentChatMessage {
   role: CandidateAgentChatRole;
   text: string;
+}
+
+export interface CandidateAgentChatContext {
+  candidate: OhioCandidateSelectorOption;
+  coveragePlan: CandidateAgentCoveragePlan;
 }
 
 export interface CandidateAgentChatResult {
@@ -23,44 +32,12 @@ function moneyFromCents(cents: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(cents / 100);
 }
 
 function number(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
-}
-
-function getCandidateContext() {
-  const summary = summarizeAmyActonRecommendations();
-  const plans = AMY_ACTON_CAMPAIGN_RECOMMENDATIONS.map((plan) => ({
-    title: plan.title,
-    planType: plan.planType,
-    summary: plan.summary,
-    candidateFit: plan.candidateFit,
-    cities: plan.cities,
-    geographyRationale: plan.geographyRationale,
-    drops: plan.drops,
-    households: plan.households,
-    estimatedVoterReach: plan.estimatedVoterReach,
-    pricePerPostcard: moneyFromCents(plan.pricePerPostcardCents),
-    estimatedTotal: moneyFromCents(plan.estimatedTotalCents),
-    costPerVoter: moneyFromCents(plan.costPerVoterCents),
-    phaseCadence: plan.phaseCadence,
-    nextAction: plan.nextAction,
-    confidenceScore: plan.confidenceScore,
-  }));
-
-  return {
-    profile: AMY_ACTON_CAMPAIGN_PROFILE,
-    summary: {
-      plans: summary.plans,
-      households: number(summary.households),
-      estimatedVoterReach: number(summary.estimatedVoterReach),
-      investment: moneyFromCents(summary.investmentCents),
-    },
-    plans,
-  };
 }
 
 function normalizeMessages(messages: CandidateAgentChatMessage[]) {
@@ -73,42 +50,93 @@ function normalizeMessages(messages: CandidateAgentChatMessage[]) {
     }));
 }
 
-export function buildCandidateAgentFallbackReply(prompt: string): string {
+function sanitizeString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value.slice(0, 240) : fallback;
+}
+
+export function resolveCandidateAgentChatContext(
+  candidateSlug: string | undefined,
+  candidateProfile?: Partial<OhioCandidateSelectorOption> | null,
+): CandidateAgentChatContext | null {
+  const known = findOhioCandidateSelectorOption(
+    OHIO_TOP_CANDIDATE_SELECTOR_OPTIONS,
+    candidateSlug ?? "",
+  );
+
+  const candidate =
+    known ??
+    (candidateProfile?.value
+      ? {
+          value: sanitizeString(candidateProfile.value),
+          candidateName: sanitizeString(candidateProfile.candidateName, "Selected candidate"),
+          officeSought: sanitizeString(candidateProfile.officeSought, "Office pending"),
+          party: sanitizeString(candidateProfile.party, "Party/committee pending"),
+          geography: sanitizeString(candidateProfile.geography, "Ohio"),
+          electionLabel: sanitizeString(candidateProfile.electionLabel, "Election pending"),
+          raceType: sanitizeString(candidateProfile.raceType, "race pending"),
+          campaignStatus: sanitizeString(candidateProfile.campaignStatus, "prebuilt profile"),
+          sourceLabel: sanitizeString(candidateProfile.sourceLabel, "candidate selector profile"),
+          sourceUrl: sanitizeString(candidateProfile.sourceUrl) || undefined,
+          liveCandidateId: sanitizeString(candidateProfile.liveCandidateId) || undefined,
+          isAmyActon: Boolean(candidateProfile.isAmyActon),
+        }
+      : null);
+
+  if (!candidate) return null;
+
+  return {
+    candidate,
+    coveragePlan: buildCandidateCoveragePlan(candidate),
+  };
+}
+
+function summarizeOptions(context: CandidateAgentChatContext) {
+  return context.coveragePlan.options
+    .map((option) => {
+      return `${option.label}: ${number(option.households)} households, ${option.drops} drops, ${number(option.totalPieces)} pieces, ${moneyFromCents(option.totalEstimateCents)} planning estimate`;
+    })
+    .join("; ");
+}
+
+export function buildCandidateAgentFallbackReply(
+  prompt: string,
+  context: CandidateAgentChatContext,
+): string {
   const normalized = prompt.toLowerCase();
-  const summary = summarizeAmyActonRecommendations();
+  const { candidate, coveragePlan } = context;
 
-  if (normalized.includes("postcard") || normalized.includes("creative") || normalized.includes("design")) {
-    return "The loaded Acton workspace includes postcard concept paths for statewide introduction, health-cost trust building, suburban visibility, and ballot-window reminders. Use the creative engine for draft concepts, then keep every piece in human review until campaign-approved copy, disclaimer placement, and final production specs are verified.";
+  if (normalized.includes("phase") || normalized.includes("timeline") || normalized.includes("wave")) {
+    const lines = coveragePlan.options.map((option) => {
+      const phases = option.phases.map((phase) => `${phase.name} (${phase.timing})`).join(", ");
+      return `${option.label}: ${phases}`;
+    });
+    return `${candidate.candidateName}'s agent built multi-phase coverage paths. ${lines.join(" ")} Proposal and checkout stay locked until USPS counts and pricing are verified.`;
   }
 
-  if (normalized.includes("cost") || normalized.includes("price") || normalized.includes("budget") || normalized.includes("voter")) {
-    const lowest = AMY_ACTON_CAMPAIGN_RECOMMENDATIONS.reduce((best, plan) =>
-      plan.estimatedTotalCents < best.estimatedTotalCents ? plan : best,
-    );
-    return `The lowest modeled Acton option is "${lowest.title}" at ${moneyFromCents(lowest.estimatedTotalCents)} across ${number(lowest.totalPieces)} postcards. Cost per voter is modeled as total postcard investment divided by aggregate estimated reach, not individual voter scoring. Final proposal pricing still needs verified USPS counts, print pricing, postage, and human approval.`;
+  if (normalized.includes("cost") || normalized.includes("price") || normalized.includes("budget") || normalized.includes("standard") || normalized.includes("premium")) {
+    const standard = coveragePlan.options[0];
+    const premium = coveragePlan.options.find((option) => option.key === "premium") ?? coveragePlan.options[2];
+    const command = coveragePlan.options[coveragePlan.options.length - 1];
+    return `For ${candidate.candidateName}, the lower-budget path is ${standard.label} at ${moneyFromCents(standard.totalEstimateCents)} for ${number(standard.households)} households. The premium path is ${premium.label} at ${moneyFromCents(premium.totalEstimateCents)} for ${number(premium.households)} households. The highest-coverage path is ${command.label} at ${moneyFromCents(command.totalEstimateCents)}. These are planning estimates, not final USPS quotes.`;
   }
 
-  if (normalized.includes("city") || normalized.includes("cities") || normalized.includes("map") || normalized.includes("geography")) {
-    const cities = Array.from(new Set(AMY_ACTON_CAMPAIGN_RECOMMENDATIONS.flatMap((plan) => plan.cities))).slice(0, 16);
-    return `The loaded plans include Ohio geography such as ${cities.join(", ")}. The recommendation logic is aggregate geography and route-density planning only. Before quoting, the map should attach verified USPS EDDM/carrier-route counts and source timestamps.`;
+  if (normalized.includes("geograph") || normalized.includes("county") || normalized.includes("zip") || normalized.includes("route") || normalized.includes("map")) {
+    return `${candidate.candidateName}'s recommended aggregate geography starts with ${coveragePlan.recommendedGeographies.slice(0, 5).join("; ")}. The agent is using public geography, household planning counts, route-density assumptions, and office/geography fit only. Final map work still needs USPS EDDM/carrier-route counts and source timestamps.`;
   }
 
-  if (normalized.includes("compliance") || normalized.includes("limit") || normalized.includes("guardrail")) {
-    return "Compliance lock is active. The agent can discuss public candidate context, aggregate households, geography, delivery timing, costs, and production readiness. It cannot infer individual political beliefs, score individual voters, target sensitive attributes, claim vote impact, or send campaign-facing materials without human approval.";
+  if (normalized.includes("compliance") || normalized.includes("lock") || normalized.includes("checkout") || normalized.includes("proposal")) {
+    return `Compliance lock is active for ${candidate.candidateName}. The agent can explain geography, coverage tiers, phases, timing, and planning estimates. It cannot infer individual political beliefs, score voters, claim vote impact, or enable proposal/checkout/production without verified USPS counts, pricing, source timestamps, and human approval.`;
   }
 
-  if (normalized.includes("next") || normalized.includes("approve") || normalized.includes("proposal") || normalized.includes("launch")) {
-    return "Recommended next step: select one strategy path, validate route counts in Maps, confirm campaign contact and source freshness, lock print/postage pricing, then generate a human-reviewed proposal. Checkout and production should stay disabled until those gates pass.";
+  if (normalized.includes("compare") || normalized.includes("option") || normalized.includes("plan") || normalized.includes("best")) {
+    return `The four coverage options for ${candidate.candidateName} are: ${summarizeOptions(context)}. The best operational choice depends on budget, timing, and how much of ${coveragePlan.universeLabel} should receive repeated mail visibility.`;
   }
 
-  if (normalized.includes("compare") || normalized.includes("best") || normalized.includes("strategy")) {
-    const ranked = AMY_ACTON_CAMPAIGN_RECOMMENDATIONS
-      .map((plan) => `${plan.title}: ${plan.confidenceScore}% confidence, ${number(plan.households)} households, ${plan.drops} drops`)
-      .join("; ");
-    return `The four loaded strategy paths are: ${ranked}. The best path depends on budget, timing, and whether the campaign wants broad statewide familiarity, metro repetition, suburban visibility, or a shorter ballot-window push.`;
+  if (normalized.includes("why") || normalized.includes("specific") || normalized.includes("candidate")) {
+    return `${candidate.candidateName}'s plan is specific to ${candidate.officeSought}, ${candidate.geography}, ${candidate.party}, and ${candidate.raceType}. The plan frame is: ${coveragePlan.planFrame}. Strategic needs: ${coveragePlan.strategicNeeds.join(" ")} The agent keeps this operational and aggregate only.`;
   }
 
-  return `I can help with the selected Acton campaign workspace: ${summary.plans} strategy paths, ${number(summary.households)} modeled households, ${number(summary.estimatedVoterReach)} aggregate estimated reach, budget explanation, route-readiness questions, postcard concepts, and next-step planning. Ask me about strategy, geography, pricing, compliance, creative, proposal readiness, or launch blockers.`;
+  return `${candidate.candidateName}'s AI Campaign Agent can compare four budget-to-coverage paths, explain phases, show recommended aggregate geographies, walk through planning estimates, and identify readiness blockers. Current options: ${summarizeOptions(context)}`;
 }
 
 async function getOpenAIClient(): Promise<import("openai").OpenAI | null> {
@@ -125,33 +153,33 @@ async function getOpenAIClient(): Promise<import("openai").OpenAI | null> {
 export async function answerCandidateAgentChat(
   prompt: string,
   messages: CandidateAgentChatMessage[],
+  context: CandidateAgentChatContext,
 ): Promise<CandidateAgentChatResult> {
   const trimmedPrompt = prompt.trim().slice(0, MAX_USER_MESSAGE_LENGTH);
   if (!trimmedPrompt) {
     return {
       mode: "fallback",
-      reply: "Ask a question about strategy, geography, pricing, postcard creative, compliance, proposal readiness, or launch next steps.",
+      reply: "Ask a question about the selected candidate's coverage options, phases, geography, budget, readiness gates, or proposal next steps.",
     };
   }
 
   const client = await getOpenAIClient();
   if (!client) {
-    return { mode: "fallback", reply: buildCandidateAgentFallbackReply(trimmedPrompt) };
+    return { mode: "fallback", reply: buildCandidateAgentFallbackReply(trimmedPrompt, context) };
   }
 
-  const context = getCandidateContext();
   const safeHistory = normalizeMessages(messages);
 
   try {
     const completion = await client.chat.completions.create({
       model: process.env.POLITICAL_AGENT_MODEL ?? "gpt-4o-mini",
-      temperature: 0.35,
-      max_tokens: 420,
+      temperature: 0.3,
+      max_tokens: 480,
       messages: [
         {
           role: "system",
           content:
-            "You are the HomeReach Political Command AI Campaign Agent for the currently selected candidate. Answer as an operational campaign mail planning assistant. Use only supplied context and clearly mark missing/uncertain data as a research gap. Keep answers concise, practical, and campaign-operations focused. Do not infer individual political beliefs, score individual voters, target sensitive attributes, claim vote impact, write deceptive content, or authorize outreach/checkout/production without human approval.",
+            "You are the HomeReach Political Command AI Campaign Agent for the currently selected candidate. Answer as an operational campaign mail planning assistant. Use only supplied context and clearly mark missing or uncertain data as a research gap. Keep answers concise, practical, and campaign-operations focused. Do not infer individual political beliefs, score individual voters, target sensitive attributes, claim vote impact, write deceptive content, or authorize outreach, checkout, proposal, or production without human approval.",
         },
         {
           role: "system",
@@ -167,11 +195,11 @@ export async function answerCandidateAgentChat(
 
     const reply = completion.choices[0]?.message?.content?.trim();
     if (!reply) {
-      return { mode: "fallback", reply: buildCandidateAgentFallbackReply(trimmedPrompt) };
+      return { mode: "fallback", reply: buildCandidateAgentFallbackReply(trimmedPrompt, context) };
     }
 
     return { mode: "ai", reply };
   } catch {
-    return { mode: "fallback", reply: buildCandidateAgentFallbackReply(trimmedPrompt) };
+    return { mode: "fallback", reply: buildCandidateAgentFallbackReply(trimmedPrompt, context) };
   }
 }
