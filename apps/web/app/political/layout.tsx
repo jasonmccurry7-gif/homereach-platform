@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 const POLITICAL_PLAN_HREF = "/political/plan";
 const POLITICAL_ACCOUNT_START_HREF = `/signup?redirect=${encodeURIComponent(POLITICAL_PLAN_HREF)}`;
+const POLITICAL_LOGIN_HREF = `/login?redirect=${encodeURIComponent(POLITICAL_PLAN_HREF)}`;
 
 export default async function PoliticalPortalLayout({
   children,
@@ -68,7 +69,7 @@ export default async function PoliticalPortalLayout({
               </form>
             ) : (
               <Link
-                href="/login"
+                href={POLITICAL_LOGIN_HREF}
                 className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-slate-300 transition hover:bg-white/10 hover:text-white"
               >
                 Login

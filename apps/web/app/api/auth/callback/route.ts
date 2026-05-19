@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { safeRelativeRedirect } from "@/lib/marketing/product-routes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Supabase Auth Callback
@@ -23,7 +24,7 @@ import { cookies } from "next/headers";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const next = safeRelativeRedirect(searchParams.get("next") ?? searchParams.get("redirect") ?? undefined, "/dashboard");
   const type = searchParams.get("type"); // "recovery" for password reset
 
   if (code) {

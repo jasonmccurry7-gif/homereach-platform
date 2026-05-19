@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SignupForm } from "./signup-form";
+import { loginHref, safeRelativeRedirect } from "@/lib/marketing/product-routes";
 
 export const metadata: Metadata = { title: "Create Account — HomeReach" };
 
-export default function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ redirect?: string }>;
+}) {
+  const params = await searchParams;
+  const redirectTo = safeRelativeRedirect(params.redirect, "/dashboard");
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-950 px-4 py-12">
       <div className="w-full max-w-md">
@@ -24,12 +32,12 @@ export default function SignupPage() {
         </div>
 
         <div className="rounded-2xl border border-gray-800 bg-gray-900 p-8 shadow-xl">
-          <SignupForm />
+          <SignupForm redirectTo={redirectTo} />
         </div>
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-blue-400 hover:text-blue-300 transition-colors">
+          <Link href={loginHref(redirectTo)} className="font-medium text-blue-400 hover:text-blue-300 transition-colors">
             Sign in
           </Link>
         </p>

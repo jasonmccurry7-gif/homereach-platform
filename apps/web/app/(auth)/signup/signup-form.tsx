@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-export function SignupForm() {
-  const router = useRouter();
+export function SignupForm({ redirectTo = "/dashboard" }: { redirectTo?: string }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,11 +18,15 @@ export function SignupForm() {
     setError(null);
 
     const supabase = createClient();
+    const callbackUrl = new URL("/api/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("next", redirectTo);
+
     const { error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: fullName },
+        emailRedirectTo: callbackUrl.toString(),
       },
     });
 
@@ -56,9 +58,14 @@ export function SignupForm() {
             <span className="font-medium text-gray-300">{email}</span>.
             Click the link to activate your account.
           </p>
+          {redirectTo !== "/dashboard" && (
+            <p className="mt-2 text-xs text-blue-200/80">
+              After confirmation, we&apos;ll send you back to your selected HomeReach workflow.
+            </p>
+          )}
         </div>
         <Link
-          href="/login"
+          href={`/login?redirect=${encodeURIComponent(redirectTo)}`}
           className="block text-sm text-blue-400 hover:text-blue-300 transition-colors"
         >
           Back to sign in →

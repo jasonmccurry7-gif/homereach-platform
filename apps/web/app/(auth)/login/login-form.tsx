@@ -4,6 +4,7 @@ import { useState, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { safeRelativeRedirect } from "@/lib/marketing/product-routes";
 
 interface LoginFormProps {
   searchParams: Promise<{ redirect?: string; error?: string }>;
@@ -47,7 +48,7 @@ export function LoginForm({ searchParams }: LoginFormProps) {
     // everyone else → /dashboard.
     const role = data.user?.app_metadata?.user_role as string | undefined;
 
-    let destination = params.redirect;
+    let destination = safeRelativeRedirect(params.redirect, "/dashboard");
     if (!destination || destination === "/dashboard") {
       if (role === "admin") {
         destination = "/admin";
