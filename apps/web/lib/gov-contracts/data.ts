@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { matchesGovContractFocus } from "./focus";
 import { buildSampleGovContractsDashboard, SAMPLE_GOV_CONTRACT_OPPORTUNITIES } from "./sample-data";
 import { recommendedActionFor, scoreGovContractOpportunity } from "./scoring";
 import type {
@@ -117,6 +118,7 @@ function applyFilters(opportunities: GovContractOpportunity[], filters: GovContr
       .join(" ")
       .toLowerCase();
     if (filters.keyword && !haystack.includes(filters.keyword.toLowerCase())) return false;
+    if (filters.focus && filters.focus !== "all" && !matchesGovContractFocus(o, filters.focus)) return false;
     if (filters.naics && o.naicsCode !== filters.naics) return false;
     if (filters.psc && o.pscCode !== filters.psc) return false;
     if (filters.agency && !o.agency.toLowerCase().includes(filters.agency.toLowerCase())) return false;

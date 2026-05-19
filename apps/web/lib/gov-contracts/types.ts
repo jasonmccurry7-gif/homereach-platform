@@ -15,6 +15,8 @@ export type GovContractFitStatus = "strong_fit" | "possible_fit" | "weak_fit" | 
 
 export type GovContractUrgency = "low" | "medium" | "high" | "critical";
 
+export type GovContractFocus = "home_services" | "hvac" | "landscaping" | "roofing";
+
 export interface GovContractLocation {
   city?: string | null;
   state?: string | null;
@@ -83,6 +85,7 @@ export interface GovContractOpportunity {
 
 export interface GovContractDashboardFilters {
   keyword?: string;
+  focus?: GovContractFocus | "all";
   naics?: string;
   psc?: string;
   agency?: string;

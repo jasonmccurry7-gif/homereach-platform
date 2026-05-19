@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
 import { createServiceClient } from "@/lib/supabase/service";
+import { buildSamGovFocusQueries, isGovContractFocus } from "@/lib/gov-contracts/focus";
 import { searchSamGovOpportunities } from "@/lib/gov-contracts/sam-gov";
 import { logGovContractAuditEvent } from "@/lib/gov-contracts/data";
+import type { GovContractOpportunity } from "@/lib/gov-contracts/types";
 
 function hasSupabaseServiceEnv() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -53,6 +55,7 @@ export async function POST(req: Request) {
     psc?: string;
     setAside?: string;
     noticeType?: string;
+    focus?: string;
     limit?: number;
   };
 
@@ -81,35 +84,68 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = await searchSamGovOpportunities({
+  const focus = isGovContractFocus(body.focus) ? body.focus : undefined;
+  const focusQueries = buildSamGovFocusQueries(focus, {
     keyword: body.keyword,
     state: body.state,
-    naics: body.naics,
     psc: body.psc,
     setAside: body.setAside,
     noticeType: body.noticeType,
-    limit: body.limit ?? 50,
+    limit: body.limit ?? (focus ? 30 : 50),
   });
+  const queries =
+    focusQueries.length > 0
+      ? focusQueries
+      : [
+          {
+            keyword: body.keyword,
+            state: body.state,
+            naics: body.naics,
+            psc: body.psc,
+            setAside: body.setAside,
+            noticeType: body.noticeType,
+            limit: body.limit ?? 50,
+          },
+        ];
 
-  if (!result.ok) {
+  const seen = new Map<string, GovContractOpportunity>();
+  const rawResponses: unknown[] = [];
+  const failures: Array<{ status: number; error: string }> = [];
+
+  for (const query of queries) {
+    const result = await searchSamGovOpportunities(query);
+    if (!result.ok) {
+      failures.push({ status: result.status, error: result.error });
+      continue;
+    }
+    rawResponses.push(result.raw ?? null);
+    for (const opportunity of result.opportunities) {
+      seen.set(`${opportunity.sourceSystem}:${opportunity.sourceId}`, opportunity);
+    }
+  }
+
+  if (seen.size === 0 && failures.length > 0) {
+    const firstFailure = failures[0]!;
     if (syncRun?.id) {
       await supabase
         .from("gov_contract_sync_runs")
         .update({
           status: "failed",
           finished_at: new Date().toISOString(),
-          message: result.error,
-          error: { status: result.status, message: result.error },
+          message: firstFailure.error,
+          error: { failures },
         })
         .eq("id", syncRun.id);
     }
-    return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: false, error: firstFailure.error }, { status: firstFailure.status });
   }
+
+  const opportunities = [...seen.values()];
 
   let upserted = 0;
   let failed = 0;
 
-  for (const opportunity of result.opportunities) {
+  for (const opportunity of opportunities) {
     const { error } = await supabase.from("gov_contract_opportunities").upsert(
       {
         source_system: "sam.gov",
@@ -163,24 +199,25 @@ export async function POST(req: Request) {
       .update({
         status: failed > 0 ? "partial" : "synced",
         finished_at: new Date().toISOString(),
-        records_seen: result.opportunities.length,
+        records_seen: opportunities.length,
         records_upserted: upserted,
         records_failed: failed,
-        message: `SAM.gov sync complete: ${upserted} stored, ${failed} failed.`,
-        raw_response: result.raw ?? null,
+        message: `SAM.gov${focus ? ` ${focus.replace("_", " ")}` : ""} sync complete: ${upserted} stored, ${failed} failed.`,
+        raw_response: rawResponses.length === 1 ? rawResponses[0] : { focus, query_count: queries.length, responses: rawResponses },
       })
       .eq("id", syncRun.id);
   }
 
   await logGovContractAuditEvent({
     eventType: "sam_sync_completed",
-    summary: `SAM.gov sync complete: ${upserted} stored, ${failed} failed.`,
-    metadata: { recordsSeen: result.opportunities.length, recordsUpserted: upserted, recordsFailed: failed },
+    summary: `SAM.gov${focus ? ` ${focus.replace("_", " ")}` : ""} sync complete: ${upserted} stored, ${failed} failed.`,
+    metadata: { focus, recordsSeen: opportunities.length, recordsUpserted: upserted, recordsFailed: failed, queryCount: queries.length },
   });
 
   return NextResponse.json({
     ok: true,
-    recordsSeen: result.opportunities.length,
+    focus,
+    recordsSeen: opportunities.length,
     recordsUpserted: upserted,
     recordsFailed: failed,
   });

@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { GOV_CONTRACT_FOCUS_DEFINITIONS } from "@/lib/gov-contracts/focus";
+import type { GovContractFocus } from "@/lib/gov-contracts/types";
 
 function ReadinessItem({
   label,
@@ -43,23 +45,27 @@ export function GovContractsSyncControl({
   const [isPending, startTransition] = useTransition();
   const readyToSync = samConfigured && databaseReady;
 
-  function runSync() {
+  function runSync(focus?: GovContractFocus) {
     startTransition(async () => {
       setMessage(null);
       const response = await fetch("/api/admin/gov-contracts/sync", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ state: "OH", limit: 50 }),
+        body: JSON.stringify({ state: "OH", limit: focus ? 30 : 50, focus }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) {
         setMessage(payload.error ?? "SAM.gov sync failed.");
         return;
       }
-      setMessage(`Sync complete: ${payload.recordsUpserted ?? 0} stored, ${payload.recordsFailed ?? 0} failed.`);
+      setMessage(
+        `${focus ? `${focus.replace("_", " ")} focus sync` : "Sync"} complete: ${payload.recordsUpserted ?? 0} stored, ${payload.recordsFailed ?? 0} failed.`
+      );
       router.refresh();
     });
   }
+
+  const focusButtons = GOV_CONTRACT_FOCUS_DEFINITIONS.filter((definition) => definition.id !== "home_services");
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
@@ -76,7 +82,7 @@ export function GovContractsSyncControl({
           <button
             type="button"
             disabled={!readyToSync || isPending}
-            onClick={runSync}
+            onClick={() => runSync()}
             className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             title={
               readyToSync
@@ -85,6 +91,15 @@ export function GovContractsSyncControl({
             }
           >
             {isPending ? "Syncing..." : "Run Ohio SAM.gov Sync"}
+          </button>
+          <button
+            type="button"
+            disabled={!readyToSync || isPending}
+            onClick={() => runSync("home_services")}
+            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            title="Import HVAC, landscaping, and roofing opportunities from SAM.gov."
+          >
+            Sync Home Services
           </button>
           <button
             type="button"
@@ -112,6 +127,29 @@ export function GovContractsSyncControl({
           ready={Boolean(lastRunAt)}
           detail={lastRunAt ? new Date(lastRunAt).toLocaleString() : "No live sync has run yet."}
         />
+      </div>
+
+      <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-3">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Home services focus</p>
+        <p className="mt-1 text-sm text-slate-600">
+          Run focused SAM.gov imports for contractor-friendly categories where HomeReach can coordinate local subcontractor
+          coverage, quote collection, and bid-room follow-up.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {focusButtons.map((definition) => (
+            <button
+              key={definition.id}
+              type="button"
+              disabled={!readyToSync || isPending}
+              onClick={() => runSync(definition.id)}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm font-black text-slate-800 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:text-slate-400"
+              title={definition.description}
+            >
+              {definition.shortLabel}
+              <span className="mt-1 block text-xs font-medium leading-5 text-slate-500">{definition.naicsCodes.join(", ")}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {message ? (

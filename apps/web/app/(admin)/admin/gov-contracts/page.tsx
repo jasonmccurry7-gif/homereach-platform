@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { loadGovContractDashboard } from "@/lib/gov-contracts/data";
+import { GOV_CONTRACT_FOCUS_DEFINITIONS, getGovContractFocusMatches, isGovContractFocus } from "@/lib/gov-contracts/focus";
 import type { GovContractDashboardFilters, GovContractOpportunity } from "@/lib/gov-contracts/types";
 import { GovContractsSyncControl } from "./_components/GovContractsSyncControl";
 import { OpportunityStatusActions } from "./_components/OpportunityStatusActions";
@@ -17,8 +18,10 @@ function first(value: string | string[] | undefined) {
 }
 
 function parseFilters(params: Record<string, string | string[] | undefined>): GovContractDashboardFilters {
+  const focus = first(params.focus)?.trim();
   return {
     keyword: first(params.keyword)?.trim() || undefined,
+    focus: focus === "all" || isGovContractFocus(focus) ? focus : undefined,
     naics: first(params.naics)?.trim() || undefined,
     psc: first(params.psc)?.trim() || undefined,
     agency: first(params.agency)?.trim() || undefined,
@@ -64,6 +67,7 @@ function SummaryCard({ label, value, detail }: { label: string; value: string; d
 }
 
 function OpportunityCard({ opportunity }: { opportunity: GovContractOpportunity }) {
+  const focusMatches = getGovContractFocusMatches(opportunity);
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -80,6 +84,14 @@ function OpportunityCard({ opportunity }: { opportunity: GovContractOpportunity 
                 Sample data
               </span>
             ) : null}
+            {focusMatches.map((match) => (
+              <span
+                key={match.id}
+                className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200"
+              >
+                {match.shortLabel}
+              </span>
+            ))}
           </div>
           <h2 className="mt-3 text-xl font-black leading-tight text-slate-950">{opportunity.title}</h2>
           <p className="mt-2 text-sm text-slate-600">
@@ -155,6 +167,7 @@ function Score({ label, value }: { label: string; value: number }) {
 export default async function GovContractsPage({ searchParams }: PageProps) {
   const filters = parseFilters(await searchParams);
   const data = await loadGovContractDashboard(filters);
+  const activeFocus = filters.focus ?? "all";
 
   return (
     <div className="space-y-6">
@@ -191,6 +204,37 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
         lastRunAt={data.sync.lastRunAt}
       />
 
+      <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Home services pursuit lane</p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">Focus the feed on contractor-friendly work</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-700">
+              Prioritize HVAC, landscaping, and roofing opportunities that can be worked through local subcontractor matching,
+              RFQs, insurance checks, and bid-room follow-up.
+            </p>
+          </div>
+          <Link
+            href="/admin/gov-contracts?focus=home_services&sort=fit"
+            className="rounded-lg bg-emerald-700 px-4 py-2 text-center text-sm font-black text-white hover:bg-emerald-800"
+          >
+            View all home services
+          </Link>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <FocusLink href="/admin/gov-contracts?sort=fit" label="All opportunities" active={activeFocus === "all"} />
+          {GOV_CONTRACT_FOCUS_DEFINITIONS.filter((definition) => definition.id !== "home_services").map((definition) => (
+            <FocusLink
+              key={definition.id}
+              href={`/admin/gov-contracts?focus=${definition.id}&sort=fit`}
+              label={definition.label}
+              detail={definition.naicsCodes.join(", ")}
+              active={activeFocus === definition.id}
+            />
+          ))}
+        </div>
+      </section>
+
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -206,8 +250,24 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
             Clear filters
           </Link>
         </div>
-        <form className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+        <form className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-8">
           <FilterInput name="keyword" label="Keyword" defaultValue={filters.keyword} placeholder="mailing, courier..." />
+          <label className="block">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Focus</span>
+            <select
+              name="focus"
+              defaultValue={filters.focus ?? "all"}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">All</option>
+              <option value="home_services">Home services</option>
+              {GOV_CONTRACT_FOCUS_DEFINITIONS.filter((definition) => definition.id !== "home_services").map((definition) => (
+                <option key={definition.id} value={definition.id}>
+                  {definition.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <FilterInput name="naics" label="NAICS" defaultValue={filters.naics} placeholder="541860" />
           <FilterInput name="psc" label="PSC" defaultValue={filters.psc} placeholder="R701" />
           <FilterInput name="agency" label="Agency" defaultValue={filters.agency} placeholder="GSA, VA..." />
@@ -254,6 +314,30 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
         )}
       </div>
     </div>
+  );
+}
+
+function FocusLink({
+  href,
+  label,
+  detail,
+  active,
+}: {
+  href: string;
+  label: string;
+  detail?: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-xl border p-3 text-sm shadow-sm ${
+        active ? "border-emerald-300 bg-white text-emerald-900" : "border-emerald-100 bg-white/70 text-slate-700 hover:bg-white"
+      }`}
+    >
+      <span className="font-black">{label}</span>
+      {detail ? <span className="mt-1 block text-xs text-slate-500">NAICS {detail}</span> : null}
+    </Link>
   );
 }
 
