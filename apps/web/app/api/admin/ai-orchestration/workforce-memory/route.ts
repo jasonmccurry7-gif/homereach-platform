@@ -7,6 +7,7 @@ import {
   recordAiWorkforceEvent,
   upsertAiWorkforceMemoryItem,
 } from "@/lib/ai-orchestration/workforce-memory";
+import { syncAiWorkforceDomainMemory } from "@/lib/ai-orchestration/workforce-domain-sync";
 import { syncAiWorkforceSignals } from "@/lib/ai-orchestration/workforce-memory-sync";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,16 @@ export async function POST(req: Request) {
       }, { status: 500 });
     }
   }
+  if (operation === "sync_domain_memory") {
+    try {
+      const result = await syncAiWorkforceDomainMemory(guard.user?.id ?? null);
+      return NextResponse.json({ ok: true, operation, result });
+    } catch (error) {
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : String(error),
+      }, { status: 500 });
+    }
+  }
 
   const payload = (body as Record<string, unknown>).payload;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -69,7 +80,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       error: "Unsupported operation.",
-      allowed: ["sync_signals", "record_event", "upsert_memory", "enqueue_task", "enqueue_ingestion"],
+      allowed: ["sync_signals", "sync_domain_memory", "record_event", "upsert_memory", "enqueue_task", "enqueue_ingestion"],
     }, { status: 400 });
   } catch (error) {
     return NextResponse.json({

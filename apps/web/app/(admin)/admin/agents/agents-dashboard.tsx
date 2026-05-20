@@ -819,6 +819,7 @@ function workforceStatusClass(status: string) {
 
 function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFoundationState }) {
   const [syncBusy, setSyncBusy] = useState(false)
+  const [domainSyncBusy, setDomainSyncBusy] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
 
   const runSignalSync = useCallback(async () => {
@@ -842,6 +843,30 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
       setSyncResult(error instanceof Error ? error.message : "Unable to sync AI Workforce signals.")
     } finally {
       setSyncBusy(false)
+    }
+  }, [])
+
+  const runDomainSync = useCallback(async () => {
+    setDomainSyncBusy(true)
+    setSyncResult(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/workforce-memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "sync_domain_memory" }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Unable to sync domain memory.")
+      }
+      const summary = data.result?.summary ?? {}
+      setSyncResult(
+        `Domain sync captured political ${summary.politicalMemories ?? 0}, procurement ${summary.procurementMemories ?? 0}, gov contracts ${summary.govContractMemories ?? 0}, outreach ${summary.outreachMemories ?? 0}, learning ${summary.learningMemories ?? 0}, plus ${summary.tasksQueued ?? 0} task(s).`
+      )
+    } catch (error) {
+      setSyncResult(error instanceof Error ? error.message : "Unable to sync domain memory.")
+    } finally {
+      setDomainSyncBusy(false)
     }
   }, [])
 
@@ -870,21 +895,31 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
         </span>
       </div>
 
-      <div className="mb-5 flex flex-col gap-3 rounded-xl border border-cyan-900/30 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-5 flex flex-col gap-3 rounded-xl border border-cyan-900/30 bg-black/20 p-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="font-semibold text-cyan-100">Manual Signal Sync</p>
           <p className="mt-1 text-sm leading-5 text-gray-400">
-            Capture current readiness, source freshness, mission-control, and high-priority action signals into durable memory.
+            Capture current readiness, source freshness, mission-control, high-priority actions, and domain records into durable memory.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={runSignalSync}
-          disabled={syncBusy}
-          className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-gray-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {syncBusy ? "Syncing..." : "Sync Signals"}
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={runSignalSync}
+            disabled={syncBusy || domainSyncBusy}
+            className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-gray-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncBusy ? "Syncing..." : "Sync Signals"}
+          </button>
+          <button
+            type="button"
+            onClick={runDomainSync}
+            disabled={syncBusy || domainSyncBusy}
+            className="rounded-lg border border-cyan-700/50 bg-cyan-950/40 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {domainSyncBusy ? "Syncing..." : "Sync Domain Memory"}
+          </button>
+        </div>
       </div>
 
       {syncResult && (
