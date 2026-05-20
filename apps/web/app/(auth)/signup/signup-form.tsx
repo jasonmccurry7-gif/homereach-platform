@@ -18,19 +18,27 @@ export function SignupForm({ redirect = "/dashboard" }: SignupFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setMessage(null);
 
     const supabase = createClient();
-    const { error: authError } = await supabase.auth.signUp({
+    const emailRedirectTo =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(nextPath)}`
+        : undefined;
+
+    const { data, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: fullName },
+        emailRedirectTo,
       },
     });
 
@@ -40,8 +48,16 @@ export function SignupForm({ redirect = "/dashboard" }: SignupFormProps) {
       return;
     }
 
+    if (!data.session) {
+      setMessage(
+        "Account created. Check your email to confirm your account, then you will continue to your selected page."
+      );
+      setLoading(false);
+      return;
+    }
+
     // Profile row is created via Supabase trigger on auth.users insert.
-    router.push(nextPath);
+    router.replace(nextPath);
     router.refresh();
   }
 
@@ -50,6 +66,11 @@ export function SignupForm({ redirect = "/dashboard" }: SignupFormProps) {
       {error && (
         <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+      {message && (
+        <div className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          {message}
         </div>
       )}
 
