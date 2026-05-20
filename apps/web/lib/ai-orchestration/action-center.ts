@@ -3,6 +3,7 @@ import { getDashboardAgentMatrix } from "./dashboard-agents";
 import { getSourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
 import { rememberActionCenterMutation } from "./workforce-human-events";
+import { getAiWorkforceFoundationState, type WorkforceTaskQueueItem } from "./workforce-memory";
 
 export type UnifiedActionUrgency = "critical" | "high" | "medium" | "low";
 export type UnifiedActionStatus = "needs_review" | "blocked" | "ready" | "watch";
@@ -92,6 +93,100 @@ function operationToEventType(operation: UnifiedActionOperation) {
   if (operation === "dismiss") return "dismissed";
   if (operation === "reopen") return "reopened";
   return "commented";
+}
+
+function actionForWorkforceTask(task: WorkforceTaskQueueItem): UnifiedActionItem | null {
+  if (task.status === "done" || task.status === "rejected" || task.status === "archived") return null;
+
+  const base = {
+    id: `ai-workforce-task-${task.id}`,
+    source: "ai_workforce_task_queue",
+    dashboard: task.dashboard,
+    route: task.route ?? "/admin/agents",
+    title: task.title,
+    impact: "Moves the AI Workforce task through the supervised lifecycle without touching external workflows.",
+    urgency: task.priority,
+    owner: "admin" as const,
+    requiresHumanApproval: true,
+    createdAt: task.updatedAt,
+    dueAt: task.dueAt ?? null,
+  };
+
+  if (task.status === "blocked") {
+    return {
+      ...base,
+      reason: "AI Workforce task is blocked.",
+      recommendedAction: "Review the blocker and decide whether to unblock, reject, or leave it parked.",
+      impact: "Prevents blocked work from being mistaken for autonomous progress.",
+      urgency: task.priority === "low" ? "medium" : task.priority,
+      status: "blocked",
+    };
+  }
+
+  if (!task.lastExecutionPlan) {
+    return {
+      ...base,
+      reason: "Task has not been translated into an execution plan yet.",
+      recommendedAction: "Open the AI Workforce queue and run Plan Only before any approval or handoff.",
+      status: "needs_review",
+    };
+  }
+
+  if (!task.approvalRequestId) {
+    return {
+      ...base,
+      reason: "Task has a Plan Only playbook but is not linked to the human approval queue.",
+      recommendedAction: "Send the reviewed plan to approval.",
+      status: "needs_review",
+    };
+  }
+
+  if (task.approvalStatus !== "approved") {
+    return {
+      ...base,
+      reason: `Linked approval status is ${task.approvalStatus ?? "pending"}.`,
+      recommendedAction: "Approve, reject, or comment on the linked approval request before handoff.",
+      status: "needs_review",
+    };
+  }
+
+  if (!task.lastDryRunPreview) {
+    return {
+      ...base,
+      reason: "Task is approved but has not been dry-run previewed.",
+      recommendedAction: "Run Dry Run Preview before any internal handoff.",
+      status: "needs_review",
+    };
+  }
+
+  if (!["handoff_queued", "task_ready", "task_created"].includes(task.executorStatus ?? "")) {
+    return {
+      ...base,
+      reason: "Task is approved and dry-run previewed, but no safe handoff is queued.",
+      recommendedAction: "Queue Safe Handoff. This creates an internal handoff record only.",
+      status: "ready",
+    };
+  }
+
+  if (["handoff_queued", "task_ready"].includes(task.executorStatus ?? "") && !task.internalTaskId) {
+    return {
+      ...base,
+      reason: "Safe handoff is queued and ready to become a human-owned internal CRM task.",
+      recommendedAction: "Create the internal CRM task for human follow-up.",
+      status: "ready",
+    };
+  }
+
+  if (task.internalTaskId && !["done", "cancelled", "canceled"].includes(task.internalTaskStatus ?? "")) {
+    return {
+      ...base,
+      reason: `Linked CRM task is ${task.internalTaskStatus ?? "pending"}.`,
+      recommendedAction: "Complete the internal task only after the human follow-up is finished.",
+      status: "ready",
+    };
+  }
+
+  return null;
 }
 
 export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionCenter> {
@@ -585,6 +680,12 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
       requiresHumanApproval: true,
       createdAt: item.lastSeenAt ?? nowIso(),
     });
+  }
+
+  const workforceFoundation = await readSource("ai_workforce_foundation", () => getAiWorkforceFoundationState(12), null);
+  for (const task of workforceFoundation?.tasks ?? []) {
+    const action = actionForWorkforceTask(task);
+    if (action) items.push(action);
   }
 
   const durableItems = await applyDurableActionState(supabase, items, sourceHealth);
