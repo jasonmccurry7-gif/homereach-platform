@@ -53,11 +53,19 @@ export interface UnifiedActionCenterSummary {
   humanApprovalRequired: number;
 }
 
+export interface UnifiedActionEventSummary {
+  sourceKey: string;
+  eventType: string;
+  note?: string | null;
+  createdAt: string;
+}
+
 export interface UnifiedActionCenter {
   generatedAt: string;
   summary: UnifiedActionCenterSummary;
   items: UnifiedActionItem[];
   sourceHealth: Array<{ source: string; status: "ok" | "unavailable"; note?: string }>;
+  recentEvents: UnifiedActionEventSummary[];
 }
 
 const URGENCY_WEIGHT: Record<UnifiedActionUrgency, number> = {
@@ -250,7 +258,7 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
       note: "Supabase env is missing, so only environment/action-readiness items were generated.",
     });
     const sorted = sortActions(items).slice(0, limit);
-    return { generatedAt: nowIso(), summary: summarize(sorted), items: sorted, sourceHealth };
+    return { generatedAt: nowIso(), summary: summarize(sorted), items: sorted, sourceHealth, recentEvents: [] };
   }
 
   const supabase = createServiceClient();
@@ -691,9 +699,10 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
     if (action) items.push(action);
   }
 
+  const recentEvents = await readSource("unified_action_events", () => getRecentActionEvents(supabase), []);
   const durableItems = await applyDurableActionState(supabase, items, sourceHealth);
   const sorted = sortActions(durableItems).slice(0, limit);
-  return { generatedAt: nowIso(), summary: summarize(sorted), items: sorted, sourceHealth };
+  return { generatedAt: nowIso(), summary: summarize(sorted), items: sorted, sourceHealth, recentEvents };
 }
 
 export async function updateUnifiedActionItem(input: UnifiedActionMutationInput) {
@@ -919,4 +928,24 @@ async function applyDurableActionState(
     });
     return items;
   }
+}
+
+async function getRecentActionEvents(
+  supabase: ReturnType<typeof createServiceClient>,
+  limit = 8
+): Promise<UnifiedActionEventSummary[]> {
+  const { data, error } = await supabase
+    .from("unified_action_events")
+    .select("source_key,event_type,note,created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  return (data ?? []).map((event) => ({
+    sourceKey: event.source_key ?? "unknown-action",
+    eventType: event.event_type,
+    note: event.note ?? null,
+    createdAt: event.created_at,
+  }));
 }

@@ -2725,6 +2725,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   const aiWorkforceActions = items.filter((item) => item.source === "ai_workforce_task_queue").length
   const filteredItems = items.filter((item) => matchesActionCenterFilter(item, actionFilter))
   const visibleItems = filteredItems.slice(0, 10)
+  const recentEvents = actionCenter.recentEvents ?? []
   const filterButtons: Array<{ id: ActionCenterFilter; label: string; count: number }> = [
     { id: "all", label: "All", count: items.length },
     { id: "ai_workforce", label: "AI Workforce", count: aiWorkforceActions },
@@ -2856,6 +2857,35 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
           </button>
         ))}
       </div>
+
+      {recentEvents.length > 0 && (
+        <div className="mb-4 rounded-xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">Recent Triage Activity</p>
+              <p className="text-sm text-gray-300">Latest durable Action Center updates from admin review.</p>
+            </div>
+            <p className="text-xs text-gray-500">Read-only audit feed</p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {recentEvents.slice(0, 4).map((event) => (
+              <div
+                key={`${event.sourceKey}:${event.eventType}:${event.createdAt}`}
+                className="rounded-lg border border-white/10 bg-gray-950/50 p-3"
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold uppercase text-gray-300">
+                    {formatStatus(event.eventType)}
+                  </span>
+                  <span className="text-[11px] text-gray-500">{new Date(event.createdAt).toLocaleString()}</span>
+                </div>
+                <p className="truncate text-xs font-semibold text-gray-300">{event.sourceKey}</p>
+                {event.note ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-400">{event.note}</p> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {visibleItems.length === 0 ? (
         <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-5">
