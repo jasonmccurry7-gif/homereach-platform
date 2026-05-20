@@ -62,6 +62,7 @@ export interface WorkforceTaskQueueItem {
   requiresHumanApproval: boolean;
   dueAt?: string | null;
   updatedAt: string;
+  approvalRequestId?: string | null;
   lastExecutionPlan?: WorkforceTaskExecutionPlan["plan"] | null;
   lastExecutionPlanAt?: string | null;
 }
@@ -207,6 +208,24 @@ export interface WorkforceTaskExecutionPlan {
   };
 }
 
+export interface SendWorkforceTaskToApprovalInput {
+  taskId?: string;
+  taskKey?: string;
+  actorId?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkforceTaskApprovalHandoff {
+  taskId: string;
+  taskKey: string;
+  approvalRequestId: string;
+  approvalStatus: string;
+  executorStatus: string;
+  externalWorkflowTouched: false;
+  message: string;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -226,6 +245,13 @@ function toNumber(value: unknown, fallback = 0) {
 
 function asMetadata(value?: Record<string, unknown>) {
   return value ?? {};
+}
+
+function mergeMetadata(value: unknown, extra?: Record<string, unknown>) {
+  return {
+    ...((value && typeof value === "object" && !Array.isArray(value)) ? value as Record<string, unknown> : {}),
+    ...(extra ?? {}),
+  };
 }
 
 function eventTypeForQueueStatus(status: WorkforceQueueStatus | WorkforceIngestionStatus): RecordWorkforceEventInput["eventType"] {
@@ -517,7 +543,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     readSource("ai_workforce_task_queue", async () => {
       const { data, error } = await supabase
         .from("ai_workforce_task_queue")
-        .select("id,task_key,agent_id,dashboard,title,recommended_action,route,priority,status,requires_human_approval,due_at,updated_at,metadata")
+        .select("id,task_key,agent_id,dashboard,title,recommended_action,route,priority,status,requires_human_approval,due_at,updated_at,approval_request_id,metadata")
         .in("status", ["queued", "needs_approval", "approved", "in_progress", "blocked"])
         .order("updated_at", { ascending: false })
         .limit(limit);
@@ -580,6 +606,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       requiresHumanApproval: Boolean(row.requires_human_approval),
       dueAt: row.due_at ?? null,
       updatedAt: row.updated_at,
+      approvalRequestId: row.approval_request_id ?? null,
       lastExecutionPlan: plan.lastExecutionPlan,
       lastExecutionPlanAt: plan.lastExecutionPlanAt,
     };
@@ -605,6 +632,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       ? "Start writing approved AI observations into memory through service-role only workflows."
       : "Apply migration 103 before relying on persistent AI Workforce memory.",
     "Use Plan Only before execution so admins can review steps, gates, and prohibited actions.",
+    "Send reviewed plans into the existing approval queue before creating any internal follow-up task.",
     "Use ingestion queue statuses for review and approval before any source analysis becomes autonomous.",
   ];
 
@@ -912,22 +940,18 @@ export async function planAiWorkforceTaskExecution(input: PlanWorkforceTaskInput
   };
 
   const now = nowIso();
-  const existingMetadata = (data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata))
-    ? data.metadata as Record<string, unknown>
-    : {};
 
   const { error: updateError } = await supabase
     .from("ai_workforce_task_queue")
     .update({
       updated_at: now,
-      metadata: {
-        ...existingMetadata,
+      metadata: mergeMetadata(data.metadata, {
         lastExecutionPlan: plan.plan,
         lastExecutionPlanAt: now,
         lastExecutionPlanBy: input.actorId ?? null,
         externalWorkflowTouched: false,
         ...(input.metadata ?? {}),
-      },
+      }),
     })
     .eq("id", data.id);
   if (updateError) throw updateError;
@@ -972,4 +996,234 @@ export async function planAiWorkforceTaskExecution(input: PlanWorkforceTaskInput
   });
 
   return plan;
+}
+
+export async function sendAiWorkforceTaskToApproval(input: SendWorkforceTaskToApprovalInput): Promise<WorkforceTaskApprovalHandoff> {
+  if (!input.taskId && !input.taskKey) {
+    throw new Error("taskId or taskKey is required.");
+  }
+
+  const supabase = createServiceClient();
+  let query = supabase
+    .from("ai_workforce_task_queue")
+    .select("id,task_key,agent_id,dashboard,title,description,recommended_action,route,priority,status,requires_human_approval,approval_request_id,metadata")
+    .limit(1);
+
+  query = input.taskId ? query.eq("id", input.taskId) : query.eq("task_key", input.taskKey);
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("AI Workforce task was not found.");
+
+  const taskStatus = (data.status ?? "queued") as WorkforceQueueStatus;
+  if (["done", "rejected", "archived"].includes(taskStatus)) {
+    throw new Error("Completed, rejected, or archived tasks cannot be sent to approval.");
+  }
+
+  let parsedPlan = parseExecutionPlan(data.metadata);
+  if (!parsedPlan.lastExecutionPlan) {
+    const generated = await planAiWorkforceTaskExecution({
+      taskId: String(data.id),
+      actorId: input.actorId ?? null,
+      metadata: {
+        generatedForApprovalHandoff: true,
+        ...(input.metadata ?? {}),
+      },
+    });
+    parsedPlan = {
+      lastExecutionPlan: generated.plan,
+      lastExecutionPlanAt: nowIso(),
+    };
+  }
+
+  const plan = parsedPlan.lastExecutionPlan;
+  if (!plan) throw new Error("Plan generation failed.");
+
+  const now = nowIso();
+  const sourceKey = `ai-workforce-task:${data.task_key}`;
+  const riskLevel = (data.priority ?? "medium") as WorkforceMemoryItem["impactLevel"];
+  const guardrailSummary = [
+    "Human approval required before any next step.",
+    ...plan.humanApprovalGates.slice(0, 3).map((gate) => `Gate: ${gate}`),
+  ].join(" ");
+  const cannotExecuteReason =
+    "AI Workforce handoff creates an approval request only. It does not send outreach, publish content, place orders, submit bids, launch campaigns, or change payments.";
+  const sourceSnapshot = {
+    taskId: data.id,
+    taskKey: data.task_key,
+    agentId: data.agent_id,
+    dashboard: data.dashboard,
+    route: data.route ?? "/admin/agents",
+    priority: data.priority ?? "medium",
+    priorStatus: data.status,
+    plan,
+    note: input.note ?? null,
+    externalWorkflowTouched: false,
+  };
+
+  const { data: existingRequest, error: existingError } = await supabase
+    .from("ai_autopilot_approval_requests")
+    .select("id,approval_status,executor_status,metadata")
+    .eq("source_key", sourceKey)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+
+  let approvalRequest: { id: string; approval_status: string; executor_status: string };
+  if (existingRequest) {
+    const { data: updatedRequest, error: updateRequestError } = await supabase
+      .from("ai_autopilot_approval_requests")
+      .update({
+        updated_at: now,
+        last_seen_at: now,
+        source: "ai_workforce_task_queue",
+        dashboard: String(data.dashboard),
+        route: data.route ?? "/admin/agents",
+        title: `Approve AI Workforce plan: ${data.title}`.slice(0, 240),
+        requested_action: data.recommended_action,
+        expected_impact: "Moves a reviewed AI Workforce plan into human approval before any internal task or external workflow can proceed.",
+        risk_level: riskLevel,
+        execution_mode: "human_approval",
+        executor_status: existingRequest.executor_status ?? "approval_only",
+        guardrail_summary: guardrailSummary,
+        cannot_execute_reason: cannotExecuteReason,
+        requires_human_approval: true,
+        source_snapshot: sourceSnapshot,
+        metadata: mergeMetadata(existingRequest.metadata, {
+          sourceTaskId: data.id,
+          taskKey: data.task_key,
+          plan,
+          resentToApprovalAt: now,
+          externalWorkflowTouched: false,
+          ...(input.metadata ?? {}),
+        }),
+      })
+      .eq("id", existingRequest.id)
+      .select("id,approval_status,executor_status")
+      .single();
+    if (updateRequestError) throw updateRequestError;
+    approvalRequest = updatedRequest;
+  } else {
+    const { data: insertedRequest, error: insertRequestError } = await supabase
+      .from("ai_autopilot_approval_requests")
+      .insert({
+        source_key: sourceKey,
+        source: "ai_workforce_task_queue",
+        dashboard: String(data.dashboard),
+        route: data.route ?? "/admin/agents",
+        title: `Approve AI Workforce plan: ${data.title}`.slice(0, 240),
+        requested_action: data.recommended_action,
+        expected_impact: "Moves a reviewed AI Workforce plan into human approval before any internal task or external workflow can proceed.",
+        risk_level: riskLevel,
+        approval_status: "pending",
+        execution_mode: "human_approval",
+        executor_status: "approval_only",
+        guardrail_summary: guardrailSummary,
+        cannot_execute_reason: cannotExecuteReason,
+        requires_human_approval: true,
+        source_snapshot: sourceSnapshot,
+        metadata: {
+          sourceTaskId: data.id,
+          taskKey: data.task_key,
+          plan,
+          externalWorkflowTouched: false,
+          ...(input.metadata ?? {}),
+        },
+      })
+      .select("id,approval_status,executor_status")
+      .single();
+    if (insertRequestError) throw insertRequestError;
+    approvalRequest = insertedRequest;
+  }
+
+  const { error: eventError } = await supabase
+    .from("ai_autopilot_approval_events")
+    .insert({
+      request_id: approvalRequest.id,
+      source_key: sourceKey,
+      event_type: existingRequest ? "observed" : "created",
+      actor_id: input.actorId ?? null,
+      note: input.note ?? "AI Workforce task sent to approval queue. No external workflow was executed.",
+      metadata: {
+        sourceTaskId: data.id,
+        taskKey: data.task_key,
+        approvalStatus: approvalRequest.approval_status,
+        executorStatus: approvalRequest.executor_status,
+        externalWorkflowTouched: false,
+      },
+    });
+  if (eventError) throw eventError;
+
+  const { error: taskUpdateError } = await supabase
+    .from("ai_workforce_task_queue")
+    .update({
+      updated_at: now,
+      status: "needs_approval",
+      approval_request_id: approvalRequest.id,
+      metadata: mergeMetadata(data.metadata, {
+        lastExecutionPlan: plan,
+        lastExecutionPlanAt: parsedPlan.lastExecutionPlanAt ?? now,
+        approvalRequestId: approvalRequest.id,
+        approvalRequestStatus: approvalRequest.approval_status,
+        sentToApprovalAt: now,
+        sentToApprovalBy: input.actorId ?? null,
+        externalWorkflowTouched: false,
+        ...(input.metadata ?? {}),
+      }),
+    })
+    .eq("id", data.id);
+  if (taskUpdateError) throw taskUpdateError;
+
+  await upsertAiWorkforceMemoryItem({
+    memoryKey: `approval-handoff:${data.task_key}`,
+    agentId: data.agent_id ?? null,
+    dashboard: String(data.dashboard),
+    memoryType: "decision",
+    title: `Approval handoff: ${data.title}`,
+    summary: "Task plan was sent to the existing human approval queue. No external workflow was executed.",
+    source: "ai_autopilot_approval_requests",
+    sourceId: approvalRequest.id,
+    route: data.route ?? "/admin/agents",
+    confidence: 0.9,
+    impactLevel: riskLevel,
+    metadata: {
+      taskKey: data.task_key,
+      approvalRequestId: approvalRequest.id,
+      approvalStatus: approvalRequest.approval_status,
+      executorStatus: approvalRequest.executor_status,
+      externalWorkflowTouched: false,
+    },
+  });
+
+  await recordAiWorkforceEvent({
+    eventType: "queued",
+    agentId: data.agent_id ?? null,
+    dashboard: String(data.dashboard),
+    actorType: "admin",
+    actorId: input.actorId ?? null,
+    title: `Approval queued: ${data.title}`,
+    summary: "AI Workforce task plan sent to the existing human approval queue. No external workflow was executed.",
+    route: data.route ?? "/admin/agents",
+    severity: riskLevel === "critical" ? "warning" : "info",
+    source: "ai_workforce_task_queue",
+    sourceId: String(data.id),
+    metadata: {
+      taskKey: data.task_key,
+      approvalRequestId: approvalRequest.id,
+      approvalStatus: approvalRequest.approval_status,
+      executorStatus: approvalRequest.executor_status,
+      externalWorkflowTouched: false,
+      ...(input.metadata ?? {}),
+    },
+  });
+
+  return {
+    taskId: String(data.id),
+    taskKey: String(data.task_key),
+    approvalRequestId: approvalRequest.id,
+    approvalStatus: approvalRequest.approval_status,
+    executorStatus: approvalRequest.executor_status,
+    externalWorkflowTouched: false,
+    message: "Task sent to human approval queue. No external workflow was executed.",
+  };
 }

@@ -873,7 +873,7 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
 
   const runQueueUpdate = useCallback(async (
     busyKey: string,
-    operation: "update_task_status" | "update_ingestion_status" | "plan_task_execution",
+    operation: "update_task_status" | "update_ingestion_status" | "plan_task_execution" | "send_task_to_approval",
     payload: Record<string, unknown>,
     successMessage: string
   ) => {
@@ -1026,6 +1026,11 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                       {formatStatus(task.status)}
                     </span>
                     <span className="text-xs text-gray-400">{task.agentId}</span>
+                    {task.approvalRequestId && (
+                      <span className="rounded-full border border-violet-700/50 bg-violet-950/40 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-100">
+                        Approval Linked
+                      </span>
+                    )}
                   </div>
                   <p className="font-semibold text-white">{task.title}</p>
                   <p className="mt-1 text-sm leading-5 text-gray-300">{task.recommendedAction}</p>
@@ -1079,6 +1084,27 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                         className="rounded-md border border-sky-700/50 bg-sky-950/40 px-3 py-1.5 text-xs font-bold text-sky-100 transition hover:bg-sky-900/50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {queueBusy === `task:${task.taskKey}:plan` ? "Planning..." : "Plan Only"}
+                      </button>
+                    )}
+                    {task.lastExecutionPlan && task.status !== "done" && task.status !== "rejected" && !task.approvalRequestId && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runQueueUpdate(
+                          `task:${task.taskKey}:approval`,
+                          "send_task_to_approval",
+                          {
+                            taskKey: task.taskKey,
+                            note: "Sent from AI Workforce Data Foundation panel after plan-only review.",
+                            metadata: {
+                              requestedFrom: "AI Workforce Data Foundation panel",
+                            },
+                          },
+                          "Task sent to the existing human approval queue. No external workflow was executed."
+                        )}
+                        className="rounded-md border border-violet-700/50 bg-violet-950/50 px-3 py-1.5 text-xs font-bold text-violet-100 transition hover:bg-violet-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:approval` ? "Sending..." : "Send Approval"}
                       </button>
                     )}
                     {task.status !== "done" && (

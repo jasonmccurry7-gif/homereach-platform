@@ -6,6 +6,7 @@ import {
   getAiWorkforceFoundationState,
   planAiWorkforceTaskExecution,
   recordAiWorkforceEvent,
+  sendAiWorkforceTaskToApproval,
   updateAiWorkforceIngestionStatus,
   updateAiWorkforceTaskStatus,
   upsertAiWorkforceMemoryItem,
@@ -101,6 +102,13 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ ok: true, operation, result });
     }
+    if (operation === "send_task_to_approval") {
+      const result = await sendAiWorkforceTaskToApproval({
+        ...(payload as Parameters<typeof sendAiWorkforceTaskToApproval>[0]),
+        actorId: guard.user?.id ?? null,
+      });
+      return NextResponse.json({ ok: true, operation, result });
+    }
 
     return NextResponse.json({
       error: "Unsupported operation.",
@@ -114,6 +122,7 @@ export async function POST(req: Request) {
         "update_task_status",
         "update_ingestion_status",
         "plan_task_execution",
+        "send_task_to_approval",
       ],
     }, { status: 400 });
   } catch (error) {
