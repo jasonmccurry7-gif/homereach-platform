@@ -399,12 +399,12 @@ function AiCommandCenterSummaryPanel({ commandCenter }: { commandCenter: AiComma
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-sky-200">
-            Phase 1M Unified AI Command State
+            Phase 3A Unified AI Command State
           </p>
           <h2 className="text-2xl font-bold text-white">{commandCenter.headline}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300">
-            One normalized state object for Action Center, mission control, source freshness, smoke checks, and Jason-owned
-            go-live items. This is read-only and built for future dashboard and agent orchestration.
+            One normalized state object for Action Center, mission control, source freshness, smoke checks, supervised
+            task handoffs, and Jason-owned go-live items. This is read-only and built for dashboard and agent orchestration.
           </p>
         </div>
         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold uppercase">
@@ -432,6 +432,29 @@ function AiCommandCenterSummaryPanel({ commandCenter }: { commandCenter: AiComma
         <div className="rounded-xl border border-teal-800/30 bg-teal-950/20 p-3">
           <p className="text-xs text-teal-200">Source Issues</p>
           <p className="text-2xl font-bold text-teal-100">{commandCenter.summary.sourceFreshnessIssues}</p>
+        </div>
+      </div>
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="rounded-xl border border-sky-800/30 bg-sky-950/20 p-3">
+          <p className="text-xs text-sky-200">Planned Tasks</p>
+          <p className="text-2xl font-bold text-sky-100">{commandCenter.summary.plannedWorkforceTasks}</p>
+        </div>
+        <div className="rounded-xl border border-violet-800/30 bg-violet-950/20 p-3">
+          <p className="text-xs text-violet-200">Approval Linked</p>
+          <p className="text-2xl font-bold text-violet-100">{commandCenter.summary.approvalLinkedWorkforceTasks}</p>
+        </div>
+        <div className="rounded-xl border border-cyan-800/30 bg-cyan-950/20 p-3">
+          <p className="text-xs text-cyan-200">Handoff Ready</p>
+          <p className="text-2xl font-bold text-cyan-100">{commandCenter.summary.handoffReadyWorkforceTasks}</p>
+        </div>
+        <div className="rounded-xl border border-blue-800/30 bg-blue-950/20 p-3">
+          <p className="text-xs text-blue-200">CRM Tasks</p>
+          <p className="text-2xl font-bold text-blue-100">{commandCenter.summary.linkedInternalTasks}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-800/30 bg-emerald-950/20 p-3">
+          <p className="text-xs text-emerald-200">Completed</p>
+          <p className="text-2xl font-bold text-emerald-100">{commandCenter.summary.completedInternalTasks}</p>
         </div>
       </div>
 

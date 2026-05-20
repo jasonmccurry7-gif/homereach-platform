@@ -22,6 +22,11 @@ export interface AiCommandCenterState {
     persistentMemoryItems: number;
     persistentTasks: number;
     persistentIngestionItems: number;
+    plannedWorkforceTasks: number;
+    approvalLinkedWorkforceTasks: number;
+    handoffReadyWorkforceTasks: number;
+    linkedInternalTasks: number;
+    completedInternalTasks: number;
     missionControlBlocked: number;
     smokeFailures: number;
   };
@@ -74,6 +79,13 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
   const userActions = getUserActionReadiness();
   const dashboardSummary = getDashboardAgentSummary(dashboardAgents);
   const sourceFreshnessIssues = sourceFreshness.items.filter((item) => item.status !== "fresh").length;
+  const plannedWorkforceTasks = workforceFoundation.tasks.filter((task) => task.lastExecutionPlan).length;
+  const approvalLinkedWorkforceTasks = workforceFoundation.tasks.filter((task) => task.approvalRequestId).length;
+  const handoffReadyWorkforceTasks = workforceFoundation.tasks.filter((task) =>
+    ["handoff_queued", "task_ready"].includes(task.executorStatus ?? "") && !task.internalTaskId
+  ).length;
+  const linkedInternalTasks = workforceFoundation.tasks.filter((task) => task.internalTaskId).length;
+  const completedInternalTasks = workforceFoundation.tasks.filter((task) => task.internalTaskStatus === "done").length;
 
   const summary = {
     openActions: actionCenter.summary.total,
@@ -87,6 +99,11 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
     persistentMemoryItems: workforceFoundation.summary.activeMemory,
     persistentTasks: workforceFoundation.summary.openTasks,
     persistentIngestionItems: workforceFoundation.summary.ingestionQueued,
+    plannedWorkforceTasks,
+    approvalLinkedWorkforceTasks,
+    handoffReadyWorkforceTasks,
+    linkedInternalTasks,
+    completedInternalTasks,
     missionControlBlocked: missionControl.summary.blocked,
     smokeFailures: smokeReport.summary.failed,
   };
@@ -105,6 +122,8 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
     `${missionControl.summary.humanApproval} agents are in human-approval mode.`,
     `${sourceFreshness.summary.fresh}/${sourceFreshness.summary.total} data sources are fresh.`,
     `${workforceFoundation.summary.activeMemory} persistent memory item(s), ${workforceFoundation.summary.openTasks} durable task(s), and ${workforceFoundation.summary.ingestionQueued} ingestion item(s) are visible.`,
+    `${plannedWorkforceTasks} task(s) have execution plans; ${approvalLinkedWorkforceTasks} are linked to human approval; ${handoffReadyWorkforceTasks} are ready for internal task creation.`,
+    `${linkedInternalTasks} linked internal CRM task(s) exist; ${completedInternalTasks} are marked done.`,
     `${userActions.summary.blocksAutonomy} user-owned item(s) block expanded autonomy.`,
     `${smokeReport.summary.ok}/${smokeReport.summary.total} smoke checks are OK.`,
   ];
