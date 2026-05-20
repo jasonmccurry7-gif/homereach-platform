@@ -2764,10 +2764,17 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
         }
 
         if (operation === "comment") {
+          const trimmedNote = options.note?.trim() || null
           setItems((current) =>
             current.map((currentItem) =>
               currentItem.id === item.id
-                ? { ...currentItem, commentCount: (currentItem.commentCount ?? 0) + 1 }
+                ? {
+                    ...currentItem,
+                    commentCount: (currentItem.commentCount ?? 0) + 1,
+                    lastEventType: "commented",
+                    lastEventNote: trimmedNote,
+                    lastEventAt: new Date().toISOString(),
+                  }
                 : currentItem
             )
           )
@@ -2936,6 +2943,17 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
                           Resolve, snooze, dismiss, and comment here only manage the Action Center record. Use the AI Workforce
                           task queue controls to run Plan Only, send approval, dry run, queue handoff, create task, or complete task.
                         </p>
+                      </div>
+                    )}
+
+                    {item.lastEventType && (
+                      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-gray-300">
+                        <p className="font-bold uppercase tracking-[0.14em] text-gray-400">Latest Internal Update</p>
+                        <p className="mt-1 text-gray-200">
+                          {formatStatus(item.lastEventType)}
+                          {item.lastEventAt ? ` - ${new Date(item.lastEventAt).toLocaleString()}` : ""}
+                        </p>
+                        {item.lastEventNote ? <p className="mt-1 text-gray-300">{item.lastEventNote}</p> : null}
                       </div>
                     )}
 

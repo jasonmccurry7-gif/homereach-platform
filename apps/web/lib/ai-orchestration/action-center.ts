@@ -31,6 +31,9 @@ export interface UnifiedActionItem {
   resolvedAt?: string | null;
   resolutionNote?: string | null;
   commentCount?: number;
+  lastEventType?: string | null;
+  lastEventNote?: string | null;
+  lastEventAt?: string | null;
 }
 
 export interface UnifiedActionMutationInput {
@@ -857,16 +860,22 @@ async function applyDurableActionState(
 
     if (readError) throw readError;
 
-    const { data: commentRows } = await supabase
+    const { data: eventRows } = await supabase
       .from("unified_action_events")
-      .select("source_key")
+      .select("source_key,event_type,note,created_at")
       .in("source_key", sourceKeys)
-      .eq("event_type", "commented");
+      .order("created_at", { ascending: false });
 
     const commentCounts = new Map<string, number>();
-    for (const row of commentRows ?? []) {
+    const latestEventBySource = new Map<string, Record<string, any>>();
+    for (const row of eventRows ?? []) {
       if (!row.source_key) continue;
-      commentCounts.set(row.source_key, (commentCounts.get(row.source_key) ?? 0) + 1);
+      if (row.event_type === "commented") {
+        commentCounts.set(row.source_key, (commentCounts.get(row.source_key) ?? 0) + 1);
+      }
+      if (!latestEventBySource.has(row.source_key)) {
+        latestEventBySource.set(row.source_key, row);
+      }
     }
 
     const durableBySource = new Map((durableRows ?? []).map((row) => [row.source_key, row]));
@@ -878,6 +887,7 @@ async function applyDurableActionState(
       .map((item) => {
         const durable = durableBySource.get(item.id);
         if (!durable) return item;
+        const latestEvent = latestEventBySource.get(item.id);
 
         return {
           ...item,
@@ -887,6 +897,9 @@ async function applyDurableActionState(
           resolvedAt: durable.resolved_at,
           resolutionNote: durable.resolution_note,
           commentCount: commentCounts.get(item.id) ?? 0,
+          lastEventType: latestEvent?.event_type ?? null,
+          lastEventNote: latestEvent?.note ?? null,
+          lastEventAt: latestEvent?.created_at ?? null,
         };
       })
       .filter((item) => {
