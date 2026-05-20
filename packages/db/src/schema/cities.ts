@@ -19,11 +19,6 @@ export const cities = pgTable("cities", {
   slug: text("slug").notNull().unique(), // e.g. "austin-tx"
   isActive: boolean("is_active").notNull().default(false),
   launchedAt: timestamp("launched_at", { withTimezone: true }),
-  // Founding cohort eligibility — SERVER-CONTROLLED ONLY
-  // When TRUE, new businesses in this city receive founding_price_cents rates.
-  // Admin sets this to FALSE once the founding cohort fills.
-  // Checkout route reads this from the DB — client isFounding claim is IGNORED.
-  foundingEligible: boolean("founding_eligible").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -60,6 +55,6 @@ export const categoriesRelations = relations(categories, ({ many }) => ({
 }));
 
 // Circular refs resolved in index
-import { businesses } from "./businesses";
-import { bundles } from "./products";
-import { waitlistEntries } from "./misc";
+import { businesses } from "./businesses.js";
+import { bundles } from "./products.js";
+import { waitlistEntries } from "./misc.js";

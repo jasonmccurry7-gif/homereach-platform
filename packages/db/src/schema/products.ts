@@ -8,10 +8,11 @@ import {
   timestamp,
   jsonb,
   pgEnum,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { cities } from "./cities";
-import { pricingProfiles } from "./pricing";
+import { cities } from "./cities.js";
+import { pricingProfiles } from "./pricing.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -61,14 +62,11 @@ export const bundles = pgTable("bundles", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   description: text("description"),
-  // bundles.price = DISPLAY/LEGACY only. All billing resolves from pricingProfileId.
   price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0.00"),
   isActive: boolean("is_active").notNull().default(true),
   cityId: uuid("city_id").references(() => cities.id, { onDelete: "set null" }),
-  // Links this bundle to its pricing_profile. When set, pricing engine uses this
-  // profile's price instead of summing component products. Null = component sum fallback.
   pricingProfileId: uuid("pricing_profile_id").references(
-    () => pricingProfiles.id,
+    (): AnyPgColumn => pricingProfiles.id,
     { onDelete: "set null" }
   ),
   // Scarcity + display config:
@@ -131,4 +129,4 @@ export const bundleProductsRelations = relations(bundleProducts, ({ one }) => ({
 }));
 
 // Circular refs
-import { orderItems, orders } from "./orders";
+import { orderItems, orders } from "./orders.js";

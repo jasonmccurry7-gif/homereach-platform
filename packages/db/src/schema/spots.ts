@@ -7,8 +7,8 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { businesses } from "./businesses";
-import { cities, categories } from "./cities";
+import { businesses } from "./businesses.js";
+import { cities, categories } from "./cities.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums — must match Migration 15 exactly
@@ -79,6 +79,9 @@ export const spotAssignments = pgTable("spot_assignments", {
 
   // Pricing (in cents)
   monthlyValueCents: integer("monthly_value_cents").notNull().default(0),
+  aiIntakeSessionId: uuid("ai_intake_session_id"),
+  aiIntakeCartItemId: uuid("ai_intake_cart_item_id"),
+  aiReservedSpotCount: integer("ai_reserved_spot_count").notNull().default(1),
 
   // Timestamps
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -111,4 +114,4 @@ export const spotAssignmentsRelations = relations(
 );
 
 // Circular ref
-import { intakeSubmissions } from "./intake";
+import { intakeSubmissions } from "./intake.js";

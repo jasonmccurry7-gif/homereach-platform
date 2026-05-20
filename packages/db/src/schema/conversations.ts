@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { pgTable, uuid, text, boolean, timestamp } from "drizzle-orm/pg-core";
-import { leads } from "./leads";
+import { leads } from "./leads.js";
 
 export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),

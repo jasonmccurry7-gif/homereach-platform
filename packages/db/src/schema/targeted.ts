@@ -15,7 +15,7 @@ import {
   timestamp,
   pgEnum,
 } from "drizzle-orm/pg-core";
-import { leads } from "./leads";
+import { leads } from "./leads.js";
 
 // ── Status enums ──────────────────────────────────────────────────────────────
 

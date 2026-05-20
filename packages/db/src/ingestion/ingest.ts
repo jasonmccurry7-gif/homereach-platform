@@ -303,7 +303,7 @@ async function ingestConversations() {
 
   const toInsert: Record<string, unknown>[] = [];
   for (const r of rows) {
-    const leadId = leadMap.get(r.lead_id) ?? null;
+    const leadId = r.lead_id ? leadMap.get(r.lead_id) ?? null : null;
     if (!leadId) continue;
 
     // Determine channels used

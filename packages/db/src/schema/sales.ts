@@ -14,7 +14,7 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { profiles } from "./users";
+import { profiles } from "./users.js";
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
