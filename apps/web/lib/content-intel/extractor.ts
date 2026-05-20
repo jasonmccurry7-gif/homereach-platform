@@ -1,13 +1,8 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// HomeReach — Insight Extractor (Claude Haiku)
+// HomeReach - Insight Extractor
 //
-// Takes one transcript + category, returns 5–10 tactical insights each with
-// theme and a first-pass APEX sub-score (revenue/speed/ease/advantage).
-// Strict JSON-only output; the pipeline does not retry on partial parses —
-// it skips the video.
-//
-// Called ONLY when isContentIntelAiDisabled() === false.
-// ─────────────────────────────────────────────────────────────────────────────
+// Takes one transcript plus category and returns 5-10 tactical insights with
+// first-pass APEX sub-scores. This is review-only: downstream artifacts do not
+// execute production actions without human approval.
 
 import { getAnthropicKey, getExtractorModel } from "./env";
 
@@ -25,15 +20,18 @@ export type ExtractResult =
   | { ok: true; insights: ExtractedInsight[]; modelName: string; tokensInput: number; tokensOutput: number }
   | { ok: false; error: string };
 
-const SYSTEM = `You are HomeReach's tactical insight extractor for a local home-services business.
-You read a YouTube transcript (any topic) and output between 5 and 10 TACTICAL insights a sales agent could use THIS WEEK to make more money.
+const SYSTEM = `You are HomeReach's Learning Engine insight extractor.
+You read a transcript and output between 5 and 10 tactical insights HomeReach could use to improve its AI Workforce Operating System.
+
+HomeReach operates across shared postcards, targeted mail, political mail, inventory/procurement, government contracts, outreach, SEO, creative, revenue operations, dashboard UX, automation, and AI agent orchestration.
 
 STRICT RULES:
 - NO fluff, NO motivational advice, NO generic business theory.
-- Every insight must be directly applicable to: sales, lead gen, pricing, positioning, retention, or scaling.
-- Each insight must be a single concrete observation or move — not a chapter summary.
-- If the transcript is off-topic (not sales/ops/services-applicable) return {"insights": []}.
-- Score each insight 1..5 on: revenue (how much money), speed (how fast to apply), ease (how simple), advantage (how novel or unfair). Be strict — a 5 is rare.
+- Every insight must be directly applicable to HomeReach operations, revenue, automation, product, UX, content, outreach, fulfillment, procurement, political operations, or government-contract operations.
+- Each insight must be a single concrete observation or move, not a chapter summary.
+- If the transcript is off-topic or cannot produce a useful HomeReach improvement, return {"insights": []}.
+- Score each insight 1..5 on: revenue (how much money), speed (how fast to apply), ease (how simple), advantage (how novel or defensible). Be strict; a 5 is rare.
+- Do not recommend unsafe actions such as autonomous payments, uncontrolled outreach, political persuasion automation, bid submission, legal commitments, or production deployment without human approval.
 
 Respond with ONLY valid JSON, no prose, no code fences:
 {"insights":[{"theme":"...","insight_text":"...","rationale":"...","revenue_score":1-5,"speed_score":1-5,"ease_score":1-5,"advantage_score":1-5}]}`;
@@ -46,7 +44,7 @@ export async function extractInsights(args: {
   const key = getAnthropicKey();
   const model = getExtractorModel();
 
-  // Truncate transcripts defensively — Haiku is cheap but we should cap cost.
+  // Cap model cost and latency on long transcripts.
   const transcript = args.transcript.length > 40_000
     ? args.transcript.slice(0, 40_000)
     : args.transcript;
@@ -100,7 +98,6 @@ export async function extractInsights(args: {
   try {
     parsed = JSON.parse(text);
   } catch {
-    // Try to pull out the first JSON object if Claude wrapped it
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return { ok: false, error: "no JSON in response" };
     try {

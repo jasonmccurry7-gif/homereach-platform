@@ -27,11 +27,13 @@ export type ScoreInput = {
 const DEFAULT_TACTICAL = [
   "how to", "step by step", "script", "playbook", "objection",
   "close", "framework", "checklist", "tactic", "process",
+  "workflow", "automation", "dashboard", "agent", "operating system",
 ];
 const DEFAULT_REVENUE = [
   "revenue", "sales", "lead", "leads", "pricing", "price", "offer",
   "retention", "ltv", "conversion", "close rate", "pipeline", "deal",
-  "upsell", "cross-sell", "mrr", "arr", "cac", "roi",
+  "upsell", "cross-sell", "mrr", "arr", "cac", "roi", "savings",
+  "procurement", "contract", "proposal", "margin", "cost reduction",
 ];
 
 export type Score = {

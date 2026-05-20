@@ -1,18 +1,9 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// HomeReach — Content Intelligence: Canonical Category Lists
+// HomeReach - Content Intelligence / Learning Engine: canonical category lists.
 //
-// Two audiences, filtered at the API layer:
-//
-//   HOME_SERVICE_CATEGORIES  → shown to sales agents on the sales dashboard.
-//                               These are HomeReach's live service verticals.
-//
-//   ADMIN_ONLY_CATEGORIES    → admin-only (you, Jason). Includes Dan Martell's
-//                               sales/scaling content and anything not tied to
-//                               a specific service vertical.
-//
-// The admin content-intel dashboard shows everything (admin sees all).
-// The sales-dashboard cards API filters to HOME_SERVICE_CATEGORIES only.
-// ─────────────────────────────────────────────────────────────────────────────
+// HOME_SERVICE_CATEGORIES are the only categories shown to sales agents on
+// sales-dashboard cards. The broader Learning Engine categories are admin-only
+// research and optimization lanes until a human promotes an idea into an
+// implementation task.
 
 export const HOME_SERVICE_CATEGORIES = [
   "pressure_washing",
@@ -24,15 +15,34 @@ export const HOME_SERVICE_CATEGORIES = [
 ] as const;
 
 export const ADMIN_ONLY_CATEGORIES = [
-  "sales_scaling", // Dan Martell, general sales/ops content
+  "sales_scaling",
+  "shared_postcards",
+  "targeted_campaigns",
+  "political",
+  "procurement",
+  "outreach",
+  "seo",
+  "inventory",
+  "ai_agents",
+  "revenue",
+  "executive_operations",
+  "system_reliability",
+  "automation",
+  "dashboard_ux",
+  "gov_contracts",
+  "creative",
+] as const;
+
+export const LEARNING_ENGINE_CATEGORIES = [
+  ...HOME_SERVICE_CATEGORIES,
+  ...ADMIN_ONLY_CATEGORIES,
 ] as const;
 
 export type HomeServiceCategory = (typeof HOME_SERVICE_CATEGORIES)[number];
-export type AdminOnlyCategory   = (typeof ADMIN_ONLY_CATEGORIES)[number];
+export type AdminOnlyCategory = (typeof ADMIN_ONLY_CATEGORIES)[number];
+export type LearningEngineCategory = (typeof LEARNING_ENGINE_CATEGORIES)[number];
 
-/** Coerce the `'*'` "all categories" marker (used in ci_trusted_channels)
- *  into a concrete artifact category. Dan Martell is tagged '*' at the
- *  channel level but his artifacts need a stable category. */
+/** Coerce the '*' all-categories marker into a concrete artifact category. */
 export function resolveChannelCategory(rawCategory: string | null | undefined): string {
   if (!rawCategory || rawCategory === "*") return "sales_scaling";
   return rawCategory;
@@ -41,4 +51,9 @@ export function resolveChannelCategory(rawCategory: string | null | undefined): 
 /** True when an artifact should appear on the sales dashboard. */
 export function isAgentVisibleCategory(category: string): boolean {
   return (HOME_SERVICE_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** True when a category belongs to the full admin-only Learning Engine. */
+export function isLearningEngineCategory(category: string): boolean {
+  return (LEARNING_ENGINE_CATEGORIES as readonly string[]).includes(category);
 }

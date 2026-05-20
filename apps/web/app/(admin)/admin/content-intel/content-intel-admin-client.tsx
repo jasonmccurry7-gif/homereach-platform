@@ -51,6 +51,36 @@ type Pattern = {
   source_count: number; win_count: number; weight: number;
   last_win_at: string | null; created_at: string;
 };
+type ConflictRow = {
+  id: string; source: string; category: string; title: string; summary: string;
+  status: string; risk: "high" | "medium" | "low"; matchType: string;
+  matchLabel: string; matchRoute: string; reason: string; recommendedAction: string;
+  createdAt: string | null;
+};
+type SourceRegistryRow = {
+  id: string; label: string; method: string; status: string; priority: string;
+  requiredEnv: string[]; optionalEnv: string[]; categories: string[];
+  safety: string; reviewGate: string; nextStep: string;
+};
+
+const capabilityCards = [
+  {
+    title: "Ingest",
+    body: "Searches approved YouTube channels, topics, competitors, and market signals through the existing Content Intelligence pipeline.",
+  },
+  {
+    title: "Score",
+    body: "Ranks ideas with APEX scoring so revenue, speed, ease, and advantage stay visible before anything reaches operations.",
+  },
+  {
+    title: "Review",
+    body: "Keeps insights, scripts, offers, automations, and enhancements in human review. No production changes happen automatically.",
+  },
+  {
+    title: "Improve",
+    body: "Uses win/fail feedback to adjust trusted channels, themes, and promoted patterns over time.",
+  },
+];
 
 async function getJson<T>(url: string): Promise<{ enabled: boolean; rows: T[] }> {
   const res = await fetch(url, { cache: "no-store" });
@@ -60,7 +90,7 @@ async function getJson<T>(url: string): Promise<{ enabled: boolean; rows: T[] }>
   return { enabled: true, rows: Array.isArray(j?.rows) ? j.rows : [] };
 }
 
-type Tab = "queue" | "insights" | "topics" | "channels" | "top_channels" | "competitors" | "competitor_insights" | "signals" | "patterns";
+type Tab = "queue" | "insights" | "sources" | "conflicts" | "topics" | "channels" | "top_channels" | "competitors" | "competitor_insights" | "signals" | "patterns";
 
 export default function ContentIntelAdminClient() {
   const [tab, setTab] = useState<Tab>("queue");
@@ -74,9 +104,11 @@ export default function ContentIntelAdminClient() {
   const [compIns,   setCompIns]   = useState<CompetitorInsight[]>([]);
   const [signals,   setSignals]   = useState<Signal[]>([]);
   const [patterns,  setPatterns]  = useState<Pattern[]>([]);
+  const [conflicts, setConflicts] = useState<ConflictRow[]>([]);
+  const [sources, setSources] = useState<SourceRegistryRow[]>([]);
 
   async function loadAll() {
-    const [q, i, t, c, tc, cm, ci, sg, pt] = await Promise.all([
+    const [q, i, t, c, tc, cm, ci, sg, pt, cf, sr] = await Promise.all([
       getJson<QueueRow>("/api/admin/content-intel/queue"),
       getJson<Insight>("/api/admin/content-intel/insights"),
       getJson<Topic>("/api/admin/content-intel/config/topics"),
@@ -86,11 +118,13 @@ export default function ContentIntelAdminClient() {
       getJson<CompetitorInsight>("/api/admin/content-intel/competitor-insights"),
       getJson<Signal>("/api/admin/content-intel/signals"),
       getJson<Pattern>("/api/admin/content-intel/patterns"),
+      getJson<ConflictRow>("/api/admin/ai-orchestration/learning-conflicts?limit=20"),
+      getJson<SourceRegistryRow>("/api/admin/content-intel/source-registry"),
     ]);
     setEnabled(q.enabled && i.enabled);
     setQueue(q.rows); setInsights(i.rows); setTopics(t.rows); setChannels(c.rows);
     setTopChans(tc.rows); setCompetitors(cm.rows); setCompIns(ci.rows);
-    setSignals(sg.rows); setPatterns(pt.rows);
+    setSignals(sg.rows); setPatterns(pt.rows); setConflicts(cf.rows); setSources(sr.rows);
   }
   useEffect(() => { loadAll(); }, []);
 
@@ -100,9 +134,10 @@ export default function ContentIntelAdminClient() {
   if (enabled === false) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">Content Intelligence</h1>
+        <h1 className="text-2xl font-bold">Learning Engine</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Disabled. Set <code className="rounded bg-gray-100 px-1">ENABLE_CONTENT_INTEL=true</code> to activate.
+          Disabled. Set <code className="rounded bg-gray-100 px-1">ENABLE_CONTENT_INTEL=true</code> to activate the existing
+          Content Intelligence pipeline behind this dashboard.
         </p>
       </div>
     );
@@ -117,19 +152,63 @@ export default function ContentIntelAdminClient() {
     loadAll();
   }
 
+  async function promoteInsight(id: string) {
+    await fetch("/api/admin/ai-orchestration/learning-promote", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ itemType: "insight", itemId: id }),
+    });
+    loadAll();
+  }
+
+  const pendingInsights = insights.filter((i) => i.status === "pending").length;
+  const processedVideos = queue.filter((q) => q.status === "processed").length;
+  const skippedVideos = queue.filter((q) => q.status === "skipped" || q.status === "failed").length;
+  const activeCompetitors = competitors.filter((c) => c.active_flag).length;
+
   return (
     <div className="p-4 md:p-6">
-      <header className="mb-4 flex items-end justify-between">
+      <header className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Content Intelligence</h1>
-          <p className="text-sm text-gray-600">
-            YouTube → APEX filter → execution queue. Daily run via scheduled task.
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-700">AI Workforce OS</p>
+          <h1 className="mt-1 text-2xl font-bold">Learning Engine</h1>
+          <p className="max-w-3xl text-sm text-gray-600">
+            Existing Content Intelligence pipeline upgraded into the safe research, scoring, review, and improvement layer for HomeReach.
+            It can recommend ideas, scripts, offers, automations, and enhancements, but it does not publish, send, bill, order, or change production systems.
           </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <a
+            href="/admin/agents"
+            className="rounded-lg border border-slate-900 bg-slate-950 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800"
+          >
+            Open Action Center
+          </a>
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">
+            Human approval required before implementation
+          </div>
         </div>
       </header>
 
+      <section className="mb-5 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <MetricCard label="Videos queued" value={queue.length} detail={`${processedVideos} processed`} />
+        <MetricCard label="Pending insights" value={pendingInsights} detail={`${insights.length} total insights`} />
+        <MetricCard label="Active competitors" value={activeCompetitors} detail={`${compIns.length} competitor insights`} />
+        <MetricCard label="Duplicate risks" value={conflicts.filter((row) => row.risk === "high").length} detail={`${conflicts.length} advisory matches`} />
+        <MetricCard label="Source connectors" value={sources.length} detail={`${sources.filter((s) => s.status === "ready").length} ready`} />
+      </section>
+
+      <section className="mb-5 grid gap-3 lg:grid-cols-4">
+        {capabilityCards.map((card) => (
+          <div key={card.title} className="rounded-xl border bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900">{card.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-gray-600">{card.body}</p>
+          </div>
+        ))}
+      </section>
+
       <nav className="mb-4 flex gap-2 border-b overflow-x-auto">
-        {(["queue", "insights", "signals", "patterns", "top_channels", "competitor_insights", "topics", "channels", "competitors"] as const).map((k) => (
+        {(["queue", "insights", "sources", "conflicts", "signals", "patterns", "top_channels", "competitor_insights", "topics", "channels", "competitors"] as const).map((k) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -139,7 +218,9 @@ export default function ContentIntelAdminClient() {
       </nav>
 
       {tab === "queue" && <QueueTable rows={queue} />}
-      {tab === "insights" && <InsightsTable rows={insights} onAction={approve} />}
+      {tab === "insights" && <InsightsTable rows={insights} onAction={approve} onPromote={promoteInsight} />}
+      {tab === "sources" && <SourceRegistryTable rows={sources} />}
+      {tab === "conflicts" && <ConflictsTable rows={conflicts} />}
       {tab === "signals" && <SignalsTable rows={signals} />}
       {tab === "patterns" && <PatternsTable rows={patterns} />}
       {tab === "top_channels" && <TopChannelsTable rows={topChans} />}
@@ -151,7 +232,124 @@ export default function ContentIntelAdminClient() {
   );
 }
 
+function MetricCard({ label, value, detail }: { label: string; value: number; detail: string }) {
+  return (
+    <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-2 text-2xl font-black text-gray-950">{value.toLocaleString()}</p>
+      <p className="mt-1 text-xs text-gray-500">{detail}</p>
+    </div>
+  );
+}
+
 // ─── Market Signals (NOAA weather alerts, etc.) ───────────────────────────────
+function SourceRegistryTable({ rows }: { rows: SourceRegistryRow[] }) {
+  if (!rows.length) {
+    return <p className="text-sm text-gray-500">No source connectors are visible. Confirm the Learning Engine flag and admin access.</p>;
+  }
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      {rows.map((row) => (
+        <article key={row.id} className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                {row.method.replace(/_/g, " ")} - {row.priority} priority
+              </p>
+              <h2 className="mt-1 text-base font-bold text-gray-950">{row.label}</h2>
+            </div>
+            <span
+              className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                row.status === "ready"
+                  ? "bg-green-100 text-green-800"
+                  : row.status === "partial"
+                    ? "bg-amber-100 text-amber-800"
+                    : row.status === "blocked"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {row.status.replace(/_/g, " ")}
+            </span>
+          </div>
+
+          <p className="text-sm leading-6 text-gray-700">{row.safety}</p>
+          <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+            <p><strong>Review gate:</strong> {row.reviewGate}</p>
+            <p className="mt-1"><strong>Next:</strong> {row.nextStep}</p>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {row.categories.slice(0, 6).map((category) => (
+              <span key={category} className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800">
+                {category}
+              </span>
+            ))}
+          </div>
+
+          {(row.requiredEnv.length > 0 || row.optionalEnv.length > 0) && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Required env</p>
+                <p className="mt-1 text-xs text-gray-700">{row.requiredEnv.join(", ") || "None"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Optional env</p>
+                <p className="mt-1 text-xs text-gray-700">{row.optionalEnv.join(", ") || "None"}</p>
+              </div>
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ConflictsTable({ rows }: { rows: ConflictRow[] }) {
+  if (!rows.length) {
+    return (
+      <p className="text-sm text-gray-500">
+        No duplicate or conflict risks detected. This is advisory only and depends on current Learning Engine and Action Center data.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {rows.map((row) => (
+        <li key={row.id} className="rounded border bg-white p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs uppercase text-gray-500">
+              {row.source} - {row.category} - {row.matchType.replace(/_/g, " ")}
+            </div>
+            <span
+              className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                row.risk === "high"
+                  ? "bg-red-100 text-red-800"
+                  : row.risk === "medium"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {row.risk} risk
+            </span>
+          </div>
+          <p className="mt-1 font-semibold text-gray-950">{row.title}</p>
+          <p className="mt-1 text-gray-700">{row.summary}</p>
+          <div className="mt-2 rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
+            <p><strong>Possible overlap:</strong> {row.matchLabel}</p>
+            <p><strong>Why:</strong> {row.reason}</p>
+            <p><strong>Next:</strong> {row.recommendedAction}</p>
+          </div>
+          <a className="mt-2 inline-block text-xs font-semibold text-blue-700 underline" href={row.matchRoute}>
+            Open matched workflow
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function SignalsTable({ rows }: { rows: Signal[] }) {
   if (!rows.length) return <p className="text-sm text-gray-500">No active market signals. NOAA poll runs daily at 5 AM.</p>;
   return (
@@ -364,8 +562,12 @@ function QueueTable({ rows }: { rows: QueueRow[] }) {
 }
 
 function InsightsTable({
-  rows, onAction,
-}: { rows: Insight[]; onAction: (id: string, next: "approved" | "rejected") => void }) {
+  rows, onAction, onPromote,
+}: {
+  rows: Insight[];
+  onAction: (id: string, next: "approved" | "rejected") => void;
+  onPromote: (id: string) => void;
+}) {
   if (!rows.length) return <p className="text-sm text-gray-500">No insights yet.</p>;
   return (
     <ul className="space-y-2">
@@ -382,6 +584,7 @@ function InsightsTable({
           <div className="mt-2 flex gap-2 text-xs">
             <button onClick={() => onAction(i.id, "approved")} className="rounded border px-2 py-0.5 hover:bg-green-50">Approve</button>
             <button onClick={() => onAction(i.id, "rejected")} className="rounded border px-2 py-0.5 hover:bg-red-50">Reject</button>
+            <button onClick={() => onPromote(i.id)} className="rounded border px-2 py-0.5 hover:bg-blue-50">Promote to Action Center</button>
             <span className="ml-auto text-gray-500">{i.status}</span>
           </div>
         </li>

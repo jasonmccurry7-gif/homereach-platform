@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { getUnifiedActionCenter, type UnifiedActionItem } from "./action-center";
+import { evaluateAiActionPolicy } from "./ai-action-policy";
 
 export type AutopilotRiskLevel = "critical" | "high" | "medium" | "low";
 export type AutopilotApprovalStatus = "pending" | "approved" | "rejected" | "canceled" | "expired" | "executed";
@@ -122,33 +123,21 @@ function summarizeTasks(tasks: AutopilotInternalTask[]): AutopilotTaskQueue["sum
 }
 
 function riskFromAction(item: UnifiedActionItem): AutopilotRiskLevel {
-  if (item.urgency === "critical") return "critical";
-  if (item.source === "revenue_message_threads") return "critical";
-  if (item.source === "gov_contract_opportunities" || item.source === "gov_contract_bid_rooms") return "high";
-  if (item.source === "revenue_message_approval_queue" || item.source === "revenue_ai_suggestions") return "high";
-  if (item.source === "revenue_webhook_events") return "high";
-  if (item.urgency === "high") return "high";
-  if (item.urgency === "low") return "low";
-  return "medium";
+  return evaluateAiActionPolicy({
+    source: item.source,
+    dashboard: item.dashboard,
+    urgency: item.urgency,
+    requestedAction: item.recommendedAction,
+  }).riskLevel;
 }
 
 function guardrailForAction(item: UnifiedActionItem) {
-  if (item.dashboard.toLowerCase().includes("political") || item.source === "revenue_message_threads") {
-    return "Political actions remain human-approved. A reply or approval gate never authorizes autonomous persuasion, proposal, checkout, production, or outreach.";
-  }
-  if (item.dashboard.toLowerCase().includes("gov")) {
-    return "Gov Contracts actions require explicit human approval. No bid submission, pricing, certification claim, subcontractor commitment, or award acceptance is automated.";
-  }
-  if (item.source === "revenue_message_approval_queue" || item.source === "revenue_ai_suggestions") {
-    return "Messaging actions require human review, suppression checks, quiet-hour controls, and provider readiness before any outbound send.";
-  }
-  if (item.dashboard.toLowerCase().includes("procurement")) {
-    return "Procurement actions may recommend savings or smart buys, but no supplier order is placed without owner approval and a connected safe ordering workflow.";
-  }
-  if (item.dashboard.toLowerCase().includes("sales")) {
-    return "Sales actions can approve next-step intent only. Payment links, proposals, and outreach still use existing protected workflows.";
-  }
-  return "Approval captures operator intent only. Execution stays in the existing dashboard until a safe executor is connected.";
+  return evaluateAiActionPolicy({
+    source: item.source,
+    dashboard: item.dashboard,
+    urgency: item.urgency,
+    requestedAction: item.recommendedAction,
+  }).guardrailSummary;
 }
 
 function canQueueSafeInternalHandoff(row: {
@@ -156,17 +145,11 @@ function canQueueSafeInternalHandoff(row: {
   source: string;
   dashboard: string;
 }) {
-  if (row.risk_level === "critical" || row.risk_level === "high") return false;
-
-  const dashboard = row.dashboard.toLowerCase();
-  if (dashboard.includes("political") || dashboard.includes("gov")) return false;
-
-  const blockedSources = new Set([
-    "revenue_message_threads",
-    "revenue_message_approval_queue",
-    "revenue_ai_suggestions",
-  ]);
-  return !blockedSources.has(row.source);
+  return evaluateAiActionPolicy({
+    source: row.source,
+    dashboard: row.dashboard,
+    urgency: row.risk_level,
+  }).canQueueInternalHandoff;
 }
 
 function safeHandoffBlockedReason(row: {
@@ -174,20 +157,11 @@ function safeHandoffBlockedReason(row: {
   source: string;
   dashboard: string;
 }) {
-  if (row.risk_level === "critical" || row.risk_level === "high") {
-    return "High-risk gates require a workflow-specific executor, rollback plan, and second approval before any handoff can be queued.";
-  }
-  const dashboard = row.dashboard.toLowerCase();
-  if (dashboard.includes("political")) {
-    return "Political workflows remain manual after approval. The agent may draft support, but it cannot queue political outreach execution.";
-  }
-  if (dashboard.includes("gov")) {
-    return "Gov Contracts workflows remain manual after approval. No bid, pricing, certification, or subcontractor action can be queued here.";
-  }
-  if (row.source === "revenue_message_threads" || row.source === "revenue_message_approval_queue" || row.source === "revenue_ai_suggestions") {
-    return "Messaging workflows require provider, suppression, quiet-hour, and template checks before any execution handoff.";
-  }
-  return "Ready for a safe internal handoff. This creates an admin work record only and does not touch external systems.";
+  return evaluateAiActionPolicy({
+    source: row.source,
+    dashboard: row.dashboard,
+    urgency: row.risk_level,
+  }).cannotExecuteReason;
 }
 
 function toRequest(row: Record<string, any>): AutopilotApprovalRequest {

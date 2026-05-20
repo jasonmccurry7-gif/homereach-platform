@@ -26,7 +26,7 @@ import { translateInsight } from "./translator";
 import { filterByApex, generateArtifacts, type FilteredInsight } from "./apex-filter";
 import { scoreVideo } from "./scorer";
 import { searchYouTube, type YTVideoCandidate } from "./youtube";
-import { resolveChannelCategory } from "./categories";
+import { LEARNING_ENGINE_CATEGORIES, resolveChannelCategory } from "./categories";
 
 type Supa = ReturnType<typeof createServiceClient>;
 
@@ -52,14 +52,14 @@ export type PipelineSummary = {
   errors: string[];
 };
 
-const VERTICAL_ROTATION: Record<number, string[]> = {
-  0: ["pressure_washing", "lawn_care", "window_cleaning"],
-  1: ["pressure_washing", "lawn_care", "gutter_cleaning"],
-  2: ["pressure_washing", "pest_control",  "roofing"],
-  3: ["lawn_care",        "window_cleaning","gutter_cleaning"],
-  4: ["pressure_washing", "gutter_cleaning","pest_control"],
-  5: ["lawn_care",        "window_cleaning","roofing"],
-  6: ["pest_control",     "roofing",       "gutter_cleaning"],
+const LEARNING_ENGINE_ROTATION: Record<number, string[]> = {
+  0: ["shared_postcards", "targeted_campaigns", "seo"],
+  1: ["political", "procurement", "outreach"],
+  2: ["ai_agents", "automation", "dashboard_ux"],
+  3: ["gov_contracts", "revenue", "executive_operations"],
+  4: ["inventory", "creative", "system_reliability"],
+  5: ["sales_scaling", "pressure_washing", "lawn_care"],
+  6: ["roofing", "pest_control", "gutter_cleaning", "window_cleaning"],
 };
 
 export async function runPipeline(): Promise<PipelineSummary> {
@@ -100,8 +100,13 @@ export async function runPipeline(): Promise<PipelineSummary> {
 
   // ── 2) Rotate categories for today ─────────────────────────────────────────
   const today = new Date().getUTCDay();
-  const rotation = VERTICAL_ROTATION[today] ?? [];
-  const categoriesProcessed = Array.from(new Set(rotation));
+  const configuredCategories = new Set((topics as any[]).map((t: any) => String(t.category)));
+  const rotation = LEARNING_ENGINE_ROTATION[today] ?? [];
+  const categoriesProcessed = Array.from(new Set(rotation))
+    .filter((category) =>
+      (LEARNING_ENGINE_CATEGORIES as readonly string[]).includes(category) &&
+      configuredCategories.has(category),
+    );
 
   // ── 3) Search YouTube per (category, top topic) + Dan Martell forced ───────
   const sinceIso = new Date(Date.now() - Number(rules.min_recency_days ?? 60) * 86_400_000).toISOString();
@@ -297,7 +302,9 @@ export async function runPipeline(): Promise<PipelineSummary> {
 
     // Collect into the GLOBAL pool (not yet turned into artifacts)
     (insertedIns ?? []).forEach((row: any, idx: number) => {
-      allRankedInsights.push({ ...surviving[idx], id: row.id as string });
+      const insight = surviving[idx];
+      if (!insight) return;
+      allRankedInsights.push({ ...insight, id: row.id as string });
     });
 
     await supa.from("ci_ingestion_queue")

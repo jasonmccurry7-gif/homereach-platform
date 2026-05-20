@@ -11,6 +11,16 @@ import type {
 } from "@/lib/ai-orchestration/autopilot"
 import type { UnifiedActionCenter, UnifiedActionItem } from "@/lib/ai-orchestration/action-center"
 import type { DashboardMonitorRun, OperationalBriefing } from "@/lib/ai-orchestration/briefings"
+import type { OperationalMemory } from "@/lib/ai-orchestration/operational-memory"
+import type { UserActionReadiness } from "@/lib/ai-orchestration/user-action-items"
+import type { AiWorkforceSmokeReport } from "@/lib/ai-orchestration/ai-workforce-smoke"
+import type { SourceFreshnessReport } from "@/lib/ai-orchestration/source-freshness"
+import type { AgentMissionControl, AgentMissionMode, AgentMissionRisk } from "@/lib/ai-orchestration/agent-mission-control"
+import type { AiCommandCenterState } from "@/lib/ai-orchestration/command-center"
+import type { AgentWorkOrderQueue, AgentWorkOrderPriority, AgentWorkOrderStatus } from "@/lib/ai-orchestration/agent-work-orders"
+import type { GoLiveGateStatus, GoLiveReadinessReport } from "@/lib/ai-orchestration/go-live-readiness"
+import type { AgentPermissionMatrix } from "@/lib/ai-orchestration/agent-permissions"
+import type { WorkflowRecipeCatalog } from "@/lib/ai-orchestration/workflow-recipes"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -66,6 +76,16 @@ interface Props {
   autopilotTasks: AutopilotTaskQueue
   operationalBriefings: OperationalBriefing[]
   monitorRuns: DashboardMonitorRun[]
+  operationalMemory: OperationalMemory
+  userActionReadiness: UserActionReadiness
+  smokeReport: AiWorkforceSmokeReport
+  sourceFreshness: SourceFreshnessReport
+  missionControl: AgentMissionControl
+  commandCenter: AiCommandCenterState
+  workOrders: AgentWorkOrderQueue
+  goLiveReadiness: GoLiveReadinessReport
+  agentPermissions: AgentPermissionMatrix
+  workflowRecipes: WorkflowRecipeCatalog
 }
 
 interface DashboardAgentSummary {
@@ -371,6 +391,154 @@ function monitorStatusClass(status: OperationalBriefing["status"]) {
   return "border-emerald-800/40 bg-emerald-950/20 text-emerald-100"
 }
 
+function AiCommandCenterSummaryPanel({ commandCenter }: { commandCenter: AiCommandCenterState }) {
+  return (
+    <section className={cn("mb-8 rounded-2xl border p-5", monitorStatusClass(commandCenter.status))}>
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-sky-200">
+            Phase 1M Unified AI Command State
+          </p>
+          <h2 className="text-2xl font-bold text-white">{commandCenter.headline}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300">
+            One normalized state object for Action Center, mission control, source freshness, smoke checks, and Jason-owned
+            go-live items. This is read-only and built for future dashboard and agent orchestration.
+          </p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold uppercase">
+          {formatStatus(commandCenter.status)}
+        </span>
+      </div>
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+          <p className="text-xs text-gray-400">Open Actions</p>
+          <p className="text-2xl font-bold text-white">{commandCenter.summary.openActions}</p>
+        </div>
+        <div className="rounded-xl border border-red-800/30 bg-red-950/20 p-3">
+          <p className="text-xs text-red-200">Critical</p>
+          <p className="text-2xl font-bold text-red-100">{commandCenter.summary.criticalActions}</p>
+        </div>
+        <div className="rounded-xl border border-amber-800/30 bg-amber-950/20 p-3">
+          <p className="text-xs text-amber-200">Jason Items</p>
+          <p className="text-2xl font-bold text-amber-100">{commandCenter.summary.userActionsRequired}</p>
+        </div>
+        <div className="rounded-xl border border-blue-800/30 bg-blue-950/20 p-3">
+          <p className="text-xs text-blue-200">Ready Agents</p>
+          <p className="text-2xl font-bold text-blue-100">{commandCenter.summary.dashboardAgentsReady}</p>
+        </div>
+        <div className="rounded-xl border border-teal-800/30 bg-teal-950/20 p-3">
+          <p className="text-xs text-teal-200">Source Issues</p>
+          <p className="text-2xl font-bold text-teal-100">{commandCenter.summary.sourceFreshnessIssues}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Safe next steps</p>
+          <div className="space-y-2">
+            {commandCenter.safeNextSteps.slice(0, 4).map((step) => (
+              <p key={step} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-200">
+                {step}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">System signals</p>
+          <div className="space-y-2">
+            {commandCenter.systemSignals.slice(0, 5).map((signal) => (
+              <p key={signal} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-200">
+                {signal}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function goLiveStatusClass(status: GoLiveGateStatus) {
+  if (status === "blocked") return "border-red-800/50 bg-red-950/30 text-red-100"
+  if (status === "warning") return "border-amber-800/50 bg-amber-950/30 text-amber-100"
+  return "border-emerald-800/40 bg-emerald-950/20 text-emerald-100"
+}
+
+function GoLiveReadinessPanel({ report }: { report: GoLiveReadinessReport }) {
+  return (
+    <section className={cn("mb-8 rounded-2xl border p-5", goLiveStatusClass(report.overallStatus))}>
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-amber-200">
+            Phase 1P Go-Live Gates
+          </p>
+          <h2 className="text-2xl font-bold text-white">AI Workforce Go-Live Readiness</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300">
+            Clear launch gates separate safe admin visibility from production rollout and expanded autonomy. Anything
+            blocked or warning stays human-owned until resolved.
+          </p>
+        </div>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold uppercase">
+            {formatStatus(report.overallStatus)}
+          </span>
+          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold uppercase">
+            {formatStatus(report.recommendedLaunchMode)}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+          <p className="text-xs text-gray-400">Gates</p>
+          <p className="text-2xl font-bold text-white">{report.summary.total}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3">
+          <p className="text-xs text-emerald-300">Passed</p>
+          <p className="text-2xl font-bold text-emerald-200">{report.summary.passed}</p>
+        </div>
+        <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
+          <p className="text-xs text-amber-300">Warnings</p>
+          <p className="text-2xl font-bold text-amber-200">{report.summary.warning}</p>
+        </div>
+        <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-3">
+          <p className="text-xs text-red-300">Blocked</p>
+          <p className="text-2xl font-bold text-red-200">{report.summary.blocked}</p>
+        </div>
+        <div className="rounded-xl border border-orange-800/40 bg-orange-950/20 p-3">
+          <p className="text-xs text-orange-300">Launch Blocks</p>
+          <p className="text-2xl font-bold text-orange-200">{report.summary.productionBlockers}</p>
+        </div>
+        <div className="rounded-xl border border-blue-800/40 bg-blue-950/20 p-3">
+          <p className="text-xs text-blue-300">Jason-Owned</p>
+          <p className="text-2xl font-bold text-blue-200">{report.summary.jasonOwned}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {report.gates.map((gate) => (
+          <article key={gate.id} className={cn("rounded-xl border p-4", goLiveStatusClass(gate.status))}>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                {gate.status}
+              </span>
+              <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                {gate.owner}
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-white">{gate.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-gray-300">{gate.detail}</p>
+            <p className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm font-semibold text-white">
+              {gate.nextStep}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function autopilotRiskClass(risk: AutopilotApprovalRequest["riskLevel"]) {
   if (risk === "critical") return "border-red-700/50 bg-red-950/30 text-red-200"
   if (risk === "high") return "border-orange-700/50 bg-orange-950/30 text-orange-200"
@@ -550,6 +718,610 @@ function OperationalBriefingPanel({
           </aside>
         </div>
       )}
+    </section>
+  )
+}
+
+function memorySeverityClass(severity: string) {
+  if (severity === "critical") return "border-red-800/40 bg-red-950/25 text-red-100"
+  if (severity === "warning") return "border-amber-800/40 bg-amber-950/25 text-amber-100"
+  if (severity === "success") return "border-emerald-800/40 bg-emerald-950/25 text-emerald-100"
+  return "border-slate-800 bg-slate-950/30 text-slate-100"
+}
+
+function OperationalMemoryPanel({ memory }: { memory: OperationalMemory }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-slate-800 bg-slate-950/40 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-300">
+            Phase 1D Shared Memory
+          </p>
+          <h2 className="text-2xl font-bold text-white">Operational Memory Timeline</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            A read-only memory layer stitched from existing approval events, Action Center notes, briefings, Learning Engine outcomes,
+            internal handoffs, and agent runs. It gives future agents context without creating another source of truth.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Events</p>
+            <p className="text-2xl font-bold text-white">{memory.summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-violet-800/40 bg-violet-950/30 p-3">
+            <p className="text-xs text-violet-300">Approvals</p>
+            <p className="text-2xl font-bold text-violet-200">{memory.summary.approvals}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/30 p-3">
+            <p className="text-xs text-cyan-300">Tasks</p>
+            <p className="text-2xl font-bold text-cyan-200">{memory.summary.tasks}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
+            <p className="text-xs text-blue-300">Learning</p>
+            <p className="text-2xl font-bold text-blue-200">{memory.summary.learning}</p>
+          </div>
+          <div className="rounded-xl border border-sky-800/40 bg-sky-950/30 p-3">
+            <p className="text-xs text-sky-300">Briefings</p>
+            <p className="text-2xl font-bold text-sky-200">{memory.summary.monitorEvents}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
+            <p className="text-xs text-red-300">Failures</p>
+            <p className="text-2xl font-bold text-red-200">{memory.summary.failures}</p>
+          </div>
+        </div>
+      </div>
+
+      {memory.events.length === 0 ? (
+        <div className="rounded-xl border border-slate-800 bg-black/20 p-5">
+          <p className="font-semibold text-slate-100">No operational memory events are visible yet.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            The timeline fills in as Action Center, approval, briefing, Learning Engine, and agent run tables collect events.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {memory.events.slice(0, 10).map((event) => (
+            <article key={event.id} className={cn("rounded-xl border p-4", memorySeverityClass(event.severity))}>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                  {event.source.replace(/_/g, " ")}
+                </span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                  {event.actor}
+                </span>
+                <span className="text-xs text-gray-400">{formatRelativeTime(event.occurredAt)}</span>
+              </div>
+              <h3 className="text-base font-bold text-white">{event.title}</h3>
+              <p className="mt-1 text-sm leading-6 text-gray-300">{event.summary}</p>
+              <a href={event.route} className="mt-3 inline-block text-xs font-bold text-sky-200 underline">
+                Open source workflow
+              </a>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function userActionPriorityClass(priority: string) {
+  if (priority === "critical") return "border-red-800/50 bg-red-950/30 text-red-100"
+  if (priority === "high") return "border-orange-800/50 bg-orange-950/30 text-orange-100"
+  if (priority === "medium") return "border-amber-800/40 bg-amber-950/20 text-amber-100"
+  return "border-slate-800 bg-slate-950/30 text-slate-100"
+}
+
+function UserActionReadinessPanel({ readiness }: { readiness: UserActionReadiness }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-orange-900/40 bg-orange-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-orange-300">
+            Jason Action Required
+          </p>
+          <h2 className="text-2xl font-bold text-white">Go-Live and Autonomy Checklist</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            A running list of credentials, approvals, migrations, and policy confirmations that need human action.
+            These are separated from engineering work so I can keep building until one of them becomes a true blocker.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Items</p>
+            <p className="text-2xl font-bold text-white">{readiness.summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
+            <p className="text-xs text-red-300">Critical</p>
+            <p className="text-2xl font-bold text-red-200">{readiness.summary.critical}</p>
+          </div>
+          <div className="rounded-xl border border-orange-800/40 bg-orange-950/30 p-3">
+            <p className="text-xs text-orange-300">High</p>
+            <p className="text-2xl font-bold text-orange-200">{readiness.summary.high}</p>
+          </div>
+          <div className="rounded-xl border border-fuchsia-800/40 bg-fuchsia-950/30 p-3">
+            <p className="text-xs text-fuchsia-300">Go-Live</p>
+            <p className="text-2xl font-bold text-fuchsia-200">{readiness.summary.blocksGoLive}</p>
+          </div>
+          <div className="rounded-xl border border-violet-800/40 bg-violet-950/30 p-3">
+            <p className="text-xs text-violet-300">Autonomy</p>
+            <p className="text-2xl font-bold text-violet-200">{readiness.summary.blocksAutonomy}</p>
+          </div>
+        </div>
+      </div>
+
+      {readiness.items.length === 0 ? (
+        <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-5">
+          <p className="font-semibold text-emerald-200">No required user actions are currently visible.</p>
+          <p className="mt-1 text-sm text-emerald-100/70">Engineering can continue without waiting on credentials or approvals.</p>
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {readiness.items.slice(0, 10).map((item) => (
+            <article key={item.id} className={cn("rounded-xl border p-4", userActionPriorityClass(item.priority))}>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                  {item.priority}
+                </span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                  {item.category.replace(/_/g, " ")}
+                </span>
+                {item.blocksGoLive && (
+                  <span className="rounded-full border border-red-700/40 bg-red-900/30 px-2 py-1 text-xs font-bold text-red-100">
+                    blocks go-live
+                  </span>
+                )}
+                {item.blocksAutonomy && (
+                  <span className="rounded-full border border-violet-700/40 bg-violet-900/30 px-2 py-1 text-xs font-bold text-violet-100">
+                    blocks autonomy
+                  </span>
+                )}
+              </div>
+              <h3 className="text-base font-bold text-white">{item.title}</h3>
+              <p className="mt-1 text-sm leading-6 text-gray-300">{item.detail}</p>
+              <p className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-sm text-gray-200">
+                {item.nextStep}
+              </p>
+              {item.relatedRoute && (
+                <a href={item.relatedRoute} className="mt-3 inline-block text-xs font-bold text-sky-200 underline">
+                  Open related workflow
+                </a>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function smokeStatusClass(status: string) {
+  if (status === "failed") return "border-red-800/50 bg-red-950/30 text-red-100"
+  if (status === "warning") return "border-amber-800/50 bg-amber-950/30 text-amber-100"
+  return "border-emerald-800/40 bg-emerald-950/20 text-emerald-100"
+}
+
+function AiWorkforceSmokePanel({ report }: { report: AiWorkforceSmokeReport }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-cyan-900/40 bg-cyan-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-cyan-300">
+            Phase 1H Smoke Check
+          </p>
+          <h2 className="text-2xl font-bold text-white">AI Workforce OS Readiness Check</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            A read-only check for the orchestration foundation: environment readiness, core tables, Learning Engine,
+            Action Center, briefings, approval gates, handoffs, and internal task linkage.
+          </p>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <div className={cn("rounded-xl border p-3", smokeStatusClass(report.overallStatus))}>
+            <p className="text-xs opacity-70">Overall</p>
+            <p className="text-xl font-bold uppercase">{report.overallStatus}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3">
+            <p className="text-xs text-emerald-300">OK</p>
+            <p className="text-2xl font-bold text-emerald-200">{report.summary.ok}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
+            <p className="text-xs text-amber-300">Warn</p>
+            <p className="text-2xl font-bold text-amber-200">{report.summary.warning}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-3">
+            <p className="text-xs text-red-300">Fail</p>
+            <p className="text-2xl font-bold text-red-200">{report.summary.failed}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {report.checks.slice(0, 10).map((check) => (
+          <article key={check.key} className={cn("rounded-xl border p-4", smokeStatusClass(check.status))}>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                {check.status}
+              </span>
+              <span className="text-xs text-gray-400">{check.key}</span>
+            </div>
+            <h3 className="text-base font-bold text-white">{check.label}</h3>
+            <p className="mt-1 text-sm leading-6 text-gray-300">{check.summary}</p>
+            <p className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-sm text-gray-200">
+              {check.nextStep}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function freshnessStatusClass(status: string) {
+  if (status === "unavailable" || status === "stale") return "border-red-800/50 bg-red-950/30 text-red-100"
+  if (status === "aging" || status === "missing") return "border-amber-800/50 bg-amber-950/30 text-amber-100"
+  return "border-emerald-800/40 bg-emerald-950/20 text-emerald-100"
+}
+
+function SourceFreshnessPanel({ report }: { report: SourceFreshnessReport }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-teal-900/40 bg-teal-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-teal-300">
+            Phase 1I Source Freshness
+          </p>
+          <h2 className="text-2xl font-bold text-white">Agent Data Freshness</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            Read-only freshness checks for the data sources agents depend on: political intelligence, Learning Engine,
+            Gov Contracts, messaging webhooks, and procurement email automation.
+          </p>
+        </div>
+        <div className="grid grid-cols-5 gap-3">
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3">
+            <p className="text-xs text-emerald-300">Fresh</p>
+            <p className="text-2xl font-bold text-emerald-200">{report.summary.fresh}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
+            <p className="text-xs text-amber-300">Aging</p>
+            <p className="text-2xl font-bold text-amber-200">{report.summary.aging}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-3">
+            <p className="text-xs text-red-300">Stale</p>
+            <p className="text-2xl font-bold text-red-200">{report.summary.stale}</p>
+          </div>
+          <div className="rounded-xl border border-orange-800/40 bg-orange-950/20 p-3">
+            <p className="text-xs text-orange-300">Missing</p>
+            <p className="text-2xl font-bold text-orange-200">{report.summary.missing}</p>
+          </div>
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Offline</p>
+            <p className="text-2xl font-bold text-gray-200">{report.summary.unavailable}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {report.items.map((item) => (
+          <article key={item.key} className={cn("rounded-xl border p-4", freshnessStatusClass(item.status))}>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                {item.status}
+              </span>
+              <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                {item.sourceTable}
+              </span>
+              <span className="text-xs text-gray-400">
+                stale after {item.staleAfterHours}h
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-white">{item.label}</h3>
+            <p className="mt-1 text-sm leading-6 text-gray-300">{item.summary}</p>
+            <p className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-sm text-gray-200">
+              {item.nextStep}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function missionModeClass(mode: AgentMissionMode) {
+  if (mode === "blocked") return "border-red-800/50 bg-red-950/30 text-red-100"
+  if (mode === "draft_only") return "border-amber-800/50 bg-amber-950/30 text-amber-100"
+  if (mode === "human_approval") return "border-blue-800/50 bg-blue-950/30 text-blue-100"
+  if (mode === "scheduled_monitor") return "border-cyan-800/50 bg-cyan-950/30 text-cyan-100"
+  if (mode === "assisted_ready") return "border-emerald-800/50 bg-emerald-950/30 text-emerald-100"
+  return "border-gray-800 bg-gray-950/60 text-gray-200"
+}
+
+function missionRiskClass(risk: AgentMissionRisk) {
+  if (risk === "high") return "bg-red-900/30 text-red-200 border-red-700/40"
+  if (risk === "medium") return "bg-amber-900/30 text-amber-100 border-amber-700/40"
+  return "bg-emerald-900/30 text-emerald-200 border-emerald-700/40"
+}
+
+function AgentMissionControlPanel({ missionControl }: { missionControl: AgentMissionControl }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-violet-900/40 bg-violet-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-violet-300">
+            Phase 1K Agent Mission Control
+          </p>
+          <h2 className="text-2xl font-bold text-white">Autonomy Modes + Human Gates</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            Each dashboard agent now has a clear operating mode, allowed actions, prohibited actions, source warnings,
+            and next safe task. This makes the AI Workforce OS supervisable before deeper autonomy is enabled.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Agents</p>
+            <p className="text-2xl font-bold text-white">{missionControl.summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-3">
+            <p className="text-xs text-red-300">Blocked</p>
+            <p className="text-2xl font-bold text-red-200">{missionControl.summary.blocked}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
+            <p className="text-xs text-amber-300">Draft Only</p>
+            <p className="text-2xl font-bold text-amber-200">{missionControl.summary.draftOnly}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/20 p-3">
+            <p className="text-xs text-blue-300">Approval</p>
+            <p className="text-2xl font-bold text-blue-200">{missionControl.summary.humanApproval}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/20 p-3">
+            <p className="text-xs text-cyan-300">Monitor</p>
+            <p className="text-2xl font-bold text-cyan-200">{missionControl.summary.scheduledMonitor}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3">
+            <p className="text-xs text-emerald-300">Assisted</p>
+            <p className="text-2xl font-bold text-emerald-200">{missionControl.summary.assistedReady}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {missionControl.agents.map((agent) => (
+          <article key={agent.agentId} className={cn("rounded-xl border p-4", missionModeClass(agent.mode))}>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">{agent.dashboard}</p>
+                <h3 className="mt-1 text-lg font-bold text-white">{agent.name}</h3>
+                <a className="mt-1 block text-xs font-semibold text-blue-200 hover:text-blue-100" href={agent.route}>
+                  Open {agent.route}
+                </a>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold uppercase">
+                  {formatStatus(agent.mode)}
+                </span>
+                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-bold uppercase", missionRiskClass(agent.risk))}>
+                  {agent.risk} risk
+                </span>
+              </div>
+            </div>
+
+            <p className="mb-3 text-sm leading-6 text-gray-300">{agent.mission}</p>
+            <p className="mb-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm font-semibold text-white">
+              Next safe task: {agent.nextSafeTask}
+            </p>
+            <p className="mb-4 text-xs leading-5 text-gray-300">{agent.humanGate}</p>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Allowed</p>
+                <ul className="space-y-1 text-xs leading-5 text-gray-300">
+                  {agent.allowedActions.slice(0, 4).map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-red-200">Prohibited</p>
+                <ul className="space-y-1 text-xs leading-5 text-gray-300">
+                  {agent.prohibitedActions.slice(0, 4).map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {(agent.blockers.length > 0 || agent.sourceWarnings.length > 0) && (
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-200">Needs Attention</p>
+                <ul className="space-y-1 text-xs leading-5 text-gray-300">
+                  {agent.blockers.slice(0, 3).map((blocker) => (
+                    <li key={blocker}>{blocker}</li>
+                  ))}
+                  {agent.sourceWarnings.slice(0, 3).map((source) => (
+                    <li key={source.key}>{source.label}: {source.status}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function CapabilityDot({ enabled, label }: { enabled: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-1 text-[11px] font-bold uppercase",
+        enabled
+          ? "border-emerald-700/40 bg-emerald-900/30 text-emerald-200"
+          : "border-gray-700 bg-gray-950/70 text-gray-500"
+      )}
+    >
+      {label}
+    </span>
+  )
+}
+
+function AgentPermissionsPanel({ matrix }: { matrix: AgentPermissionMatrix }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-indigo-900/40 bg-indigo-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-indigo-300">
+            Phase 1R Agent Permissions
+          </p>
+          <h2 className="text-2xl font-bold text-white">Digital Employee Permission Matrix</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            Every dashboard agent gets explicit capabilities. External execution is disabled by default while read,
+            draft, approval, monitoring, and internal handoff permissions are separated.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-3 lg:grid-cols-6">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Agents</p>
+            <p className="text-2xl font-bold text-white">{matrix.summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/20 p-3">
+            <p className="text-xs text-blue-300">Draft</p>
+            <p className="text-2xl font-bold text-blue-200">{matrix.summary.draftEnabled}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
+            <p className="text-xs text-amber-300">Approval</p>
+            <p className="text-2xl font-bold text-amber-200">{matrix.summary.approvalEnabled}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/20 p-3">
+            <p className="text-xs text-cyan-300">Monitor</p>
+            <p className="text-2xl font-bold text-cyan-200">{matrix.summary.monitorEnabled}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3">
+            <p className="text-xs text-emerald-300">Handoff</p>
+            <p className="text-2xl font-bold text-emerald-200">{matrix.summary.internalHandoffEnabled}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-3">
+            <p className="text-xs text-red-300">External</p>
+            <p className="text-2xl font-bold text-red-200">{matrix.summary.externalExecutionEnabled}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {matrix.agents.slice(0, 10).map((agent) => (
+          <article key={agent.agentId} className="rounded-xl border border-gray-800 bg-gray-950/60 p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{agent.dashboard}</p>
+                <h3 className="mt-1 text-base font-bold text-white">{agent.agentName}</h3>
+              </div>
+              <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold uppercase text-gray-200">
+                {formatStatus(agent.mode)}
+              </span>
+            </div>
+            <p className="mb-3 text-sm leading-6 text-gray-400">{agent.permissionSummary}</p>
+            <div className="flex flex-wrap gap-2">
+              <CapabilityDot enabled={agent.canReadData} label="Read" />
+              <CapabilityDot enabled={agent.canDraft} label="Draft" />
+              <CapabilityDot enabled={agent.canCreateActionItem} label="Action" />
+              <CapabilityDot enabled={agent.canRequestApproval} label="Approval" />
+              <CapabilityDot enabled={agent.canRunScheduledMonitor} label="Monitor" />
+              <CapabilityDot enabled={agent.canQueueInternalHandoff} label="Handoff" />
+              <CapabilityDot enabled={agent.canSendExternalMessage} label="External Send" />
+              <CapabilityDot enabled={agent.canChangePaymentOrPricing} label="Pricing" />
+              <CapabilityDot enabled={agent.canPlaceOrderOrBid} label="Order/Bid" />
+              <CapabilityDot enabled={agent.canPublishOrDeploy} label="Publish" />
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function workOrderPriorityClass(priority: AgentWorkOrderPriority) {
+  if (priority === "critical") return "border-red-700/50 bg-red-950/30 text-red-100"
+  if (priority === "high") return "border-orange-700/50 bg-orange-950/30 text-orange-100"
+  if (priority === "medium") return "border-amber-700/50 bg-amber-950/20 text-amber-100"
+  return "border-gray-700 bg-gray-950/60 text-gray-200"
+}
+
+function workOrderStatusClass(status: AgentWorkOrderStatus) {
+  if (status === "blocked") return "bg-red-900/30 text-red-200 border-red-700/40"
+  if (status === "ready_for_review") return "bg-blue-900/30 text-blue-200 border-blue-700/40"
+  return "bg-emerald-900/30 text-emerald-200 border-emerald-700/40"
+}
+
+function AgentWorkOrdersPanel({ queue }: { queue: AgentWorkOrderQueue }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-fuchsia-900/40 bg-fuchsia-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-fuchsia-300">
+            Phase 1O Agent Work Orders
+          </p>
+          <h2 className="text-2xl font-bold text-white">Internal AI Workforce Backlog</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            Mission-control state becomes human-supervised work orders. These are planning items only: no external action,
+            send, bid, payment, order, publishing, or deploy is performed.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-3 lg:grid-cols-5">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Orders</p>
+            <p className="text-2xl font-bold text-white">{queue.summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-3">
+            <p className="text-xs text-red-300">Blocked</p>
+            <p className="text-2xl font-bold text-red-200">{queue.summary.blocked}</p>
+          </div>
+          <div className="rounded-xl border border-orange-800/40 bg-orange-950/20 p-3">
+            <p className="text-xs text-orange-300">High</p>
+            <p className="text-2xl font-bold text-orange-200">{queue.summary.high}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/20 p-3">
+            <p className="text-xs text-blue-300">Review</p>
+            <p className="text-2xl font-bold text-blue-200">{queue.summary.readyForReview}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3">
+            <p className="text-xs text-emerald-300">Auto-safe</p>
+            <p className="text-2xl font-bold text-emerald-200">{queue.summary.safeToAutomate}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {queue.workOrders.slice(0, 10).map((order) => (
+          <article key={order.id} className={cn("rounded-xl border p-4", workOrderPriorityClass(order.priority))}>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">{order.dashboard}</p>
+                <h3 className="mt-1 text-base font-bold text-white">{order.title}</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-bold uppercase", workOrderStatusClass(order.status))}>
+                  {formatStatus(order.status)}
+                </span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold uppercase">
+                  {order.priority}
+                </span>
+              </div>
+            </div>
+
+            <p className="mb-3 text-sm leading-6 text-gray-300">{order.objective}</p>
+            <p className="mb-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm font-semibold text-white">
+              Next step: {order.nextStep}
+            </p>
+            <p className="mb-3 text-xs leading-5 text-gray-300">{order.humanGate}</p>
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Acceptance criteria</p>
+              <ul className="space-y-1 text-xs leading-5 text-gray-300">
+                {order.acceptanceCriteria.slice(0, 4).map((criterion) => (
+                  <li key={criterion}>{criterion}</li>
+                ))}
+              </ul>
+            </div>
+          </article>
+        ))}
+      </div>
     </section>
   )
 }
@@ -1448,6 +2220,82 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   )
 }
 
+function WorkflowRecipesPanel({ catalog }: { catalog: WorkflowRecipeCatalog }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-slate-800 bg-slate-950/40 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-300">
+            Phase 1T Workflow Recipes
+          </p>
+          <h2 className="text-2xl font-bold text-white">Guided Agent Workflow Recipes</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            Reusable, human-gated operating recipes for the major HomeReach workflows. These define safe execution paths
+            before any agent receives deeper permissions.
+          </p>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Recipes</p>
+            <p className="text-2xl font-bold text-white">{catalog.summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-blue-800/40 bg-blue-950/20 p-3">
+            <p className="text-xs text-blue-300">Review</p>
+            <p className="text-2xl font-bold text-blue-200">{catalog.summary.reviewOnly}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
+            <p className="text-xs text-amber-300">Setup</p>
+            <p className="text-2xl font-bold text-amber-200">{catalog.summary.needsSetup}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-3">
+            <p className="text-xs text-red-300">High Risk</p>
+            <p className="text-2xl font-bold text-red-200">{catalog.summary.highRisk}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {catalog.recipes.map((recipe) => (
+          <article key={recipe.id} className="rounded-xl border border-gray-800 bg-gray-950/60 p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{recipe.dashboard}</p>
+                <h3 className="mt-1 text-lg font-bold text-white">{recipe.title}</h3>
+                <a className="mt-1 block text-xs font-semibold text-blue-300 hover:text-blue-200" href={recipe.route}>
+                  Open {recipe.route}
+                </a>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold uppercase text-gray-200">
+                  {formatStatus(recipe.status)}
+                </span>
+                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-bold uppercase", autopilotRiskClass(recipe.risk))}>
+                  {recipe.risk}
+                </span>
+              </div>
+            </div>
+            <p className="mb-3 text-sm leading-6 text-gray-400">{recipe.objective}</p>
+            <div className="mb-3 rounded-lg border border-white/10 bg-black/20 p-3">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Steps</p>
+              <ol className="space-y-2 text-xs leading-5 text-gray-300">
+                {recipe.steps.slice(0, 5).map((step, index) => (
+                  <li key={`${recipe.id}-${step.label}`}>
+                    {index + 1}. {step.label} - {step.output}
+                    {step.requiresApproval ? " (approval)" : ""}
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <p className="rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-sm text-amber-100">
+              {recipe.goLiveRequirement}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function AgentCard({
   agent,
   stat,
@@ -1777,6 +2625,16 @@ export default function AgentsDashboard({
   autopilotTasks,
   operationalBriefings,
   monitorRuns,
+  operationalMemory,
+  userActionReadiness,
+  smokeReport,
+  sourceFreshness,
+  missionControl,
+  commandCenter,
+  workOrders,
+  goLiveReadiness,
+  agentPermissions,
+  workflowRecipes,
 }: Props) {
   // Check if agent registry is initialized
   if (!agents || agents.length === 0) {
@@ -1786,7 +2644,17 @@ export default function AgentsDashboard({
           <h1 className="text-3xl font-bold mb-2">APEX — Agent Command Center</h1>
           <p className="text-gray-400 mb-8">16-Agent Autonomous System</p>
 
+          <GoLiveReadinessPanel report={goLiveReadiness} />
+          <AiCommandCenterSummaryPanel commandCenter={commandCenter} />
           <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
+          <OperationalMemoryPanel memory={operationalMemory} />
+          <UserActionReadinessPanel readiness={userActionReadiness} />
+          <AiWorkforceSmokePanel report={smokeReport} />
+          <SourceFreshnessPanel report={sourceFreshness} />
+          <AgentMissionControlPanel missionControl={missionControl} />
+          <AgentPermissionsPanel matrix={agentPermissions} />
+          <AgentWorkOrdersPanel queue={workOrders} />
+          <WorkflowRecipesPanel catalog={workflowRecipes} />
           <HumanApprovedAutopilotPanel control={autopilotControl} />
           <AutopilotTasksPanel queue={autopilotTasks} />
           <UnifiedActionCenterPanel actionCenter={actionCenter} />
@@ -1849,7 +2717,17 @@ export default function AgentsDashboard({
           avgCompletion={avgCompletion}
         />
 
+        <GoLiveReadinessPanel report={goLiveReadiness} />
+        <AiCommandCenterSummaryPanel commandCenter={commandCenter} />
         <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
+        <OperationalMemoryPanel memory={operationalMemory} />
+        <UserActionReadinessPanel readiness={userActionReadiness} />
+        <AiWorkforceSmokePanel report={smokeReport} />
+        <SourceFreshnessPanel report={sourceFreshness} />
+        <AgentMissionControlPanel missionControl={missionControl} />
+        <AgentPermissionsPanel matrix={agentPermissions} />
+        <AgentWorkOrdersPanel queue={workOrders} />
+        <WorkflowRecipesPanel catalog={workflowRecipes} />
         <HumanApprovedAutopilotPanel control={autopilotControl} />
         <AutopilotTasksPanel queue={autopilotTasks} />
         <UnifiedActionCenterPanel actionCenter={actionCenter} />

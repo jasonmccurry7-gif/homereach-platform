@@ -1,5 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { getDashboardAgentMatrix } from "./dashboard-agents";
+import { getSourceFreshnessReport } from "./source-freshness";
+import { getUserActionReadiness } from "./user-action-items";
 
 export type UnifiedActionUrgency = "critical" | "high" | "medium" | "low";
 export type UnifiedActionStatus = "needs_review" | "blocked" | "ready" | "watch";
@@ -119,6 +121,29 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
     });
   }
 
+  const userActionReadiness = getUserActionReadiness();
+  for (const action of userActionReadiness.items.slice(0, 12)) {
+    items.push({
+      id: `user-action-${action.id}`,
+      source: "user_action_required",
+      dashboard: action.relatedSystem ?? "HomeReach Setup",
+      route: action.relatedRoute ?? "/admin/agents",
+      title: action.title,
+      reason: action.detail,
+      recommendedAction: action.nextStep,
+      impact: action.blocksGoLive
+        ? "Required before go-live."
+        : action.blocksAutonomy
+          ? "Required before expanding safe autonomy."
+          : "Improves production readiness.",
+      urgency: action.priority,
+      status: action.blocksGoLive ? "blocked" : "needs_review",
+      owner: action.owner === "jason" ? "jason" : "admin",
+      requiresHumanApproval: true,
+      createdAt: userActionReadiness.generatedAt,
+    });
+  }
+
   if (!hasSupabaseEnv()) {
     sourceHealth.push({
       source: "supabase",
@@ -151,6 +176,10 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
     failedWebhooks,
     hotSalesLeads,
     procurementSequence,
+    learningInsights,
+    learningEnhancements,
+    learningAutomations,
+    promotedLearningActions,
   ] = await Promise.all([
     readSource("revenue_message_approval_queue", async () => {
       const { data, error } = await supabase
@@ -237,6 +266,52 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
         .select("id,name,status,business_line,updated_at")
         .eq("business_line", "inventory_procurement")
         .limit(2);
+      if (error) throw error;
+      return data ?? [];
+    }, [] as Array<Record<string, any>>),
+
+    readSource("ci_insights", async () => {
+      const { data, error } = await supabase
+        .from("ci_insights")
+        .select("id,category,theme,insight_text,rationale,apex_score,status,created_at")
+        .eq("status", "pending")
+        .gte("apex_score", 16)
+        .order("apex_score", { ascending: false })
+        .limit(8);
+      if (error) throw error;
+      return data ?? [];
+    }, [] as Array<Record<string, any>>),
+
+    readSource("ci_enhancements", async () => {
+      const { data, error } = await supabase
+        .from("ci_enhancements")
+        .select("id,category,title,description,kind,status,created_at")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(6);
+      if (error) throw error;
+      return data ?? [];
+    }, [] as Array<Record<string, any>>),
+
+    readSource("ci_automations", async () => {
+      const { data, error } = await supabase
+        .from("ci_automations")
+        .select("id,category,title,trigger_desc,action_desc,status,created_at")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(6);
+      if (error) throw error;
+      return data ?? [];
+    }, [] as Array<Record<string, any>>),
+
+    readSource("learning_engine_promotions", async () => {
+      const { data, error } = await supabase
+        .from("unified_action_items")
+        .select("source_key,source,dashboard,route,title,reason,recommended_action,impact,urgency,status,owner,requires_human_approval,source_created_at,due_at,state,snoozed_until,resolved_at,resolution_note,metadata,created_at")
+        .eq("source", "learning_engine_promotion")
+        .in("state", ["open", "snoozed"])
+        .order("updated_at", { ascending: false })
+        .limit(12);
       if (error) throw error;
       return data ?? [];
     }, [] as Array<Record<string, any>>),
@@ -406,6 +481,109 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
         createdAt: row.updated_at,
       });
     }
+  }
+
+  for (const row of learningInsights) {
+    const category = row.category ?? "general";
+    const theme = row.theme ? ` / ${row.theme}` : "";
+    items.push({
+      id: `learning-insight-${row.id}`,
+      source: "ci_insights",
+      dashboard: "Learning Engine",
+      route: "/admin/content-intel",
+      title: `Review high-score Learning Engine insight: ${category}${theme}`,
+      reason: `APEX ${row.apex_score ?? 0}. ${String(row.insight_text ?? "").slice(0, 180)}`,
+      recommendedAction: "Review the insight, approve or reject it, and only then convert it into an internal implementation task.",
+      impact: "Turns research into a supervised improvement candidate without changing production automatically.",
+      urgency: Number(row.apex_score ?? 0) >= 18 ? "medium" : "low",
+      status: "needs_review",
+      owner: "admin",
+      requiresHumanApproval: true,
+      createdAt: row.created_at,
+    });
+  }
+
+  for (const row of learningEnhancements) {
+    const isStrategic = row.kind === "strategic";
+    items.push({
+      id: `learning-enhancement-${row.id}`,
+      source: "ci_enhancements",
+      dashboard: "Learning Engine",
+      route: "/admin/content-intel",
+      title: `Evaluate Learning Engine enhancement: ${row.title ?? "Untitled enhancement"}`,
+      reason: `${row.category ?? "general"} ${row.kind ?? "enhancement"} idea: ${String(row.description ?? "").slice(0, 180)}`,
+      recommendedAction: "Review the enhancement and create an internal implementation task only if it fits the current roadmap.",
+      impact: isStrategic
+        ? "May improve the AI Workforce OS roadmap after human review."
+        : "Creates a safe, additive improvement candidate for the existing ecosystem.",
+      urgency: isStrategic ? "medium" : "low",
+      status: "needs_review",
+      owner: "admin",
+      requiresHumanApproval: true,
+      createdAt: row.created_at,
+    });
+  }
+
+  for (const row of learningAutomations) {
+    items.push({
+      id: `learning-automation-${row.id}`,
+      source: "ci_automations",
+      dashboard: "Learning Engine",
+      route: "/admin/content-intel",
+      title: `Review automation idea: ${row.title ?? "Untitled automation"}`,
+      reason: `Trigger: ${String(row.trigger_desc ?? "").slice(0, 100)}. Action: ${String(row.action_desc ?? "").slice(0, 120)}`,
+      recommendedAction: "Validate the automation, confirm safeguards, and create a human-owned implementation task if appropriate.",
+      impact: "Improves operational leverage only after approval, testing, and safe rollout.",
+      urgency: "low",
+      status: "needs_review",
+      owner: "admin",
+      requiresHumanApproval: true,
+      createdAt: row.created_at,
+    });
+  }
+
+  for (const row of promotedLearningActions) {
+    items.push({
+      id: row.source_key,
+      source: row.source,
+      dashboard: row.dashboard,
+      route: row.route,
+      title: row.title,
+      reason: row.reason,
+      recommendedAction: row.recommended_action,
+      impact: row.impact,
+      urgency: row.urgency,
+      status: row.status,
+      owner: row.owner,
+      requiresHumanApproval: row.requires_human_approval,
+      createdAt: row.source_created_at ?? row.created_at,
+      dueAt: row.due_at,
+      durableState: row.state,
+      snoozedUntil: row.snoozed_until,
+      resolvedAt: row.resolved_at,
+      resolutionNote: row.resolution_note,
+    });
+  }
+
+  const sourceFreshness = await readSource("ai_source_freshness", getSourceFreshnessReport, null);
+  for (const item of sourceFreshness?.items ?? []) {
+    if (!["stale", "missing", "unavailable"].includes(item.status)) continue;
+
+    items.push({
+      id: `source-freshness-${item.key}`,
+      source: "ai_source_freshness",
+      dashboard: "AI Workforce OS",
+      route: "/admin/agents",
+      title: `${item.label} source is ${item.status}`,
+      reason: item.summary,
+      recommendedAction: item.nextStep,
+      impact: "Keeps AI recommendations grounded in fresh source data before autonomy expands.",
+      urgency: item.status === "missing" ? "medium" : "high",
+      status: item.status === "unavailable" ? "blocked" : "needs_review",
+      owner: "admin",
+      requiresHumanApproval: true,
+      createdAt: item.lastSeenAt ?? nowIso(),
+    });
   }
 
   const durableItems = await applyDurableActionState(supabase, items, sourceHealth);

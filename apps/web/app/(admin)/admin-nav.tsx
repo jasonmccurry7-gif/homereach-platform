@@ -25,6 +25,12 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: "Learning & Optimization",
+    items: [
+      { label: "Learning Engine", href: "/admin/content-intel", emoji: "LE", badge: "AI" },
+    ],
+  },
+  {
     label: "Traffic Engine",
     items: [
       { label: "Traffic Engine",  href: "/admin/traffic-engine", emoji: "🚀", badge: "NEW" },

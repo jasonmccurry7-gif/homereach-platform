@@ -151,7 +151,7 @@ function buildMonitors(actionCenter: UnifiedActionCenter): DashboardMonitor[] {
       summary: `${actionCenter.sourceHealth.length - unavailableSources.length}/${actionCenter.sourceHealth.length} Action Center sources online.`,
       recommendedAction:
         unavailableSources.length > 0
-          ? `Review unavailable source: ${unavailableSources[0].source}.`
+          ? `Review unavailable source: ${unavailableSources[0]?.source ?? "unknown source"}.`
           : "Keep monitoring source availability.",
     },
     {

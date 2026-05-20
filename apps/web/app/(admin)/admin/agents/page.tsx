@@ -4,6 +4,16 @@ import { getUnifiedActionCenter } from "@/lib/ai-orchestration/action-center"
 import { getAutopilotControlCenter, getAutopilotTaskQueue } from "@/lib/ai-orchestration/autopilot"
 import { getRecentDashboardMonitorRuns, getRecentOperationalBriefings } from "@/lib/ai-orchestration/briefings"
 import { getDashboardAgentMatrix, getDashboardAgentSummary } from "@/lib/ai-orchestration/dashboard-agents"
+import { getOperationalMemory } from "@/lib/ai-orchestration/operational-memory"
+import { getUserActionReadiness } from "@/lib/ai-orchestration/user-action-items"
+import { getAiWorkforceSmokeReport } from "@/lib/ai-orchestration/ai-workforce-smoke"
+import { getSourceFreshnessReport } from "@/lib/ai-orchestration/source-freshness"
+import { getAgentMissionControl } from "@/lib/ai-orchestration/agent-mission-control"
+import { getAiCommandCenterState } from "@/lib/ai-orchestration/command-center"
+import { getAgentWorkOrderQueue } from "@/lib/ai-orchestration/agent-work-orders"
+import { getGoLiveReadinessReport } from "@/lib/ai-orchestration/go-live-readiness"
+import { getAgentPermissionMatrix } from "@/lib/ai-orchestration/agent-permissions"
+import { getWorkflowRecipeCatalog } from "@/lib/ai-orchestration/workflow-recipes"
 import AgentsDashboard from "./agents-dashboard"
 
 export default async function AgentsPage() {
@@ -36,12 +46,36 @@ export default async function AgentsPage() {
     .limit(1)
 
   const dashboardAgents = getDashboardAgentMatrix()
-  const [actionCenter, autopilotControl, autopilotTasks, operationalBriefings, monitorRuns] = await Promise.all([
+  const [
+    actionCenter,
+    autopilotControl,
+    autopilotTasks,
+    operationalBriefings,
+    monitorRuns,
+    operationalMemory,
+    smokeReport,
+    sourceFreshness,
+    missionControl,
+    commandCenter,
+    workOrders,
+    goLiveReadiness,
+    agentPermissions,
+    workflowRecipes,
+  ] = await Promise.all([
     getUnifiedActionCenter(18),
     getAutopilotControlCenter(10),
     getAutopilotTaskQueue(10),
     getRecentOperationalBriefings(4),
     getRecentDashboardMonitorRuns(6),
+    getOperationalMemory(16),
+    getAiWorkforceSmokeReport(),
+    getSourceFreshnessReport(),
+    getAgentMissionControl(),
+    getAiCommandCenterState(),
+    getAgentWorkOrderQueue(),
+    getGoLiveReadinessReport(),
+    getAgentPermissionMatrix(),
+    getWorkflowRecipeCatalog(),
   ])
 
   return (
@@ -57,6 +91,16 @@ export default async function AgentsPage() {
       autopilotTasks={autopilotTasks}
       operationalBriefings={operationalBriefings}
       monitorRuns={monitorRuns}
+      operationalMemory={operationalMemory}
+      userActionReadiness={getUserActionReadiness()}
+      smokeReport={smokeReport}
+      sourceFreshness={sourceFreshness}
+      missionControl={missionControl}
+      commandCenter={commandCenter}
+      workOrders={workOrders}
+      goLiveReadiness={goLiveReadiness}
+      agentPermissions={agentPermissions}
+      workflowRecipes={workflowRecipes}
     />
   )
 }

@@ -13,6 +13,14 @@ export const dynamic = "force-dynamic";
 const VALID_TYPES = new Set(["action", "script", "offer", "automation", "enhancement", "insight"]);
 const VALID_OUTCOMES = new Set(["pending", "win", "neutral", "failed"]);
 
+function statusForOutcome(itemType: string, outcome: string) {
+  if (outcome === "pending" || outcome === "neutral") return null;
+  if (itemType === "insight" || itemType === "automation" || itemType === "enhancement") {
+    return outcome === "win" ? "approved" : "rejected";
+  }
+  return outcome;
+}
+
 export async function POST(req: NextRequest) {
   const gate = ciFlagGate();
   if (gate) return gate;
@@ -39,10 +47,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: error?.message ?? "insert failed" }, { status: 500 });
   }
 
-  // Also flip the artifact's own status to mirror the latest outcome
-  if (outcome !== "pending") {
+  // Also flip the artifact's own status using the table's allowed status values.
+  const nextStatus = statusForOutcome(itemType, outcome);
+  if (nextStatus) {
     const table = itemType === "insight" ? "ci_insights" : `ci_${itemType}s`;
-    await auth.supa.from(table).update({ status: outcome }).eq("id", itemId);
+    await auth.supa.from(table).update({ status: nextStatus }).eq("id", itemId);
   }
 
   // Fire-and-forget learning update (non-blocking; keep API snappy)
