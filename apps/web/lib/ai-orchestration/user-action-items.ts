@@ -127,21 +127,6 @@ export function getUserActionReadiness(): UserActionReadiness {
     }
   }
 
-  addUnique(items, {
-    id: "apply-ai-workforce-migrations-097-102",
-    title: "Apply Supabase migrations 097 through 102",
-    detail:
-      "These migrations enable the durable Action Center, operational briefings, autopilot approvals, safe internal handoffs, CRM task linkage, and Learning Engine taxonomy.",
-    category: "database",
-    owner: "jason",
-    priority: "critical",
-    blocksGoLive: true,
-    blocksAutonomy: true,
-    nextStep: "Apply migrations 097, 098, 099, 100, 101, and 102 in Supabase before treating the AI Workforce OS foundation as live.",
-    relatedRoute: "/admin/agents",
-    relatedSystem: "AI Workforce OS",
-  });
-
   if (!isEnabled("ENABLE_CONTENT_INTEL")) {
     addUnique(items, {
       id: "enable-content-intel-review-mode",
