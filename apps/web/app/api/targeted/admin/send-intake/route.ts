@@ -5,17 +5,13 @@
 import { NextResponse } from "next/server";
 import { db, leads } from "@homereach/db";
 import { eq } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 import { sendIntakeLinkToLead } from "@homereach/services/targeted";
 
 export async function POST(req: Request) {
   try {
-    // ── Auth check ────────────────────────────────────────────────────────────
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
 
     const { leadId } = await req.json() as { leadId: string };
     if (!leadId) {

@@ -1,16 +1,12 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin, requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/call-scripts?category=roofing
 export async function GET(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
     const supabase = createServiceClient();
     const { searchParams } = new URL(request.url);
@@ -54,15 +50,8 @@ export async function GET(request: Request) {
 // PUT /api/admin/sales/call-scripts (admin only)
 export async function PUT(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // TODO: Add admin role check here
-    // For now, assuming authenticated users can update (should be restricted to admins in production)
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
 
     const supabase = createServiceClient();
     const body = await request.json();
@@ -105,15 +94,8 @@ export async function PUT(request: Request) {
 // POST /api/admin/sales/call-scripts (admin only)
 export async function POST(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // TODO: Add admin role check here
-    // For now, assuming authenticated users can create (should be restricted to admins in production)
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
 
     const supabase = createServiceClient();
     const body = await request.json();

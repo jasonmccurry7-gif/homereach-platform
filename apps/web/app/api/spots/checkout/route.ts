@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { checkCanonicalAvailability } from "@/lib/spots/canonical-availability";
 import Stripe from "stripe";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,7 +13,7 @@ import Stripe from "stripe";
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY not configured");
-  return new Stripe(key, { apiVersion: "2025-03-31.basil" });
+  return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
 }
 
 const SPOT_LABEL: Record<string, string> = {
@@ -20,6 +21,12 @@ const SPOT_LABEL: Record<string, string> = {
   front:  "Front Feature Spot",
   back:   "Back Feature Spot",
 };
+
+function resolvePriceCents(value: unknown, fallbackCents: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallbackCents;
+  return Number.isInteger(n) && n >= 1000 ? n : Math.round(n * 100);
+}
 
 export async function POST(req: Request) {
   try {
@@ -33,7 +40,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { bundleId, cityId, categoryId, businessName, phone,
             addons = [], nonprofitId = null, citySlug = "", categorySlug = "",
-            pricingType = "founding", lockedPrice } = body;
+          } = body;
 
     if (!bundleId || !cityId || !categoryId || !businessName?.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -48,11 +55,35 @@ export async function POST(req: Request) {
     const spotType   = (meta.spotType as string) ?? "back";
     const maxSpots   = (meta.maxSpots as number) ?? 1;
     const bundlePrice = Math.round(Number(bundle.price) * 100);
+    const bundleRow = bundle as Record<string, unknown>;
 
     // 2. Load city
     const { data: city } = await db.from("cities")
       .select("id, name, state, founding_eligible").eq("id", cityId).single();
     if (!city) return NextResponse.json({ error: "City not found" }, { status: 404 });
+
+    const availability = await checkCanonicalAvailability({ cityId, categoryId, supa: db });
+    if (!availability.available) {
+      return NextResponse.json(
+        {
+          error:
+            availability.message ??
+            "This spot is no longer available. Join the waitlist to be notified when it opens.",
+          source: availability.source,
+        },
+        { status: 409 }
+      );
+    }
+
+    const standardPrice = resolvePriceCents(bundleRow.standard_price, bundlePrice);
+    const foundingPrice = resolvePriceCents(bundleRow.founding_price, standardPrice);
+    const resolvedPricingType =
+      city.founding_eligible && foundingPrice > 0 ? "founding" : "standard";
+    const finalPrice = resolvedPricingType === "founding" ? foundingPrice : standardPrice;
+
+    if (!Number.isFinite(finalPrice) || finalPrice <= 0) {
+      return NextResponse.json({ error: "Invalid bundle pricing" }, { status: 500 });
+    }
 
     // 3. Check availability via orders joined through businesses
     // Count active/pending orders for this city+category+bundle combo
@@ -96,7 +127,6 @@ export async function POST(req: Request) {
     }
 
     // 5. Create pending order (reserves the spot)
-    const finalPrice = lockedPrice ?? bundlePrice;
     const { data: assignment, error: assignErr } = await db.from("orders")
       .insert({
         business_id:  businessId,
@@ -105,7 +135,7 @@ export async function POST(req: Request) {
         subtotal:     (finalPrice / 100).toFixed(2),
         total:        (finalPrice / 100).toFixed(2),
         locked_price: finalPrice,
-        pricing_type: pricingType ?? "founding",
+        pricing_type: resolvedPricingType,
       })
       .select("id").single();
     if (assignErr || !assignment) return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500 });
@@ -127,7 +157,7 @@ export async function POST(req: Request) {
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         price_data: {
-          currency: "usd", unit_amount: lockedPrice ?? bundlePrice,
+          currency: "usd", unit_amount: finalPrice,
           recurring: { interval: "month" },
           product_data: {
             name: `HomeReach ${SPOT_LABEL[spotType] ?? "Ad Spot"} — ${city.name}`,
@@ -194,9 +224,9 @@ export async function POST(req: Request) {
       line_items: lineItems,
       metadata: { businessId, cityId, categoryId, bundleId,
                   orderId: assignment.id, addons: addons.join(","),
-                  nonprofitId: nonprofitId ?? "", pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
+                  nonprofitId: nonprofitId ?? "", pricingType: resolvedPricingType, lockedPrice: finalPrice.toString() },
       subscription_data: {
-        metadata: { orderId: assignment.id, businessId, cityId, bundleId, pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
+        metadata: { orderId: assignment.id, businessId, cityId, bundleId, pricingType: resolvedPricingType, lockedPrice: finalPrice.toString() },
       },
       success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/get-started/${citySlug}/${categorySlug}?bundle=${bundleId}`,

@@ -7,7 +7,8 @@ export const maxDuration = 300; // 5 min — scraping takes time
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/agents/scraper
-// Cron: every 3 hours (*/3 * * * * not supported — use 0 */3 * * *)
+// SerpAPI is manually locked off until the owner explicitly restarts it.
+// Vercel cron for this endpoint is disabled while the lock is active.
 //
 // For each city × category combo:
 //   1. Skip if city already has MAX_PER_CITY leads
@@ -18,6 +19,14 @@ export const maxDuration = 300; // 5 min — scraping takes time
 
 const MAX_PER_CITY      = 500;  // total leads per city
 const RESULTS_PER_RUN   = 10; // 10 per category per city per run    // businesses scraped per category per city per run
+const SERPAPI_MANUAL_PAUSE_LOCK = true;
+
+function isSerpApiPaused() {
+  if (SERPAPI_MANUAL_PAUSE_LOCK) return true;
+
+  const value = (process.env.SERPAPI_PAUSED ?? "true").trim().toLowerCase();
+  return !["false", "0", "off", "no"].includes(value);
+}
 
 // City+category search queries (maps to our DB category slugs)
 const CITIES = [
@@ -53,6 +62,8 @@ const CATEGORY_QUERIES: Record<string, string[]> = {
 
 // ── SerpAPI call ──────────────────────────────────────────────────────────────
 async function searchGoogleMaps(query: string, city: string): Promise<SerpResult[]> {
+  if (isSerpApiPaused()) return [];
+
   const apiKey = process.env.SERPAPI_KEY;
   if (!apiKey) return [];
 
@@ -166,6 +177,22 @@ export async function POST(req: Request) {
     }
   }
 
+  if (isSerpApiPaused()) {
+    return NextResponse.json({
+      status: "paused",
+      message: "SerpAPI scraping is manually locked off. No SerpAPI or Hunter calls were made.",
+      summary: {
+        cities_processed: 0,
+        categories_processed: 0,
+        new_leads_inserted: 0,
+        emails_found: 0,
+        cities_skipped_full: 0,
+        errors: 0,
+      },
+      ran_at: new Date().toISOString(),
+    });
+  }
+
   const db = createServiceClient();
   const summary = {
     cities_processed: 0,
@@ -199,7 +226,7 @@ export async function POST(req: Request) {
 
   // Process each city × category combo
   for (const city of CITIES) {
-    const cityName = city.split(" ")[0]; // "Wooster OH" → "Wooster"
+    const cityName = city.split(" ")[0] ?? city; // "Wooster OH" → "Wooster"
     const currentCount = cityTotals[cityName] ?? 0;
 
     if (currentCount >= MAX_PER_CITY) {
@@ -217,7 +244,7 @@ export async function POST(req: Request) {
       summary.categories_processed++;
 
       // Pick one query per run (rotate by hour to get variety)
-      const query = queries[Math.floor(Date.now() / 3_600_000) % queries.length];
+      const query = queries[Math.floor(Date.now() / 3_600_000) % queries.length] ?? queries[0]!;
 
       const results = await searchGoogleMaps(query, city);
 
@@ -288,6 +315,7 @@ export async function POST(req: Request) {
 
 // GET: run status check
 export async function GET() {
+  const paused = isSerpApiPaused();
   const db = createServiceClient();
   const { data } = await db
     .from("sales_leads")
@@ -301,6 +329,10 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    status: paused ? "paused" : "active",
+    message: paused
+      ? "SerpAPI scraping is paused. POST runs will no-op until the manual lock is removed and SERPAPI_PAUSED=false."
+      : "SerpAPI scraping is active.",
     serpapi_leads_by_city: byCity,
     total: Object.values(byCity).reduce((a, b) => a + b, 0),
     max_per_city: MAX_PER_CITY,

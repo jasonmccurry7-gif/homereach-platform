@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/power-mode/end-of-day
@@ -9,11 +10,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = requireCron(req);
+  if (!guard.ok) return guard.response;
 
   const db = createServiceClient();
 
@@ -58,7 +56,7 @@ export async function POST(req: Request) {
           power_mode:     streak.today_power_mode,
           streak_day:     streak.current_streak,
         },
-      }).then(() => {}).catch(() => {});
+      });
     }
 
     if (streak.today_power_mode) summary.power_mode_hit++;
@@ -66,7 +64,7 @@ export async function POST(req: Request) {
   }
 
   // Reset daily counters via DB function
-  await db.rpc("reset_daily_power_mode").catch(() => {});
+  await db.rpc("reset_daily_power_mode");
 
   return NextResponse.json({ ok: true, summary });
 }

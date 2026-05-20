@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import { getOwnerIdentity } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Facebook Revenue Engine API
@@ -107,9 +108,9 @@ function generateReply(
 
   // Pick template group and rotate
   const groups  = Object.keys(REPLY_TEMPLATES) as Array<keyof typeof REPLY_TEMPLATES>;
-  const group   = groups[seed % groups.length];
+  const group   = groups[seed % groups.length] ?? groups[0]!;
   const templates = REPLY_TEMPLATES[group];
-  const template  = templates[Math.floor(seed / groups.length) % templates.length];
+  const template  = templates[Math.floor(seed / groups.length) % templates.length] ?? templates[0] ?? "";
 
   return template
     .replace(/{city}/g, cityStr)
@@ -237,8 +238,9 @@ export async function POST(req: Request) {
       .eq("id", user.id)
       .maybeSingle();
 
-    const agentName  = identity?.from_name ?? profile?.full_name ?? "HomeReach";
-    const agentPhone = identity?.twilio_phone ? formatPhone(identity.twilio_phone) : "(330) 304-4916";
+    const owner = getOwnerIdentity();
+    const agentName  = identity?.from_name ?? profile?.full_name ?? owner.name;
+    const agentPhone = formatPhone(identity?.twilio_phone ?? owner.cellPhone);
     const seed       = Date.now() % 12; // rotation seed
 
     const reply  = generateReply(city, category, agentName, seed);

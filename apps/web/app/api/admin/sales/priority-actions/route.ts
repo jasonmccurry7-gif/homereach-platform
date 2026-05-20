@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -48,12 +48,14 @@ interface PriorityAction {
 
 export async function GET(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const url     = new URL(req.url);
-    const agentId = url.searchParams.get("agent_id") ?? user.id;
+    const agentId = isSalesAgent ? user.id : (url.searchParams.get("agent_id") ?? user.id);
     const db      = createServiceClient();
     const now     = new Date();
     const h24     = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -65,6 +67,7 @@ export async function GET(req: Request) {
     // ── 1. Verbal yes — no contract sent ─────────────────────────────────────
     const { data: verbalYes } = await db.from("sales_leads").select("*")
       .eq("status", "interested")
+      .eq("assigned_agent_id", agentId)
       .eq("do_not_contact", false)
       .is("next_follow_up_at", null)
       .lt("last_contacted_at", h24)
@@ -84,7 +87,7 @@ export async function GET(req: Request) {
         why_it_matters:   "They said yes — no contract sent yet. Every hour of delay risks losing them.",
         urgency:          "critical",
         revenue_potential: "$200–$900/mo",
-        priority_score:   PRIORITY_MAP.verbal_yes_no_contract,
+        priority_score:   PRIORITY_MAP.verbal_yes_no_contract ?? 0,
         cta_label:        "Send Contract Now",
         cta_action:       "send_contract",
         last_event_at:    lead.last_contacted_at,
@@ -104,6 +107,7 @@ export async function GET(req: Request) {
     if (pricingLeadIds.length > 0) {
       const { data: pricingLeads } = await db.from("sales_leads").select("*")
         .in("id", pricingLeadIds)
+        .eq("assigned_agent_id", agentId)
         .not("status", "in", "(closed,dead,replied)")
         .limit(3);
 
@@ -122,7 +126,7 @@ export async function GET(req: Request) {
           why_it_matters:   "Pricing sent but no response. One follow-up call doubles close rate.",
           urgency:          "high",
           revenue_potential: "$200–$900/mo",
-          priority_score:   PRIORITY_MAP.pricing_sent_24h,
+          priority_score:   PRIORITY_MAP.pricing_sent_24h ?? 0,
           cta_label:        "Call Now",
           cta_action:       "call",
           last_event_at:    event?.created_at ?? null,
@@ -153,7 +157,7 @@ export async function GET(req: Request) {
         why_it_matters:   "They specifically asked you to call. This is a warm lead.",
         urgency:          "high",
         revenue_potential: "$200–$900/mo",
-        priority_score:   PRIORITY_MAP.callback_requested,
+        priority_score:   PRIORITY_MAP.callback_requested ?? 0,
         cta_label:        "Call Back Now",
         cta_action:       "call",
         last_event_at:    cb.called_at,
@@ -163,6 +167,7 @@ export async function GET(req: Request) {
     // ── 4. Hot leads — replied but no action ─────────────────────────────────
     const { data: hotLeads } = await db.from("sales_leads").select("*")
       .eq("status", "replied")
+      .eq("assigned_agent_id", agentId)
       .eq("do_not_contact", false)
       .order("last_reply_at", { ascending: true })
       .limit(3);
@@ -181,7 +186,7 @@ export async function GET(req: Request) {
         why_it_matters:   "Inbound reply = buying signal. Speed is everything right now.",
         urgency:          "critical",
         revenue_potential: "$200–$900/mo",
-        priority_score:   PRIORITY_MAP.hot_lead_no_contact + (lead.score ?? 0),
+        priority_score:   (PRIORITY_MAP.hot_lead_no_contact ?? 0) + (lead.score ?? 0),
         cta_label:        "Respond Now",
         cta_action:       lead.phone ? "call" : "send_text",
         last_event_at:    lead.last_reply_at,
@@ -222,7 +227,7 @@ export async function GET(req: Request) {
             why_it_matters:   `Once full, founding pricing ends and scarcity closes itself. Get these now.`,
             urgency:          closed >= 9 ? "critical" : "high",
             revenue_potential: `${10 - closed} × $200–$900/mo`,
-            priority_score:   PRIORITY_MAP.nearly_full_city + (closed * 2),
+            priority_score:   (PRIORITY_MAP.nearly_full_city ?? 0) + (closed * 2),
             cta_label:        "Load Leads",
             cta_action:       "load_city_leads",
             last_event_at:    null,
@@ -255,7 +260,7 @@ export async function GET(req: Request) {
         why_it_matters:   "Left voicemail 24h+ ago. Time for a text follow-up.",
         urgency:          "medium",
         revenue_potential: "$200–$900/mo",
-        priority_score:   PRIORITY_MAP.voicemail_left_24h,
+        priority_score:   PRIORITY_MAP.voicemail_left_24h ?? 0,
         cta_label:        "Send Follow-Up Text",
         cta_action:       "send_text",
         last_event_at:    vm.called_at,

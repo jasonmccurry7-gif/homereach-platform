@@ -28,8 +28,10 @@ export async function GET(req: NextRequest) {
     .order("rank_overall", { ascending: true });
 
   // If cache is stale (>15 min) or empty, refresh
+  const firstCached = cached?.[0];
   const isStale = !cached?.length ||
-    (new Date().getTime() - new Date(cached[0].refreshed_at).getTime()) > 15 * 60 * 1000;
+    !firstCached ||
+    (new Date().getTime() - new Date(firstCached.refreshed_at).getTime()) > 15 * 60 * 1000;
 
   if (isStale) {
     await supabase.rpc("refresh_leaderboard", { p_period: period, p_date: today });

@@ -1,5 +1,15 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
+import {
+  appendEmailComplianceHtml,
+  appendEmailComplianceText,
+  appendSmsCompliance,
+  getDefaultEmailIdentity,
+  getOwnerIdentity,
+  sendEmail,
+  sendSms,
+} from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -12,7 +22,7 @@ export const dynamic = "force-dynamic";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CloseDealRequest {
-  agent_id: string;
+  agent_id?: string;
   lead_id: string;
   channel: "sms" | "email";
   bundle_type?: "back" | "front" | "anchor";
@@ -26,12 +36,14 @@ interface Lead {
   category: string | null;
   business_name: string | null;
   contact_name: string | null;
+  assigned_agent_id: string | null;
 }
 
 interface AgentIdentity {
   from_email: string;
   from_name: string;
   twilio_phone: string;
+  reply_to_email?: string | null;
 }
 
 // ─── Twilio SMS Helper ────────────────────────────────────────────────────────
@@ -268,10 +280,20 @@ ${agentEmail}`;
 
 export async function POST(request: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
+
     const supabase = createServiceClient();
     const body = (await request.json()) as CloseDealRequest;
 
-    const { agent_id, lead_id, channel, bundle_type = "back" } = body;
+    let { agent_id, lead_id, channel, bundle_type = "back" } = body;
+
+    if (isSalesAgent) {
+      agent_id = user.id;
+    }
 
     // ── Validate request ──────────────────────────────────────────────────────
     if (!agent_id || !lead_id || !channel) {
@@ -287,7 +309,7 @@ export async function POST(request: Request) {
     const { data: lead, error: leadError } = await supabase
       .from("sales_leads")
       .select(
-        "id, phone, email, city, category, business_name, contact_name"
+        "id, phone, email, city, category, business_name, contact_name, assigned_agent_id"
       )
       .eq("id", lead_id)
       .single();
@@ -302,6 +324,10 @@ export async function POST(request: Request) {
     }
 
     const typedLead = lead as Lead;
+
+    if (isSalesAgent && typedLead.assigned_agent_id && typedLead.assigned_agent_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // ── Verify contact method exists ──────────────────────────────────────────
     if (channel === "sms" && !typedLead.phone) {
@@ -325,36 +351,38 @@ export async function POST(request: Request) {
     // ── Load agent identity ───────────────────────────────────────────────────
     const { data: agentIdentity, error: agentError } = await supabase
       .from("agent_identities")
-      .select("from_email, from_name, twilio_phone")
+      .select("from_email, from_name, reply_to_email, twilio_phone")
       .eq("agent_id", agent_id)
       .eq("is_active", true)
-      .single();
+      .maybeSingle();
 
-    if (agentError || !agentIdentity) {
-      return NextResponse.json(
-        {
-          error: `Agent identity not found: ${agentError?.message || "unknown error"}`,
-        },
-        { status: 404 }
-      );
+    if (agentError) {
+      return NextResponse.json({ error: agentError.message }, { status: 500 });
     }
 
-    const agent = agentIdentity as AgentIdentity;
-    const firstName = typedLead.contact_name
-      ? typedLead.contact_name.split(" ")[0]
-      : "there";
+    const owner = getOwnerIdentity();
+    const defaultEmail = getDefaultEmailIdentity();
+    const agent = {
+      from_email: agentIdentity?.from_email ?? defaultEmail.fromEmail,
+      from_name: agentIdentity?.from_name ?? owner.name,
+      reply_to_email: agentIdentity?.reply_to_email ?? defaultEmail.replyTo,
+      twilio_phone: agentIdentity?.twilio_phone ?? process.env.TWILIO_PHONE_NUMBER ?? owner.cellPhone,
+    } as AgentIdentity;
+    const firstName = typedLead.contact_name?.split(" ")[0] ?? "there";
 
     // ── Build and send message ────────────────────────────────────────────────
     let closedMessage = "";
-    let sendResult: { success: boolean; externalId?: string; error?: string };
+    let sendResult: { success: boolean; externalId?: string; error?: string; provider?: string; testMode?: boolean };
 
     if (channel === "sms") {
       closedMessage = buildCloseSmsMessage(firstName, agent.from_name, typedLead.city);
-      sendResult = await sendViaTwilio(
-        typedLead.phone!,
-        agent.twilio_phone,
-        closedMessage
-      );
+      closedMessage = appendSmsCompliance(closedMessage);
+      sendResult = await sendSms({
+        to: typedLead.phone!,
+        fromNumber: agent.twilio_phone,
+        body: closedMessage,
+        intent: "follow_up",
+      });
     } else {
       const emailData = buildCloseEmailMessage(
         firstName,
@@ -363,13 +391,15 @@ export async function POST(request: Request) {
         typedLead.city
       );
       closedMessage = emailData.text;
-      sendResult = await sendViaMailgun({
+      sendResult = await sendEmail({
         to: typedLead.email!,
         subject: emailData.subject,
-        html: emailData.html,
-        text: emailData.text,
+        html: appendEmailComplianceHtml(emailData.html, typedLead.email ?? undefined),
+        text: appendEmailComplianceText(emailData.text, typedLead.email ?? undefined),
         fromEmail: agent.from_email,
         fromName: agent.from_name,
+        replyTo: agent.reply_to_email ?? undefined,
+        intent: "follow_up",
       });
     }
 
@@ -397,7 +427,9 @@ export async function POST(request: Request) {
       message: closedMessage,
       metadata: {
         bundle_type,
-        twilio_sid: sendResult.externalId,
+        external_id: sendResult.externalId,
+        provider: sendResult.provider,
+        test_mode: sendResult.testMode ?? false,
       },
     });
 

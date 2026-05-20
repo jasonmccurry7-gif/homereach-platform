@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 interface AgentNudgeData {
   agentId: string;
   fullName: string;
-  phone: string | null;
+  phone: string;
   textsSent: number;
   emailsSent: number;
   callsMade: number;
@@ -32,7 +33,7 @@ const NUDGE_MESSAGES = [
 
 function getRandomNudge(texts: number, emails: number, calls: number): string {
   const fn = NUDGE_MESSAGES[Math.floor(Math.random() * NUDGE_MESSAGES.length)];
-  return fn(texts, emails, calls);
+  return (fn ?? NUDGE_MESSAGES[0]!)(texts, emails, calls);
 }
 
 function isBehindPace(count: number, target: number): boolean {
@@ -54,7 +55,7 @@ async function shouldSendNudge(
   // Check if nudge was sent in last 3 hours
   const { count: recentNudges } = await db
     .from("sales_events")
-    .select("*", { count: "exact", head: 0 })
+    .select("*", { count: "exact", head: true })
     .eq("agent_id", agentId)
     .eq("channel", "sms")
     .eq("action_type", "message_sent")
@@ -66,6 +67,9 @@ async function shouldSendNudge(
 
 export async function POST(req: NextRequest) {
   try {
+    const guard = await requireAdminOrCron(req);
+    if (!guard.ok) return guard.response;
+
     const db = createServiceClient();
     const today = new Date().toISOString().split("T")[0];
     const todayStart = `${today}T00:00:00Z`;
@@ -77,9 +81,9 @@ export async function POST(req: NextRequest) {
       .select("id, full_name, metadata")
       .eq("role", "sales_agent");
 
-    const nudgesPending = [];
+    const nudgesPending: AgentNudgeData[] = [];
 
-    for (const agent of agents) {
+    for (const agent of agents ?? []) {
       // Skip Jason unless explicitly enabled
       if (agent.full_name?.toLowerCase().includes("jason")) {
         continue;
@@ -88,7 +92,7 @@ export async function POST(req: NextRequest) {
       // Count activity today
       const { count: textsSent = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "sms")
         .eq("action_type", "text_sent")
@@ -97,7 +101,7 @@ export async function POST(req: NextRequest) {
 
       const { count: emailsSent = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "email")
         .eq("action_type", "email_sent")
@@ -106,7 +110,7 @@ export async function POST(req: NextRequest) {
 
       const { count: callsMade = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "call")
         .gte("created_at", todayStart)
@@ -114,7 +118,7 @@ export async function POST(req: NextRequest) {
 
       const { count: anyActivity = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .gte("created_at", todayStart)
         .lte("created_at", todayEnd);

@@ -143,8 +143,9 @@ export async function GET(request: Request) {
   );
 
   // Tag top performers
-  if (leaderboard.length > 0) {
-    leaderboard[0].flags = [...(leaderboard[0].flags ?? []), "top_closer"];
+  const topCloser = leaderboard[0];
+  if (topCloser) {
+    topCloser.flags = [...(topCloser.flags ?? []), "top_closer"];
     const bestConverter = [...leaderboard].sort((a,b) => b.reply_rate - a.reply_rate)[0];
     if (bestConverter) bestConverter.flags = [...(bestConverter.flags ?? []), "best_converter"];
     const mostActive = [...leaderboard].sort((a,b) => b.messages - a.messages)[0];

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/power-mode/check
@@ -11,12 +11,14 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const body = await req.json().catch(() => ({}));
-    const agentId = body.agent_id ?? user.id;
+    const agentId = isSalesAgent ? user.id : (body.agent_id ?? user.id);
 
     const db = createServiceClient();
     const todayStart = new Date();
@@ -72,12 +74,14 @@ export async function POST(req: Request) {
 // GET — fetch current streak for agent
 export async function GET(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const url     = new URL(req.url);
-    const agentId = url.searchParams.get("agent_id") ?? user.id;
+    const agentId = isSalesAgent ? user.id : (url.searchParams.get("agent_id") ?? user.id);
 
     const db = createServiceClient();
     const { data: streak } = await db

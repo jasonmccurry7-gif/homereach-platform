@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getOwnerIdentity } from "@homereach/services/outreach";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 function getApprovedSenders(): Set<string> {
   const extra = (process.env.APEX_APPROVED_SENDERS ?? "")
     .split(",").map(s => s.trim()).filter(Boolean);
-  return new Set(["+13302069639", ...extra]); // Jason's personal cell only
+  return new Set([getOwnerIdentity().cellPhone, ...extra]); // owner personal cell only
 }
 
 function twimlMessage(text: string) {
@@ -38,7 +39,7 @@ function twimlOk() {
 export async function GET() {
   return new NextResponse(JSON.stringify({
     status: "APEX command line is live",
-    approved: ["+13302069639", "+13303044916"],
+    approved: Array.from(getApprovedSenders()),
     apex_number: process.env.APEX_COMMAND_NUMBER ?? "not set",
     cron_secret_set: !!process.env.CRON_SECRET,
   }), { headers: { "Content-Type": "application/json" } });
@@ -113,14 +114,17 @@ async function executeCommand(cmd: string): Promise<string> {
     { label: "Echo",       url: `${appUrl}/api/admin/agents/echo`,              when: /echo|send|outreach|message|text|email/ },
     { label: "Closer",     url: `${appUrl}/api/admin/agents/closer`,            when: /closer|follow.?up|convert|warm/ },
     { label: "Anchor",     url: `${appUrl}/api/admin/agents/anchor`,            when: /anchor|re.?engag|dead|cold/ },
-    { label: "Scraper",    url: `${appUrl}/api/admin/agents/scraper`,           when: /scrape|lead|prospect|pull/ },
     { label: "Pulse",      url: `${appUrl}/api/admin/system/agents/pulse`,      when: /pulse|health|status|check|monitor/ },
     { label: "Ledger",     url: `${appUrl}/api/admin/system/agents/ledger`,     when: /ledger|revenue|money|report|earn/ },
     { label: "Kaizen",     url: `${appUrl}/api/admin/system/agents/kaizen`,     when: /kaizen|improv|optim|better/ },
-    { label: "Prospector", url: `${appUrl}/api/admin/system/agents/prospector`, when: /prospector|pipeline|queue/ },
+    { label: "Prospector", url: `${appUrl}/api/admin/system/agents/prospector`, when: /prospector|pipeline|queue|lead|prospect/ },
   ];
 
   const isAudit = /audit|what.?broken|full.?scan|run.?all|all.?agent/.test(lower);
+  if (/serp|scrape|google.?maps|find.?leads|new.?leads|pull.?leads|search.?leads|source.?leads/.test(lower)) {
+    return "SerpAPI scraper is manually paused. No search calls were made.";
+  }
+
   let toRun = isAudit
     ? agents.filter(a => /Pulse|Ledger|Kaizen|Prospector/.test(a.label))
     : agents.filter(a => a.when.test(lower));

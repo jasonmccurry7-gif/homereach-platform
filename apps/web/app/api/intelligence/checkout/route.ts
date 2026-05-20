@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-27",
+  apiVersion: "2025-02-24.acacia",
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,54 +119,24 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode,
       line_items: [lineItem],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://homereach.app"}/intelligence?success=true`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://homereach.app"}/intelligence?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://homereach.app"}/intelligence?cancelled=true`,
       customer_email: email,
       metadata: {
+        type: "property_intelligence",
         city,
         category: category || "all",
         tier,
         founding_flag: isFounding.toString(),
         locked_price: priceCents.toString(),
+        standard_price: tierData.standard_price_cents.toString(),
         business_name: businessName,
+        email,
+        phone,
+        user_id: userId ?? "",
+        slot_id: slot?.id ?? "",
       },
     });
-
-    // Step 4: Create founding_membership record if founding
-    if (isFounding && slot) {
-      const { error: memberError } = await db
-        .from("founding_memberships")
-        .insert({
-          business_name: businessName,
-          city,
-          category: category || null,
-          product: `intelligence_${tier}`,
-          tier,
-          locked_price_cents: priceCents,
-          standard_price_cents: tierData.standard_price_cents,
-          stripe_subscription_id: isSubscription ? session.subscription : null,
-          stripe_checkout_session_id: session.id,
-          status: "active",
-        });
-
-      if (memberError) {
-        console.error("Error creating founding membership:", memberError);
-      }
-
-      // Step 5: Update founding_slots.slots_taken
-      const newSlotsTaken = (slot.slots_taken || 0) + 1;
-      const { error: updateError } = await db
-        .from("founding_slots")
-        .update({
-          slots_taken: newSlotsTaken,
-          slots_remaining: Math.max(0, slot.total_slots - newSlotsTaken),
-        })
-        .eq("id", slot.id);
-
-      if (updateError) {
-        console.error("Error updating founding slot:", updateError);
-      }
-    }
 
     return NextResponse.json({
       checkoutUrl: session.url,

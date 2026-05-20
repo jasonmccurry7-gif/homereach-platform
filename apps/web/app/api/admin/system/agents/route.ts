@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       from_name:          from_name  ?? null,
       twilio_phone:       twilio_phone ?? null,
       email_daily_limit:  email_daily_limit ?? 30,
-      sms_daily_limit:    sms_daily_limit   ?? 150,
+      sms_daily_limit:    sms_daily_limit   ?? 30,
       email_ramp_day:     email_ramp_day    ?? 1,
       email_ramp_started: email_ramp_started ?? new Date().toISOString().slice(0, 10),
       is_active:          true,

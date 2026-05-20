@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +30,16 @@ async function fbSend(psid: string, text: string): Promise<void> {
 }
 
 export async function POST(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const guard = requireCron(req);
+  if (!guard.ok) return guard.response;
+
+  if (process.env.FACEBOOK_FOLLOWUP_AUTO_SEND_ENABLED !== "true") {
+    return NextResponse.json({
+      ok: true,
+      disabled: true,
+      reason: "FACEBOOK_FOLLOWUP_AUTO_SEND_ENABLED is not true; no Facebook follow-up messages were sent.",
+      summary: { followup1_sent: 0, followup2_sent: 0, errors: 0 },
+    });
   }
 
   const db  = createServiceClient();
@@ -61,17 +68,19 @@ export async function POST(req: Request) {
       : `Hey ${name}! Wanted to follow up — are you still interested in reaching homeowners in ${loc}? We have exclusive spots available for ${cat} businesses. Takes 3 minutes to get started: home-reach.com/get-started`;
 
     await fbSend(lead.fb_psid, msg);
-    await db.from("facebook_leads").update({
+    const { error: leadUpdateError } = await db.from("facebook_leads").update({
       follow_up_1_sent_at: now.toISOString(),
       messages_sent:       (lead.messages_sent ?? 0) + 1,
-    }).eq("id", lead.id).catch(() => {});
+    }).eq("id", lead.id);
+    if (leadUpdateError) summary.errors++;
 
-    await db.from("facebook_messages").insert({
+    const { error: messageInsertError } = await db.from("facebook_messages").insert({
       lead_id:   lead.id,
       direction: "outbound",
       message:   msg,
       agent:     "closer",
-    }).catch(() => {});
+    });
+    if (messageInsertError) summary.errors++;
 
     summary.followup1_sent++;
   }
@@ -94,18 +103,20 @@ export async function POST(req: Request) {
       `If you're ever ready: home-reach.com/get-started 🏠\n\nWishing you continued success!`;
 
     await fbSend(lead.fb_psid, msg);
-    await db.from("facebook_leads").update({
+    const { error: leadUpdateError } = await db.from("facebook_leads").update({
       follow_up_2_sent_at: now.toISOString(),
       lead_status:         "dead", // final follow-up sent
       messages_sent:       (lead.messages_sent ?? 0) + 1,
-    }).eq("id", lead.id).catch(() => {});
+    }).eq("id", lead.id);
+    if (leadUpdateError) summary.errors++;
 
-    await db.from("facebook_messages").insert({
+    const { error: messageInsertError } = await db.from("facebook_messages").insert({
       lead_id:   lead.id,
       direction: "outbound",
       message:   msg,
       agent:     "closer",
-    }).catch(() => {});
+    });
+    if (messageInsertError) summary.errors++;
 
     summary.followup2_sent++;
   }

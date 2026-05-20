@@ -41,13 +41,14 @@ export async function GET(request: Request) {
     .sort((a,b) => b.replyRate - a.replyRate);
 
   if (channelRates.length >= 2) {
-    const best = channelRates[0];
-    const worst = channelRates[channelRates.length - 1];
+    const best = channelRates[0]!;
+    const worst = channelRates[channelRates.length - 1]!;
     const ratio = worst.replyRate > 0 ? (best.replyRate / worst.replyRate).toFixed(1) : "∞";
     insights.push(`${capitalize(best.ch)} converts ${ratio}x higher reply rate than ${capitalize(worst.ch)}`);
   }
-  if (channelRates.length > 0 && channelRates[0].deals > 0) {
-    insights.push(`${capitalize(channelRates[0].ch)} is your best closing channel — ${channelRates[0].deals} deals this week`);
+  const topChannel = channelRates[0];
+  if (topChannel && topChannel.deals > 0) {
+    insights.push(`${capitalize(topChannel.ch)} is your best closing channel — ${topChannel.deals} deals this week`);
   }
 
   // City performance

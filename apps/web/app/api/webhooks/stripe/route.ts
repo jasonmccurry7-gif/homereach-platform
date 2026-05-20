@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server";
 import { constructWebhookEvent } from "@homereach/services/stripe";
-import {
-  db, orders, businesses, marketingCampaigns,
-  targetedRouteCampaigns, leads,
-  spotAssignments, intakeSubmissions,
-} from "@homereach/db";
+import { db, orders, businesses, marketingCampaigns } from "@homereach/db";
+import { createServiceClient } from "@/lib/supabase/service";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
-import type { PricingSnapshot } from "@homereach/types";
-import {
-  sendPaymentConfirmation,
-  notifyAdminCampaignPaid,
-} from "@homereach/services/targeted";
-import { createServiceClient } from "@homereach/services/auth";
-import { sendEmail } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/stripe
@@ -52,16 +42,9 @@ export async function POST(req: Request) {
 
   try {
     switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        // Route to correct handler based on metadata.type
-        if (session.metadata?.type === "targeted_route_campaign") {
-          await handleTargetedCheckoutCompleted(session);
-        } else {
-          await handleCheckoutCompleted(session);
-        }
+      case "checkout.session.completed":
+        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
         break;
-      }
 
       case "payment_intent.payment_failed":
         await handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
@@ -70,38 +53,6 @@ export async function POST(req: Request) {
       case "charge.refunded":
         await handleChargeRefunded(event.data.object as Stripe.Charge);
         break;
-
-      // ── Subscription lifecycle ─────────────────────────────────────────────
-
-      case "customer.subscription.created": {
-        const sub = event.data.object as Stripe.Subscription;
-        await handleSubscriptionCreated(sub);
-        break;
-      }
-
-      case "customer.subscription.updated": {
-        const sub = event.data.object as Stripe.Subscription;
-        await handleSubscriptionUpdated(sub);
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
-        await handleSubscriptionDeleted(sub);
-        break;
-      }
-
-      case "invoice.paid": {
-        const inv = event.data.object as Stripe.Invoice;
-        await handleInvoicePaid(inv);
-        break;
-      }
-
-      case "invoice.payment_failed": {
-        const inv = event.data.object as Stripe.Invoice;
-        await handleInvoicePaymentFailed(inv);
-        break;
-      }
 
       default:
         // Unhandled event types — log and acknowledge
@@ -124,22 +75,24 @@ export async function POST(req: Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const checkoutType = session.metadata?.type;
+  if (checkoutType === "targeted_route_campaign") {
+    await handleTargetedRouteCampaignCheckout(session);
+    return;
+  }
+  if (checkoutType === "property_intelligence") {
+    await handlePropertyIntelligenceCheckout(session);
+    return;
+  }
+  if (checkoutType === "ai_shared_postcard_intake") {
+    await handleAiSharedPostcardCheckout(session);
+    return;
+  }
+
   const orderId = session.metadata?.orderId;
   if (!orderId) {
     console.error("[stripe/webhook] no orderId in session metadata");
     return;
-  }
-
-  // ── Parse pricing snapshot from metadata ───────────────────────────────────
-  // The checkout route embeds the snapshot as a JSON string in session metadata.
-  // If absent (pre-Task-20 orders), pricingSnapshotJson remains null.
-  let pricingSnapshotJson: PricingSnapshot | null = null;
-  if (session.metadata?.pricingSnapshot) {
-    try {
-      pricingSnapshotJson = JSON.parse(session.metadata.pricingSnapshot) as PricingSnapshot;
-    } catch {
-      console.warn("[stripe/webhook] failed to parse pricingSnapshot from metadata — orderId:", orderId);
-    }
   }
 
   await db
@@ -147,17 +100,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     .set({
       status: "paid",
       stripePaymentIntentId: session.payment_intent as string | null,
-      // orders.stripeCustomerId is deprecated — authoritative copy is on businesses.stripeCustomerId
-      // We still set it here for backward compatibility with any admin queries reading orders directly
       stripeCustomerId: session.customer as string | null,
       paidAt: new Date(),
       updatedAt: new Date(),
-      // Write immutable snapshot — never update this field after this point.
-      // Cast required: orders schema types jsonb as Record<string, unknown> to avoid
-      // cross-package dependency; PricingSnapshot satisfies that shape at runtime.
-      ...(pricingSnapshotJson
-        ? { pricingSnapshotJson: pricingSnapshotJson as unknown as Record<string, unknown> }
-        : {}),
     })
     .where(eq(orders.id, orderId));
 
@@ -169,15 +114,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     .limit(1);
 
   if (order) {
-    // Update businesses.stripeCustomerId (authoritative per Task 20 architecture)
-    const stripeCustomerId = session.customer as string | null;
     await db
       .update(businesses)
-      .set({
-        status: "active",
-        updatedAt: new Date(),
-        ...(stripeCustomerId ? { stripeCustomerId } : {}),
-      })
+      .set({ status: "active", updatedAt: new Date() })
       .where(eq(businesses.id, order.businessId));
 
     // Fetch order details for campaign creation
@@ -222,6 +161,275 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   console.log(`[stripe/webhook] order ${orderId} paid, business activated, campaign created`);
 }
 
+async function handleTargetedRouteCampaignCheckout(session: Stripe.Checkout.Session) {
+  const campaignId = session.metadata?.campaignId;
+  if (!campaignId) {
+    console.error("[stripe/webhook] targeted checkout missing campaignId");
+    return;
+  }
+
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from("targeted_route_campaigns")
+    .update({
+      status: "paid",
+      design_status: "queued",
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id: session.payment_intent as string | null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", campaignId)
+    .not("status", "in", "(mailed,complete)");
+
+  if (error) throw new Error(`[stripe/webhook] targeted update failed: ${error.message}`);
+
+  console.log(`[stripe/webhook] targeted campaign ${campaignId} paid`);
+}
+
+async function handlePropertyIntelligenceCheckout(session: Stripe.Checkout.Session) {
+  const metadata = session.metadata ?? {};
+  const tier = metadata.tier;
+  const city = metadata.city;
+  const businessName = metadata.business_name;
+
+  if (!tier || !city || !businessName) {
+    console.error("[stripe/webhook] intelligence checkout missing required metadata");
+    return;
+  }
+
+  const supabase = createServiceClient();
+  const { data: existing } = await supabase
+    .from("founding_memberships")
+    .select("id")
+    .eq("stripe_checkout_session_id", session.id)
+    .maybeSingle();
+
+  if (existing) {
+    console.log(`[stripe/webhook] intelligence checkout ${session.id} already fulfilled`);
+    return;
+  }
+
+  const lockedPriceCents = Number(metadata.locked_price);
+  const standardPriceCents = Number(metadata.standard_price);
+  const isFounding = metadata.founding_flag === "true";
+
+  const { error: memberError } = await supabase
+    .from("founding_memberships")
+    .insert({
+      business_name: businessName,
+      city,
+      category: metadata.category === "all" ? null : metadata.category ?? null,
+      product: `intelligence_${tier}`,
+      tier,
+      locked_price_cents: Number.isFinite(lockedPriceCents) ? lockedPriceCents : null,
+      standard_price_cents: Number.isFinite(standardPriceCents) ? standardPriceCents : null,
+      stripe_subscription_id: session.subscription as string | null,
+      stripe_checkout_session_id: session.id,
+      status: "active",
+    });
+
+  if (memberError) {
+    throw new Error(`[stripe/webhook] intelligence membership insert failed: ${memberError.message}`);
+  }
+
+  if (isFounding && metadata.slot_id) {
+    const { data: slot, error: slotError } = await supabase
+      .from("founding_slots")
+      .select("id, total_slots, slots_taken")
+      .eq("id", metadata.slot_id)
+      .single();
+
+    if (slotError) {
+      console.error("[stripe/webhook] founding slot lookup failed:", slotError.message);
+    } else if (slot) {
+      const slotsTaken = (slot.slots_taken ?? 0) + 1;
+      const { error: updateError } = await supabase
+        .from("founding_slots")
+        .update({
+          slots_taken: slotsTaken,
+          slots_remaining: Math.max(0, (slot.total_slots ?? slotsTaken) - slotsTaken),
+        })
+        .eq("id", slot.id);
+
+      if (updateError) {
+        console.error("[stripe/webhook] founding slot update failed:", updateError.message);
+      }
+    }
+  }
+
+  console.log(`[stripe/webhook] property intelligence checkout ${session.id} fulfilled`);
+}
+
+async function handleAiSharedPostcardCheckout(session: Stripe.Checkout.Session) {
+  const sessionId = session.metadata?.aiIntakeSessionId;
+  if (!sessionId) {
+    console.error("[stripe/webhook] AI intake checkout missing session id");
+    return;
+  }
+
+  const supabase = createServiceClient();
+  const now = new Date();
+  const commitmentEndsAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
+  const subscriptionId = session.subscription as string | null;
+  const customerId = session.customer as string | null;
+  const paymentIntentId = session.payment_intent as string | null;
+
+  const { data: intakeSession, error: sessionError } = await supabase
+    .from("ai_intake_sessions")
+    .select("id, status")
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionError || !intakeSession) {
+    throw new Error(`[stripe/webhook] AI intake session lookup failed: ${sessionError?.message ?? sessionId}`);
+  }
+
+  const { data: cartItems, error: cartError } = await supabase
+    .from("ai_intake_cart_items")
+    .select(
+      "id, business_id, order_id, spot_assignment_id, city_id, category_id, bundle_id, subtotal_cents, quantity, availability_status",
+    )
+    .eq("session_id", sessionId);
+
+  if (cartError) {
+    throw new Error(`[stripe/webhook] AI intake cart lookup failed: ${cartError.message}`);
+  }
+
+  for (let index = 0; index < (cartItems ?? []).length; index += 1) {
+    const item = (cartItems ?? [])[index] as any;
+    if (!item.business_id || !item.order_id || !item.spot_assignment_id) {
+      console.error("[stripe/webhook] AI intake cart item missing fulfillment ids", item.id);
+      continue;
+    }
+
+    const orderUpdate: Record<string, unknown> = {
+      status: "paid",
+      stripe_customer_id: customerId,
+      paid_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+    if (index === 0 && paymentIntentId) orderUpdate.stripe_payment_intent_id = paymentIntentId;
+
+    const { error: orderError } = await supabase
+      .from("orders")
+      .update(orderUpdate)
+      .eq("id", item.order_id);
+    if (orderError) throw new Error(`[stripe/webhook] AI order update failed: ${orderError.message}`);
+
+    const { error: businessError } = await supabase
+      .from("businesses")
+      .update({
+        status: "active",
+        stripe_customer_id: customerId,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", item.business_id);
+    if (businessError) throw new Error(`[stripe/webhook] AI business update failed: ${businessError.message}`);
+
+    const assignmentUpdate: Record<string, unknown> = {
+      status: "active",
+      stripe_customer_id: customerId,
+      activated_at: now.toISOString(),
+      commitment_ends_at: commitmentEndsAt,
+      monthly_value_cents: Number(item.subtotal_cents ?? 0),
+      updated_at: now.toISOString(),
+    };
+    if (index === 0 && subscriptionId) {
+      assignmentUpdate.stripe_subscription_id = subscriptionId;
+    }
+
+    const { error: assignmentError } = await supabase
+      .from("spot_assignments")
+      .update(assignmentUpdate)
+      .eq("id", item.spot_assignment_id);
+    if (assignmentError) {
+      throw new Error(`[stripe/webhook] AI spot assignment update failed: ${assignmentError.message}`);
+    }
+
+    const { data: existingIntake, error: existingIntakeError } = await supabase
+      .from("intake_submissions")
+      .select("id")
+      .eq("spot_assignment_id", item.spot_assignment_id)
+      .maybeSingle();
+    if (existingIntakeError) {
+      throw new Error(`[stripe/webhook] AI intake lookup failed: ${existingIntakeError.message}`);
+    }
+
+    if (!existingIntake) {
+      const { error: intakeError } = await supabase.from("intake_submissions").insert({
+        spot_assignment_id: item.spot_assignment_id,
+        business_id: item.business_id,
+        status: "pending",
+      });
+      if (intakeError) throw new Error(`[stripe/webhook] AI intake insert failed: ${intakeError.message}`);
+    }
+
+    const startDate = now.toISOString();
+    const nextDropDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const renewalDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { error: campaignError } = await supabase
+      .from("marketing_campaigns")
+      .upsert(
+        {
+          business_id: item.business_id,
+          order_id: item.order_id,
+          city_id: item.city_id,
+          category_id: item.category_id,
+          bundle_id: item.bundle_id,
+          status: "upcoming",
+          start_date: startDate,
+          next_drop_date: nextDropDate,
+          renewal_date: renewalDate,
+          total_drops: 1,
+          drops_completed: 0,
+          homes_per_drop: 2500,
+          notes: `Created from AI intake session ${sessionId}`,
+        },
+        { onConflict: "order_id" },
+      );
+    if (campaignError) {
+      throw new Error(`[stripe/webhook] AI campaign upsert failed: ${campaignError.message}`);
+    }
+
+    const { error: itemError } = await supabase
+      .from("ai_intake_cart_items")
+      .update({
+        availability_status: "paid",
+        availability_message: "Payment completed and downstream records activated.",
+      })
+      .eq("id", item.id);
+    if (itemError) throw new Error(`[stripe/webhook] AI item update failed: ${itemError.message}`);
+  }
+
+  const { error: updateSessionError } = await supabase
+    .from("ai_intake_sessions")
+    .update({
+      status: "paid",
+      stripe_checkout_session_id: session.id,
+      stripe_customer_id: customerId,
+      updated_at: now.toISOString(),
+    })
+    .eq("id", sessionId);
+  if (updateSessionError) {
+    throw new Error(`[stripe/webhook] AI session paid update failed: ${updateSessionError.message}`);
+  }
+
+  const { error: confirmationError } = await supabase
+    .from("ai_intake_confirmations")
+    .update({
+      confirmation_status: "paid",
+      updated_at: now.toISOString(),
+    })
+    .eq("session_id", sessionId)
+    .in("confirmation_status", ["confirmed", "checkout_created"]);
+  if (confirmationError) {
+    throw new Error(`[stripe/webhook] AI confirmation paid update failed: ${confirmationError.message}`);
+  }
+
+  console.log(`[stripe/webhook] AI intake session ${sessionId} paid and activated`);
+}
+
 async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
   const { id } = paymentIntent;
 
@@ -243,352 +451,4 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     .where(eq(orders.stripePaymentIntentId, paymentIntentId));
 
   console.log(`[stripe/webhook] refund processed for intent ${paymentIntentId}`);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Subscription lifecycle handlers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * customer.subscription.created
- * Fires after Stripe processes a successful subscription checkout.
- *
- * Actions:
- *   1. Find the spot_assignment by reservationId (from subscription metadata)
- *   2. Activate it: status → active, set activated_at + commitment_ends_at
- *   3. Link stripe_subscription_id + stripe_customer_id
- *   4. Activate the business: status → active
- *   5. Invite business to Supabase via inviteUserByEmail
- *   6. Create intake_submission record
- *   7. Send intake invitation email
- */
-async function handleSubscriptionCreated(sub: Stripe.Subscription) {
-  const reservationId = sub.metadata?.reservationId;
-  const businessId    = sub.metadata?.businessId;
-
-  if (!reservationId) {
-    console.error("[stripe/webhook] subscription.created — no reservationId in metadata", sub.id);
-    return;
-  }
-
-  // ── 1. Activate spot_assignment ───────────────────────────────────────────
-  const activatedAt      = new Date();
-  const commitmentEndsAt = new Date(activatedAt.getTime() + 90 * 24 * 60 * 60 * 1000); // +90 days
-
-  await db
-    .update(spotAssignments)
-    .set({
-      status:              "active",
-      stripeSubscriptionId: sub.id,
-      stripeCustomerId:     sub.customer as string,
-      activatedAt,
-      commitmentEndsAt,
-      updatedAt:           new Date(),
-    })
-    .where(eq(spotAssignments.id, reservationId));
-
-  // ── 2. Activate business ──────────────────────────────────────────────────
-  let businessEmail: string | null = null;
-  let businessName:  string | null = null;
-
-  if (businessId) {
-    const [biz] = await db
-      .select({ email: businesses.email, name: businesses.name, stripeCustomerId: businesses.stripeCustomerId })
-      .from(businesses)
-      .where(eq(businesses.id, businessId))
-      .limit(1);
-
-    if (biz) {
-      businessEmail = biz.email;
-      businessName  = biz.name;
-
-      await db
-        .update(businesses)
-        .set({
-          status:           "active",
-          stripeCustomerId: biz.stripeCustomerId ?? (sub.customer as string),
-          updatedAt:        new Date(),
-        })
-        .where(eq(businesses.id, businessId));
-    }
-  }
-
-  // ── 3. Invite business user to Supabase ───────────────────────────────────
-  if (businessEmail && businessId) {
-    try {
-      const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
-      const supaAdmin = createServiceClient();
-
-      const { data: inviteData, error: inviteError } = await supaAdmin.auth.admin.inviteUserByEmail(
-        businessEmail,
-        { redirectTo: `${appUrl}/dashboard` }
-      );
-
-      if (inviteError) {
-        console.error("[stripe/webhook] inviteUserByEmail failed:", inviteError.message);
-      } else if (inviteData?.user?.id) {
-        // Store supabase_user_id on the business for dashboard auth lookup
-        await db
-          .update(businesses)
-          .set({ supabaseUserId: inviteData.user.id, updatedAt: new Date() })
-          .where(eq(businesses.id, businessId));
-      }
-    } catch (err) {
-      console.error("[stripe/webhook] Supabase invite error:", err);
-    }
-  }
-
-  // ── 4. Create intake_submission ────────────────────────────────────────────
-  let intakeToken: string | null = null;
-  if (businessId) {
-    try {
-      const [intake] = await db
-        .insert(intakeSubmissions)
-        .values({
-          spotAssignmentId: reservationId,
-          businessId,
-          status:           "pending",
-        })
-        .returning({ accessToken: intakeSubmissions.accessToken })
-        .onConflictDoNothing();
-
-      intakeToken = intake?.accessToken ?? null;
-    } catch (err) {
-      console.error("[stripe/webhook] intake_submission creation error:", err);
-    }
-  }
-
-  // ── 5. Send intake invitation email ───────────────────────────────────────
-  if (businessEmail && intakeToken) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
-    const intakeUrl = `${appUrl}/intake/${intakeToken}`;
-
-    await sendEmail({
-      to:      businessEmail,
-      subject: "Welcome to HomeReach — Complete Your Campaign Setup (5 min)",
-      html: `
-        <h2>You're in! One last step to launch your campaign.</h2>
-        <p>Hi ${businessName ?? "there"},</p>
-        <p>Your HomeReach spot is confirmed. To build your campaign, we need a few quick details from you.</p>
-        <p><strong>It takes about 5 minutes.</strong></p>
-        <p>
-          <a href="${intakeUrl}" style="
-            display: inline-block; padding: 14px 28px; background: #2563EB;
-            color: white; text-decoration: none; border-radius: 6px;
-            font-weight: bold; font-size: 16px;
-          ">
-            Complete My Campaign Setup →
-          </a>
-        </p>
-        <p style="color: #6B7280; font-size: 14px;">
-          If the button doesn't work, copy this link:<br/>
-          <a href="${intakeUrl}">${intakeUrl}</a>
-        </p>
-        <p>Questions? Reply to this email — we're here.</p>
-        <p>— The HomeReach Team</p>
-      `,
-    }).catch((err) => console.error("[stripe/webhook] intake email error:", err));
-  }
-
-  console.log(
-    `[stripe/webhook] subscription.created — spot ${reservationId} activated,` +
-    ` business ${businessId} active, intake created`
-  );
-}
-
-/**
- * customer.subscription.updated
- * Handles Stripe status transitions: active→past_due, past_due→active, etc.
- */
-async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
-  if (!sub.id) return;
-
-  const stripeStatus = sub.status;
-
-  // Map Stripe subscription statuses to our spot assignment statuses
-  let newStatus: "active" | "paused" | null = null;
-  if (stripeStatus === "active") {
-    newStatus = "active";
-  } else if (stripeStatus === "past_due" || stripeStatus === "unpaid") {
-    newStatus = "paused";
-  }
-
-  if (newStatus) {
-    await db
-      .update(spotAssignments)
-      .set({ status: newStatus, updatedAt: new Date() })
-      .where(eq(spotAssignments.stripeSubscriptionId, sub.id));
-
-    console.log(
-      `[stripe/webhook] subscription.updated — sub ${sub.id} → spot status: ${newStatus}`
-    );
-  }
-}
-
-/**
- * customer.subscription.deleted
- * Fires when a subscription is cancelled or expires.
- * Releases the spot back to available inventory.
- */
-async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
-  if (!sub.id) return;
-
-  await db
-    .update(spotAssignments)
-    .set({
-      status:     "churned",
-      releasedAt: new Date(),
-      updatedAt:  new Date(),
-    })
-    .where(eq(spotAssignments.stripeSubscriptionId, sub.id));
-
-  console.log(
-    `[stripe/webhook] subscription.deleted — sub ${sub.id} spot released (churned)`
-  );
-}
-
-/**
- * invoice.paid
- * Fires on each successful recurring payment.
- * Restores active status if previously paused and updates updatedAt.
- */
-async function handleInvoicePaid(inv: Stripe.Invoice) {
-  const subscriptionId = inv.subscription as string | null;
-  if (!subscriptionId) return;
-
-  // Restore to active if it was paused (payment recovered)
-  await db
-    .update(spotAssignments)
-    .set({ status: "active", updatedAt: new Date() })
-    .where(eq(spotAssignments.stripeSubscriptionId, subscriptionId));
-
-  console.log(
-    `[stripe/webhook] invoice.paid — sub ${subscriptionId} spot confirmed active`
-  );
-}
-
-/**
- * invoice.payment_failed
- * Fires when a recurring payment fails.
- * Pauses the spot and sends a dunning email to the business.
- */
-async function handleInvoicePaymentFailed(inv: Stripe.Invoice) {
-  const subscriptionId = inv.subscription as string | null;
-  if (!subscriptionId) return;
-
-  // Mark spot as paused
-  await db
-    .update(spotAssignments)
-    .set({ status: "paused", updatedAt: new Date() })
-    .where(eq(spotAssignments.stripeSubscriptionId, subscriptionId));
-
-  // Fetch business email for dunning
-  const [spot] = await db
-    .select({
-      businessId: spotAssignments.businessId,
-    })
-    .from(spotAssignments)
-    .where(eq(spotAssignments.stripeSubscriptionId, subscriptionId))
-    .limit(1);
-
-  if (spot?.businessId) {
-    const [biz] = await db
-      .select({ email: businesses.email, name: businesses.name })
-      .from(businesses)
-      .where(eq(businesses.id, spot.businessId))
-      .limit(1);
-
-    if (biz?.email) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
-
-      await sendEmail({
-        to:      biz.email,
-        subject: "Action Required: Update Your HomeReach Payment Method",
-        html: `
-          <h2>Your payment didn't go through.</h2>
-          <p>Hi ${biz.name ?? "there"},</p>
-          <p>We couldn't process your monthly HomeReach payment. Your spot is temporarily paused.</p>
-          <p>
-            <a href="${appUrl}/dashboard" style="
-              display: inline-block; padding: 14px 28px; background: #DC2626;
-              color: white; text-decoration: none; border-radius: 6px;
-              font-weight: bold;
-            ">
-              Update Payment Method →
-            </a>
-          </p>
-          <p>If we can't process payment within 7 days, your spot will be released.</p>
-          <p>— The HomeReach Team</p>
-        `,
-      }).catch((err) => console.error("[stripe/webhook] dunning email error:", err));
-    }
-  }
-
-  console.log(
-    `[stripe/webhook] invoice.payment_failed — sub ${subscriptionId} spot paused, dunning sent`
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Targeted Route Campaign — checkout completed handler
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function handleTargetedCheckoutCompleted(session: Stripe.Checkout.Session) {
-  const campaignId = session.metadata?.campaignId;
-  if (!campaignId) {
-    console.error("[stripe/webhook] targeted checkout — no campaignId in metadata");
-    return;
-  }
-
-  // ── Update campaign to paid ───────────────────────────────────────────────
-  await db
-    .update(targetedRouteCampaigns)
-    .set({
-      status:                "paid",
-      designStatus:          "queued",
-      stripePaymentIntentId: session.payment_intent as string | null,
-      updatedAt:             new Date(),
-    })
-    .where(eq(targetedRouteCampaigns.id, campaignId));
-
-  // ── Fetch campaign for notifications ─────────────────────────────────────
-  const [campaign] = await db
-    .select()
-    .from(targetedRouteCampaigns)
-    .where(eq(targetedRouteCampaigns.id, campaignId))
-    .limit(1);
-
-  if (!campaign) return;
-
-  // ── Update lead status ────────────────────────────────────────────────────
-  if (campaign.leadId) {
-    await db
-      .update(leads)
-      .set({
-        status:    "paid",
-        paidAt:    new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(leads.id, campaign.leadId));
-  }
-
-  // ── Send payment confirmation to customer ─────────────────────────────────
-  // ── Notify admin to queue design job ─────────────────────────────────────
-  await Promise.all([
-    sendPaymentConfirmation({
-      contactName:  campaign.contactName,
-      email:        campaign.email,
-      businessName: campaign.businessName,
-      homesCount:   campaign.homesCount,
-      priceCents:   campaign.priceCents,
-    }),
-    notifyAdminCampaignPaid({
-      businessName: campaign.businessName,
-      email:        campaign.email,
-      targetCity:   campaign.targetCity,
-      campaignId:   campaign.id,
-    }),
-  ]).catch((err) => console.error("[stripe/webhook] targeted notification error:", err));
-
-  console.log(`[stripe/webhook] targeted campaign ${campaignId} paid — design queued`);
 }

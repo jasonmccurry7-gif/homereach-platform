@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/conversations
@@ -9,6 +10,9 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 export async function GET() {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+
     const db = createServiceClient();
 
     // Get all leads that have been contacted or replied

@@ -44,6 +44,24 @@ const OHIO_CITIES = [
 const PAGE_ACCESS_TOKEN = () => process.env.FACEBOOK_PAGE_ACCESS_TOKEN ?? "";
 const FB_API = "https://graph.facebook.com/v19.0";
 
+function envFlag(key: string, defaultValue = false): boolean {
+  const value = process.env[key];
+  if (!value) return defaultValue;
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function facebookAutoReplyEnabled(): boolean {
+  return envFlag("FACEBOOK_AUTO_REPLY_ENABLED", false);
+}
+
+function facebookCommentAutoReplyEnabled(): boolean {
+  return envFlag("FACEBOOK_COMMENT_AUTO_REPLY_ENABLED", false);
+}
+
+function facebookCommentAutoDmEnabled(): boolean {
+  return envFlag("FACEBOOK_COMMENT_AUTO_DM_ENABLED", false);
+}
+
 async function fbSend(psid: string, text: string): Promise<string | null> {
   const token = PAGE_ACCESS_TOKEN();
   if (!token) { console.error("[FB] No page access token"); return null; }
@@ -257,29 +275,32 @@ async function handleMessage(event: Record<string, unknown>) {
   }
 
   // ── 5. Send response ──────────────────────────────────────────────────────
-  const mid = await fbSend(sender, response);
+  const shouldAutoReply = facebookAutoReplyEnabled();
+  const mid = shouldAutoReply ? await fbSend(sender, response) : null;
 
   // ── 6. Log outbound + update state ───────────────────────────────────────
-  await db.from("facebook_messages").insert({
-    lead_id:   lead.id,
-    direction: "outbound",
-    message:   response,
-    agent:     agentName,
-    mid:       mid ?? null,
-  });
+  if (shouldAutoReply) {
+    await db.from("facebook_messages").insert({
+      lead_id:   lead.id,
+      direction: "outbound",
+      message:   response,
+      agent:     agentName,
+      mid:       mid ?? null,
+    });
+  }
 
   await db.from("facebook_leads").update({
     current_agent:     newAgent,
     lead_status:       newStatus,
     conversation_stage: newStage,
     last_reply_at:     new Date().toISOString(),
-    messages_sent:     (lead.messages_sent ?? 0) + 1,
+    messages_sent:     shouldAutoReply ? (lead.messages_sent ?? 0) + 1 : (lead.messages_sent ?? 0),
     updated_at:        new Date().toISOString(),
   }).eq("id", lead.id);
 
   // ── 7. Upsert to sales_leads for full CRM tracking ───────────────────────
   if (lead.fb_name || detectedCity) {
-    await db.from("sales_leads").upsert({
+    const salesLeadPayload = {
       business_name: lead.fb_name ?? `Facebook Lead ${sender.slice(-6)}`,
       city:          detectedCity ?? lead.city ?? "",
       category:      detectedCategory ?? lead.category ?? "",
@@ -287,11 +308,20 @@ async function handleMessage(event: Record<string, unknown>) {
       source:        "facebook",
       do_not_contact: false,
       sms_opt_out:   false,
-    }, { onConflict: "id", ignoreDuplicates: false }).then(({ data: sl }) => {
-      if (sl && !lead.sales_lead_id) {
-        db.from("facebook_leads").update({ sales_lead_id: (sl as any)[0]?.id }).eq("id", lead.id).then(() => {}).catch(() => {});
+    };
+
+    if (lead.sales_lead_id) {
+      await db.from("sales_leads").update(salesLeadPayload).eq("id", lead.sales_lead_id);
+    } else {
+      const { data: salesLeadRows } = await db
+        .from("sales_leads")
+        .insert(salesLeadPayload)
+        .select("id");
+      const salesLeadId = salesLeadRows?.[0]?.id;
+      if (salesLeadId) {
+        await db.from("facebook_leads").update({ sales_lead_id: salesLeadId }).eq("id", lead.id);
       }
-    }).catch(() => {});
+    }
   }
 }
 
@@ -308,17 +338,21 @@ async function handleComment(value: Record<string, unknown>) {
   const db = createServiceClient();
 
   // Public reply to the comment
-  await fbCommentReply(commentId,
+  if (facebookCommentAutoReplyEnabled()) {
+    await fbCommentReply(commentId,
     "Thanks for engaging! 👋 I just sent you a quick DM with more info about what we do. Check your messages!"
   );
+  }
 
   // Send DM to start the conversation
   const profile = await fbGetUserProfile(senderId);
   const firstName = profile.name?.split(" ")[0] ?? "there";
 
-  await fbSend(senderId,
+  if (facebookCommentAutoDmEnabled()) {
+    await fbSend(senderId,
     `Hey ${firstName}! 👋 Saw your comment and wanted to reach out directly.\n\nI'm with HomeReach — we run direct-mail postcard campaigns targeting thousands of verified homeowners in your area. One exclusive spot per business category per city.\n\nAre you currently doing any local advertising?`
   );
+  }
 
   // Log as a lead from comment
   await db.from("facebook_leads").upsert({
@@ -328,7 +362,7 @@ async function handleComment(value: Record<string, unknown>) {
     comment_post_id: commentId,
     current_agent:   "echo",
     lead_status:     "warm",
-  }, { onConflict: "fb_psid" }).catch(() => {});
+  }, { onConflict: "fb_psid" });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

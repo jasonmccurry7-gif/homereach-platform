@@ -1,20 +1,19 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/call-list?agent_id=X&date=YYYY-MM-DD
 export async function GET(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const supabase = createServiceClient();
     const { searchParams } = new URL(request.url);
-    const agent_id = searchParams.get("agent_id");
+    const agent_id = isSalesAgent ? user.id : searchParams.get("agent_id");
     const date_param = searchParams.get("date") || new Date().toISOString().split("T")[0];
 
     if (!agent_id) {
@@ -64,6 +63,7 @@ export async function GET(request: Request) {
       if (assignedCities.length > 0) {
         query = query.in("city", assignedCities);
       }
+      query = query.or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agent_id}`);
 
       query = query
         .order("buying_signal", { ascending: false })
@@ -122,7 +122,8 @@ export async function GET(request: Request) {
       .select(
         "id, business_name, phone, city, category, contact_name, score, buying_signal, status, last_contacted_at, source"
       )
-      .in("id", leadIds);
+      .in("id", leadIds)
+      .or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agent_id}`);
 
     if (leadsError) {
       return NextResponse.json({ error: leadsError.message }, { status: 500 });
@@ -168,6 +169,10 @@ export async function GET(request: Request) {
       deals: allTodaysCalls?.filter((c) => c.deal_created === true || c.outcome === "deal_created").length || 0,
     };
 
+    if (!callList) {
+      return NextResponse.json({ error: "Call list unavailable" }, { status: 500 });
+    }
+
     return NextResponse.json({
       list: {
         id: callList.id,
@@ -190,16 +195,16 @@ export async function GET(request: Request) {
 // POST /api/admin/sales/call-list
 export async function POST(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const supabase = createServiceClient();
     const body = await request.json();
-    const { agent_id, action, count } = body;
+    const { action, count } = body;
+    const agent_id = isSalesAgent ? user.id : body.agent_id;
 
     if (!agent_id || action !== "load_more") {
       return NextResponse.json({ error: "agent_id and action='load_more' required" }, { status: 400 });
@@ -247,6 +252,7 @@ export async function POST(request: Request) {
     if (assignedCities.length > 0) {
       query = query.in("city", assignedCities);
     }
+    query = query.or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agent_id}`);
 
     const { data: moreLeads } = await query;
 

@@ -1,20 +1,19 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/call-stats?agent_id=X&period=today|week|month
 export async function GET(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const supabase = createServiceClient();
     const { searchParams } = new URL(request.url);
-    const agent_id = searchParams.get("agent_id");
+    const agent_id = isSalesAgent ? user.id : searchParams.get("agent_id");
     const period = searchParams.get("period") || "today";
 
     if (!agent_id) {
@@ -27,21 +26,21 @@ export async function GET(request: Request) {
 
     switch (period) {
       case "today":
-        startDate = now.toISOString().split("T")[0];
+        startDate = now.toISOString().slice(0, 10);
         break;
       case "week":
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        startDate = weekAgo.toISOString().split("T")[0];
+        startDate = weekAgo.toISOString().slice(0, 10);
         break;
       case "month":
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        startDate = monthAgo.toISOString().split("T")[0];
+        startDate = monthAgo.toISOString().slice(0, 10);
         break;
       default:
-        startDate = now.toISOString().split("T")[0];
+        startDate = now.toISOString().slice(0, 10);
     }
 
-    const endDate = now.toISOString().split("T")[0];
+    const endDate = now.toISOString().slice(0, 10);
 
     // Query call logs for date range
     const { data: calls, error } = await supabase
@@ -122,14 +121,16 @@ export async function GET(request: Request) {
 
     // Calculate interest rate for each city
     for (const city in cityStats) {
+      const stat = cityStats[city];
+      if (!stat) continue;
       const cityConnected = callList
         .filter((c) => c.city === city)
         .filter((c) =>
           ["interested", "wants_info"].includes(c.outcome)
         ).length;
-      cityStats[city].interest_rate =
-        cityStats[city].connected > 0
-          ? (cityConnected / cityStats[city].connected) * 100
+      stat.interest_rate =
+        stat.connected > 0
+          ? (cityConnected / stat.connected) * 100
           : 0;
     }
 
@@ -170,14 +171,16 @@ export async function GET(request: Request) {
 
     // Calculate interest rate for each category
     for (const category in categoryStats) {
+      const stat = categoryStats[category];
+      if (!stat) continue;
       const catConnected = callList
         .filter((c) => c.category === category)
         .filter((c) =>
           ["interested", "wants_info"].includes(c.outcome)
         ).length;
-      categoryStats[category].interest_rate =
-        categoryStats[category].connected > 0
-          ? (catConnected / categoryStats[category].connected) * 100
+      stat.interest_rate =
+        stat.connected > 0
+          ? (catConnected / stat.connected) * 100
           : 0;
     }
 

@@ -1,10 +1,14 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // PUT /api/admin/pricing/city
 // Body: { cityId, foundingEligible: boolean }
 
 export async function PUT(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const db = createServiceClient();
   const { cityId, foundingEligible } = await req.json();
 
