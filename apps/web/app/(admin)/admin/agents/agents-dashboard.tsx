@@ -820,6 +820,7 @@ function workforceStatusClass(status: string) {
 function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFoundationState }) {
   const [syncBusy, setSyncBusy] = useState(false)
   const [domainSyncBusy, setDomainSyncBusy] = useState(false)
+  const [queueBusy, setQueueBusy] = useState<string | null>(null)
   const [syncResult, setSyncResult] = useState<string | null>(null)
 
   const runSignalSync = useCallback(async () => {
@@ -867,6 +868,32 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
       setSyncResult(error instanceof Error ? error.message : "Unable to sync domain memory.")
     } finally {
       setDomainSyncBusy(false)
+    }
+  }, [])
+
+  const runQueueUpdate = useCallback(async (
+    busyKey: string,
+    operation: "update_task_status" | "update_ingestion_status",
+    payload: Record<string, unknown>,
+    successMessage: string
+  ) => {
+    setQueueBusy(busyKey)
+    setSyncResult(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/workforce-memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation, payload }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Unable to update AI Workforce queue.")
+      }
+      setSyncResult(`${successMessage} Refresh the page to reload queue counts.`)
+    } catch (error) {
+      setSyncResult(error instanceof Error ? error.message : "Unable to update AI Workforce queue.")
+    } finally {
+      setQueueBusy(null)
     }
   }, [])
 
@@ -1002,6 +1029,46 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                   </div>
                   <p className="font-semibold text-white">{task.title}</p>
                   <p className="mt-1 text-sm leading-5 text-gray-300">{task.recommendedAction}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {task.status !== "done" && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runQueueUpdate(
+                          `task:${task.taskKey}:done`,
+                          "update_task_status",
+                          {
+                            taskKey: task.taskKey,
+                            status: "done",
+                            resultSummary: "Marked done by an admin from the AI Workforce Data Foundation panel. No external workflow was executed.",
+                          },
+                          "Task marked done."
+                        )}
+                        className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-bold text-gray-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:done` ? "Saving..." : "Mark Done"}
+                      </button>
+                    )}
+                    {task.status !== "blocked" && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runQueueUpdate(
+                          `task:${task.taskKey}:blocked`,
+                          "update_task_status",
+                          {
+                            taskKey: task.taskKey,
+                            status: "blocked",
+                            resultSummary: "Blocked by an admin for human review. No external workflow was executed.",
+                          },
+                          "Task blocked for review."
+                        )}
+                        className="rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-1.5 text-xs font-bold text-amber-100 transition hover:bg-amber-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:blocked` ? "Saving..." : "Block"}
+                      </button>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -1024,6 +1091,46 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                   </div>
                   <p className="font-semibold text-white">{item.title}</p>
                   <p className="mt-1 text-sm leading-5 text-gray-300">{item.nextStep}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {item.status !== "approved" && item.status !== "completed" && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runQueueUpdate(
+                          `ingestion:${item.sourceKey}:approved`,
+                          "update_ingestion_status",
+                          {
+                            sourceKey: item.sourceKey,
+                            status: "approved",
+                            nextStep: "Approved for supervised ingestion. This does not analyze, publish, send, or execute anything automatically.",
+                          },
+                          "Ingestion source approved for supervised processing."
+                        )}
+                        className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-bold text-gray-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `ingestion:${item.sourceKey}:approved` ? "Saving..." : "Approve"}
+                      </button>
+                    )}
+                    {item.status !== "rejected" && item.status !== "completed" && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runQueueUpdate(
+                          `ingestion:${item.sourceKey}:rejected`,
+                          "update_ingestion_status",
+                          {
+                            sourceKey: item.sourceKey,
+                            status: "rejected",
+                            nextStep: "Rejected by an admin. Do not ingest this source unless it is re-queued later.",
+                          },
+                          "Ingestion source rejected."
+                        )}
+                        className="rounded-md border border-red-700/50 bg-red-950/40 px-3 py-1.5 text-xs font-bold text-red-100 transition hover:bg-red-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `ingestion:${item.sourceKey}:rejected` ? "Saving..." : "Reject"}
+                      </button>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>

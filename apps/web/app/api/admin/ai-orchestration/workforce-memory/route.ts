@@ -5,6 +5,8 @@ import {
   enqueueAiWorkforceTask,
   getAiWorkforceFoundationState,
   recordAiWorkforceEvent,
+  updateAiWorkforceIngestionStatus,
+  updateAiWorkforceTaskStatus,
   upsertAiWorkforceMemoryItem,
 } from "@/lib/ai-orchestration/workforce-memory";
 import { syncAiWorkforceDomainMemory } from "@/lib/ai-orchestration/workforce-domain-sync";
@@ -77,10 +79,33 @@ export async function POST(req: Request) {
       const result = await enqueueAiWorkforceIngestionSource(payload as Parameters<typeof enqueueAiWorkforceIngestionSource>[0]);
       return NextResponse.json({ ok: true, operation, result });
     }
+    if (operation === "update_task_status") {
+      const result = await updateAiWorkforceTaskStatus({
+        ...(payload as Parameters<typeof updateAiWorkforceTaskStatus>[0]),
+        actorId: guard.user?.id ?? null,
+      });
+      return NextResponse.json({ ok: true, operation, result });
+    }
+    if (operation === "update_ingestion_status") {
+      const result = await updateAiWorkforceIngestionStatus({
+        ...(payload as Parameters<typeof updateAiWorkforceIngestionStatus>[0]),
+        actorId: guard.user?.id ?? null,
+      });
+      return NextResponse.json({ ok: true, operation, result });
+    }
 
     return NextResponse.json({
       error: "Unsupported operation.",
-      allowed: ["sync_signals", "sync_domain_memory", "record_event", "upsert_memory", "enqueue_task", "enqueue_ingestion"],
+      allowed: [
+        "sync_signals",
+        "sync_domain_memory",
+        "record_event",
+        "upsert_memory",
+        "enqueue_task",
+        "enqueue_ingestion",
+        "update_task_status",
+        "update_ingestion_status",
+      ],
     }, { status: 400 });
   } catch (error) {
     return NextResponse.json({

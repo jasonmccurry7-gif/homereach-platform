@@ -160,6 +160,25 @@ export interface EnqueueWorkforceIngestionInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface UpdateWorkforceTaskStatusInput {
+  taskId?: string;
+  taskKey?: string;
+  status: WorkforceQueueStatus;
+  actorId?: string | null;
+  resultSummary?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateWorkforceIngestionStatusInput {
+  ingestionId?: string;
+  sourceKey?: string;
+  status: WorkforceIngestionStatus;
+  actorId?: string | null;
+  nextStep?: string | null;
+  lastError?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -179,6 +198,14 @@ function toNumber(value: unknown, fallback = 0) {
 
 function asMetadata(value?: Record<string, unknown>) {
   return value ?? {};
+}
+
+function eventTypeForQueueStatus(status: WorkforceQueueStatus | WorkforceIngestionStatus): RecordWorkforceEventInput["eventType"] {
+  if (status === "approved") return "approved";
+  if (status === "rejected") return "rejected";
+  if (status === "blocked") return "blocked";
+  if (status === "done" || status === "completed" || status === "archived") return "resolved";
+  return "queued";
 }
 
 async function readCount(
@@ -529,5 +556,113 @@ export async function enqueueAiWorkforceIngestionSource(input: EnqueueWorkforceI
     .single();
 
   if (error) throw error;
+  return data;
+}
+
+export async function updateAiWorkforceTaskStatus(input: UpdateWorkforceTaskStatusInput) {
+  if (!input.taskId && !input.taskKey) {
+    throw new Error("taskId or taskKey is required.");
+  }
+
+  const supabase = createServiceClient();
+  const now = nowIso();
+  const update: Record<string, unknown> = {
+    updated_at: now,
+    status: input.status,
+  };
+
+  if (input.resultSummary !== undefined) update.result_summary = input.resultSummary;
+  if (input.status === "done") {
+    update.completed_at = now;
+    update.completed_by = input.actorId ?? null;
+  } else {
+    update.completed_at = null;
+    update.completed_by = null;
+  }
+
+  let query = supabase
+    .from("ai_workforce_task_queue")
+    .update(update)
+    .select("id,task_key,agent_id,dashboard,title,route,status")
+    .limit(1);
+
+  query = input.taskId ? query.eq("id", input.taskId) : query.eq("task_key", input.taskKey);
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("AI Workforce task was not found.");
+
+  await recordAiWorkforceEvent({
+    eventType: eventTypeForQueueStatus(input.status),
+    agentId: data.agent_id ?? null,
+    dashboard: data.dashboard,
+    actorType: "admin",
+    actorId: input.actorId ?? null,
+    title: `Task ${input.status}: ${data.title}`,
+    summary: input.resultSummary ?? `AI Workforce task marked ${input.status}.`,
+    route: data.route ?? "/admin/agents",
+    severity: input.status === "blocked" || input.status === "rejected" ? "warning" : "info",
+    source: "ai_workforce_task_queue",
+    sourceId: data.id,
+    metadata: {
+      taskKey: data.task_key,
+      status: input.status,
+      externalWorkflowTouched: false,
+      ...(input.metadata ?? {}),
+    },
+  });
+
+  return data;
+}
+
+export async function updateAiWorkforceIngestionStatus(input: UpdateWorkforceIngestionStatusInput) {
+  if (!input.ingestionId && !input.sourceKey) {
+    throw new Error("ingestionId or sourceKey is required.");
+  }
+
+  const supabase = createServiceClient();
+  const now = nowIso();
+  const update: Record<string, unknown> = {
+    updated_at: now,
+    status: input.status,
+  };
+
+  if (input.nextStep !== undefined) update.next_step = input.nextStep;
+  if (input.lastError !== undefined) update.last_error = input.lastError;
+  if (input.status === "completed") update.processed_at = now;
+
+  let query = supabase
+    .from("ai_workforce_ingestion_queue")
+    .update(update)
+    .select("id,source_key,source_type,title,dashboard,status,assigned_agent_id,next_step")
+    .limit(1);
+
+  query = input.ingestionId ? query.eq("id", input.ingestionId) : query.eq("source_key", input.sourceKey);
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("AI Workforce ingestion source was not found.");
+
+  await recordAiWorkforceEvent({
+    eventType: eventTypeForQueueStatus(input.status),
+    agentId: data.assigned_agent_id ?? null,
+    dashboard: data.dashboard,
+    actorType: "admin",
+    actorId: input.actorId ?? null,
+    title: `Ingestion ${input.status}: ${data.title}`,
+    summary: input.nextStep ?? `AI Workforce ingestion source marked ${input.status}.`,
+    route: "/admin/agents",
+    severity: input.status === "blocked" || input.status === "rejected" ? "warning" : "info",
+    source: "ai_workforce_ingestion_queue",
+    sourceId: data.id,
+    metadata: {
+      sourceKey: data.source_key,
+      sourceType: data.source_type,
+      status: input.status,
+      externalWorkflowTouched: false,
+      ...(input.metadata ?? {}),
+    },
+  });
+
   return data;
 }
