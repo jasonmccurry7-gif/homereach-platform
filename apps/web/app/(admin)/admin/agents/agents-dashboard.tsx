@@ -423,6 +423,30 @@ function formatStatus(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+async function copyTextToClipboard(text: string) {
+  if (!text.trim()) return false
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+
+    const textarea = document.createElement("textarea")
+    textarea.value = text
+    textarea.setAttribute("readonly", "true")
+    textarea.style.position = "fixed"
+    textarea.style.opacity = "0"
+    document.body.appendChild(textarea)
+    textarea.select()
+    const copied = document.execCommand("copy")
+    document.body.removeChild(textarea)
+    return copied
+  } catch {
+    return false
+  }
+}
+
 function monitorStatusClass(status: OperationalBriefing["status"]) {
   if (status === "critical") return "border-red-800/50 bg-red-950/30 text-red-200"
   if (status === "failed") return "border-red-800/50 bg-red-950/30 text-red-200"
@@ -1551,6 +1575,7 @@ function userActionPriorityClass(priority: string) {
 
 function UserActionReadinessPanel({ readiness }: { readiness: UserActionReadiness }) {
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const checklistText = readiness.items
     .slice(0, 12)
     .map((item, index) => `${index + 1}. [${item.priority.toUpperCase()}] ${item.title} - ${item.nextStep}`)
@@ -1558,9 +1583,13 @@ function UserActionReadinessPanel({ readiness }: { readiness: UserActionReadines
 
   const copyChecklist = useCallback(async () => {
     if (!checklistText) return
-    await navigator.clipboard.writeText(checklistText)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
+    const ok = await copyTextToClipboard(checklistText)
+    setCopied(ok)
+    setCopyFailed(!ok)
+    window.setTimeout(() => {
+      setCopied(false)
+      setCopyFailed(false)
+    }, 1800)
   }, [checklistText])
 
   return (
@@ -1581,7 +1610,7 @@ function UserActionReadinessPanel({ readiness }: { readiness: UserActionReadines
             disabled={!checklistText}
             className="mt-4 rounded-lg border border-orange-700/40 bg-orange-900/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-orange-100 transition hover:bg-orange-900/40 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {copied ? "Copied" : "Copy Checklist"}
+            {copied ? "Copied" : copyFailed ? "Copy Failed" : "Copy Checklist"}
           </button>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -2762,6 +2791,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [summaryCopied, setSummaryCopied] = useState(false)
+  const [summaryCopyFailed, setSummaryCopyFailed] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
 
@@ -2899,9 +2929,13 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   }, [])
 
   const copyQueueSummary = useCallback(async () => {
-    await navigator.clipboard.writeText(queueSummaryText)
-    setSummaryCopied(true)
-    window.setTimeout(() => setSummaryCopied(false), 1800)
+    const ok = await copyTextToClipboard(queueSummaryText)
+    setSummaryCopied(ok)
+    setSummaryCopyFailed(!ok)
+    window.setTimeout(() => {
+      setSummaryCopied(false)
+      setSummaryCopyFailed(false)
+    }, 1800)
   }, [queueSummaryText])
 
   return (
@@ -2931,7 +2965,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
               disabled={items.length === 0}
               className="rounded-lg border border-sky-700/40 bg-sky-900/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-sky-100 transition hover:bg-sky-900/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {summaryCopied ? "Copied" : "Copy Summary"}
+              {summaryCopied ? "Copied" : summaryCopyFailed ? "Copy Failed" : "Copy Summary"}
             </button>
           </div>
         </div>
