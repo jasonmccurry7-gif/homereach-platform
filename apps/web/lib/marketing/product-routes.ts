@@ -30,5 +30,14 @@ export function safeRelativeRedirect(value: string | undefined, fallback = "/das
     return fallback;
   }
 
-  return value;
+  try {
+    const target = new URL(value, "https://home-reach.local");
+    if (target.pathname.startsWith("/api/")) return fallback;
+    if (target.pathname === "/login" || target.pathname === "/signup") {
+      return fallback;
+    }
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return fallback;
+  }
 }
