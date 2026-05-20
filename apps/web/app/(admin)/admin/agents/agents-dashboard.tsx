@@ -2039,6 +2039,7 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
     total: requests.length,
     pending: requests.filter((request) => request.approvalStatus === "pending").length,
     approved: requests.filter((request) => request.approvalStatus === "approved").length,
+    aiWorkforce: requests.filter((request) => request.source === "ai_workforce_task_queue").length,
     handoffReady: requests.filter((request) => request.executorStatus === "handoff_ready").length,
     handoffQueued: requests.filter((request) => request.executorStatus === "handoff_queued").length,
     taskCreated: requests.filter((request) => request.executorStatus === "task_created").length,
@@ -2189,7 +2190,7 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
             into an internal work queue and CRM task. It still does not send outreach, place orders, submit bids, or change checkout.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-7">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-8">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Gates</p>
             <p className="text-2xl font-bold text-white">{summary.total}</p>
@@ -2201,6 +2202,10 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
           <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-3">
             <p className="text-xs text-emerald-300">Approved</p>
             <p className="text-2xl font-bold text-emerald-200">{summary.approved}</p>
+          </div>
+          <div className="rounded-xl border border-sky-800/40 bg-sky-950/30 p-3">
+            <p className="text-xs text-sky-300">Workforce</p>
+            <p className="text-2xl font-bold text-sky-200">{summary.aiWorkforce}</p>
           </div>
           <div className="rounded-xl border border-violet-800/40 bg-violet-950/30 p-3">
             <p className="text-xs text-violet-300">Ready</p>
@@ -2254,6 +2259,9 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
                     <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
                       {formatStatus(request.executorStatus)}
                     </span>
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                      {formatStatus(request.source)}
+                    </span>
                     <span className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
                       {request.dashboard}
                     </span>
@@ -2262,6 +2270,16 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
                   <p className="mt-1 text-sm leading-6 text-gray-300">{request.requestedAction}</p>
                   <p className="mt-2 text-xs leading-5 text-gray-400">{request.guardrailSummary}</p>
                   <p className="mt-1 text-xs leading-5 text-gray-500">{request.cannotExecuteReason}</p>
+                  {request.source === "ai_workforce_task_queue" && (
+                    <div className="mt-3 rounded-lg border border-sky-800/40 bg-sky-950/20 p-3 text-xs leading-5 text-sky-100">
+                      <p className="font-bold uppercase tracking-[0.14em] text-sky-200">AI Workforce Gate</p>
+                      <p className="mt-1">
+                        Approving this gate only allows supervised dry-run, safe handoff, and internal CRM task steps.
+                        It does not send outreach, place orders, submit bids, publish content, or change payments.
+                      </p>
+                      <p className="mt-1 text-sky-100/70">Source key: {request.sourceKey}</p>
+                    </div>
+                  )}
                 </div>
                 <a
                   href={request.route}
