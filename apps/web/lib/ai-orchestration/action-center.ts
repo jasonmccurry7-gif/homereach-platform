@@ -4,6 +4,7 @@ import { getSourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
 import { rememberActionCenterMutation } from "./workforce-human-events";
 import { getAiWorkforceFoundationState, type WorkforceTaskQueueItem } from "./workforce-memory";
+import { getAgentWorkOrderQueue, type AgentWorkOrder } from "./agent-work-orders";
 
 export type UnifiedActionUrgency = "critical" | "high" | "medium" | "low";
 export type UnifiedActionStatus = "needs_review" | "blocked" | "ready" | "watch";
@@ -200,6 +201,26 @@ function actionForWorkforceTask(task: WorkforceTaskQueueItem): UnifiedActionItem
   return null;
 }
 
+function actionForAgentWorkOrder(order: AgentWorkOrder): UnifiedActionItem {
+  return {
+    id: `agent-work-order-${order.id}`,
+    source: "agent_work_orders",
+    dashboard: order.dashboard,
+    route: order.route,
+    title: order.title,
+    reason: `${order.objective} Human gate: ${order.humanGate}`,
+    recommendedAction: order.nextStep,
+    impact: order.safeToAutomate
+      ? "Turns a low-risk agent mission into a supervised internal planning item."
+      : "Keeps agent work visible while preserving human-owned execution.",
+    urgency: order.priority,
+    status: order.status === "blocked" ? "blocked" : order.status === "ready_to_plan" ? "ready" : "needs_review",
+    owner: "admin",
+    requiresHumanApproval: true,
+    createdAt: nowIso(),
+  };
+}
+
 export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionCenter> {
   const sourceHealth: UnifiedActionCenter["sourceHealth"] = [];
   const items: UnifiedActionItem[] = [];
@@ -248,6 +269,20 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
       owner: action.owner === "jason" ? "jason" : "admin",
       requiresHumanApproval: true,
       createdAt: userActionReadiness.generatedAt,
+    });
+  }
+
+  try {
+    const workOrderQueue = await getAgentWorkOrderQueue(12);
+    sourceHealth.push({ source: "agent_work_orders", status: "ok" });
+    for (const order of workOrderQueue.workOrders) {
+      items.push(actionForAgentWorkOrder(order));
+    }
+  } catch (error) {
+    sourceHealth.push({
+      source: "agent_work_orders",
+      status: "unavailable",
+      note: error instanceof Error ? error.message : String(error),
     });
   }
 
