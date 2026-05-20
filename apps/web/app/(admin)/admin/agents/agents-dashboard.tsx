@@ -881,23 +881,88 @@ function taskStatusClass(status: AutopilotInternalTask["status"]) {
   return "border-cyan-700/40 bg-cyan-950/30 text-cyan-100"
 }
 
+function isOpenTask(task: AutopilotInternalTask) {
+  return task.status === "pending" || task.status === "in_progress"
+}
+
+function isOverdueTask(task: AutopilotInternalTask) {
+  return task.status !== "done" && Boolean(task.dueAt) && new Date(task.dueAt as string).getTime() < Date.now()
+}
+
+function isDueSoonTask(task: AutopilotInternalTask) {
+  if (task.status === "done" || !task.dueAt) return false
+  const dueAt = new Date(task.dueAt).getTime()
+  const now = Date.now()
+  return dueAt >= now && dueAt <= now + 24 * 60 * 60 * 1000
+}
+
+function summarizeTaskDashboardGroups(tasks: AutopilotInternalTask[]) {
+  const groupMap = new Map<
+    string,
+    {
+      dashboard: string
+      total: number
+      pending: number
+      done: number
+      overdue: number
+      dueSoon: number
+    }
+  >()
+
+  for (const task of tasks) {
+    const dashboard = task.dashboard || "Unassigned"
+    const current =
+      groupMap.get(dashboard) ??
+      {
+        dashboard,
+        total: 0,
+        pending: 0,
+        done: 0,
+        overdue: 0,
+        dueSoon: 0,
+      }
+
+    current.total += 1
+    if (isOpenTask(task)) current.pending += 1
+    if (task.status === "done") current.done += 1
+    if (isOverdueTask(task)) current.overdue += 1
+    if (isDueSoonTask(task)) current.dueSoon += 1
+    groupMap.set(dashboard, current)
+  }
+
+  return Array.from(groupMap.values()).sort((a, b) => {
+    if (b.overdue !== a.overdue) return b.overdue - a.overdue
+    if (b.pending !== a.pending) return b.pending - a.pending
+    return a.dashboard.localeCompare(b.dashboard)
+  })
+}
+
 function AutopilotTasksPanel({ queue }: { queue: AutopilotTaskQueue }) {
   const [tasks, setTasks] = useState<AutopilotInternalTask[]>(queue.tasks)
+  const [selectedDashboard, setSelectedDashboard] = useState("all")
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setTasks(queue.tasks)
+    setSelectedDashboard((current) =>
+      current === "all" || queue.tasks.some((task) => task.dashboard === current) ? current : "all"
+    )
   }, [queue])
 
   const summary = {
     total: tasks.length,
-    pending: tasks.filter((task) => task.status === "pending" || task.status === "in_progress").length,
+    pending: tasks.filter(isOpenTask).length,
     done: tasks.filter((task) => task.status === "done").length,
-    overdue: tasks.filter(
-      (task) => task.status !== "done" && task.dueAt && new Date(task.dueAt).getTime() < Date.now()
-    ).length,
+    overdue: tasks.filter(isOverdueTask).length,
+    dueSoon: tasks.filter(isDueSoonTask).length,
   }
+  const dashboardGroups = summarizeTaskDashboardGroups(tasks)
+  const activeDashboardGroup = dashboardGroups.find((group) => group.dashboard === selectedDashboard)
+  const visibleGroups =
+    selectedDashboard === "all"
+      ? dashboardGroups
+      : dashboardGroups.filter((group) => group.dashboard === selectedDashboard)
 
   const completeTask = useCallback(async (task: AutopilotInternalTask) => {
     const key = `${task.taskId}:complete`
@@ -936,15 +1001,15 @@ function AutopilotTasksPanel({ queue }: { queue: AutopilotTaskQueue }) {
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-cyan-300">
-            Phase 8 Autopilot Tasks
+            Phase 9 Autopilot Work Queue
           </p>
-          <h2 className="text-2xl font-bold text-white">Internal Tasks Created By AI Handoffs</h2>
+          <h2 className="text-2xl font-bold text-white">Internal Tasks Grouped By Dashboard</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            This is the work queue created after a human-approved safe handoff. These are internal reminders only;
-            completing one does not send outreach, place orders, submit bids, or change checkout.
+            This is the safe work queue created after human-approved AI handoffs. Focus by dashboard, clear the
+            highest-risk internal reminders first, and keep external execution inside each source workflow.
           </p>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Tasks</p>
             <p className="text-2xl font-bold text-white">{summary.total}</p>
@@ -956,6 +1021,10 @@ function AutopilotTasksPanel({ queue }: { queue: AutopilotTaskQueue }) {
           <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
             <p className="text-xs text-red-300">Overdue</p>
             <p className="text-2xl font-bold text-red-200">{summary.overdue}</p>
+          </div>
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3">
+            <p className="text-xs text-amber-300">Due Soon</p>
+            <p className="text-2xl font-bold text-amber-100">{summary.dueSoon}</p>
           </div>
           <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-3">
             <p className="text-xs text-emerald-300">Done</p>
@@ -978,47 +1047,149 @@ function AutopilotTasksPanel({ queue }: { queue: AutopilotTaskQueue }) {
           </p>
         </div>
       ) : (
-        <div className="grid gap-3">
-          {tasks.slice(0, 8).map((task) => (
-            <article key={task.taskId} className="rounded-xl border border-cyan-900/30 bg-gray-950/50 p-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className={cn("rounded-full border px-2 py-1 text-xs font-bold uppercase", taskStatusClass(task.status))}>
-                      {formatStatus(task.status)}
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs font-bold uppercase text-gray-300">
-                      {task.dashboard}
-                    </span>
-                    {task.dueAt && (
-                      <span className="text-xs text-gray-500">
-                        Due {new Date(task.dueAt).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-lg font-bold text-white">{task.title}</h3>
-                  <p className="mt-1 text-sm leading-6 text-gray-300">{task.requestedAction}</p>
-                  <p className="mt-2 text-xs leading-5 text-gray-500">{task.guardrailSummary}</p>
+        <div className="grid gap-5">
+          <div className="rounded-xl border border-cyan-900/30 bg-gray-950/50 p-4">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="font-bold text-white">Dashboard Focus</h3>
+                <p className="text-sm text-gray-400">
+                  {selectedDashboard === "all"
+                    ? "Showing all dashboard work queues."
+                    : `Showing ${activeDashboardGroup?.pending ?? 0} open task${(activeDashboardGroup?.pending ?? 0) === 1 ? "" : "s"} for ${selectedDashboard}.`}
+                </p>
+              </div>
+              <span className="text-xs text-gray-500">Sorted by overdue work, then open work</span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              <button
+                type="button"
+                onClick={() => setSelectedDashboard("all")}
+                className={cn(
+                  "rounded-xl border p-3 text-left transition",
+                  selectedDashboard === "all"
+                    ? "border-cyan-400 bg-cyan-950/50"
+                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-bold text-white">All Dashboards</span>
+                  <span className="rounded-full bg-white/10 px-2 py-1 text-xs font-bold text-gray-200">
+                    {summary.total}
+                  </span>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[240px] lg:grid-cols-1">
-                  <a
-                    href={task.route}
-                    className="rounded-lg bg-white px-3 py-2 text-center text-xs font-bold text-gray-950 transition hover:bg-gray-200"
-                  >
-                    Open Source Workflow
-                  </a>
-                  <button
-                    type="button"
-                    disabled={busyKey === `${task.taskId}:complete` || task.status === "done"}
-                    onClick={() => completeTask(task)}
-                    className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Mark Done
-                  </button>
+                <p className="mt-1 text-xs text-gray-400">
+                  {summary.pending} open, {summary.overdue} overdue
+                </p>
+              </button>
+
+              {dashboardGroups.map((group) => (
+                <button
+                  key={group.dashboard}
+                  type="button"
+                  onClick={() => setSelectedDashboard(group.dashboard)}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition",
+                    selectedDashboard === group.dashboard
+                      ? "border-cyan-400 bg-cyan-950/50"
+                      : "border-white/10 bg-white/5 hover:bg-white/10"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-bold text-white">{group.dashboard}</span>
+                    <span className="rounded-full bg-white/10 px-2 py-1 text-xs font-bold text-gray-200">
+                      {group.total}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {group.pending} open
+                    {group.overdue > 0 ? `, ${group.overdue} overdue` : ""}
+                    {group.dueSoon > 0 ? `, ${group.dueSoon} due soon` : ""}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {visibleGroups.map((group) => {
+            const groupTasks = tasks.filter((task) => task.dashboard === group.dashboard)
+            return (
+              <div key={group.dashboard} className="rounded-xl border border-cyan-900/30 bg-gray-950/40 p-4">
+                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">
+                      {group.dashboard}
+                    </p>
+                    <h3 className="text-lg font-bold text-white">
+                      {group.pending > 0
+                        ? `${group.pending} internal action${group.pending === 1 ? "" : "s"} need attention`
+                        : "No open internal actions"}
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <p className="text-gray-500">Total</p>
+                      <p className="font-bold text-white">{group.total}</p>
+                    </div>
+                    <div className="rounded-lg border border-cyan-800/40 bg-cyan-950/30 px-3 py-2">
+                      <p className="text-cyan-300">Open</p>
+                      <p className="font-bold text-cyan-100">{group.pending}</p>
+                    </div>
+                    <div className="rounded-lg border border-red-800/40 bg-red-950/30 px-3 py-2">
+                      <p className="text-red-300">Late</p>
+                      <p className="font-bold text-red-100">{group.overdue}</p>
+                    </div>
+                    <div className="rounded-lg border border-emerald-800/40 bg-emerald-950/30 px-3 py-2">
+                      <p className="text-emerald-300">Done</p>
+                      <p className="font-bold text-emerald-100">{group.done}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  {groupTasks.map((task) => (
+                    <article key={task.taskId} className="rounded-xl border border-cyan-900/30 bg-gray-950/50 p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className={cn("rounded-full border px-2 py-1 text-xs font-bold uppercase", taskStatusClass(task.status))}>
+                              {formatStatus(task.status)}
+                            </span>
+                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs font-bold uppercase text-gray-300">
+                              {task.source}
+                            </span>
+                            {task.dueAt && (
+                              <span className={cn("text-xs", isOverdueTask(task) ? "text-red-300" : "text-gray-500")}>
+                                Due {new Date(task.dueAt).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-lg font-bold text-white">{task.title}</h4>
+                          <p className="mt-1 text-sm leading-6 text-gray-300">{task.requestedAction}</p>
+                          <p className="mt-2 text-xs leading-5 text-gray-500">{task.guardrailSummary}</p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[240px] lg:grid-cols-1">
+                          <a
+                            href={task.route}
+                            className="rounded-lg bg-white px-3 py-2 text-center text-xs font-bold text-gray-950 transition hover:bg-gray-200"
+                          >
+                            Open Source Workflow
+                          </a>
+                          <button
+                            type="button"
+                            disabled={busyKey === `${task.taskId}:complete` || task.status === "done"}
+                            onClick={() => completeTask(task)}
+                            className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Mark Done
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
-            </article>
-          ))}
+            )
+          })}
         </div>
       )}
 

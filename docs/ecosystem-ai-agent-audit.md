@@ -451,3 +451,32 @@ Safety boundary:
 
 - Marking a task done only updates the internal CRM task status and audit log.
 - It does not send outreach, trigger checkout, place orders, submit bids, or complete the source business workflow.
+
+## Phase 9 Implementation
+
+Phase 9 makes the `/admin/agents` internal AI work queue easier to operate by dashboard.
+
+UI update:
+
+- Renames the panel to `Phase 9 Autopilot Work Queue`.
+- Adds dashboard focus chips for:
+  - All dashboards
+  - Each source dashboard represented by AI-created internal tasks
+- Adds dashboard-level counts:
+  - Total
+  - Open
+  - Late
+  - Done
+  - Due soon
+- Sorts dashboard groups by overdue work first, then open work.
+- Keeps each internal task attached to:
+  - Source system
+  - Source workflow route
+  - Recommended action
+  - Guardrail summary
+  - Safe `Mark Done` action
+
+Safety boundary:
+
+- Dashboard grouping is a visibility-only improvement.
+- It does not add new executors, outbound messaging, supplier ordering, bid submission, payment actions, political outreach, checkout changes, or production handoff automation.
