@@ -2761,6 +2761,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   const [actionFilter, setActionFilter] = useState<ActionCenterFilter>("all")
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [summaryCopied, setSummaryCopied] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
 
@@ -2783,6 +2784,17 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   const filteredItems = items.filter((item) => matchesActionCenterFilter(item, actionFilter))
   const visibleItems = filteredItems.slice(0, 10)
   const unavailableSources = sourceHealth.filter((source) => source.status === "unavailable")
+  const queueSummaryText = [
+    `HomeReach Action Center - ${new Date(generatedAt).toLocaleString()}`,
+    `Actions: ${summary.total}`,
+    `Critical: ${summary.critical}`,
+    `High Risk: ${summary.highRisk}`,
+    `Internal Handoff Eligible: ${summary.internalHandoffEligible}`,
+    "",
+    ...items.slice(0, 12).map((item, index) =>
+      `${index + 1}. [${item.urgency.toUpperCase()} / ${formatStatus(item.status)}] ${item.title} - ${item.recommendedAction}`
+    ),
+  ].join("\n")
   const filterButtons: Array<{ id: ActionCenterFilter; label: string; count: number }> = [
     { id: "all", label: "All", count: items.length },
     { id: "ai_workforce", label: "AI Workforce", count: aiWorkforceActions },
@@ -2886,6 +2898,12 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
     }
   }, [])
 
+  const copyQueueSummary = useCallback(async () => {
+    await navigator.clipboard.writeText(queueSummaryText)
+    setSummaryCopied(true)
+    window.setTimeout(() => setSummaryCopied(false), 1800)
+  }, [queueSummaryText])
+
   return (
     <section className="mb-8 rounded-2xl border border-emerald-900/40 bg-emerald-950/10 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -2898,14 +2916,24 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
             A single queue for cross-dashboard approvals, blockers, hot replies, contract deadlines, and AI review items.
             You can now resolve, snooze, dismiss, and comment without triggering any live execution.
           </p>
-          <button
-            type="button"
-            onClick={refreshActionCenter}
-            disabled={refreshing}
-            className="mt-4 rounded-lg border border-emerald-700/40 bg-emerald-900/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-emerald-100 transition hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {refreshing ? "Refreshing" : "Refresh Queue"}
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={refreshActionCenter}
+              disabled={refreshing}
+              className="rounded-lg border border-emerald-700/40 bg-emerald-900/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-emerald-100 transition hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing" : "Refresh Queue"}
+            </button>
+            <button
+              type="button"
+              onClick={copyQueueSummary}
+              disabled={items.length === 0}
+              className="rounded-lg border border-sky-700/40 bg-sky-900/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-sky-100 transition hover:bg-sky-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {summaryCopied ? "Copied" : "Copy Summary"}
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-8">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
