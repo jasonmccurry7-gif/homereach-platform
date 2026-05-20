@@ -818,6 +818,33 @@ function workforceStatusClass(status: string) {
 }
 
 function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFoundationState }) {
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncResult, setSyncResult] = useState<string | null>(null)
+
+  const runSignalSync = useCallback(async () => {
+    setSyncBusy(true)
+    setSyncResult(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/workforce-memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "sync_signals" }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Unable to sync AI Workforce signals.")
+      }
+      const summary = data.result?.summary ?? {}
+      setSyncResult(
+        `Synced ${summary.memoryUpserts ?? 0} memory item(s), ${summary.tasksQueued ?? 0} task(s), ${summary.ingestionSourcesQueued ?? 0} ingestion source(s), and ${summary.eventsRecorded ?? 0} event(s).`
+      )
+    } catch (error) {
+      setSyncResult(error instanceof Error ? error.message : "Unable to sync AI Workforce signals.")
+    } finally {
+      setSyncBusy(false)
+    }
+  }, [])
+
   return (
     <section className="mb-8 rounded-2xl border border-cyan-900/40 bg-cyan-950/10 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -842,6 +869,29 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
           {foundation.databaseReady ? "Database Ready" : "Migration Needed"}
         </span>
       </div>
+
+      <div className="mb-5 flex flex-col gap-3 rounded-xl border border-cyan-900/30 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold text-cyan-100">Manual Signal Sync</p>
+          <p className="mt-1 text-sm leading-5 text-gray-400">
+            Capture current readiness, source freshness, mission-control, and high-priority action signals into durable memory.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={runSignalSync}
+          disabled={syncBusy}
+          className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-gray-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncBusy ? "Syncing..." : "Sync Signals"}
+        </button>
+      </div>
+
+      {syncResult && (
+        <div className="mb-5 rounded-xl border border-cyan-800/40 bg-cyan-950/20 p-4 text-sm text-cyan-100">
+          {syncResult}
+        </div>
+      )}
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
