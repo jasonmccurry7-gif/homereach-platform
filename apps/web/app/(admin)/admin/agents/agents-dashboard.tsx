@@ -2704,14 +2704,21 @@ function AutopilotTasksPanel({ queue }: { queue: AutopilotTaskQueue }) {
 
 function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActionCenter }) {
   const [items, setItems] = useState<UnifiedActionItem[]>(actionCenter.items)
+  const [sourceHealth, setSourceHealth] = useState(actionCenter.sourceHealth)
+  const [recentEvents, setRecentEvents] = useState(actionCenter.recentEvents ?? [])
+  const [generatedAt, setGeneratedAt] = useState(actionCenter.generatedAt)
   const [expanded, setExpanded] = useState<string | null>(actionCenter.items[0]?.id ?? null)
   const [actionFilter, setActionFilter] = useState<ActionCenterFilter>("all")
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setItems(actionCenter.items)
+    setSourceHealth(actionCenter.sourceHealth)
+    setRecentEvents(actionCenter.recentEvents ?? [])
+    setGeneratedAt(actionCenter.generatedAt)
     setActionFilter((current) =>
       actionCenter.items.some((item) => matchesActionCenterFilter(item, current)) ? current : "all"
     )
@@ -2725,8 +2732,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   const aiWorkforceActions = items.filter((item) => item.source === "ai_workforce_task_queue").length
   const filteredItems = items.filter((item) => matchesActionCenterFilter(item, actionFilter))
   const visibleItems = filteredItems.slice(0, 10)
-  const recentEvents = actionCenter.recentEvents ?? []
-  const unavailableSources = actionCenter.sourceHealth.filter((source) => source.status === "unavailable")
+  const unavailableSources = sourceHealth.filter((source) => source.status === "unavailable")
   const filterButtons: Array<{ id: ActionCenterFilter; label: string; count: number }> = [
     { id: "all", label: "All", count: items.length },
     { id: "ai_workforce", label: "AI Workforce", count: aiWorkforceActions },
@@ -2794,6 +2800,32 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
     []
   )
 
+  const refreshActionCenter = useCallback(async () => {
+    setRefreshing(true)
+    setActionError(null)
+
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/action-center?limit=24", { method: "GET" })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Action Center refresh failed")
+      }
+
+      setItems(data.items ?? [])
+      setSourceHealth(data.sourceHealth ?? [])
+      setRecentEvents(data.recentEvents ?? [])
+      setGeneratedAt(data.generatedAt ?? new Date().toISOString())
+      setExpanded((current) => {
+        if (current && (data.items ?? []).some((item: UnifiedActionItem) => item.id === current)) return current
+        return data.items?.[0]?.id ?? null
+      })
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Action Center refresh failed")
+    } finally {
+      setRefreshing(false)
+    }
+  }, [])
+
   return (
     <section className="mb-8 rounded-2xl border border-emerald-900/40 bg-emerald-950/10 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -2806,6 +2838,14 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
             A single queue for cross-dashboard approvals, blockers, hot replies, contract deadlines, and AI review items.
             You can now resolve, snooze, dismiss, and comment without triggering any live execution.
           </p>
+          <button
+            type="button"
+            onClick={refreshActionCenter}
+            disabled={refreshing}
+            className="mt-4 rounded-lg border border-emerald-700/40 bg-emerald-900/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-emerald-100 transition hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing" : "Refresh Queue"}
+          </button>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
@@ -3063,9 +3103,9 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
       )}
 
       <div className="mt-4 flex flex-col gap-2 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
-        <span>Generated {new Date(actionCenter.generatedAt).toLocaleString()}</span>
+        <span>Generated {new Date(generatedAt).toLocaleString()}</span>
         <span>
-          Sources online: {actionCenter.sourceHealth.filter((source) => source.status === "ok").length}/{actionCenter.sourceHealth.length}
+          Sources online: {sourceHealth.filter((source) => source.status === "ok").length}/{sourceHealth.length}
         </span>
       </div>
     </section>
