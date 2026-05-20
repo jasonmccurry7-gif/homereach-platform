@@ -5,6 +5,7 @@ import { getUserActionReadiness } from "./user-action-items";
 import { rememberActionCenterMutation } from "./workforce-human-events";
 import { getAiWorkforceFoundationState, type WorkforceTaskQueueItem } from "./workforce-memory";
 import { getAgentWorkOrderQueue, type AgentWorkOrder } from "./agent-work-orders";
+import { evaluateAiActionPolicy, type AiActionPolicyDecision } from "./ai-action-policy";
 
 export type UnifiedActionUrgency = "critical" | "high" | "medium" | "low";
 export type UnifiedActionStatus = "needs_review" | "blocked" | "ready" | "watch";
@@ -35,6 +36,7 @@ export interface UnifiedActionItem {
   lastEventType?: string | null;
   lastEventNote?: string | null;
   lastEventAt?: string | null;
+  policy?: AiActionPolicyDecision;
 }
 
 export interface UnifiedActionMutationInput {
@@ -92,6 +94,18 @@ function summarize(items: UnifiedActionItem[]): UnifiedActionCenterSummary {
     needsReview: items.filter((item) => item.status === "needs_review").length,
     blocked: items.filter((item) => item.status === "blocked").length,
     humanApprovalRequired: items.filter((item) => item.requiresHumanApproval).length,
+  };
+}
+
+function attachPolicy(item: UnifiedActionItem): UnifiedActionItem {
+  return {
+    ...item,
+    policy: evaluateAiActionPolicy({
+      source: item.source,
+      dashboard: item.dashboard,
+      urgency: item.urgency,
+      requestedAction: item.recommendedAction,
+    }),
   };
 }
 
@@ -292,7 +306,7 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
       status: "unavailable",
       note: "Supabase env is missing, so only environment/action-readiness items were generated.",
     });
-    const sorted = sortActions(items).slice(0, limit);
+    const sorted = sortActions(items.map(attachPolicy)).slice(0, limit);
     return { generatedAt: nowIso(), summary: summarize(sorted), items: sorted, sourceHealth, recentEvents: [] };
   }
 
@@ -736,7 +750,7 @@ export async function getUnifiedActionCenter(limit = 24): Promise<UnifiedActionC
 
   const recentEvents = await readSource("unified_action_events", () => getRecentActionEvents(supabase), []);
   const durableItems = await applyDurableActionState(supabase, items, sourceHealth);
-  const sorted = sortActions(durableItems).slice(0, limit);
+  const sorted = sortActions(durableItems.map(attachPolicy)).slice(0, limit);
   return { generatedAt: nowIso(), summary: summarize(sorted), items: sorted, sourceHealth, recentEvents };
 }
 

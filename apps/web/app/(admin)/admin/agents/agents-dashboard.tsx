@@ -3052,6 +3052,22 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
                       </div>
                     )}
 
+                    {item.policy && (
+                      <div className="mt-4 rounded-xl border border-violet-800/40 bg-violet-950/20 p-3 text-xs leading-5 text-violet-100">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <p className="font-bold uppercase tracking-[0.14em] text-violet-200">AI Guardrail</p>
+                          <span className="rounded-full border border-violet-700/40 bg-violet-900/30 px-2 py-1 font-bold uppercase">
+                            {formatStatus(item.policy.riskLevel)} risk
+                          </span>
+                          <span className="rounded-full border border-violet-700/40 bg-violet-900/30 px-2 py-1 font-bold uppercase">
+                            {formatStatus(item.policy.executionMode)}
+                          </span>
+                        </div>
+                        <p>{item.policy.guardrailSummary}</p>
+                        <p className="mt-1 text-violet-100/70">{item.policy.cannotExecuteReason}</p>
+                      </div>
+                    )}
+
                     <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
                       <textarea
                         value={notes[item.id] ?? ""}
