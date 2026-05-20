@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/api-guards";
 import {
+  createAutopilotInternalTask,
   decideAutopilotApproval,
   getAutopilotControlCenter,
   queueAutopilotInternalHandoff,
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
 
   let body: {
     requestId?: string;
-    operation?: "queue_internal_handoff";
+    operation?: "queue_internal_handoff" | "create_internal_task";
     note?: string;
   };
 
@@ -74,18 +75,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
-  if (!body.requestId || body.operation !== "queue_internal_handoff") {
+  if (!body.requestId || !body.operation || !["queue_internal_handoff", "create_internal_task"].includes(body.operation)) {
     return NextResponse.json(
-      { ok: false, error: "requestId and operation=queue_internal_handoff are required." },
+      { ok: false, error: "requestId and a valid operation are required." },
       { status: 400 }
     );
   }
 
-  const result = await queueAutopilotInternalHandoff({
-    requestId: body.requestId,
-    note: body.note,
-    actorId: guard.user?.id ?? null,
-  });
+  const result = body.operation === "create_internal_task"
+    ? await createAutopilotInternalTask({
+        requestId: body.requestId,
+        note: body.note,
+        actorId: guard.user?.id ?? null,
+      })
+    : await queueAutopilotInternalHandoff({
+        requestId: body.requestId,
+        note: body.note,
+        actorId: guard.user?.id ?? null,
+      });
 
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }

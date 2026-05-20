@@ -387,3 +387,32 @@ Safety boundary:
 - Queueing a handoff creates an internal admin work record only.
 - External systems and protected revenue/campaign workflows are not executed.
 - High-risk gates remain approval-only until each source workflow has tests, rollback, suppression/permission checks, and a second explicit approval.
+
+## Phase 7 Implementation
+
+Phase 7 connects safe handoffs to the existing internal CRM task workflow.
+
+Additive migration:
+
+- `101_ai_autopilot_internal_tasks.sql`
+  - Adds `internal_task_id` and `internal_task_created_at` to `ai_autopilot_execution_runs`.
+  - Expands executor/event statuses with `task_ready`, `task_created`, and `internal_task_created`.
+  - Preserves the existing `crm_tasks` table instead of introducing another task system.
+
+Route update:
+
+- `POST /api/admin/ai-orchestration/autopilot`
+  - Adds `operation=create_internal_task`.
+  - Requires an approved gate and queued safe internal handoff.
+  - Creates a `crm_tasks` record with type `other`, status `pending`, due in 24 hours, and a plain-English safety description.
+
+UI update:
+
+- `/admin/agents` now exposes `Create Task` after a safe handoff is queued.
+- The panel shows task-created counts and keeps source workflow links visible.
+
+Safety boundary:
+
+- The created CRM task is an internal admin reminder only.
+- It does not send outreach, place procurement orders, submit Gov bids, change pricing, generate checkout, or contact customers.
+- Humans still complete any external workflow from the original source dashboard.

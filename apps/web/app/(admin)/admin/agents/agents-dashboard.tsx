@@ -564,6 +564,7 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
     approved: requests.filter((request) => request.approvalStatus === "approved").length,
     handoffReady: requests.filter((request) => request.executorStatus === "handoff_ready").length,
     handoffQueued: requests.filter((request) => request.executorStatus === "handoff_queued").length,
+    taskCreated: requests.filter((request) => request.executorStatus === "task_created").length,
     critical: requests.filter((request) => request.riskLevel === "critical").length,
     high: requests.filter((request) => request.riskLevel === "high").length,
   }
@@ -656,6 +657,48 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
     [notes]
   )
 
+  const createInternalTask = useCallback(
+    async (request: AutopilotApprovalRequest) => {
+      const key = `${request.id}:create_internal_task`
+      setBusyKey(key)
+      setError(null)
+      try {
+        const response = await fetch("/api/admin/ai-orchestration/autopilot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId: request.id,
+            operation: "create_internal_task",
+            note: notes[request.id],
+          }),
+        })
+        const data = await response.json()
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Internal task creation failed")
+        }
+
+        setRequests((current) =>
+          current.map((item) =>
+            item.id === request.id
+              ? {
+                  ...item,
+                  executorStatus: "task_created",
+                  internalTaskId: data.internalTaskId ?? item.internalTaskId,
+                  cannotExecuteReason: data.message ?? "Internal CRM task created.",
+                }
+              : item
+          )
+        )
+        setNotes((current) => ({ ...current, [request.id]: "" }))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Internal task creation failed")
+      } finally {
+        setBusyKey(null)
+      }
+    },
+    [notes]
+  )
+
   return (
     <section className="mb-8 rounded-2xl border border-violet-900/40 bg-violet-950/10 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -666,10 +709,10 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
           <h2 className="text-2xl font-bold text-white">Approval Gates + Safe Internal Handoffs</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
             This turns high-value AI recommendations into explicit approval requests, then lets approved low-risk gates move
-            into an internal work queue. It still does not send outreach, place orders, submit bids, or change checkout.
+            into an internal work queue and CRM task. It still does not send outreach, place orders, submit bids, or change checkout.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-7">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Gates</p>
             <p className="text-2xl font-bold text-white">{summary.total}</p>
@@ -689,6 +732,10 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
           <div className="rounded-xl border border-purple-800/40 bg-purple-950/30 p-3">
             <p className="text-xs text-purple-300">Queued</p>
             <p className="text-2xl font-bold text-purple-200">{summary.handoffQueued}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/30 p-3">
+            <p className="text-xs text-cyan-300">Tasks</p>
+            <p className="text-2xl font-bold text-cyan-200">{summary.taskCreated}</p>
           </div>
           <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
             <p className="text-xs text-red-300">Critical</p>
@@ -754,7 +801,7 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
                   placeholder="Decision note for the approval audit trail."
                   className="min-h-[76px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-violet-500"
                 />
-                <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-1">
                   <button
                     type="button"
                     disabled={busyKey === `${request.id}:approve` || request.approvalStatus === "approved"}
@@ -775,6 +822,18 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
                     className="rounded-lg bg-emerald-400 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Queue Handoff
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      busyKey === `${request.id}:create_internal_task` ||
+                      !["handoff_queued", "task_ready"].includes(request.executorStatus) ||
+                      Boolean(request.internalTaskId)
+                    }
+                    onClick={() => createInternalTask(request)}
+                    className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Create Task
                   </button>
                   <button
                     type="button"

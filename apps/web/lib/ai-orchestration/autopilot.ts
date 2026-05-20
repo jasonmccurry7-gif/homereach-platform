@@ -11,7 +11,9 @@ export type AutopilotExecutorStatus =
   | "blocked"
   | "executed"
   | "handoff_ready"
-  | "handoff_queued";
+  | "handoff_queued"
+  | "task_ready"
+  | "task_created";
 
 export interface AutopilotApprovalRequest {
   id: string;
@@ -32,6 +34,9 @@ export interface AutopilotApprovalRequest {
   approvedAt?: string | null;
   rejectedAt?: string | null;
   decisionNote?: string | null;
+  executionRunId?: string | null;
+  internalTaskId?: string | null;
+  internalTaskCreatedAt?: string | null;
 }
 
 export interface AutopilotControlSummary {
@@ -160,6 +165,9 @@ function toRequest(row: Record<string, any>): AutopilotApprovalRequest {
     approvedAt: row.approved_at,
     rejectedAt: row.rejected_at,
     decisionNote: row.decision_note,
+    executionRunId: row.execution_run_id ?? null,
+    internalTaskId: row.internal_task_id ?? null,
+    internalTaskCreatedAt: row.internal_task_created_at ?? null,
   };
 }
 
@@ -243,7 +251,46 @@ export async function getAutopilotControlCenter(limit = 12): Promise<AutopilotCo
     if (error) throw error;
 
     sourceHealth.push({ source: "ai_autopilot_approval_requests", status: "ok" });
-    const requests = (data ?? []).map(toRequest);
+    let requests = (data ?? []).map(toRequest);
+
+    if (requests.length > 0) {
+      const requestIds = requests.map((request) => request.id);
+      const { data: runRows, error: runError } = await supabase
+        .from("ai_autopilot_execution_runs")
+        .select("id,request_id,internal_task_id,internal_task_created_at,execution_status")
+        .in("request_id", requestIds)
+        .order("created_at", { ascending: false });
+
+      if (runError) {
+        sourceHealth.push({
+          source: "ai_autopilot_execution_runs",
+          status: "unavailable",
+          note: runError.message,
+        });
+      } else {
+        sourceHealth.push({ source: "ai_autopilot_execution_runs", status: "ok" });
+        const latestRunByRequest = new Map<string, Record<string, any>>();
+        for (const run of runRows ?? []) {
+          if (!latestRunByRequest.has(run.request_id)) latestRunByRequest.set(run.request_id, run);
+        }
+        requests = requests.map((request) => {
+          const run = latestRunByRequest.get(request.id);
+          if (!run) return request;
+          return {
+            ...request,
+            executionRunId: run.id,
+            internalTaskId: run.internal_task_id ?? null,
+            internalTaskCreatedAt: run.internal_task_created_at ?? null,
+            executorStatus: run.internal_task_id
+              ? "task_created"
+              : request.executorStatus === "handoff_queued"
+                ? "task_ready"
+                : request.executorStatus,
+          };
+        });
+      }
+    }
+
     return { generatedAt: nowIso(), summary: summarize(requests), requests, sourceHealth };
   } catch (error) {
     sourceHealth.push({
@@ -474,6 +521,148 @@ export async function queueAutopilotInternalHandoff(input: {
       executionStatus: run.execution_status,
       executionEnabled: false,
       message: "Safe internal handoff queued. No external workflow was executed.",
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function createAutopilotInternalTask(input: {
+  requestId: string;
+  actorId?: string | null;
+  note?: string | null;
+}) {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "Supabase is not configured for autopilot task creation." };
+  }
+
+  const requestId = input.requestId?.trim();
+  if (!requestId) return { ok: false, error: "requestId is required." };
+
+  const supabase = createServiceClient();
+  const note = input.note?.trim() || null;
+  const now = nowIso();
+
+  try {
+    const { data: request, error: requestError } = await supabase
+      .from("ai_autopilot_approval_requests")
+      .select("id,source_key,source,dashboard,route,title,requested_action,expected_impact,risk_level,approval_status,executor_status,guardrail_summary,cannot_execute_reason")
+      .eq("id", requestId)
+      .maybeSingle();
+
+    if (requestError) throw requestError;
+    if (!request) return { ok: false, error: "Approval request not found." };
+    if (request.approval_status !== "approved") {
+      return { ok: false, error: "Only approved gates can create internal tasks." };
+    }
+    if (!["handoff_queued", "task_ready", "task_created"].includes(request.executor_status)) {
+      return { ok: false, error: "Queue a safe internal handoff before creating a task." };
+    }
+
+    const { data: run, error: runError } = await supabase
+      .from("ai_autopilot_execution_runs")
+      .select("id,request_id,source_key,internal_task_id,preview_payload,execution_status")
+      .eq("request_id", request.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (runError) throw runError;
+    if (!run) return { ok: false, error: "No internal handoff run exists yet. Queue handoff first." };
+    if (run.internal_task_id) {
+      return {
+        ok: true,
+        requestId,
+        internalTaskId: run.internal_task_id,
+        executorStatus: "task_created" as const,
+        executionEnabled: false,
+        message: "Internal task already exists. No external workflow was executed.",
+      };
+    }
+
+    const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const description = [
+      `AI-approved internal handoff from ${request.dashboard}.`,
+      "",
+      `Recommended action: ${request.requested_action}`,
+      `Expected impact: ${request.expected_impact}`,
+      `Open workflow: ${request.route}`,
+      "",
+      `Guardrail: ${request.guardrail_summary}`,
+      "Safety: This task does not send outreach, place orders, submit bids, change pricing, create checkout, or contact customers.",
+      note ? `\nDecision note: ${note}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const { data: task, error: taskError } = await supabase
+      .from("crm_tasks")
+      .insert({
+        agent_id: input.actorId ?? null,
+        type: "other",
+        status: "pending",
+        title: `AI handoff: ${request.title}`.slice(0, 240),
+        description,
+        due_at: dueAt,
+      })
+      .select("id")
+      .single();
+
+    if (taskError) throw taskError;
+
+    const { error: runUpdateError } = await supabase
+      .from("ai_autopilot_execution_runs")
+      .update({
+        updated_at: now,
+        completed_at: now,
+        completed_by: input.actorId ?? null,
+        execution_status: "completed",
+        internal_task_id: task.id,
+        internal_task_created_at: now,
+        result_summary: "Created an internal CRM task for human follow-up. No external workflow was executed.",
+      })
+      .eq("id", run.id);
+
+    if (runUpdateError) throw runUpdateError;
+
+    const { error: requestUpdateError } = await supabase
+      .from("ai_autopilot_approval_requests")
+      .update({
+        updated_at: now,
+        executor_status: "task_created",
+        cannot_execute_reason:
+          "Internal CRM task created. A human still completes any external workflow from the source dashboard.",
+      })
+      .eq("id", request.id);
+
+    if (requestUpdateError) throw requestUpdateError;
+
+    const { error: eventError } = await supabase.from("ai_autopilot_approval_events").insert({
+      request_id: request.id,
+      source_key: request.source_key,
+      event_type: "internal_task_created",
+      actor_id: input.actorId ?? null,
+      note,
+      metadata: {
+        executionRunId: run.id,
+        internalTaskId: task.id,
+        dueAt,
+        executionEnabled: false,
+        externalWorkflowTouched: false,
+      },
+    });
+
+    if (eventError) throw eventError;
+
+    return {
+      ok: true,
+      requestId,
+      executionRunId: run.id,
+      internalTaskId: task.id,
+      executorStatus: "task_created" as const,
+      dueAt,
+      executionEnabled: false,
+      message: "Internal CRM task created. No external workflow was executed.",
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
