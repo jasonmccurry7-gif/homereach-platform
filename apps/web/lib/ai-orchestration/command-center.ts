@@ -4,7 +4,7 @@ import { getDashboardAgentMatrix, getDashboardAgentSummary } from "./dashboard-a
 import { getAiWorkforceSmokeReport } from "./ai-workforce-smoke";
 import { getSourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
-import { getAiWorkforceFoundationState } from "./workforce-memory";
+import { getAiWorkforceFoundationState, type WorkforceTaskQueueItem } from "./workforce-memory";
 
 export interface AiCommandCenterState {
   generatedAt: string;
@@ -36,6 +36,7 @@ export interface AiCommandCenterState {
     owner: string;
     urgency: string;
     recommendedAction: string;
+    source: "action_center" | "ai_workforce";
   }>;
   systemSignals: string[];
   safeNextSteps: string[];
@@ -61,6 +62,77 @@ function headlineForStatus(status: AiCommandCenterState["status"], summary: AiCo
   return "AI Workforce OS foundation is calm and ready for supervised operation.";
 }
 
+function priorityForWorkforceTask(task: WorkforceTaskQueueItem): AiCommandCenterState["topPriorities"][number] | null {
+  if (task.status === "done" || task.status === "rejected" || task.status === "archived") return null;
+
+  const base = {
+    title: task.title,
+    route: task.route ?? "/admin/agents",
+    owner: task.agentId,
+    urgency: task.priority,
+    source: "ai_workforce" as const,
+  };
+
+  if (task.status === "blocked") {
+    return {
+      ...base,
+      urgency: task.priority === "low" ? "medium" : task.priority,
+      recommendedAction: "Review why this AI Workforce task is blocked before expanding autonomy.",
+    };
+  }
+
+  if (!task.lastExecutionPlan) {
+    return {
+      ...base,
+      recommendedAction: "Create a Plan Only execution playbook before approval or handoff.",
+    };
+  }
+
+  if (!task.approvalRequestId) {
+    return {
+      ...base,
+      recommendedAction: "Send the reviewed plan to the existing human approval queue.",
+    };
+  }
+
+  if (task.approvalStatus !== "approved") {
+    return {
+      ...base,
+      recommendedAction: "Approve, reject, or comment on the linked Autopilot approval request.",
+    };
+  }
+
+  if (!task.lastDryRunPreview) {
+    return {
+      ...base,
+      recommendedAction: "Run a dry-run preview before queuing any safe internal handoff.",
+    };
+  }
+
+  if (!["handoff_queued", "task_ready", "task_created"].includes(task.executorStatus ?? "")) {
+    return {
+      ...base,
+      recommendedAction: "Queue a safe internal handoff. This still does not touch external workflows.",
+    };
+  }
+
+  if (["handoff_queued", "task_ready"].includes(task.executorStatus ?? "") && !task.internalTaskId) {
+    return {
+      ...base,
+      recommendedAction: "Create an internal CRM task so a human owns the operational follow-up.",
+    };
+  }
+
+  if (task.internalTaskId && !["done", "cancelled", "canceled"].includes(task.internalTaskStatus ?? "")) {
+    return {
+      ...base,
+      recommendedAction: "Complete the linked internal task only after human follow-up is finished.",
+    };
+  }
+
+  return null;
+}
+
 export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCenterState> {
   const dashboardAgents = getDashboardAgentMatrix();
   const [
@@ -74,7 +146,7 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
     getAgentMissionControl(),
     getSourceFreshnessReport(),
     getAiWorkforceSmokeReport(),
-    getAiWorkforceFoundationState(6),
+    getAiWorkforceFoundationState(12),
   ]);
   const userActions = getUserActionReadiness();
   const dashboardSummary = getDashboardAgentSummary(dashboardAgents);
@@ -109,13 +181,20 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
   };
   const status = statusForState(summary);
 
-  const topPriorities = actionCenter.items.slice(0, limit).map((item) => ({
+  const workforcePriorities = workforceFoundation.tasks
+    .map(priorityForWorkforceTask)
+    .filter((item): item is AiCommandCenterState["topPriorities"][number] => Boolean(item));
+
+  const actionPriorities = actionCenter.items.slice(0, limit).map((item) => ({
     title: item.title,
     route: item.route,
     owner: item.owner,
     urgency: item.urgency,
     recommendedAction: item.recommendedAction,
+    source: "action_center" as const,
   }));
+
+  const topPriorities = [...workforcePriorities, ...actionPriorities].slice(0, limit);
 
   const systemSignals = [
     `${dashboardSummary.ready}/${dashboardSummary.total} dashboard agents are ready.`,

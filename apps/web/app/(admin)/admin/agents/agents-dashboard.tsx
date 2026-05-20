@@ -458,6 +458,35 @@ function AiCommandCenterSummaryPanel({ commandCenter }: { commandCenter: AiComma
         </div>
       </div>
 
+      {commandCenter.topPriorities.length > 0 && (
+        <div className="mb-5 rounded-xl border border-white/10 bg-black/20 p-4">
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Top priorities</p>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {commandCenter.topPriorities.slice(0, 4).map((priority) => (
+              <article
+                key={`${priority.source}:${priority.title}:${priority.recommendedAction}`}
+                className="rounded-lg border border-white/10 bg-black/20 p-3"
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-200">
+                    {formatStatus(priority.source)}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-200">
+                    {formatStatus(priority.urgency)}
+                  </span>
+                  <span className="text-xs text-gray-400">{priority.owner}</span>
+                </div>
+                <h3 className="text-sm font-bold text-white">{priority.title}</h3>
+                <p className="mt-1 text-sm leading-5 text-gray-300">{priority.recommendedAction}</p>
+                <a href={priority.route} className="mt-3 inline-block text-xs font-bold text-sky-200 underline">
+                  Open workflow
+                </a>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Safe next steps</p>
