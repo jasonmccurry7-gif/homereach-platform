@@ -52,6 +52,95 @@ export type SponsorshipStatus =
   | "expired"
   | "cancelled";
 
+export type PricingProductType =
+  | "spot"
+  | "addon"
+  | "automation"
+  | "bundle"
+  | "campaign"
+  | "setup_fee";
+
+export type SpotType =
+  | "anchor"
+  | "front_feature"
+  | "back_feature"
+  | "full_card";
+
+export type BillingInterval = "monthly" | "one_time" | "per_unit" | "per_drop";
+
+export type CampaignTier = "standard" | "premium" | "saturation";
+
+export type DiscountRuleType =
+  | "military"
+  | "multi_spot"
+  | "promo_code"
+  | "future_reserved";
+
+export interface ResolvePriceInput {
+  productType: PricingProductType;
+  spotType?: SpotType;
+  billingInterval?: BillingInterval;
+  cityId?: string;
+  bundleId?: string;
+  isFounding?: boolean;
+}
+
+export interface ResolvedPrice {
+  pricingProfileId: string;
+  productType: PricingProductType;
+  spotType?: SpotType;
+  billingInterval: BillingInterval;
+  basePriceCents: number;
+  workingPriceCents: number;
+  compareAtPriceCents?: number;
+  isFoundingPrice: boolean;
+}
+
+export interface DiscountContext {
+  isVerifiedMilitary?: boolean;
+  spotCountInCart?: number;
+  promoCode?: string;
+}
+
+export interface AppliedDiscount {
+  ruleId: string;
+  ruleType: DiscountRuleType;
+  label: string;
+  discountAmountCents: number;
+}
+
+export interface DiscountResult {
+  originalPriceCents: number;
+  finalPriceCents: number;
+  discountsApplied: AppliedDiscount[];
+  totalDiscountCents: number;
+}
+
+export interface CampaignPriceResult {
+  tier: CampaignTier;
+  quantity: number;
+  perUnitPriceCents: number;
+  subtotalCents: number;
+  setupFeeCents: number;
+  totalCents: number;
+  pricingProfileId: string;
+}
+
+export interface PricingSnapshot {
+  pricingProfileId: string;
+  productType: PricingProductType;
+  spotType?: SpotType;
+  billingInterval: BillingInterval;
+  basePriceCents: number;
+  compareAtPriceCents?: number;
+  workingPriceCents: number;
+  isFoundingPrice: boolean;
+  discountsApplied: AppliedDiscount[];
+  finalPriceCents: number;
+  snapshotAt: string;
+  snapshotVersion: number;
+}
+
 // ─── Domain Models ────────────────────────────────────────────────────────────
 
 export interface Profile {
@@ -290,6 +379,3 @@ export interface CheckoutSessionPayload {
   successUrl: string;
   cancelUrl: string;
 }
-
-// ─── Pricing Engine (Task 20) ─────────────────────────────────────────────────
-export * from "./pricing";

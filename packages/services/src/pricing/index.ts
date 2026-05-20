@@ -386,13 +386,17 @@ export async function calculateCampaignPrice(
     premium: "Campaign — Standard Setup Fee", // Premium uses same setup fee as Standard
     saturation: null, // No setup fee for saturation tier
   };
+  const profileName = profileNames[tier];
+  if (!profileName) {
+    throw new Error(`Unknown campaign tier: ${tier}`);
+  }
 
   const [profile] = await db
     .select()
     .from(pricingProfiles)
     .where(
       and(
-        eq(pricingProfiles.name, profileNames[tier]),
+        eq(pricingProfiles.name, profileName),
         eq(pricingProfiles.isActive, true)
       )
     )
