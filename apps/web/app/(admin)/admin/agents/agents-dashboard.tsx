@@ -826,6 +826,13 @@ function canQueueWorkforceTaskHandoff(task: WorkforceTaskUiItem) {
   return !["handoff_queued", "task_ready", "task_created", "executed", "blocked"].includes(task.executorStatus ?? "")
 }
 
+function canCreateWorkforceInternalTask(task: WorkforceTaskUiItem) {
+  if (!task.approvalRequestId || task.approvalStatus !== "approved") return false
+  if (task.status === "done" || task.status === "rejected") return false
+  if (task.internalTaskId) return false
+  return ["handoff_queued", "task_ready"].includes(task.executorStatus ?? "")
+}
+
 function workforceApprovalStatusClass(status?: string | null) {
   if (status === "approved") return "border-emerald-700/50 bg-emerald-950/40 text-emerald-100"
   if (status === "rejected" || status === "canceled" || status === "expired") {
@@ -935,6 +942,32 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
       setSyncResult(`${data.message ?? "Safe internal handoff queued."} Refresh the page to reload handoff status.`)
     } catch (error) {
       setSyncResult(error instanceof Error ? error.message : "Unable to queue safe internal handoff.")
+    } finally {
+      setQueueBusy(null)
+    }
+  }, [])
+
+  const runCreateInternalTask = useCallback(async (task: WorkforceTaskUiItem) => {
+    if (!task.approvalRequestId) return
+    setQueueBusy(`task:${task.taskKey}:internal-task`)
+    setSyncResult(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "create_internal_task",
+          requestId: task.approvalRequestId,
+          note: "Internal CRM task requested from the AI Workforce Data Foundation panel after safe handoff review.",
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Unable to create internal task.")
+      }
+      setSyncResult(`${data.message ?? "Internal CRM task created."} Refresh the page to reload task status.`)
+    } catch (error) {
+      setSyncResult(error instanceof Error ? error.message : "Unable to create internal task.")
     } finally {
       setQueueBusy(null)
     }
@@ -1087,6 +1120,11 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                         Run {formatStatus(task.executionStatus)}
                       </span>
                     )}
+                    {task.internalTaskId && (
+                      <span className="rounded-full border border-emerald-700/50 bg-emerald-950/30 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-100">
+                        CRM Task Ready
+                      </span>
+                    )}
                   </div>
                   <p className="font-semibold text-white">{task.title}</p>
                   <p className="mt-1 text-sm leading-5 text-gray-300">{task.recommendedAction}</p>
@@ -1228,6 +1266,16 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                         className="rounded-md border border-cyan-700/50 bg-cyan-950/50 px-3 py-1.5 text-xs font-bold text-cyan-100 transition hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {queueBusy === `task:${task.taskKey}:handoff` ? "Queueing..." : "Queue Handoff"}
+                      </button>
+                    )}
+                    {canCreateWorkforceInternalTask(task) && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runCreateInternalTask(task)}
+                        className="rounded-md border border-blue-700/50 bg-blue-950/50 px-3 py-1.5 text-xs font-bold text-blue-100 transition hover:bg-blue-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:internal-task` ? "Creating..." : "Create Task"}
                       </button>
                     )}
                     {task.status !== "done" && (

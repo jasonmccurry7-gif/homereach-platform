@@ -782,6 +782,12 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     const approvalRequestId = row.approval_request_id ?? null;
     const approval = approvalRequestId ? approvalById.get(String(approvalRequestId)) : null;
     const executionRun = approvalRequestId ? executionRunByRequestId.get(String(approvalRequestId)) : null;
+    const rawExecutorStatus = approval?.executor_status ?? null;
+    const executorStatus = executionRun?.internal_task_id
+      ? "task_created"
+      : executionRun && rawExecutorStatus === "handoff_queued"
+        ? "task_ready"
+        : rawExecutorStatus;
     return {
       id: String(row.id),
       taskKey: String(row.task_key),
@@ -797,7 +803,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       updatedAt: row.updated_at,
       approvalRequestId,
       approvalStatus: approval?.approval_status ?? null,
-      executorStatus: approval?.executor_status ?? null,
+      executorStatus,
       executionRunId: executionRun?.id ?? null,
       executionStatus: executionRun?.execution_status ?? null,
       internalTaskId: executionRun?.internal_task_id ?? null,
@@ -831,6 +837,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     "Send reviewed plans into the existing approval queue before creating any internal follow-up task.",
     "Use Dry Run Preview to inspect what would happen after approval before queuing a safe internal handoff.",
     "Queue Safe Handoff only after approval; it creates an internal handoff record and still does not touch external workflows.",
+    "Create Internal Task from a queued handoff when a human should own the next operational follow-up.",
     "Use ingestion queue statuses for review and approval before any source analysis becomes autonomous.",
   ];
 
