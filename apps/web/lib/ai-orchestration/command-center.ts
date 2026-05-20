@@ -4,6 +4,7 @@ import { getDashboardAgentMatrix, getDashboardAgentSummary } from "./dashboard-a
 import { getAiWorkforceSmokeReport } from "./ai-workforce-smoke";
 import { getSourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
+import { getAiWorkforceFoundationState } from "./workforce-memory";
 
 export interface AiCommandCenterState {
   generatedAt: string;
@@ -18,6 +19,9 @@ export interface AiCommandCenterState {
     dashboardAgentsReady: number;
     dashboardAgentsBlocked: number;
     sourceFreshnessIssues: number;
+    persistentMemoryItems: number;
+    persistentTasks: number;
+    persistentIngestionItems: number;
     missionControlBlocked: number;
     smokeFailures: number;
   };
@@ -59,11 +63,13 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
     missionControl,
     sourceFreshness,
     smokeReport,
+    workforceFoundation,
   ] = await Promise.all([
     getUnifiedActionCenter(24),
     getAgentMissionControl(),
     getSourceFreshnessReport(),
     getAiWorkforceSmokeReport(),
+    getAiWorkforceFoundationState(6),
   ]);
   const userActions = getUserActionReadiness();
   const dashboardSummary = getDashboardAgentSummary(dashboardAgents);
@@ -78,6 +84,9 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
     dashboardAgentsReady: dashboardSummary.ready,
     dashboardAgentsBlocked: dashboardSummary.blocked,
     sourceFreshnessIssues,
+    persistentMemoryItems: workforceFoundation.summary.activeMemory,
+    persistentTasks: workforceFoundation.summary.openTasks,
+    persistentIngestionItems: workforceFoundation.summary.ingestionQueued,
     missionControlBlocked: missionControl.summary.blocked,
     smokeFailures: smokeReport.summary.failed,
   };
@@ -95,6 +104,7 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
     `${dashboardSummary.ready}/${dashboardSummary.total} dashboard agents are ready.`,
     `${missionControl.summary.humanApproval} agents are in human-approval mode.`,
     `${sourceFreshness.summary.fresh}/${sourceFreshness.summary.total} data sources are fresh.`,
+    `${workforceFoundation.summary.activeMemory} persistent memory item(s), ${workforceFoundation.summary.openTasks} durable task(s), and ${workforceFoundation.summary.ingestionQueued} ingestion item(s) are visible.`,
     `${userActions.summary.blocksAutonomy} user-owned item(s) block expanded autonomy.`,
     `${smokeReport.summary.ok}/${smokeReport.summary.total} smoke checks are OK.`,
   ];

@@ -14,6 +14,7 @@ import { getAgentWorkOrderQueue } from "@/lib/ai-orchestration/agent-work-orders
 import { getGoLiveReadinessReport } from "@/lib/ai-orchestration/go-live-readiness"
 import { getAgentPermissionMatrix } from "@/lib/ai-orchestration/agent-permissions"
 import { getWorkflowRecipeCatalog } from "@/lib/ai-orchestration/workflow-recipes"
+import { getAiWorkforceFoundationState } from "@/lib/ai-orchestration/workforce-memory"
 import AgentsDashboard from "./agents-dashboard"
 
 export default async function AgentsPage() {
@@ -61,6 +62,7 @@ export default async function AgentsPage() {
     goLiveReadiness,
     agentPermissions,
     workflowRecipes,
+    workforceFoundation,
   ] = await Promise.all([
     getUnifiedActionCenter(18),
     getAutopilotControlCenter(10),
@@ -76,6 +78,7 @@ export default async function AgentsPage() {
     getGoLiveReadinessReport(),
     getAgentPermissionMatrix(),
     getWorkflowRecipeCatalog(),
+    getAiWorkforceFoundationState(),
   ])
 
   return (
@@ -101,6 +104,7 @@ export default async function AgentsPage() {
       goLiveReadiness={goLiveReadiness}
       agentPermissions={agentPermissions}
       workflowRecipes={workflowRecipes}
+      workforceFoundation={workforceFoundation}
     />
   )
 }

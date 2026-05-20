@@ -21,6 +21,7 @@ import type { AgentWorkOrderQueue, AgentWorkOrderPriority, AgentWorkOrderStatus 
 import type { GoLiveGateStatus, GoLiveReadinessReport } from "@/lib/ai-orchestration/go-live-readiness"
 import type { AgentPermissionMatrix } from "@/lib/ai-orchestration/agent-permissions"
 import type { WorkflowRecipeCatalog } from "@/lib/ai-orchestration/workflow-recipes"
+import type { WorkforceFoundationState } from "@/lib/ai-orchestration/workforce-memory"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -86,6 +87,7 @@ interface Props {
   goLiveReadiness: GoLiveReadinessReport
   agentPermissions: AgentPermissionMatrix
   workflowRecipes: WorkflowRecipeCatalog
+  workforceFoundation: WorkforceFoundationState
 }
 
 interface DashboardAgentSummary {
@@ -743,7 +745,7 @@ function OperationalMemoryPanel({ memory }: { memory: OperationalMemory }) {
             internal handoffs, and agent runs. It gives future agents context without creating another source of truth.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-7">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Events</p>
             <p className="text-2xl font-bold text-white">{memory.summary.total}</p>
@@ -759,6 +761,10 @@ function OperationalMemoryPanel({ memory }: { memory: OperationalMemory }) {
           <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
             <p className="text-xs text-blue-300">Learning</p>
             <p className="text-2xl font-bold text-blue-200">{memory.summary.learning}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/30 p-3">
+            <p className="text-xs text-cyan-300">Workforce</p>
+            <p className="text-2xl font-bold text-cyan-200">{memory.summary.workforce}</p>
           </div>
           <div className="rounded-xl border border-sky-800/40 bg-sky-950/30 p-3">
             <p className="text-xs text-sky-300">Briefings</p>
@@ -800,6 +806,165 @@ function OperationalMemoryPanel({ memory }: { memory: OperationalMemory }) {
           ))}
         </div>
       )}
+    </section>
+  )
+}
+
+function workforceStatusClass(status: string) {
+  if (status === "blocked" || status === "critical") return "border-red-800/40 bg-red-950/25 text-red-100"
+  if (status === "needs_review" || status === "queued" || status === "warning") return "border-amber-800/40 bg-amber-950/25 text-amber-100"
+  if (status === "done" || status === "completed" || status === "success") return "border-emerald-800/40 bg-emerald-950/25 text-emerald-100"
+  return "border-cyan-800/40 bg-cyan-950/20 text-cyan-100"
+}
+
+function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFoundationState }) {
+  return (
+    <section className="mb-8 rounded-2xl border border-cyan-900/40 bg-cyan-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-cyan-300">
+            Phase 2 Persistent Memory
+          </p>
+          <h2 className="text-2xl font-bold text-white">AI Workforce Data Foundation</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            Durable memory, event, task, and ingestion queues for supervised agents. This is infrastructure only:
+            it stores context and work items, but it does not send, publish, order, bid, or bill.
+          </p>
+        </div>
+        <span
+          className={cn(
+            "w-fit rounded-full border px-3 py-1 text-xs font-bold uppercase",
+            foundation.databaseReady
+              ? "border-emerald-800/50 bg-emerald-950/30 text-emerald-200"
+              : "border-amber-800/50 bg-amber-950/30 text-amber-100"
+          )}
+        >
+          {foundation.databaseReady ? "Database Ready" : "Migration Needed"}
+        </span>
+      </div>
+
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+        <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+          <p className="text-xs text-gray-500">Entities</p>
+          <p className="text-2xl font-bold text-white">{foundation.summary.entities}</p>
+        </div>
+        <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
+          <p className="text-xs text-blue-300">Memory</p>
+          <p className="text-2xl font-bold text-blue-200">{foundation.summary.activeMemory}</p>
+        </div>
+        <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
+          <p className="text-xs text-red-300">Critical</p>
+          <p className="text-2xl font-bold text-red-200">{foundation.summary.criticalMemory}</p>
+        </div>
+        <div className="rounded-xl border border-violet-800/40 bg-violet-950/30 p-3">
+          <p className="text-xs text-violet-300">Events 24h</p>
+          <p className="text-2xl font-bold text-violet-200">{foundation.summary.events24h}</p>
+        </div>
+        <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/30 p-3">
+          <p className="text-xs text-cyan-300">Tasks</p>
+          <p className="text-2xl font-bold text-cyan-200">{foundation.summary.openTasks}</p>
+        </div>
+        <div className="rounded-xl border border-orange-800/40 bg-orange-950/30 p-3">
+          <p className="text-xs text-orange-300">Blocked</p>
+          <p className="text-2xl font-bold text-orange-200">{foundation.summary.blockedTasks}</p>
+        </div>
+        <div className="rounded-xl border border-fuchsia-800/40 bg-fuchsia-950/30 p-3">
+          <p className="text-xs text-fuchsia-300">Ingest</p>
+          <p className="text-2xl font-bold text-fuchsia-200">{foundation.summary.ingestionQueued}</p>
+        </div>
+        <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3">
+          <p className="text-xs text-amber-300">Review</p>
+          <p className="text-2xl font-bold text-amber-200">{foundation.summary.ingestionNeedsReview}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <div className="rounded-xl border border-gray-800 bg-gray-950/50 p-4">
+          <h3 className="mb-3 text-lg font-bold text-white">Active Memory</h3>
+          {foundation.memoryItems.length === 0 ? (
+            <p className="text-sm leading-6 text-gray-400">No durable memory items are stored yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {foundation.memoryItems.slice(0, 4).map((item) => (
+                <article key={item.id} className={cn("rounded-lg border p-3", workforceStatusClass(item.impactLevel))}>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                      {formatStatus(item.memoryType)}
+                    </span>
+                    <span className="text-xs text-gray-400">{Math.round(item.confidence * 100)}% confidence</span>
+                  </div>
+                  <p className="font-semibold text-white">{item.title}</p>
+                  <p className="mt-1 text-sm leading-5 text-gray-300">{item.summary}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-950/50 p-4">
+          <h3 className="mb-3 text-lg font-bold text-white">Agent Task Queue</h3>
+          {foundation.tasks.length === 0 ? (
+            <p className="text-sm leading-6 text-gray-400">No persistent agent tasks are queued yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {foundation.tasks.slice(0, 4).map((task) => (
+                <article key={task.id} className={cn("rounded-lg border p-3", workforceStatusClass(task.status))}>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                      {formatStatus(task.status)}
+                    </span>
+                    <span className="text-xs text-gray-400">{task.agentId}</span>
+                  </div>
+                  <p className="font-semibold text-white">{task.title}</p>
+                  <p className="mt-1 text-sm leading-5 text-gray-300">{task.recommendedAction}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-950/50 p-4">
+          <h3 className="mb-3 text-lg font-bold text-white">Ingestion Queue</h3>
+          {foundation.ingestionQueue.length === 0 ? (
+            <p className="text-sm leading-6 text-gray-400">No sources are waiting in the persistent ingestion queue.</p>
+          ) : (
+            <div className="space-y-3">
+              {foundation.ingestionQueue.slice(0, 4).map((item) => (
+                <article key={item.id} className={cn("rounded-lg border p-3", workforceStatusClass(item.status))}>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                      {formatStatus(item.sourceType)}
+                    </span>
+                    <span className="text-xs text-gray-400">{formatRelativeTime(item.updatedAt)}</span>
+                  </div>
+                  <p className="font-semibold text-white">{item.title}</p>
+                  <p className="mt-1 text-sm leading-5 text-gray-300">{item.nextStep}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {foundation.sourceHealth.some((source) => source.status === "unavailable") && (
+        <div className="mt-4 rounded-xl border border-amber-800/40 bg-amber-950/20 p-4">
+          <p className="font-semibold text-amber-100">Phase 2 storage is not fully available yet.</p>
+          <p className="mt-1 text-sm leading-6 text-amber-100/80">
+            Apply migration 103 and confirm Supabase service-role env before relying on the persistent memory foundation.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-4 rounded-xl border border-gray-800 bg-black/20 p-4">
+        <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-gray-500">Safe Next Steps</p>
+        <div className="grid gap-2 md:grid-cols-3">
+          {foundation.safeNextSteps.map((step) => (
+            <p key={step} className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 text-sm leading-5 text-gray-300">
+              {step}
+            </p>
+          ))}
+        </div>
+      </div>
     </section>
   )
 }
@@ -2635,6 +2800,7 @@ export default function AgentsDashboard({
   goLiveReadiness,
   agentPermissions,
   workflowRecipes,
+  workforceFoundation,
 }: Props) {
   // Check if agent registry is initialized
   if (!agents || agents.length === 0) {
@@ -2648,6 +2814,7 @@ export default function AgentsDashboard({
           <AiCommandCenterSummaryPanel commandCenter={commandCenter} />
           <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
           <OperationalMemoryPanel memory={operationalMemory} />
+          <AiWorkforceFoundationPanel foundation={workforceFoundation} />
           <UserActionReadinessPanel readiness={userActionReadiness} />
           <AiWorkforceSmokePanel report={smokeReport} />
           <SourceFreshnessPanel report={sourceFreshness} />
@@ -2721,6 +2888,7 @@ export default function AgentsDashboard({
         <AiCommandCenterSummaryPanel commandCenter={commandCenter} />
         <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
         <OperationalMemoryPanel memory={operationalMemory} />
+        <AiWorkforceFoundationPanel foundation={workforceFoundation} />
         <UserActionReadinessPanel readiness={userActionReadiness} />
         <AiWorkforceSmokePanel report={smokeReport} />
         <SourceFreshnessPanel report={sourceFreshness} />

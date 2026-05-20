@@ -6,7 +6,8 @@ export type OperationalMemorySource =
   | "ai_autopilot_execution_runs"
   | "ai_operational_briefings"
   | "ci_outcome_events"
-  | "agent_run_log";
+  | "agent_run_log"
+  | "ai_workforce_event_log";
 
 export interface OperationalMemoryEvent {
   id: string;
@@ -27,6 +28,7 @@ export interface OperationalMemory {
     approvals: number;
     tasks: number;
     learning: number;
+    workforce: number;
     monitorEvents: number;
     failures: number;
   };
@@ -60,6 +62,7 @@ function summarize(events: OperationalMemoryEvent[]): OperationalMemory["summary
     approvals: events.filter((event) => event.source === "ai_autopilot_approval_events").length,
     tasks: events.filter((event) => event.source === "ai_autopilot_execution_runs").length,
     learning: events.filter((event) => event.source === "ci_outcome_events").length,
+    workforce: events.filter((event) => event.source === "ai_workforce_event_log").length,
     monitorEvents: events.filter((event) => event.source === "ai_operational_briefings").length,
     failures: events.filter((event) => event.severity === "critical").length,
   };
@@ -106,6 +109,7 @@ export async function getOperationalMemory(limit = 30): Promise<OperationalMemor
     briefings,
     learningEvents,
     agentRuns,
+    workforceEvents,
   ] = await Promise.all([
     readSource("unified_action_events", async () => {
       const { data, error } = await supabase
@@ -163,6 +167,16 @@ export async function getOperationalMemory(limit = 30): Promise<OperationalMemor
         .select("id,agent_name,status,actions_taken,error_message,run_at")
         .order("run_at", { ascending: false })
         .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    }, [] as Array<Record<string, any>>),
+
+    readSource("ai_workforce_event_log", async () => {
+      const { data, error } = await supabase
+        .from("ai_workforce_event_log")
+        .select("id,event_type,dashboard,actor_type,title,summary,route,severity,source,occurred_at")
+        .order("occurred_at", { ascending: false })
+        .limit(12);
       if (error) throw error;
       return data ?? [];
     }, [] as Array<Record<string, any>>),
@@ -249,6 +263,22 @@ export async function getOperationalMemory(limit = 30): Promise<OperationalMemor
       actor: "agent",
       severity: severityFromStatus(row.status),
       metadata: { actionsTaken: row.actions_taken },
+    });
+  }
+
+  for (const row of workforceEvents) {
+    events.push({
+      id: `workforce-event-${row.id}`,
+      source: "ai_workforce_event_log",
+      occurredAt: row.occurred_at,
+      title: row.title || `Workforce event ${row.event_type}`,
+      summary: row.summary || `${row.dashboard ?? "Dashboard"} recorded ${row.event_type}.`,
+      route: row.route || "/admin/agents",
+      actor: row.actor_type === "admin" || row.actor_type === "agent" || row.actor_type === "system"
+        ? row.actor_type
+        : "system",
+      severity: row.severity ?? "info",
+      metadata: { eventType: row.event_type, dashboard: row.dashboard, source: row.source },
     });
   }
 
