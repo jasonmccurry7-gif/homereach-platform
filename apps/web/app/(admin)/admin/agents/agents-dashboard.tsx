@@ -652,6 +652,8 @@ function summarizeVisibleActions(items: UnifiedActionItem[]): UnifiedActionCente
     needsReview: items.filter((item) => item.status === "needs_review").length,
     blocked: items.filter((item) => item.status === "blocked").length,
     humanApprovalRequired: items.filter((item) => item.requiresHumanApproval).length,
+    highRisk: items.filter((item) => item.policy?.riskLevel === "critical" || item.policy?.riskLevel === "high").length,
+    internalHandoffEligible: items.filter((item) => item.policy?.canQueueInternalHandoff).length,
   }
 }
 
@@ -2884,7 +2886,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
             {refreshing ? "Refreshing" : "Refresh Queue"}
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-8">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Actions</p>
             <p className="text-2xl font-bold text-white">{summary.total}</p>
@@ -2908,6 +2910,14 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
           <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3">
             <p className="text-xs text-amber-400">Human Gate</p>
             <p className="text-2xl font-bold text-amber-300">{summary.humanApprovalRequired}</p>
+          </div>
+          <div className="rounded-xl border border-violet-800/40 bg-violet-950/30 p-3">
+            <p className="text-xs text-violet-300">High Risk</p>
+            <p className="text-2xl font-bold text-violet-200">{summary.highRisk}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/30 p-3">
+            <p className="text-xs text-cyan-300">Handoff</p>
+            <p className="text-2xl font-bold text-cyan-200">{summary.internalHandoffEligible}</p>
           </div>
         </div>
       </div>

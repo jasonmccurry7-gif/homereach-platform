@@ -54,6 +54,8 @@ export interface UnifiedActionCenterSummary {
   needsReview: number;
   blocked: number;
   humanApprovalRequired: number;
+  highRisk: number;
+  internalHandoffEligible: number;
 }
 
 export interface UnifiedActionEventSummary {
@@ -94,6 +96,8 @@ function summarize(items: UnifiedActionItem[]): UnifiedActionCenterSummary {
     needsReview: items.filter((item) => item.status === "needs_review").length,
     blocked: items.filter((item) => item.status === "blocked").length,
     humanApprovalRequired: items.filter((item) => item.requiresHumanApproval).length,
+    highRisk: items.filter((item) => item.policy?.riskLevel === "critical" || item.policy?.riskLevel === "high").length,
+    internalHandoffEligible: items.filter((item) => item.policy?.canQueueInternalHandoff).length,
   };
 }
 
