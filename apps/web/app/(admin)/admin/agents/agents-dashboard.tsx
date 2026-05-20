@@ -382,13 +382,22 @@ function actionStatusClass(status: UnifiedActionItem["status"]) {
   return "bg-gray-800 text-gray-300 border-gray-700"
 }
 
-type ActionCenterFilter = "all" | "ai_workforce" | "human_gates" | "blocked" | "high_impact"
+type ActionCenterFilter =
+  | "all"
+  | "ai_workforce"
+  | "human_gates"
+  | "blocked"
+  | "high_impact"
+  | "high_risk"
+  | "internal_handoff"
 
 function matchesActionCenterFilter(item: UnifiedActionItem, filter: ActionCenterFilter) {
   if (filter === "all") return true
   if (filter === "ai_workforce") return item.source === "ai_workforce_task_queue"
   if (filter === "human_gates") return item.requiresHumanApproval
   if (filter === "blocked") return item.status === "blocked"
+  if (filter === "high_risk") return item.policy?.riskLevel === "critical" || item.policy?.riskLevel === "high"
+  if (filter === "internal_handoff") return Boolean(item.policy?.canQueueInternalHandoff)
   return item.urgency === "critical" || item.urgency === "high"
 }
 
@@ -2742,6 +2751,16 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
       id: "high_impact",
       label: "High Impact",
       count: items.filter((item) => item.urgency === "critical" || item.urgency === "high").length,
+    },
+    {
+      id: "high_risk",
+      label: "High Risk",
+      count: items.filter((item) => item.policy?.riskLevel === "critical" || item.policy?.riskLevel === "high").length,
+    },
+    {
+      id: "internal_handoff",
+      label: "Internal Handoff",
+      count: items.filter((item) => item.policy?.canQueueInternalHandoff).length,
     },
   ]
 
