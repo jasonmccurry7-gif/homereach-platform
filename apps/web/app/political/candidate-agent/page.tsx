@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { Bot, CalendarDays, FileText, MapPinned, ShieldCheck } from "lucide-react";
 import { CampaignReadinessChecklist } from "../_components/CampaignReadinessChecklist";
+import { CampaignStrategySelectionEngine } from "../_components/CampaignStrategySelectionEngine";
 import { PoliticalCandidateAgentChat } from "../_components/PoliticalCandidateAgentChat";
 import {
   buildCandidateLaunchReadiness,
   type CandidateLaunchReadiness,
 } from "@/lib/political/candidate-readiness";
 import { loadCandidateAgentDashboard } from "@/lib/political/candidate-launch-agent";
+import type { CandidateTargetId } from "@/lib/political/candidate-agent-recommendations";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "AI Campaign Agent - HomeReach Political" };
@@ -98,6 +100,27 @@ const PUBLIC_ACTON_READINESS: CandidateLaunchReadiness = {
 };
 
 type CandidateAgentDashboard = Awaited<ReturnType<typeof loadCandidateAgentDashboard>>;
+type CandidateAgentSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+const PUBLIC_CANDIDATE_IDS: CandidateTargetId[] = [
+  "amy-acton",
+  "vivek-ramaswamy",
+  "sherrod-brown",
+  "jon-husted",
+  "keith-faber",
+  "john-kulewicz",
+  "allison-russo",
+  "robert-sprague",
+  "ohio-democratic-party",
+  "ohio-republican-party",
+];
+
+function resolveInitialCandidateId(value: string | string[] | undefined): CandidateTargetId | undefined {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return PUBLIC_CANDIDATE_IDS.includes(candidate as CandidateTargetId)
+    ? (candidate as CandidateTargetId)
+    : undefined;
+}
 
 async function loadPublicAgentDashboard(): Promise<CandidateAgentDashboard | null> {
   try {
@@ -107,7 +130,16 @@ async function loadPublicAgentDashboard(): Promise<CandidateAgentDashboard | nul
   }
 }
 
-export default async function PoliticalCandidateAgentOverviewPage() {
+export default async function PoliticalCandidateAgentOverviewPage({
+  searchParams,
+}: {
+  searchParams?: CandidateAgentSearchParams;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const rawCandidateParam = Array.isArray(params.candidate)
+    ? params.candidate[0]
+    : params.candidate;
+  const initialCandidateId = resolveInitialCandidateId(params.candidate);
   const dashboard = await loadPublicAgentDashboard();
   const liveRows = dashboard?.schemaReady
     ? dashboard.rows.filter((row) => row.agent || row.latestPlan || row.latestResearch)
@@ -120,7 +152,7 @@ export default async function PoliticalCandidateAgentOverviewPage() {
         latestPlan: primaryReadinessRow.latestPlan,
       })
     : PUBLIC_ACTON_READINESS;
-  const primaryReadinessName = primaryReadinessRow?.candidate.candidateName ?? "Dr. Amy Acton";
+  const primaryReadinessName = primaryReadinessRow?.candidate.candidateName ?? "Prebuilt Ohio candidate agents";
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-10">
@@ -131,7 +163,7 @@ export default async function PoliticalCandidateAgentOverviewPage() {
             Chat with the Campaign AI Agent.
           </h1>
           <p className="mt-5 max-w-3xl text-base leading-7 text-slate-300">
-            The agent guides campaign plan creation, recommended mail drops, route and geography options, budget explanations, proposal next steps, and timeline planning. When a campaign is loaded, its recommendations stay campaign-specific.
+            The agent guides campaign plan creation, recommended mail drops, route and geography options, budget explanations, postcard creative review, proposal next steps, and timeline planning. Each prebuilt target has its own source-labeled profile and campaign-specific planning layer.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
@@ -160,6 +192,10 @@ export default async function PoliticalCandidateAgentOverviewPage() {
             <p>Human approval is required before proposal, creative, outreach, or production handoff.</p>
           </div>
         </aside>
+      </section>
+
+      <section className="mt-10">
+        <CampaignStrategySelectionEngine initialCandidateId={rawCandidateParam} />
       </section>
 
       <section className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -255,7 +291,7 @@ export default async function PoliticalCandidateAgentOverviewPage() {
       )}
 
       <section className="mt-10">
-        <PoliticalCandidateAgentChat />
+        <PoliticalCandidateAgentChat initialCandidateId={initialCandidateId} />
       </section>
     </main>
   );

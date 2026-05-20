@@ -714,7 +714,7 @@ function buildCustomerActionAudit(): PoliticalMailCommandCenterData["actionAudit
     { label: "Simulator tab", type: "route", target: "/political/simulator", status: "verified" },
     { label: "Analytics tab", type: "route", target: "/political/analytics", status: "verified" },
     { label: "Data tab", type: "route", target: "/political/data-sources", status: "verified" },
-    { label: "Start Campaign Mail Plan", type: "route", target: "/political/plan or signup redirect", status: "verified" },
+    { label: "Start Campaign Mail Plan", type: "route", target: "/political/plan", status: "verified" },
     { label: "Chat with Campaign AI Agent", type: "route", target: "/political/candidate-agent", status: "verified" },
     { label: "Open Maps", type: "route", target: "/political/maps", status: "verified" },
     { label: "Open Routes", type: "route", target: "/political/routes", status: "verified" },

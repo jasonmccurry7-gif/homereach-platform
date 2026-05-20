@@ -8,10 +8,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from "react";
-import type { ReviewRequest, ReviewStats, ReviewStatus, ReviewTriggerEvent } from "@/lib/review/types";
+import type { MessageType, ReviewRequest, ReviewStats, ReviewStatus, ReviewTriggerEvent } from "@/lib/review/types";
 import { ReviewEngine }        from "@/lib/review/review-engine";
 import { REVIEW_TIMING_RULES } from "@/lib/review/review-config";
 import { getAllMessageTypes, renderMessage } from "@/lib/review/message-templates";
+
+const DEFAULT_MESSAGE_TYPE: MessageType = "satisfaction_check";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -227,7 +229,7 @@ function FunnelBar({
 
 function MessagePreviewPanel() {
   const types = getAllMessageTypes();
-  const [selectedType, setSelectedType] = useState(types[0]);
+  const [selectedType, setSelectedType] = useState<MessageType>(types[0] ?? DEFAULT_MESSAGE_TYPE);
   const [channel, setChannel] = useState<"sms" | "email">("sms");
 
   const previewVars = {

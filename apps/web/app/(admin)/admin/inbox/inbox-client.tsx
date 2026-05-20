@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { AutomationMessage, AutomationMode, IntentType, LeadStatus } from "@/lib/engine/types";
-import { AutomationEngine } from "@/lib/engine/automation";
+import { AutomationEngine } from "@/lib/engine/automation-client";
 // MOCK_CONVERSATIONS removed — inbox now loads from real DB via /api/conversations
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -248,7 +248,7 @@ export function InboxClient() {
       "Not interested thanks",
       "How many homes is that again?",
     ];
-    const body = samples[Math.floor(Math.random() * samples.length)];
+    const body = samples[Math.floor(Math.random() * samples.length)] ?? "Yeah send me the link";
     const detected = AutomationEngine.detectIntent(body);
     const inboundMsg: AutomationMessage = {
       id: `msg-${Date.now()}-in`,
@@ -262,7 +262,7 @@ export function InboxClient() {
 
     let autoReply: AutomationMessage | null = null;
     if (active.automationMode === "auto") {
-      const firstName = active.leadName.split(" ")[0];
+      const firstName = active.leadName.split(" ")[0] ?? active.leadName;
       const responseBody = AutomationEngine.generateResponse(detected.type, active.channel, {
         firstName,
         city: active.city,
@@ -348,7 +348,7 @@ export function InboxClient() {
 
   function handleUseTemplate(intent: IntentType = "interested") {
     if (!active) return;
-    const firstName = active.leadName.split(" ")[0];
+    const firstName = active.leadName.split(" ")[0] ?? active.leadName;
     const body = AutomationEngine.generateResponse(intent, active.channel, {
       firstName,
       city: active.city,
@@ -518,7 +518,7 @@ export function InboxClient() {
               <button
                 type="button"
                 onClick={() => {
-                  const firstName = active.leadName.split(" ")[0];
+                  const firstName = active.leadName.split(" ")[0] ?? active.leadName;
                   setReplyText(
                     `Hi ${firstName}, here's your intake link to lock in the ${active.category} spot in ${active.city}: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/get-started\n\nTakes about 3 minutes! — HomeReach`
                   );

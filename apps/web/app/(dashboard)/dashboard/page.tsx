@@ -99,11 +99,12 @@ export default async function DashboardPage() {
 
   const t = metrics?.totals;
 
-  // ROI calculations
+  // ROI calculations. Use the charged order total when available; bundle price is only a display fallback.
   const estimatedRevenue = t ? t.totalEngagements * AVG_JOB_VALUE : 0;
-  // Use order.total (actual charged amount) — NOT bundle.price (display-only).
   const adSpend = activeCampaign?.order?.total
     ? Number(activeCampaign.order.total)
+    : activeCampaign?.bundle?.price
+    ? Number(activeCampaign.bundle.price)
     : 0;
   const roas =
     adSpend > 0 && estimatedRevenue > 0
@@ -159,7 +160,7 @@ export default async function DashboardPage() {
           <StatusBadge status={status} />
           {campaigns.length > 1 && (
             <Link
-              href="/dashboard/campaign"
+              href="/campaign"
               className="text-sm font-medium text-blue-600 hover:underline"
             >
               {campaigns.length} campaigns →
@@ -180,7 +181,7 @@ export default async function DashboardPage() {
             <p className="text-sm text-amber-700">
               Renew to keep your exclusive spot.{" "}
               <Link
-                href="/dashboard/billing"
+                href="/billing"
                 className="font-semibold underline"
               >
                 View billing →

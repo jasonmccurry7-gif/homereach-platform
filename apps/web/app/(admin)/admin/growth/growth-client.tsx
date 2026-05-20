@@ -56,6 +56,24 @@ type ChannelFormState = {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
+type GrowthBenchmarkNumbers = {
+  responseRateLow?: number;
+  responseRateHigh?: number;
+  volumeTarget?: number;
+  adSpendTargetCents?: number;
+  leadsLow?: number;
+  leadsHigh?: number;
+  leadsPerDayLow?: number;
+  leadsPerDayHigh?: number;
+};
+
+function getBenchmarkNumbers(
+  benchmarks: typeof CHANNEL_BENCHMARKS,
+  channel: GrowthChannel
+): GrowthBenchmarkNumbers {
+  return benchmarks[channel] as unknown as GrowthBenchmarkNumbers;
+}
+
 const CHANNELS: GrowthChannel[] = [
   "email",
   "sms",
@@ -221,7 +239,7 @@ export function GrowthClient({
       const totalDeals         = logs.reduce((s, l) => s + (l.dealsClosed ?? 0),          0);
       const activeDays         = logs.length;
 
-      const bm = benchmarks[ch] as Record<string, number>;
+      const bm = getBenchmarkNumbers(benchmarks, ch);
       const responseRate = ch === "facebook_ads"
         ? null
         : totalVolume > 0 ? totalResponses / totalVolume : null;
@@ -235,8 +253,8 @@ export function GrowthClient({
         ? (responseRate - expectedRateMid) / expectedRateMid : null;
 
       // Volume variance (volume sent vs target * active days)
-      const volumeTarget    = ch === "facebook_ads" ? bm.adSpendTargetCents / 100 * activeDays
-                                                     : bm.volumeTarget * activeDays;
+      const volumeTarget    = ch === "facebook_ads" ? ((bm.adSpendTargetCents ?? 0) / 100) * activeDays
+                                                     : (bm.volumeTarget ?? 0) * activeDays;
       const volumeActual    = ch === "facebook_ads" ? totalAdSpend : totalVolume;
       const volumeVariance  = volumeTarget > 0 ? (volumeActual - volumeTarget) / volumeTarget : null;
 
@@ -307,7 +325,7 @@ export function GrowthClient({
 
     for (const ch of CHANNELS) {
       const f  = forms[ch];
-      const bm = benchmarks[ch] as Record<string, number>;
+      const bm = getBenchmarkNumbers(benchmarks, ch);
       const meta = CHANNEL_META[ch];
       const vol  = ch === "facebook_ads" ? `$${f.adSpendDollars}` : String(f.volumeSent);
       const rate = (ch !== "facebook_ads" && f.volumeSent > 0)
@@ -315,7 +333,7 @@ export function GrowthClient({
         : "";
       const expected = ch === "facebook_ads"
         ? `target: $${(bm.adSpendTargetCents ?? 5000) / 100}/day`
-        : `target: ${(bm.responseRateLow * 100).toFixed(0)}–${(bm.responseRateHigh * 100).toFixed(0)}%`;
+        : `target: ${((bm.responseRateLow ?? 0) * 100).toFixed(0)}–${((bm.responseRateHigh ?? 0) * 100).toFixed(0)}%`;
       lines.push(`  ${meta.emoji} ${meta.label}`);
       lines.push(`     Sent: ${vol}  |  Responses: ${f.responses}${rate}  |  ${expected}`);
       if (f.conversationsStarted > 0) lines.push(`     Conversations: ${f.conversationsStarted}`);
@@ -344,14 +362,14 @@ export function GrowthClient({
     for (const s of channelSummary) {
       const meta = CHANNEL_META[s.channel];
       if (s.volumeVariance !== null && s.volumeVariance < -0.2) {
-        const bm = benchmarks[s.channel] as Record<string, number>;
+        const bm = getBenchmarkNumbers(benchmarks, s.channel);
         const target = s.channel === "facebook_ads"
           ? `$${(bm.adSpendTargetCents ?? 5000) / 100}/day`
-          : `${bm.volumeTarget}/day`;
+          : `${bm.volumeTarget ?? 0}/day`;
         lines.push(`  → ${meta.label}: increase volume to ${target} (currently running below target)`);
         adjustmentCount++;
       }
-      if (s.responseRate !== null && (s.responseRate < (benchmarks[s.channel] as Record<string, number>).responseRateLow)) {
+      if (s.responseRate !== null && (s.responseRate < (getBenchmarkNumbers(benchmarks, s.channel).responseRateLow ?? 0))) {
         lines.push(`  → ${meta.label}: response rate below floor — review messaging/targeting`);
         adjustmentCount++;
       }
@@ -484,7 +502,7 @@ export function GrowthClient({
           if (ch !== activeChannel) return null;
           const f    = forms[ch];
           const meta = CHANNEL_META[ch];
-          const bm   = benchmarks[ch] as Record<string, number>;
+          const bm   = getBenchmarkNumbers(benchmarks, ch);
           const ss   = saveStates[ch];
 
           return (
@@ -530,7 +548,7 @@ export function GrowthClient({
                       ? `Target: ${bm.leadsPerDayLow ?? 3}–${bm.leadsPerDayHigh ?? 10}/day`
                       : ch === "facebook_post"
                       ? `Target: ${bm.leadsLow ?? 5}–${bm.leadsHigh ?? 15}/day`
-                      : `Target rate: ${(bm.responseRateLow * 100).toFixed(0)}–${(bm.responseRateHigh * 100).toFixed(0)}%`}
+                      : `Target rate: ${((bm.responseRateLow ?? 0) * 100).toFixed(0)}–${((bm.responseRateHigh ?? 0) * 100).toFixed(0)}%`}
                   </span>
                 </div>
 
@@ -542,7 +560,7 @@ export function GrowthClient({
                       {f.volumeSent > 0
                         ? (
                           <span className={
-                            (f.responses / f.volumeSent) >= bm.responseRateLow
+                            (f.responses / f.volumeSent) >= (bm.responseRateLow ?? 0)
                               ? "text-green-400 font-semibold"
                               : "text-red-400 font-semibold"
                           }>
@@ -553,7 +571,7 @@ export function GrowthClient({
                       }
                     </div>
                     <span className="text-[10px] text-gray-600">
-                      Floor: {(bm.responseRateLow * 100).toFixed(0)}%
+                      Floor: {((bm.responseRateLow ?? 0) * 100).toFixed(0)}%
                     </span>
                   </div>
                 )}
@@ -649,10 +667,10 @@ export function GrowthClient({
             <tbody className="divide-y divide-gray-800">
               {channelSummary.map((s) => {
                 const meta  = CHANNEL_META[s.channel];
-                const bm    = benchmarks[s.channel] as Record<string, number>;
+                const bm    = getBenchmarkNumbers(benchmarks, s.channel);
                 const rateStr = s.responseRate !== null ? formatPct(s.responseRate) : "N/A";
                 const expStr  = s.responseRate !== null
-                  ? `${formatPct(bm.responseRateLow)}–${formatPct(bm.responseRateHigh)}`
+                  ? `${formatPct(bm.responseRateLow ?? 0)}–${formatPct(bm.responseRateHigh ?? 0)}`
                   : (s.channel === "facebook_ads" ? `${bm.leadsPerDayLow ?? 3}–${bm.leadsPerDayHigh ?? 10} leads/day` : "N/A");
                 const varStr  = s.variance !== null
                   ? `${s.variance >= 0 ? "+" : ""}${(s.variance * 100).toFixed(0)}%`

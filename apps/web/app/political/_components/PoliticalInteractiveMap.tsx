@@ -4571,6 +4571,14 @@ function PoliticalMap({
         )}
       </InteractiveMapSvg>
       <MapLegend hasSourcedPartisanColor={hasSourcedPartisanColor} />
+      {mode !== "city" && !hasOfficialDistrictLayer && (
+        <GeographyCoverageIndex
+          mode={mode}
+          units={Array.from(mapData.units.values())}
+          selectedPoliticalUnitIds={selectedPoliticalUnitIds}
+          onSelect={onSelect}
+        />
+      )}
       {mode === "city" && (
         <CityCoverageIndex
           markers={mapData.cityMarkers}
@@ -5331,6 +5339,72 @@ function MapLegend({ hasSourcedPartisanColor }: { hasSourcedPartisanColor: boole
           <LegendChip color="#64748b" label="No partisan inference shown" />
         </>
       )}
+    </div>
+  );
+}
+
+function GeographyCoverageIndex({
+  mode,
+  units,
+  selectedPoliticalUnitIds,
+  onSelect,
+}: {
+  mode: PoliticalMode;
+  units: PoliticalUnit[];
+  selectedPoliticalUnitIds: Set<string>;
+  onSelect: (id: string) => void;
+}) {
+  const sortedUnits = [...units].sort((a, b) => a.label.localeCompare(b.label));
+
+  return (
+    <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
+            {MODE_CONFIG[mode].label} Selection Index
+          </div>
+          <p className="mt-1 text-xs leading-5 text-slate-400">
+            Click a row here or a shape on the map. Each selection syncs the matching demo USPS route cells into the plan summary.
+          </p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-slate-950 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">
+          {sortedUnits.length} areas
+        </span>
+      </div>
+      <div className="mt-3 grid max-h-48 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+        {sortedUnits.map((unit) => {
+          const selected = selectedPoliticalUnitIds.has(unit.id);
+
+          return (
+            <button
+              key={unit.id}
+              type="button"
+              onClick={() => onSelect(unit.id)}
+              className={`rounded-lg border p-2 text-left transition ${
+                selected
+                  ? "border-amber-200 bg-amber-300 text-slate-950"
+                  : "border-white/10 bg-slate-950/80 text-slate-200 hover:border-blue-300/30 hover:bg-blue-500/10"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-black uppercase tracking-[0.1em]">
+                  {unit.label}
+                </span>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                  selected
+                    ? "border-slate-900/20 bg-slate-950/10 text-slate-900"
+                    : "border-white/10 bg-white/[0.04] text-slate-400"
+                }`}>
+                  {selected ? "Selected" : "Select"}
+                </span>
+              </span>
+              <span className={`mt-1 block text-xs leading-5 ${selected ? "text-slate-800" : "text-slate-400"}`}>
+                {formatNumber(unit.households)} estimated households · {unit.confidence}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

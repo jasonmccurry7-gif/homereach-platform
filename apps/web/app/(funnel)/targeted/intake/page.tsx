@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense as ReactSuspense } from "react";
+
+const Suspense = ReactSuspense as any;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Targeted Campaign Pricing Tiers
@@ -39,7 +41,10 @@ const PRICING_TIERS = [
   },
 ];
 
-function totalCents(tier: typeof PRICING_TIERS[0]) {
+type PricingTier = (typeof PRICING_TIERS)[number];
+const DEFAULT_PRICING_TIER = PRICING_TIERS[0]!;
+
+function totalCents(tier: PricingTier) {
   return tier.homes * tier.perPieceCents;
 }
 
@@ -53,7 +58,7 @@ function IntakeFormInner() {
   const token  = searchParams.get("token") ?? undefined;
   const leadId = searchParams.get("lead")  ?? undefined;
 
-  const [selectedTier, setSelectedTier] = useState<typeof PRICING_TIERS[0]>(PRICING_TIERS[0]);
+  const [selectedTier, setSelectedTier] = useState<PricingTier>(DEFAULT_PRICING_TIER);
   const [orgType, setOrgType] = useState<"business" | "nonprofit">("business");
   const [form, setForm] = useState({
     businessName:    "",

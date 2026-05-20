@@ -5,8 +5,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { HomeReachLogo } from "@/components/brand/home-reach-logo";
+import InventoryPurchasingPage from "../inventory-purchasing/page";
 
 // ─── data ────────────────────────────────────────────────────────────────────
 
@@ -152,11 +154,26 @@ export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
   const { slug } = await params;
+  if (
+    slug === "inventory-purchasing" ||
+    slug === "inventory-intelligence" ||
+    slug === "inventory" ||
+    slug === "purchasing" ||
+    slug === "find-my-savings"
+  ) {
+    return {
+      title: "Inventory Purchasing Dashboard & Supplier Savings",
+      description:
+        "Track recurring supplies, compare supplier pricing, and uncover supplier savings opportunities with HomeReach.",
+    };
+  }
+
   const parsed = parseSlug(slug);
   if (!parsed) return { title: "HomeReach" };
 
   const city = CITIES[parsed.city];
   const cat = CATEGORIES[parsed.category];
+  if (!city || !cat) return { title: "HomeReach" };
   const cityDisplay = city.display;
   const catDisplay = cat.display;
 
@@ -172,11 +189,29 @@ export default async function CityLandingPage(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
+
+  if (slug === "inventory-purchasing") {
+    return <InventoryPurchasingPage />;
+  }
+
+  if (
+    slug === "inventory-intelligence" ||
+    slug === "inventory" ||
+    slug === "purchasing"
+  ) {
+    redirect("/inventory-purchasing");
+  }
+
+  if (slug === "find-my-savings") {
+    redirect("/login?redirect=/operations-copilot");
+  }
+
   const parsed = parseSlug(slug);
   if (!parsed) notFound();
 
   const city = CITIES[parsed.city];
   const cat = CATEGORIES[parsed.category];
+  if (!city || !cat) notFound();
   const cityDisplay = city.display;
   const catDisplay = cat.display;
 
@@ -191,8 +226,7 @@ export default async function CityLandingPage(
       <header className="border-b border-gray-800/60 bg-gray-950/95 backdrop-blur sticky top-0 z-50">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white font-black text-xs">HR</div>
-            <span className="text-base font-bold text-white">HomeReach</span>
+            <HomeReachLogo tone="light" size="sm" />
           </Link>
           <Link href="/get-started" className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-500 transition-colors">
             Claim This Spot →
@@ -362,8 +396,7 @@ export default async function CityLandingPage(
       <footer className="border-t border-gray-800 bg-gray-900/40">
         <div className="mx-auto max-w-6xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white font-black text-xs">HR</div>
-            <span className="text-sm font-bold text-gray-300">HomeReach</span>
+            <HomeReachLogo tone="light" size="sm" />
           </Link>
           <div className="flex flex-wrap justify-center gap-5 text-sm text-gray-500">
             <Link href="/" className="hover:text-gray-300 transition-colors">Home</Link>

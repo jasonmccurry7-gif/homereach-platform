@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { WaitlistForm } from "./waitlist-form";
 import { db, cities } from "@homereach/db";
-import { orderBy } from "drizzle-orm";
 
 export const metadata: Metadata = {
   title: "Join the Waitlist — HomeReach",

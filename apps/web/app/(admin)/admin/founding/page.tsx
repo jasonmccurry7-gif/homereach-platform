@@ -52,17 +52,20 @@ export default async function AdminFoundingPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
+  const foundingSlots = (slots ?? []) as FoundingSlot[];
+  const foundingMemberships = (memberships ?? []) as FoundingMembership[];
+
   // Calculate stats
-  const totalMembers = memberships.length;
-  const totalLockedRevenue = (memberships as FoundingMembership[]).reduce(
+  const totalMembers = foundingMemberships.length;
+  const totalLockedRevenue = foundingMemberships.reduce(
     (sum, m) => sum + (m.locked_price_cents || 0),
     0
   );
-  const totalSlotsRemaining = (slots as FoundingSlot[]).reduce(
+  const totalSlotsRemaining = foundingSlots.reduce(
     (sum, s) => sum + (s.slots_remaining || 0),
     0
   );
-  const revenueAtRisk = (memberships as FoundingMembership[]).reduce(
+  const revenueAtRisk = foundingMemberships.reduce(
     (sum, m) => sum + ((m.standard_price_cents || 0) - (m.locked_price_cents || 0)),
     0
   );
@@ -101,8 +104,8 @@ export default async function AdminFoundingPage() {
       </div>
 
       <FoundingClient
-        initialSlots={slots as FoundingSlot[]}
-        initialMemberships={memberships as FoundingMembership[]}
+        initialSlots={foundingSlots}
+        initialMemberships={foundingMemberships}
       />
     </div>
   );

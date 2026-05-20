@@ -39,10 +39,10 @@ export default async function PoliticalLanding() {
                 Live candidate agent
               </p>
               <h2 className="mt-2 text-2xl font-black text-white">
-                Dr. Amy Acton for Ohio Governor is loaded and ready to chat.
+                Multi-candidate AI campaign agents are loaded and ready to chat.
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                The agent shows four compliant mail campaign paths with cities, households, drops, postcard cost, aggregate voter reach, and cost per voter. It uses public campaign/election context and aggregate geography only.
+                Pick from statewide candidates and Ohio party programs to review compliant mail campaign paths, counties, route clusters, postcard cost, aggregate reach, and complete front/back postcard concepts.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

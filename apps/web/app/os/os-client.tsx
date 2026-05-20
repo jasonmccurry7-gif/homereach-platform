@@ -223,7 +223,7 @@ export function OSClient({ stats }: { stats: OSStats }) {
     {
       id: "checkout",
       label: "Checkout",
-      href: "/spots",
+      href: "/admin/spots",
       bg: "from-teal-500 to-cyan-600",
       icon: Icons.cart,
       group: "sales",

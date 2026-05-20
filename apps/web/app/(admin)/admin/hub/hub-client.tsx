@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { CityAvailability, Reservation } from "@/lib/engine/types";
-import { AvailabilityEngine } from "@/lib/engine/availability";
-import { ReservationEngine }  from "@/lib/engine/reservation";
+import { AvailabilityEngine } from "@/lib/engine/availability-client";
+import { ReservationEngine }  from "@/lib/engine/reservation-client";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────

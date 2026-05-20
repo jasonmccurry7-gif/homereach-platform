@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { accountStartHref, PRODUCT_START_PATHS } from "@/lib/marketing/product-routes";
 
 export const metadata: Metadata = {
   title: "Own Your Local Neighborhoods — HomeReach Targeted Campaigns",
@@ -8,6 +9,8 @@ export const metadata: Metadata = {
 };
 
 export default function TargetedLandingPage() {
+  const startHref = accountStartHref(PRODUCT_START_PATHS.targetedCampaigns);
+
   return (
     <main className="min-h-screen bg-white">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -29,7 +32,7 @@ export default function TargetedLandingPage() {
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/targeted/start"
+              href={startHref}
               className="rounded-xl bg-white px-8 py-4 text-base font-bold text-blue-700 shadow-lg transition hover:shadow-xl hover:scale-105"
             >
               Get Started →
@@ -120,7 +123,7 @@ export default function TargetedLandingPage() {
           </ul>
 
           <Link
-            href="/targeted/start"
+            href={startHref}
             className="mt-8 block rounded-xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow transition hover:bg-blue-700"
           >
             Start My Campaign →
@@ -138,7 +141,7 @@ export default function TargetedLandingPage() {
           It takes 5 minutes to get started.
         </p>
         <Link
-          href="/targeted/start"
+          href={startHref}
           className="mt-6 inline-block rounded-xl bg-white px-8 py-4 text-base font-bold text-blue-700 shadow-lg transition hover:scale-105"
         >
           Get Started — $400/month →

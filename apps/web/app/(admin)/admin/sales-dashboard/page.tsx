@@ -1,14 +1,16 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import SalesDashboardClient from "./sales-dashboard-client";
+import type { Metadata } from "next";
+import { HomeReachOSShell } from "@/components/homereach-os/home-reach-os-shell";
+import { getHomeReachOSData } from "@/lib/homereach-os/queries";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Sales Intelligence — HomeReach Admin" };
+export const metadata: Metadata = {
+  title: "HomeReach OS - Sales Intelligence",
+  description: "Sales intelligence, pipeline, communications, and AI-assisted workflow dashboard",
+};
 
 export default async function SalesDashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?redirect=/admin/sales-dashboard");
-  return <SalesDashboardClient />;
+  const data = await getHomeReachOSData();
+
+  return <HomeReachOSShell data={data} mode="sales" />;
 }

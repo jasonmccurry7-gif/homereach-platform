@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HomeReachLogo } from "@/components/brand/home-reach-logo";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Funnel Layout
@@ -17,7 +18,7 @@ export default function FunnelLayout({
       <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-lg font-bold text-gray-900">HomeReach</span>
+            <HomeReachLogo size="sm" tone="dark" />
           </Link>
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <span className="hidden sm:flex items-center gap-1">

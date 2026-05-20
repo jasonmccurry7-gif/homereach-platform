@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { ChevronDown, Check, AlertCircle } from "lucide-react";
+import { accountStartHref } from "@/lib/marketing/product-routes";
 
 interface PropertyIntelligenceTier {
   id: string;
@@ -64,6 +65,9 @@ const CATEGORIES = [
   "Painting",
 ];
 
+const DEFAULT_CITY = CITIES[0] ?? "Austin, TX";
+const DEFAULT_CATEGORY = CATEGORIES[0] ?? "all";
+
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -92,7 +96,8 @@ function PriceCard({
   category: string;
 }) {
   const savings = standardPrice - foundingPrice;
-  const savingsPercentage = Math.round((savings / standardPrice) * 100);
+  const checkoutHref = `/intelligence/checkout?tier=${tier_number}&city=${encodeURIComponent(city)}&category=${encodeURIComponent(category)}`;
+  const claimHref = accountStartHref(checkoutHref);
 
   let borderColor = "border-gray-300";
   let badge = null;
@@ -191,7 +196,11 @@ function PriceCard({
 
       {/* CTA */}
       <Link
-        href={`/intelligence/checkout?tier=${tier_number}&city=${encodeURIComponent(city)}&category=${encodeURIComponent(category)}`}
+        href={isSoldOut ? "#" : claimHref}
+        aria-disabled={isSoldOut}
+        onClick={(event) => {
+          if (isSoldOut) event.preventDefault();
+        }}
         className={`w-full py-3 px-4 rounded-lg font-semibold text-center transition-colors ${
           isSoldOut
             ? "bg-gray-200 text-gray-600 cursor-not-allowed"
@@ -205,8 +214,8 @@ function PriceCard({
 }
 
 export function IntelligenceClient({ tiers, slots }: IntelligenceClientProps) {
-  const [selectedCity, setSelectedCity] = useState(CITIES[0]);
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCity, setSelectedCity] = useState(DEFAULT_CITY);
+  const [selectedCategory, setSelectedCategory] = useState(DEFAULT_CATEGORY);
 
   // Group tiers by tier number (t1, t2, t3)
   const tiersByNumber = useMemo(() => {

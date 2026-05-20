@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import type { MigratedClient, SpotType, ClientMigrationStatus } from "@/lib/engine/types";
 import { MIGRATION_STATUS_META, SPOT_TYPE_META } from "@/lib/admin/mock-clients";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,7 @@ const BLANK_FORM = {
   category:        "",
   spotType:        "front" as SpotType,
   monthlyPrice:    299,
-  contractStart:   new Date().toISOString().split("T")[0],
+  contractStart:   new Date().toISOString().slice(0, 10),
   remainingMonths: 12,
   migrationStatus: "legacy_active" as ClientMigrationStatus,
   notes:           "",
@@ -51,7 +51,7 @@ const CATEGORY_OPTIONS = [
 function contractEnd(startDate: string, remainingMonths: number): string {
   const d = new Date(startDate);
   d.setMonth(d.getMonth() + remainingMonths);
-  return d.toISOString().split("T")[0];
+  return d.toISOString().slice(0, 10);
 }
 
 function daysUntil(dateStr: string): number {
@@ -662,7 +662,7 @@ function MigrationStat({ icon, label, value, sub }: {
 function Field({
   label, required, children,
 }: {
-  label: string; required?: boolean; children: React.ReactElement;
+  label: string; required?: boolean; children: React.ReactElement<{ className?: string }>;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -679,6 +679,3 @@ function Field({
     </div>
   );
 }
-
-// Need React for cloneElement
-import React from "react";

@@ -3,16 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { loginHref, safeRelativeRedirect } from "@/lib/marketing/product-routes";
 import { createClient } from "@/lib/supabase/client";
 
-export function SignupForm() {
+interface SignupFormProps {
+  redirect?: string;
+}
+
+export function SignupForm({ redirect = "/dashboard" }: SignupFormProps) {
   const router = useRouter();
+  const nextPath = safeRelativeRedirect(redirect);
+  const signInHref = nextPath === "/dashboard" ? "/login" : loginHref(nextPath);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,55 +35,26 @@ export function SignupForm() {
     });
 
     if (authError) {
-      const msg =
-        authError.message.toLowerCase().includes("already registered")
-          ? "An account with this email already exists. Try signing in instead."
-          : authError.message;
-      setError(msg);
+      setError(authError.message);
       setLoading(false);
       return;
     }
 
-    // Show confirmation message — user needs to verify email
-    setSuccess(true);
-    setLoading(false);
-  }
-
-  if (success) {
-    return (
-      <div className="space-y-4 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-900/40 border border-green-700/40 text-2xl">
-          ✉️
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-white">Check your inbox</h2>
-          <p className="mt-1.5 text-sm text-gray-400">
-            We sent a confirmation email to{" "}
-            <span className="font-medium text-gray-300">{email}</span>.
-            Click the link to activate your account.
-          </p>
-        </div>
-        <Link
-          href="/login"
-          className="block text-sm text-blue-400 hover:text-blue-300 transition-colors"
-        >
-          Back to sign in →
-        </Link>
-      </div>
-    );
+    // Profile row is created via Supabase trigger on auth.users insert.
+    router.push(nextPath);
+    router.refresh();
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {error && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-800/50 bg-red-900/30 px-4 py-3 text-sm text-red-300">
-          <span className="mt-0.5 shrink-0 text-base leading-none">⚠️</span>
-          <span>{error}</span>
+        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
         </div>
       )}
 
       <div>
-        <label htmlFor="fullName" className="block text-sm font-medium text-gray-300 mb-1.5">
+        <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
           Full name
         </label>
         <input
@@ -85,16 +62,14 @@ export function SignupForm() {
           type="text"
           required
           autoComplete="name"
-          autoFocus
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
-          placeholder="Jane Smith"
-          className="block w-full rounded-lg border border-gray-700 bg-gray-800 px-3.5 py-2.5 text-sm text-white placeholder-gray-500 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1.5">
+        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
           Email address
         </label>
         <input
@@ -104,13 +79,12 @@ export function SignupForm() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          className="block w-full rounded-lg border border-gray-700 bg-gray-800 px-3.5 py-2.5 text-sm text-white placeholder-gray-500 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1.5">
+        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
           Password
         </label>
         <input
@@ -121,34 +95,24 @@ export function SignupForm() {
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="At least 8 characters"
-          className="block w-full rounded-lg border border-gray-700 bg-gray-800 px-3.5 py-2.5 text-sm text-white placeholder-gray-500 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
+        <p className="mt-1 text-xs text-gray-500">At least 8 characters</p>
       </div>
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-60 transition-colors"
+        className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
       >
-        {loading ? (
-          <span className="flex items-center justify-center gap-2">
-            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-            </svg>
-            Creating account…
-          </span>
-        ) : (
-          "Create account"
-        )}
+        {loading ? "Creating account…" : "Create account"}
       </button>
 
-      <p className="text-xs text-center text-gray-500">
-        By creating an account you agree to our{" "}
-        <Link href="/terms" className="text-blue-400 hover:underline">Terms</Link>
-        {" "}and{" "}
-        <Link href="/privacy" className="text-blue-400 hover:underline">Privacy Policy</Link>.
+      <p className="text-center text-sm text-gray-600">
+        Already have an account?{" "}
+        <Link href={signInHref} className="font-medium text-blue-600 hover:underline">
+          Sign in
+        </Link>
       </p>
     </form>
   );

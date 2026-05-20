@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense as ReactSuspense } from "react";
 import { useSearchParams } from "next/navigation";
+
+const Suspense = ReactSuspense as any;
 
 // ── Shared add-on catalog (same as spot checkout) ──────────────────────────────
 const ADDONS = [

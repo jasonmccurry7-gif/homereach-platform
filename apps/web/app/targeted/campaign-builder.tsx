@@ -498,11 +498,13 @@ function StepContactDetails({
   onChange,
   onSubmit,
   submitting,
+  error,
 }: {
   form: ContactForm;
   onChange: <K extends keyof ContactForm>(k: K, v: ContactForm[K]) => void;
   onSubmit: () => void;
   submitting: boolean;
+  error?: string | null;
 }) {
   function FormField({ label, name, type = "text", placeholder, required }: {
     label: string; name: keyof ContactForm; type?: string; placeholder: string; required?: boolean;
@@ -560,6 +562,12 @@ function StepContactDetails({
         <p>→ You'll receive a campaign summary and invoice via email.</p>
         <p>→ Once approved, your postcards go to print within 5–7 business days.</p>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-100">
+          {error}
+        </div>
+      )}
 
       <button
         onClick={onSubmit}
@@ -640,6 +648,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
   const [contact, setContact] = useState<ContactForm>(BLANK_CONTACT);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const selectedCity = cities.find((c) => c.id === selectedCityId) ?? null;
   const cityRoutes = useMemo(
@@ -668,7 +677,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
   function handleCampaignTypeSelect(type: "shared" | "targeted") {
     setCampaignType(type);
     if (type === "shared") {
-      window.location.href = "/get-started";
+      window.location.href = "/shared-postcards";
     } else {
       setStep(2);
     }
@@ -689,6 +698,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
 
   async function handleSubmit() {
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await fetch("/api/targeted-campaign", {
         method:  "POST",
@@ -710,12 +720,15 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("[CampaignBuilder] Submit failed:", err);
+        setSubmitError("We could not save this campaign request. Please review the fields and try again.");
+        return;
       }
+      setSubmitted(true);
     } catch (err) {
       console.error("[CampaignBuilder] Submit error:", err);
+      setSubmitError("Network error. Please check your connection and try again.");
     } finally {
       setSubmitting(false);
-      setSubmitted(true);
     }
   }
 
@@ -780,6 +793,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
               onChange={updateContact}
               onSubmit={handleSubmit}
               submitting={submitting}
+              error={submitError}
             />
           )}
         </div>

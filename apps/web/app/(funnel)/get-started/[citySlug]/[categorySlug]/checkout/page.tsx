@@ -27,15 +27,6 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
 
   if (!city || !category || !bundle) notFound();
 
-  // ── Phase 1: Resolve pricing based on founding eligibility ─────────────
-  // isFoundingOpen: true when this city's founding period is still open
-  // Pricing uses dedicated founding_price and standard_price columns (in cents)
-  const isFoundingOpen = city.foundingEligible ?? true;
-  const foundingPriceCents = (bundle.founding_price as number) ?? Math.round(Number(bundle.price) * 100);
-  const standardPriceCents = (bundle.standard_price as number) ?? Math.round(foundingPriceCents * 1.5);
-  const resolvedPriceCents = isFoundingOpen ? foundingPriceCents : standardPriceCents;
-  const pricingType: 'founding' | 'standard' = isFoundingOpen ? 'founding' : 'standard';
-
   // Check auth
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -91,77 +82,22 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
 
             <div className="border-t border-gray-100 pt-4">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-gray-900">Monthly total</span>
-                <div className="text-right">
-                  {isFoundingOpen ? (
-                    <>
-                      <span className="text-sm text-gray-400 line-through">
-                        ${(standardPriceCents / 100).toLocaleString()}
-                      </span>
-                      <br />
-                      <span className="text-2xl font-bold text-blue-600">
-                        ${(resolvedPriceCents / 100).toLocaleString()}
-                      </span>
-                      <span className="text-sm text-gray-400">/mo</span>
-                      <br />
-                      <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                        Founding Member Rate
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-2xl font-bold text-gray-900">
-                        ${(resolvedPriceCents / 100).toLocaleString()}
-                      </span>
-                      <span className="text-sm text-gray-400">/mo</span>
-                    </>
-                  )}
-                </div>
+                <span className="font-bold text-gray-900">Total</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  ${Number(bundle.price).toLocaleString()}
+                </span>
               </div>
-              <p className="mt-0.5 text-right text-xs text-gray-400">
-                Billed monthly · Price locked in for life
-              </p>
-              {isFoundingOpen && (
-                <p className="mt-3 text-right text-xs text-gray-600">
-                  Founding Member Rate — locked in for life. Once this city fills, all new advertisers pay standard pricing.
-                </p>
-              )}
+              <p className="mt-0.5 text-right text-xs text-gray-400">One-time payment</p>
             </div>
 
-            {/* Exclusivity reinforcement */}
-            <div className="mt-4 rounded-xl bg-blue-50 border border-blue-100 px-3 py-2.5">
-              <p className="text-xs font-semibold text-blue-800">
-                🔒 Your spot is category-exclusive
-              </p>
-              <p className="mt-0.5 text-xs text-blue-700 leading-snug">
-                No other {category.name.toLowerCase()} business can advertise in {city.name}
-                on this mailer while you&apos;re active.
-              </p>
-            </div>
-
-            {/* What happens next */}
-            <div className="mt-4 border-t border-gray-100 pt-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider">What happens next</p>
-              {[
-                { icon: "💳", text: "Pay securely via Stripe" },
-                { icon: "🎨", text: "We design your postcard (or use yours)" },
-                { icon: "📬", text: "Our team will reach out to schedule your campaign" },
-                { icon: "📊", text: "Track results in your dashboard" },
-              ].map((s) => (
-                <div key={s.text} className="flex items-start gap-2">
-                  <span className="text-sm shrink-0">{s.icon}</span>
-                  <p className="text-xs text-gray-500">{s.text}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Security trust signals */}
-            <div className="mt-4 space-y-1 border-t border-gray-100 pt-4">
+            {/* Trust signals */}
+            <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-4">
               {[
                 "🔒 Secure Stripe checkout",
-                "🏦 Card details never stored here",
+                "🏦 We never store your card",
+                "📬 Campaign launches in 10–14 days",
               ].map((s) => (
-                <p key={s} className="text-xs text-gray-400">{s}</p>
+                <p key={s} className="text-xs text-gray-500">{s}</p>
               ))}
             </div>
           </div>
@@ -172,10 +108,7 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
           <CheckoutForm
             bundleId={bundleId}
             bundleName={bundle.name}
-            resolvedPriceCents={resolvedPriceCents}
-            pricingType={pricingType}
-            isFoundingOpen={isFoundingOpen}
-            standardPriceCents={standardPriceCents}
+            bundlePrice={bundle.price}
             cityId={city.id}
             cityName={city.name}
             categoryId={category.id}

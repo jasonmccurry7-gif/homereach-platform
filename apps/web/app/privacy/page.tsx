@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { formatPhoneForDisplay, getOwnerIdentity } from "@homereach/services/outreach";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — HomeReach",
@@ -6,6 +7,7 @@ export const metadata: Metadata = {
 };
 
 export default function PrivacyPolicyPage() {
+  const owner = getOwnerIdentity();
   return (
     <div className="mx-auto max-w-3xl px-4 py-16">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
@@ -97,8 +99,8 @@ export default function PrivacyPolicyPage() {
           <p>If you have questions about this Privacy Policy or how we handle your data, contact us at:</p>
           <div className="mt-2">
             <p><strong>HomeReach</strong></p>
-            <p>Email: <a href="mailto:jason@home-reach.com" className="text-blue-600 hover:underline">jason@home-reach.com</a></p>
-            <p>Phone: (330) 304-4916</p>
+            <p>Email: <a href={`mailto:${owner.domainEmail}`} className="text-blue-600 hover:underline">{owner.domainEmail}</a></p>
+            <p>Phone: {formatPhoneForDisplay(owner.cellPhone)}</p>
             <p>Website: <a href="https://home-reach.com" className="text-blue-600 hover:underline">home-reach.com</a></p>
           </div>
         </section>

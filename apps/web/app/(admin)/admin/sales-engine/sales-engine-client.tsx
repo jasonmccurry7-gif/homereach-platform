@@ -14,9 +14,9 @@
 import { useState } from "react";
 import type { SalesLead, SalesEngineStats, HotLeadAlert, MessageRole } from "@/lib/sales-engine/types";
 import { getTemperatureMeta }   from "@/lib/sales-engine/classifier";
-import { getEscalationMeta, getControlMeta } from "@/lib/sales-engine/escalation-engine";
+import { getEscalationMeta, getControlMeta } from "@/lib/sales-engine/escalation-client";
 import { FOLLOW_UP_SCHEDULE }   from "@/lib/sales-engine/followup-engine";
-import { ALERT_CONFIG }         from "@/lib/sales-engine/alert-engine";
+import { ALERT_CONFIG }         from "@/lib/sales-engine/alert-config-client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props

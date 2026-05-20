@@ -67,6 +67,9 @@ const FB_CITIES = [
 // FB Post Templates
 // ─────────────────────────────────────────────────────────────────────────────
 
+const DEFAULT_CATEGORY = CATEGORIES[0] ?? "Roofing";
+const DEFAULT_FB_CITY = FB_CITIES[0] ?? "Austin, TX";
+
 function getPostsForCityAndCategory(city: string, category: string, seed: number) {
   const questionHooks = [
     `Would 2,500 homeowners in ${city} seeing your ${category} business every month help you grow?\n\nWe mail to verified homeowners — exclusive placement, one business per category.\n\nComment "info" and I'll send details. 👇`,
@@ -95,9 +98,9 @@ function getPostsForCityAndCategory(city: string, category: string, seed: number
   const oi = seed % opportunityPosts.length;
 
   return {
-    question: questionHooks[qi],
-    scarcity: scarcityPosts[si],
-    opportunity: opportunityPosts[oi],
+    question: questionHooks[qi] ?? questionHooks[0] ?? "",
+    scarcity: scarcityPosts[si] ?? scarcityPosts[0] ?? "",
+    opportunity: opportunityPosts[oi] ?? opportunityPosts[0] ?? "",
   };
 }
 
@@ -330,21 +333,21 @@ export function TrafficEngineClient({ cities }: Props) {
   const [tab, setTab] = useState<Tab>("fb-engine");
 
   // FB Engine state
-  const [fbCity, setFbCity] = useState(FB_CITIES[0]);
-  const [fbCategory, setFbCategory] = useState(CATEGORIES[0]);
+  const [fbCity, setFbCity] = useState(DEFAULT_FB_CITY);
+  const [fbCategory, setFbCategory] = useState(DEFAULT_CATEGORY);
   const [fbSeed, setFbSeed] = useState(0);
   const posts = getPostsForCityAndCategory(fbCity, fbCategory, fbSeed);
 
   // Outbound state
-  const [obCity, setObCity] = useState(FB_CITIES[0]);
-  const [obCategory, setObCategory] = useState(CATEGORIES[0]);
+  const [obCity, setObCity] = useState(DEFAULT_FB_CITY);
+  const [obCategory, setObCategory] = useState(DEFAULT_CATEGORY);
   const [obBusinessName, setObBusinessName] = useState("Acme Roofing");
   const [obTouch, setObTouch] = useState<"email1" | "sms1" | "email2" | "sms2" | "email3">("email1");
   const sequence = getOutboundSequence(obCity, obCategory, obBusinessName);
 
   // DM Scripts state
-  const [dmCity, setDmCity] = useState(FB_CITIES[0]);
-  const [dmCategory, setDmCategory] = useState(CATEGORIES[0]);
+  const [dmCity, setDmCity] = useState(DEFAULT_FB_CITY);
+  const [dmCategory, setDmCategory] = useState(DEFAULT_CATEGORY);
 
   const TABS: { id: Tab; label: string; emoji: string }[] = [
     { id: "fb-engine", label: "FB Growth Engine", emoji: "📱" },

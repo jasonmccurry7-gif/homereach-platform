@@ -9,9 +9,12 @@
 //   ?orgName=...&contactName=...&email=...&phone=...&city=...
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, Suspense } from "react";
+import { useState, Suspense as ReactSuspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { HomeReachLogo } from "@/components/brand/home-reach-logo";
+
+const Suspense = ReactSuspense as any;
 
 function NonprofitForm() {
   const searchParams = useSearchParams();
@@ -85,10 +88,7 @@ function NonprofitForm() {
         {/* Header */}
         <div className="mb-8 text-center">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-xs">
-              HR
-            </div>
-            <span className="font-bold text-gray-900">HomeReach</span>
+            <HomeReachLogo size="sm" tone="dark" />
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
             Register Your Nonprofit

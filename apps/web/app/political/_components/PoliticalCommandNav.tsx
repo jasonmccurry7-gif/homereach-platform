@@ -7,6 +7,7 @@ import { Bot, ChevronRight, MapPinned } from "lucide-react";
 const NAV = [
   { label: "Overview", href: "/political" },
   { label: "AI Agent", href: "/political/candidate-agent" },
+  { label: "Deck", href: "/political/presentation" },
   { label: "Plan", href: "/political/plan" },
   { label: "Maps", href: "/political/maps" },
   { label: "Pricing", href: "/political/pricing" },
