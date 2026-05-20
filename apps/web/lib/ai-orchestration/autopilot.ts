@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { getUnifiedActionCenter, type UnifiedActionItem } from "./action-center";
 import { evaluateAiActionPolicy } from "./ai-action-policy";
+import { rememberAutopilotWorkflowEvent } from "./workforce-human-events";
 
 export type AutopilotRiskLevel = "critical" | "high" | "medium" | "low";
 export type AutopilotApprovalStatus = "pending" | "approved" | "rejected" | "canceled" | "expired" | "executed";
@@ -484,6 +485,23 @@ export async function decideAutopilotApproval(input: {
 
     if (eventError) throw eventError;
 
+    await rememberAutopilotWorkflowEvent({
+      sourceKey: existing.source_key,
+      requestId: existing.id,
+      eventType,
+      actorId: input.actorId ?? null,
+      note,
+      dashboard: existing.dashboard,
+      title: `Autopilot ${eventType}`,
+      metadata: {
+        priorStatus: existing.approval_status,
+        decision: input.decision,
+        riskLevel: existing.risk_level,
+        source: existing.source,
+        executorStatus: update.executor_status ?? null,
+      },
+    });
+
     return {
       ok: true,
       requestId,
@@ -547,6 +565,22 @@ export async function queueAutopilotInternalHandoff(input: {
         metadata: {
           reason: blockedReason,
           executionEnabled: false,
+        },
+      });
+
+      await rememberAutopilotWorkflowEvent({
+        sourceKey: request.source_key,
+        requestId: request.id,
+        eventType: "execution_blocked",
+        actorId: input.actorId ?? null,
+        note,
+        dashboard: request.dashboard,
+        route: request.route,
+        title: request.title,
+        metadata: {
+          reason: blockedReason,
+          riskLevel: request.risk_level,
+          source: request.source,
         },
       });
 
@@ -621,6 +655,23 @@ export async function queueAutopilotInternalHandoff(input: {
     });
 
     if (eventError) throw eventError;
+
+    await rememberAutopilotWorkflowEvent({
+      sourceKey: request.source_key,
+      requestId: request.id,
+      eventType: "execution_queued",
+      actorId: input.actorId ?? null,
+      note,
+      dashboard: request.dashboard,
+      route: request.route,
+      title: request.title,
+      metadata: {
+        executionRunId: run.id,
+        executionStatus: run.execution_status,
+        source: request.source,
+        executorStatus: "handoff_queued",
+      },
+    });
 
     return {
       ok: true,
@@ -763,6 +814,24 @@ export async function createAutopilotInternalTask(input: {
 
     if (eventError) throw eventError;
 
+    await rememberAutopilotWorkflowEvent({
+      sourceKey: request.source_key,
+      requestId: request.id,
+      eventType: "internal_task_created",
+      actorId: input.actorId ?? null,
+      note,
+      dashboard: request.dashboard,
+      route: request.route,
+      title: request.title,
+      metadata: {
+        executionRunId: run.id,
+        internalTaskId: task.id,
+        dueAt,
+        source: request.source,
+        executorStatus: "task_created",
+      },
+    });
+
     return {
       ok: true,
       requestId,
@@ -846,6 +915,20 @@ export async function completeAutopilotInternalTask(input: {
     });
 
     if (eventError) throw eventError;
+
+    await rememberAutopilotWorkflowEvent({
+      sourceKey: run.source_key,
+      requestId: run.request_id,
+      eventType: "execution_completed",
+      actorId: input.actorId ?? null,
+      note,
+      title: "Autopilot internal task completed",
+      metadata: {
+        executionRunId: run.id,
+        internalTaskId: taskId,
+        externalWorkflowTouched: false,
+      },
+    });
 
     return {
       ok: true,

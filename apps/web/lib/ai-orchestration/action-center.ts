@@ -2,6 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { getDashboardAgentMatrix } from "./dashboard-agents";
 import { getSourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
+import { rememberActionCenterMutation } from "./workforce-human-events";
 
 export type UnifiedActionUrgency = "critical" | "high" | "medium" | "low";
 export type UnifiedActionStatus = "needs_review" | "blocked" | "ready" | "watch";
@@ -672,6 +673,16 @@ export async function updateUnifiedActionItem(input: UnifiedActionMutationInput)
     });
 
     if (eventError) throw eventError;
+
+    await rememberActionCenterMutation({
+      sourceKey,
+      operation: input.operation,
+      actorId: input.actorId ?? null,
+      note,
+      priorState: existing.state,
+      nextState: update.state ?? existing.state,
+      snoozeHours: input.operation === "snooze" ? input.snoozeHours ?? 24 : null,
+    });
 
     return {
       ok: true,

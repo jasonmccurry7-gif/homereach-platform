@@ -6,6 +6,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ciFlagGate, requireAgent } from "@/lib/content-intel/guards";
 import { applyOutcome } from "@/lib/content-intel/learning";
+import { rememberLearningFeedback } from "@/lib/ai-orchestration/workforce-human-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,14 @@ export async function POST(req: NextRequest) {
     outcome: outcome as any,
     supa: auth.supa,
   }).catch((err) => console.warn("[content-intel] learning update failed:", err));
+
+  rememberLearningFeedback({
+    itemType,
+    itemId,
+    outcome,
+    actorId: auth.agentId,
+    notes: notes ?? null,
+  }).catch((err) => console.warn("[content-intel] workforce memory update failed:", err));
 
   return NextResponse.json({ ok: true, eventId: (event as any).id });
 }

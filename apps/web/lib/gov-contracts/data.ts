@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { rememberGovContractAuditEvent } from "@/lib/ai-orchestration/workforce-human-events";
 import { matchesGovContractFocus } from "./focus";
 import { buildSampleGovContractsDashboard, SAMPLE_GOV_CONTRACT_OPPORTUNITIES } from "./sample-data";
 import { recommendedActionFor, scoreGovContractOpportunity } from "./scoring";
@@ -254,6 +255,7 @@ export async function logGovContractAuditEvent(input: GovContractAuditEventInput
       metadata: input.metadata ?? {},
     });
     if (error) throw error;
+    await rememberGovContractAuditEvent(input);
     return { ok: true, persisted: true };
   } catch {
     return { ok: true, persisted: false };
