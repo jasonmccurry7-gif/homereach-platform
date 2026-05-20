@@ -65,6 +65,8 @@ export interface WorkforceTaskQueueItem {
   approvalRequestId?: string | null;
   lastExecutionPlan?: WorkforceTaskExecutionPlan["plan"] | null;
   lastExecutionPlanAt?: string | null;
+  lastDryRunPreview?: WorkforceTaskDryRunPreview["preview"] | null;
+  lastDryRunPreviewAt?: string | null;
 }
 
 export interface WorkforceIngestionQueueItem {
@@ -223,6 +225,33 @@ export interface WorkforceTaskApprovalHandoff {
   approvalStatus: string;
   executorStatus: string;
   externalWorkflowTouched: false;
+  message: string;
+}
+
+export interface DryRunWorkforceTaskInput {
+  taskId?: string;
+  taskKey?: string;
+  actorId?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkforceTaskDryRunPreview {
+  taskId: string;
+  taskKey: string;
+  approvalRequestId: string;
+  approvalStatus: string;
+  executorStatus: string;
+  externalWorkflowTouched: false;
+  preview: {
+    mode: "dry_run";
+    externalWorkflowTouched: false;
+    wouldDo: string[];
+    wouldNotDo: string[];
+    requiredBeforeExecution: string[];
+    rollbackNote: string;
+    nextHumanAction: string;
+  };
   message: string;
 }
 
@@ -416,6 +445,118 @@ function parseExecutionPlan(metadata: unknown): {
   };
 }
 
+function parseDryRunPreview(metadata: unknown): {
+  lastDryRunPreview: WorkforceTaskQueueItem["lastDryRunPreview"];
+  lastDryRunPreviewAt: string | null;
+} {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return { lastDryRunPreview: null, lastDryRunPreviewAt: null };
+  }
+
+  const record = metadata as Record<string, unknown>;
+  const preview = record.lastDryRunPreview;
+  if (!preview || typeof preview !== "object" || Array.isArray(preview)) {
+    return { lastDryRunPreview: null, lastDryRunPreviewAt: null };
+  }
+
+  const previewRecord = preview as Record<string, unknown>;
+  const wouldDo = Array.isArray(previewRecord.wouldDo)
+    ? previewRecord.wouldDo.map(String).filter(Boolean).slice(0, 8)
+    : [];
+  const wouldNotDo = Array.isArray(previewRecord.wouldNotDo)
+    ? previewRecord.wouldNotDo.map(String).filter(Boolean).slice(0, 8)
+    : [];
+  const requiredBeforeExecution = Array.isArray(previewRecord.requiredBeforeExecution)
+    ? previewRecord.requiredBeforeExecution.map(String).filter(Boolean).slice(0, 8)
+    : [];
+
+  if (wouldDo.length === 0 && wouldNotDo.length === 0 && requiredBeforeExecution.length === 0) {
+    return { lastDryRunPreview: null, lastDryRunPreviewAt: null };
+  }
+
+  return {
+    lastDryRunPreview: {
+      mode: "dry_run",
+      externalWorkflowTouched: false,
+      wouldDo,
+      wouldNotDo,
+      requiredBeforeExecution,
+      rollbackNote: String(previewRecord.rollbackNote ?? "No external workflow was touched."),
+      nextHumanAction: String(previewRecord.nextHumanAction ?? "Review approval state before any handoff."),
+    },
+    lastDryRunPreviewAt: typeof record.lastDryRunPreviewAt === "string" ? record.lastDryRunPreviewAt : null,
+  };
+}
+
+function dryRunForApproval(input: {
+  taskTitle: string;
+  requestedAction: string;
+  dashboard: string;
+  approvalStatus: string;
+  executorStatus: string;
+  guardrailSummary?: string | null;
+  cannotExecuteReason?: string | null;
+  plan?: WorkforceTaskExecutionPlan["plan"] | null;
+}): WorkforceTaskDryRunPreview["preview"] {
+  const normalizedDashboard = input.dashboard.toLowerCase();
+  const wouldDo = [
+    `Read approval request status: ${input.approvalStatus}.`,
+    `Read executor status: ${input.executorStatus}.`,
+    `Use approved plan context for: ${input.taskTitle}.`,
+    `Prepare an internal-only handoff summary for: ${input.requestedAction}.`,
+  ];
+
+  if (input.approvalStatus === "approved") {
+    wouldDo.push("Eligible next step after separate admin action: queue a safe internal handoff record.");
+    if (["handoff_queued", "task_ready", "task_created"].includes(input.executorStatus)) {
+      wouldDo.push("Existing safe handoff state would be respected before creating any duplicate internal task.");
+    }
+  } else {
+    wouldDo.push("Stop before handoff because the approval request is not approved.");
+  }
+
+  const wouldNotDo = [
+    "Would not send SMS, email, DMs, or political outreach.",
+    "Would not publish pages, posts, ads, creative, or campaign content.",
+    "Would not place supplier orders, submit government bids, approve pricing, or make certification claims.",
+    "Would not create checkout/payment links, change Stripe records, or launch campaigns.",
+  ];
+
+  const requiredBeforeExecution = [
+    "Human approval request must be approved.",
+    "Executor status must be safe for internal handoff.",
+    "Existing source workflow must remain the system of record.",
+    "Admin must explicitly queue handoff or create an internal task from the approval panel.",
+  ];
+
+  if (normalizedDashboard.includes("political")) {
+    requiredBeforeExecution.push("Political outreach, creative, proposal, and launch actions require separate campaign/legal approval.");
+  }
+  if (normalizedDashboard.includes("gov") || normalizedDashboard.includes("contract")) {
+    requiredBeforeExecution.push("Bid, pricing, certification, subcontractor, and submission actions require explicit human approval.");
+  }
+  if (normalizedDashboard.includes("procurement") || normalizedDashboard.includes("inventory")) {
+    requiredBeforeExecution.push("Purchase/order actions require owner approval and a connected safe supplier workflow.");
+  }
+
+  const planGates = input.plan?.humanApprovalGates?.slice(0, 3) ?? [];
+  for (const gate of planGates) {
+    requiredBeforeExecution.push(`Plan gate: ${gate}`);
+  }
+
+  return {
+    mode: "dry_run",
+    externalWorkflowTouched: false,
+    wouldDo: wouldDo.slice(0, 8),
+    wouldNotDo,
+    requiredBeforeExecution: requiredBeforeExecution.slice(0, 8),
+    rollbackNote: "No external workflow is touched by this dry run. Removing the preview only clears internal metadata and audit context.",
+    nextHumanAction: input.approvalStatus === "approved"
+      ? "Review the approval panel and decide whether to queue a safe internal handoff."
+      : "Review and approve or reject the pending approval request before any handoff is possible.",
+  };
+}
+
 async function readCount(
   supabase: ReturnType<typeof createServiceClient>,
   table: string,
@@ -593,6 +734,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
 
   const tasks: WorkforceTaskQueueItem[] = taskRows.map((row) => {
     const plan = parseExecutionPlan(row.metadata);
+    const dryRun = parseDryRunPreview(row.metadata);
     return {
       id: String(row.id),
       taskKey: String(row.task_key),
@@ -609,6 +751,8 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       approvalRequestId: row.approval_request_id ?? null,
       lastExecutionPlan: plan.lastExecutionPlan,
       lastExecutionPlanAt: plan.lastExecutionPlanAt,
+      lastDryRunPreview: dryRun.lastDryRunPreview,
+      lastDryRunPreviewAt: dryRun.lastDryRunPreviewAt,
     };
   });
 
@@ -633,6 +777,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       : "Apply migration 103 before relying on persistent AI Workforce memory.",
     "Use Plan Only before execution so admins can review steps, gates, and prohibited actions.",
     "Send reviewed plans into the existing approval queue before creating any internal follow-up task.",
+    "Use Dry Run Preview to inspect what would happen after approval before queuing a safe internal handoff.",
     "Use ingestion queue statuses for review and approval before any source analysis becomes autonomous.",
   ];
 
@@ -1225,5 +1370,163 @@ export async function sendAiWorkforceTaskToApproval(input: SendWorkforceTaskToAp
     executorStatus: approvalRequest.executor_status,
     externalWorkflowTouched: false,
     message: "Task sent to human approval queue. No external workflow was executed.",
+  };
+}
+
+export async function dryRunAiWorkforceTaskExecution(input: DryRunWorkforceTaskInput): Promise<WorkforceTaskDryRunPreview> {
+  if (!input.taskId && !input.taskKey) {
+    throw new Error("taskId or taskKey is required.");
+  }
+
+  const supabase = createServiceClient();
+  let query = supabase
+    .from("ai_workforce_task_queue")
+    .select("id,task_key,agent_id,dashboard,title,description,recommended_action,route,priority,status,requires_human_approval,approval_request_id,metadata")
+    .limit(1);
+
+  query = input.taskId ? query.eq("id", input.taskId) : query.eq("task_key", input.taskKey);
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("AI Workforce task was not found.");
+
+  const taskStatus = (data.status ?? "queued") as WorkforceQueueStatus;
+  if (["done", "rejected", "archived"].includes(taskStatus)) {
+    throw new Error("Completed, rejected, or archived tasks cannot be dry-run previewed.");
+  }
+  if (!data.approval_request_id) {
+    throw new Error("Send this planned task to the approval queue before running an execution preview.");
+  }
+
+  const { data: approval, error: approvalError } = await supabase
+    .from("ai_autopilot_approval_requests")
+    .select("id,source_key,source,dashboard,route,title,requested_action,expected_impact,risk_level,approval_status,executor_status,guardrail_summary,cannot_execute_reason,source_snapshot")
+    .eq("id", data.approval_request_id)
+    .maybeSingle();
+
+  if (approvalError) throw approvalError;
+  if (!approval) throw new Error("Linked approval request was not found.");
+
+  let parsedPlan = parseExecutionPlan(data.metadata);
+  if (!parsedPlan.lastExecutionPlan) {
+    const generated = await planAiWorkforceTaskExecution({
+      taskId: String(data.id),
+      actorId: input.actorId ?? null,
+      metadata: {
+        generatedForDryRun: true,
+        ...(input.metadata ?? {}),
+      },
+    });
+    parsedPlan = {
+      lastExecutionPlan: generated.plan,
+      lastExecutionPlanAt: nowIso(),
+    };
+  }
+
+  const now = nowIso();
+  const preview = dryRunForApproval({
+    taskTitle: String(data.title),
+    requestedAction: String(approval.requested_action ?? data.recommended_action),
+    dashboard: String(approval.dashboard ?? data.dashboard),
+    approvalStatus: String(approval.approval_status ?? "pending"),
+    executorStatus: String(approval.executor_status ?? "approval_only"),
+    guardrailSummary: approval.guardrail_summary ?? null,
+    cannotExecuteReason: approval.cannot_execute_reason ?? null,
+    plan: parsedPlan.lastExecutionPlan,
+  });
+
+  const { error: taskUpdateError } = await supabase
+    .from("ai_workforce_task_queue")
+    .update({
+      updated_at: now,
+      metadata: mergeMetadata(data.metadata, {
+        lastExecutionPlan: parsedPlan.lastExecutionPlan,
+        lastExecutionPlanAt: parsedPlan.lastExecutionPlanAt ?? now,
+        lastDryRunPreview: preview,
+        lastDryRunPreviewAt: now,
+        lastDryRunPreviewBy: input.actorId ?? null,
+        approvalRequestId: approval.id,
+        approvalRequestStatus: approval.approval_status,
+        executorStatus: approval.executor_status,
+        externalWorkflowTouched: false,
+        ...(input.metadata ?? {}),
+      }),
+    })
+    .eq("id", data.id);
+  if (taskUpdateError) throw taskUpdateError;
+
+  const { error: approvalEventError } = await supabase
+    .from("ai_autopilot_approval_events")
+    .insert({
+      request_id: approval.id,
+      source_key: approval.source_key,
+      event_type: "observed",
+      actor_id: input.actorId ?? null,
+      note: input.note ?? "Dry-run execution preview generated. No external workflow was executed.",
+      metadata: {
+        sourceTaskId: data.id,
+        taskKey: data.task_key,
+        approvalStatus: approval.approval_status,
+        executorStatus: approval.executor_status,
+        preview,
+        executionEnabled: false,
+        externalWorkflowTouched: false,
+      },
+    });
+  if (approvalEventError) throw approvalEventError;
+
+  await upsertAiWorkforceMemoryItem({
+    memoryKey: `dry-run-preview:${data.task_key}`,
+    agentId: data.agent_id ?? null,
+    dashboard: String(data.dashboard),
+    memoryType: "qa_note",
+    title: `Dry run preview: ${data.title}`,
+    summary: `${preview.nextHumanAction} No external workflow was executed.`,
+    source: "ai_workforce_task_queue",
+    sourceId: String(data.id),
+    route: data.route ?? "/admin/agents",
+    confidence: 0.9,
+    impactLevel: (data.priority ?? "medium") as WorkforceMemoryItem["impactLevel"],
+    metadata: {
+      taskKey: data.task_key,
+      approvalRequestId: approval.id,
+      approvalStatus: approval.approval_status,
+      executorStatus: approval.executor_status,
+      preview,
+      externalWorkflowTouched: false,
+    },
+  });
+
+  await recordAiWorkforceEvent({
+    eventType: "observed",
+    agentId: data.agent_id ?? null,
+    dashboard: String(data.dashboard),
+    actorType: "admin",
+    actorId: input.actorId ?? null,
+    title: `Dry run preview: ${data.title}`,
+    summary: "AI Workforce dry-run executor preview generated. No external workflow was executed.",
+    route: data.route ?? "/admin/agents",
+    severity: "info",
+    source: "ai_workforce_task_queue",
+    sourceId: String(data.id),
+    metadata: {
+      taskKey: data.task_key,
+      approvalRequestId: approval.id,
+      approvalStatus: approval.approval_status,
+      executorStatus: approval.executor_status,
+      externalWorkflowTouched: false,
+      ...(input.metadata ?? {}),
+    },
+  });
+
+  return {
+    taskId: String(data.id),
+    taskKey: String(data.task_key),
+    approvalRequestId: approval.id,
+    approvalStatus: String(approval.approval_status ?? "pending"),
+    executorStatus: String(approval.executor_status ?? "approval_only"),
+    externalWorkflowTouched: false,
+    preview,
+    message: "Dry-run preview generated. No external workflow was executed.",
   };
 }

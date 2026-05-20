@@ -873,7 +873,7 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
 
   const runQueueUpdate = useCallback(async (
     busyKey: string,
-    operation: "update_task_status" | "update_ingestion_status" | "plan_task_execution" | "send_task_to_approval",
+    operation: "update_task_status" | "update_ingestion_status" | "plan_task_execution" | "send_task_to_approval" | "dry_run_task_execution",
     payload: Record<string, unknown>,
     successMessage: string
   ) => {
@@ -1065,6 +1065,37 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                       <p className="mt-3 text-xs leading-5 text-gray-300">{task.lastExecutionPlan.safeHandoff}</p>
                     </div>
                   )}
+                  {task.lastDryRunPreview && (
+                    <div className="mt-3 rounded-lg border border-emerald-800/40 bg-emerald-950/15 p-3">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-emerald-700/50 bg-emerald-950/50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-100">
+                          Dry Run
+                        </span>
+                        <span className="text-xs text-emerald-200/80">
+                          {task.lastDryRunPreviewAt ? `Previewed ${formatRelativeTime(task.lastDryRunPreviewAt)}` : "Preview ready"}
+                        </span>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-300">Would Do</p>
+                          <ul className="mt-2 space-y-1 text-xs leading-5 text-emerald-50/90">
+                            {task.lastDryRunPreview.wouldDo.slice(0, 3).map((step) => (
+                              <li key={step}>- {step}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-300">Would Not Do</p>
+                          <ul className="mt-2 space-y-1 text-xs leading-5 text-red-50/90">
+                            {task.lastDryRunPreview.wouldNotDo.slice(0, 3).map((step) => (
+                              <li key={step}>- {step}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-gray-300">{task.lastDryRunPreview.nextHumanAction}</p>
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {task.status !== "done" && task.status !== "rejected" && (
                       <button
@@ -1105,6 +1136,27 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                         className="rounded-md border border-violet-700/50 bg-violet-950/50 px-3 py-1.5 text-xs font-bold text-violet-100 transition hover:bg-violet-900/50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {queueBusy === `task:${task.taskKey}:approval` ? "Sending..." : "Send Approval"}
+                      </button>
+                    )}
+                    {task.approvalRequestId && task.status !== "done" && task.status !== "rejected" && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runQueueUpdate(
+                          `task:${task.taskKey}:dry-run`,
+                          "dry_run_task_execution",
+                          {
+                            taskKey: task.taskKey,
+                            note: "Dry-run preview requested from AI Workforce Data Foundation panel.",
+                            metadata: {
+                              requestedFrom: "AI Workforce Data Foundation panel",
+                            },
+                          },
+                          "Dry-run preview saved. No external workflow was executed."
+                        )}
+                        className="rounded-md border border-emerald-700/50 bg-emerald-950/40 px-3 py-1.5 text-xs font-bold text-emerald-100 transition hover:bg-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:dry-run` ? "Previewing..." : "Dry Run"}
                       </button>
                     )}
                     {task.status !== "done" && (
