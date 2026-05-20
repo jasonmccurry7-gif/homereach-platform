@@ -242,6 +242,12 @@ function DashboardAgentMatrix({
   agents: DashboardAgentRuntime[]
   summary: DashboardAgentSummary
 }) {
+  const targetAssisted = agents.filter((agent) => agent.targetAutonomy === "assisted_autopilot").length
+  const notAtTarget = agents.filter((agent) => agent.currentAutonomy !== agent.targetAutonomy).length
+  const humanControlled = agents.filter((agent) =>
+    ["manual", "advisory", "human_approval"].includes(agent.currentAutonomy)
+  ).length
+
   return (
     <section className="mb-8 rounded-2xl border border-blue-900/40 bg-blue-950/20 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -255,7 +261,7 @@ function DashboardAgentMatrix({
             autonomy level, guardrails, missing setup, and the next safe build phase.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Dashboards</p>
             <p className="text-2xl font-bold text-white">{summary.total}</p>
@@ -271,6 +277,18 @@ function DashboardAgentMatrix({
           <div className="rounded-xl border border-blue-800/40 bg-blue-950/30 p-3">
             <p className="text-xs text-blue-400">Avg Ready</p>
             <p className="text-2xl font-bold text-blue-300">{summary.averageReadiness}%</p>
+          </div>
+          <div className="rounded-xl border border-violet-800/40 bg-violet-950/30 p-3">
+            <p className="text-xs text-violet-300">Target Assisted</p>
+            <p className="text-2xl font-bold text-violet-200">{targetAssisted}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/30 p-3">
+            <p className="text-xs text-cyan-300">Human Control</p>
+            <p className="text-2xl font-bold text-cyan-200">{humanControlled}</p>
+          </div>
+          <div className="rounded-xl border border-fuchsia-800/40 bg-fuchsia-950/30 p-3">
+            <p className="text-xs text-fuchsia-300">Autonomy Gap</p>
+            <p className="text-2xl font-bold text-fuchsia-200">{notAtTarget}</p>
           </div>
         </div>
       </div>
