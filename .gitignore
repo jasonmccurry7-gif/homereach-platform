@@ -9,6 +9,14 @@ dist
 build
 out
 .turbo
+apps/web/.codex-next*/
+
+# Codex/local validation artifacts
+_codex_runtime/
+_codex_checkpoints/
+.hotfix-tree/
+.tools/
+output
 
 # Environment files
 .env
