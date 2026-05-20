@@ -817,6 +817,23 @@ function workforceStatusClass(status: string) {
   return "border-cyan-800/40 bg-cyan-950/20 text-cyan-100"
 }
 
+type WorkforceTaskUiItem = WorkforceFoundationState["tasks"][number]
+
+function canQueueWorkforceTaskHandoff(task: WorkforceTaskUiItem) {
+  if (!task.approvalRequestId || !task.lastDryRunPreview) return false
+  if (task.approvalStatus !== "approved") return false
+  if (task.status === "done" || task.status === "rejected") return false
+  return !["handoff_queued", "task_ready", "task_created", "executed", "blocked"].includes(task.executorStatus ?? "")
+}
+
+function workforceApprovalStatusClass(status?: string | null) {
+  if (status === "approved") return "border-emerald-700/50 bg-emerald-950/40 text-emerald-100"
+  if (status === "rejected" || status === "canceled" || status === "expired") {
+    return "border-red-700/50 bg-red-950/40 text-red-100"
+  }
+  return "border-violet-700/50 bg-violet-950/40 text-violet-100"
+}
+
 function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFoundationState }) {
   const [syncBusy, setSyncBusy] = useState(false)
   const [domainSyncBusy, setDomainSyncBusy] = useState(false)
@@ -892,6 +909,32 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
       setSyncResult(`${successMessage} Refresh the page to reload queue counts.`)
     } catch (error) {
       setSyncResult(error instanceof Error ? error.message : "Unable to update AI Workforce queue.")
+    } finally {
+      setQueueBusy(null)
+    }
+  }, [])
+
+  const runSafeHandoff = useCallback(async (task: WorkforceTaskUiItem) => {
+    if (!task.approvalRequestId) return
+    setQueueBusy(`task:${task.taskKey}:handoff`)
+    setSyncResult(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "queue_internal_handoff",
+          requestId: task.approvalRequestId,
+          note: "Safe internal handoff queued from the AI Workforce Data Foundation panel after approval and dry-run review.",
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Unable to queue safe internal handoff.")
+      }
+      setSyncResult(`${data.message ?? "Safe internal handoff queued."} Refresh the page to reload handoff status.`)
+    } catch (error) {
+      setSyncResult(error instanceof Error ? error.message : "Unable to queue safe internal handoff.")
     } finally {
       setQueueBusy(null)
     }
@@ -1027,8 +1070,21 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                     </span>
                     <span className="text-xs text-gray-400">{task.agentId}</span>
                     {task.approvalRequestId && (
-                      <span className="rounded-full border border-violet-700/50 bg-violet-950/40 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-100">
-                        Approval Linked
+                      <span className={cn(
+                        "rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em]",
+                        workforceApprovalStatusClass(task.approvalStatus)
+                      )}>
+                        {task.approvalStatus ? `Approval ${formatStatus(task.approvalStatus)}` : "Approval Linked"}
+                      </span>
+                    )}
+                    {task.executorStatus && (
+                      <span className="rounded-full border border-cyan-700/50 bg-cyan-950/30 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-100">
+                        {formatStatus(task.executorStatus)}
+                      </span>
+                    )}
+                    {task.executionStatus && (
+                      <span className="rounded-full border border-slate-700/50 bg-slate-950/40 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-100">
+                        Run {formatStatus(task.executionStatus)}
                       </span>
                     )}
                   </div>
@@ -1096,6 +1152,11 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                       <p className="mt-3 text-xs leading-5 text-gray-300">{task.lastDryRunPreview.nextHumanAction}</p>
                     </div>
                   )}
+                  {task.approvalRequestId && task.approvalStatus !== "approved" && task.status !== "done" && task.status !== "rejected" && (
+                    <p className="mt-3 rounded-lg border border-violet-800/40 bg-violet-950/20 p-3 text-xs leading-5 text-violet-100">
+                      Approve this request in the existing Autopilot Control Center before a safe internal handoff can be queued.
+                    </p>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {task.status !== "done" && task.status !== "rejected" && (
                       <button
@@ -1157,6 +1218,16 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                         className="rounded-md border border-emerald-700/50 bg-emerald-950/40 px-3 py-1.5 text-xs font-bold text-emerald-100 transition hover:bg-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {queueBusy === `task:${task.taskKey}:dry-run` ? "Previewing..." : "Dry Run"}
+                      </button>
+                    )}
+                    {canQueueWorkforceTaskHandoff(task) && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runSafeHandoff(task)}
+                        className="rounded-md border border-cyan-700/50 bg-cyan-950/50 px-3 py-1.5 text-xs font-bold text-cyan-100 transition hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:handoff` ? "Queueing..." : "Queue Handoff"}
                       </button>
                     )}
                     {task.status !== "done" && (

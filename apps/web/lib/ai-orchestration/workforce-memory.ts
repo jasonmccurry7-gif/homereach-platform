@@ -63,6 +63,11 @@ export interface WorkforceTaskQueueItem {
   dueAt?: string | null;
   updatedAt: string;
   approvalRequestId?: string | null;
+  approvalStatus?: string | null;
+  executorStatus?: string | null;
+  executionRunId?: string | null;
+  executionStatus?: string | null;
+  internalTaskId?: string | null;
   lastExecutionPlan?: WorkforceTaskExecutionPlan["plan"] | null;
   lastExecutionPlanAt?: string | null;
   lastDryRunPreview?: WorkforceTaskDryRunPreview["preview"] | null;
@@ -703,6 +708,45 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     }, [] as Array<Record<string, any>>),
   ]);
 
+  const approvalIds = Array.from(
+    new Set(
+      taskRows
+        .map((row) => row.approval_request_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  );
+  let approvalById = new Map<string, Record<string, any>>();
+  let executionRunByRequestId = new Map<string, Record<string, any>>();
+
+  if (approvalIds.length > 0) {
+    const approvalRows = await readSource("ai_workforce_task_approval_requests", async () => {
+      const { data, error } = await supabase
+        .from("ai_autopilot_approval_requests")
+        .select("id,approval_status,executor_status")
+        .in("id", approvalIds);
+      if (error) throw error;
+      return data ?? [];
+    }, [] as Array<Record<string, any>>);
+    approvalById = new Map(approvalRows.map((row) => [String(row.id), row]));
+
+    const executionRows = await readSource("ai_workforce_task_execution_runs", async () => {
+      const { data, error } = await supabase
+        .from("ai_autopilot_execution_runs")
+        .select("id,request_id,execution_status,internal_task_id,created_at")
+        .in("request_id", approvalIds)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    }, [] as Array<Record<string, any>>);
+    executionRunByRequestId = new Map();
+    for (const row of executionRows) {
+      const requestId = String(row.request_id);
+      if (!executionRunByRequestId.has(requestId)) {
+        executionRunByRequestId.set(requestId, row);
+      }
+    }
+  }
+
   const memoryItems: WorkforceMemoryItem[] = memoryRows.map((row) => ({
     id: String(row.id),
     memoryKey: String(row.memory_key),
@@ -735,6 +779,9 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
   const tasks: WorkforceTaskQueueItem[] = taskRows.map((row) => {
     const plan = parseExecutionPlan(row.metadata);
     const dryRun = parseDryRunPreview(row.metadata);
+    const approvalRequestId = row.approval_request_id ?? null;
+    const approval = approvalRequestId ? approvalById.get(String(approvalRequestId)) : null;
+    const executionRun = approvalRequestId ? executionRunByRequestId.get(String(approvalRequestId)) : null;
     return {
       id: String(row.id),
       taskKey: String(row.task_key),
@@ -748,7 +795,12 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       requiresHumanApproval: Boolean(row.requires_human_approval),
       dueAt: row.due_at ?? null,
       updatedAt: row.updated_at,
-      approvalRequestId: row.approval_request_id ?? null,
+      approvalRequestId,
+      approvalStatus: approval?.approval_status ?? null,
+      executorStatus: approval?.executor_status ?? null,
+      executionRunId: executionRun?.id ?? null,
+      executionStatus: executionRun?.execution_status ?? null,
+      internalTaskId: executionRun?.internal_task_id ?? null,
       lastExecutionPlan: plan.lastExecutionPlan,
       lastExecutionPlanAt: plan.lastExecutionPlanAt,
       lastDryRunPreview: dryRun.lastDryRunPreview,
@@ -778,6 +830,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     "Use Plan Only before execution so admins can review steps, gates, and prohibited actions.",
     "Send reviewed plans into the existing approval queue before creating any internal follow-up task.",
     "Use Dry Run Preview to inspect what would happen after approval before queuing a safe internal handoff.",
+    "Queue Safe Handoff only after approval; it creates an internal handoff record and still does not touch external workflows.",
     "Use ingestion queue statuses for review and approval before any source analysis becomes autonomous.",
   ];
 
