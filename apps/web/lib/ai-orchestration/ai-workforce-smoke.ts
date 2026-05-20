@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { getDashboardAgentMatrix, getDashboardAgentSummary } from "./dashboard-agents";
 import { getUserActionReadiness } from "./user-action-items";
+import { getUnifiedActionCenter } from "./action-center";
 
 export type AiWorkforceSmokeStatus = "ok" | "warning" | "failed";
 
@@ -99,6 +100,28 @@ export async function getAiWorkforceSmokeReport(): Promise<AiWorkforceSmokeRepor
       ? "Keep review workflow monitored before enabling AI extraction."
       : "Enable only after credentials and admin review mode are ready.",
   });
+
+  try {
+    const actionCenter = await getUnifiedActionCenter(8);
+    const unavailableSources = actionCenter.sourceHealth.filter((source) => source.status === "unavailable");
+    checks.push({
+      key: "unified_action_center_generation",
+      label: "Unified Action Center Generation",
+      status: unavailableSources.length > 0 ? "warning" : "ok",
+      summary:
+        `${actionCenter.summary.total} generated action item(s); ${actionCenter.summary.highRisk} high-risk; ` +
+        `${unavailableSources.length} unavailable source(s).`,
+      nextStep: unavailableSources[0]?.note ?? "Keep the Action Center visible before expanding AI autonomy.",
+    });
+  } catch (error) {
+    checks.push({
+      key: "unified_action_center_generation",
+      label: "Unified Action Center Generation",
+      status: "failed",
+      summary: `Action Center generation failed: ${error instanceof Error ? error.message : String(error)}`,
+      nextStep: "Fix Action Center generation before relying on AI Workforce queue visibility.",
+    });
+  }
 
   if (!hasSupabase) {
     return {
