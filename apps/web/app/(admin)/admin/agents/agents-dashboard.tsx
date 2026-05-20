@@ -1029,6 +1029,37 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                   </div>
                   <p className="font-semibold text-white">{task.title}</p>
                   <p className="mt-1 text-sm leading-5 text-gray-300">{task.recommendedAction}</p>
+                  {task.lastExecutionPlan && (
+                    <div className="mt-3 rounded-lg border border-sky-800/40 bg-sky-950/20 p-3">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-sky-700/50 bg-sky-950/50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-sky-100">
+                          Plan Only
+                        </span>
+                        <span className="text-xs text-sky-200/80">
+                          {task.lastExecutionPlanAt ? `Prepared ${formatRelativeTime(task.lastExecutionPlanAt)}` : "Prepared for review"}
+                        </span>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-300">Next Steps</p>
+                          <ul className="mt-2 space-y-1 text-xs leading-5 text-sky-50/90">
+                            {task.lastExecutionPlan.recommendedSteps.slice(0, 3).map((step) => (
+                              <li key={step}>- {step}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-300">Approval Gates</p>
+                          <ul className="mt-2 space-y-1 text-xs leading-5 text-amber-50/90">
+                            {task.lastExecutionPlan.humanApprovalGates.slice(0, 3).map((gate) => (
+                              <li key={gate}>- {gate}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-gray-300">{task.lastExecutionPlan.safeHandoff}</p>
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {task.status !== "done" && task.status !== "rejected" && (
                       <button

@@ -62,6 +62,8 @@ export interface WorkforceTaskQueueItem {
   requiresHumanApproval: boolean;
   dueAt?: string | null;
   updatedAt: string;
+  lastExecutionPlan?: WorkforceTaskExecutionPlan["plan"] | null;
+  lastExecutionPlanAt?: string | null;
 }
 
 export interface WorkforceIngestionQueueItem {
@@ -346,6 +348,48 @@ function planForDashboard(dashboard: string) {
   };
 }
 
+function parseExecutionPlan(metadata: unknown): {
+  lastExecutionPlan: WorkforceTaskQueueItem["lastExecutionPlan"];
+  lastExecutionPlanAt: string | null;
+} {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return { lastExecutionPlan: null, lastExecutionPlanAt: null };
+  }
+
+  const record = metadata as Record<string, unknown>;
+  const plan = record.lastExecutionPlan;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+    return { lastExecutionPlan: null, lastExecutionPlanAt: null };
+  }
+
+  const planRecord = plan as Record<string, unknown>;
+  const recommendedSteps = Array.isArray(planRecord.recommendedSteps)
+    ? planRecord.recommendedSteps.map(String).filter(Boolean).slice(0, 7)
+    : [];
+  const humanApprovalGates = Array.isArray(planRecord.humanApprovalGates)
+    ? planRecord.humanApprovalGates.map(String).filter(Boolean).slice(0, 6)
+    : [];
+  const prohibitedActions = Array.isArray(planRecord.prohibitedActions)
+    ? planRecord.prohibitedActions.map(String).filter(Boolean).slice(0, 6)
+    : [];
+
+  if (recommendedSteps.length === 0 && humanApprovalGates.length === 0) {
+    return { lastExecutionPlan: null, lastExecutionPlanAt: null };
+  }
+
+  return {
+    lastExecutionPlan: {
+      mode: "plan_only",
+      externalWorkflowTouched: false,
+      recommendedSteps,
+      humanApprovalGates,
+      prohibitedActions,
+      safeHandoff: String(planRecord.safeHandoff ?? "Admin review is required before any external execution."),
+    },
+    lastExecutionPlanAt: typeof record.lastExecutionPlanAt === "string" ? record.lastExecutionPlanAt : null,
+  };
+}
+
 async function readCount(
   supabase: ReturnType<typeof createServiceClient>,
   table: string,
@@ -473,7 +517,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     readSource("ai_workforce_task_queue", async () => {
       const { data, error } = await supabase
         .from("ai_workforce_task_queue")
-        .select("id,task_key,agent_id,dashboard,title,recommended_action,route,priority,status,requires_human_approval,due_at,updated_at")
+        .select("id,task_key,agent_id,dashboard,title,recommended_action,route,priority,status,requires_human_approval,due_at,updated_at,metadata")
         .in("status", ["queued", "needs_approval", "approved", "in_progress", "blocked"])
         .order("updated_at", { ascending: false })
         .limit(limit);
@@ -521,20 +565,25 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     occurredAt: row.occurred_at,
   }));
 
-  const tasks: WorkforceTaskQueueItem[] = taskRows.map((row) => ({
-    id: String(row.id),
-    taskKey: String(row.task_key),
-    agentId: String(row.agent_id),
-    dashboard: String(row.dashboard),
-    title: String(row.title),
-    recommendedAction: String(row.recommended_action),
-    route: row.route ?? null,
-    priority: row.priority ?? "medium",
-    status: row.status ?? "queued",
-    requiresHumanApproval: Boolean(row.requires_human_approval),
-    dueAt: row.due_at ?? null,
-    updatedAt: row.updated_at,
-  }));
+  const tasks: WorkforceTaskQueueItem[] = taskRows.map((row) => {
+    const plan = parseExecutionPlan(row.metadata);
+    return {
+      id: String(row.id),
+      taskKey: String(row.task_key),
+      agentId: String(row.agent_id),
+      dashboard: String(row.dashboard),
+      title: String(row.title),
+      recommendedAction: String(row.recommended_action),
+      route: row.route ?? null,
+      priority: row.priority ?? "medium",
+      status: row.status ?? "queued",
+      requiresHumanApproval: Boolean(row.requires_human_approval),
+      dueAt: row.due_at ?? null,
+      updatedAt: row.updated_at,
+      lastExecutionPlan: plan.lastExecutionPlan,
+      lastExecutionPlanAt: plan.lastExecutionPlanAt,
+    };
+  });
 
   const ingestionQueue: WorkforceIngestionQueueItem[] = ingestionRows.map((row) => ({
     id: String(row.id),
