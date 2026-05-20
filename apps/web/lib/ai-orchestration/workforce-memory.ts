@@ -68,6 +68,8 @@ export interface WorkforceTaskQueueItem {
   executionRunId?: string | null;
   executionStatus?: string | null;
   internalTaskId?: string | null;
+  internalTaskStatus?: string | null;
+  internalTaskCompletedAt?: string | null;
   lastExecutionPlan?: WorkforceTaskExecutionPlan["plan"] | null;
   lastExecutionPlanAt?: string | null;
   lastDryRunPreview?: WorkforceTaskDryRunPreview["preview"] | null;
@@ -717,6 +719,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
   );
   let approvalById = new Map<string, Record<string, any>>();
   let executionRunByRequestId = new Map<string, Record<string, any>>();
+  let internalTaskById = new Map<string, Record<string, any>>();
 
   if (approvalIds.length > 0) {
     const approvalRows = await readSource("ai_workforce_task_approval_requests", async () => {
@@ -744,6 +747,25 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       if (!executionRunByRequestId.has(requestId)) {
         executionRunByRequestId.set(requestId, row);
       }
+    }
+
+    const internalTaskIds = Array.from(
+      new Set(
+        executionRows
+          .map((row) => row.internal_task_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    );
+    if (internalTaskIds.length > 0) {
+      const internalTaskRows = await readSource("ai_workforce_internal_crm_tasks", async () => {
+        const { data, error } = await supabase
+          .from("crm_tasks")
+          .select("id,status,completed_at")
+          .in("id", internalTaskIds);
+        if (error) throw error;
+        return data ?? [];
+      }, [] as Array<Record<string, any>>);
+      internalTaskById = new Map(internalTaskRows.map((row) => [String(row.id), row]));
     }
   }
 
@@ -782,6 +804,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     const approvalRequestId = row.approval_request_id ?? null;
     const approval = approvalRequestId ? approvalById.get(String(approvalRequestId)) : null;
     const executionRun = approvalRequestId ? executionRunByRequestId.get(String(approvalRequestId)) : null;
+    const internalTask = executionRun?.internal_task_id ? internalTaskById.get(String(executionRun.internal_task_id)) : null;
     const rawExecutorStatus = approval?.executor_status ?? null;
     const executorStatus = executionRun?.internal_task_id
       ? "task_created"
@@ -807,6 +830,8 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
       executionRunId: executionRun?.id ?? null,
       executionStatus: executionRun?.execution_status ?? null,
       internalTaskId: executionRun?.internal_task_id ?? null,
+      internalTaskStatus: internalTask?.status ?? null,
+      internalTaskCompletedAt: internalTask?.completed_at ?? null,
       lastExecutionPlan: plan.lastExecutionPlan,
       lastExecutionPlanAt: plan.lastExecutionPlanAt,
       lastDryRunPreview: dryRun.lastDryRunPreview,
@@ -838,6 +863,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     "Use Dry Run Preview to inspect what would happen after approval before queuing a safe internal handoff.",
     "Queue Safe Handoff only after approval; it creates an internal handoff record and still does not touch external workflows.",
     "Create Internal Task from a queued handoff when a human should own the next operational follow-up.",
+    "Mark linked internal tasks done only after a human has completed the real-world follow-up.",
     "Use ingestion queue statuses for review and approval before any source analysis becomes autonomous.",
   ];
 

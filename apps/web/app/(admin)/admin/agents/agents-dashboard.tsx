@@ -833,6 +833,12 @@ function canCreateWorkforceInternalTask(task: WorkforceTaskUiItem) {
   return ["handoff_queued", "task_ready"].includes(task.executorStatus ?? "")
 }
 
+function canCompleteWorkforceInternalTask(task: WorkforceTaskUiItem) {
+  if (!task.internalTaskId) return false
+  if (task.status === "done" || task.status === "rejected") return false
+  return !["done", "cancelled", "canceled"].includes(task.internalTaskStatus ?? "")
+}
+
 function workforceApprovalStatusClass(status?: string | null) {
   if (status === "approved") return "border-emerald-700/50 bg-emerald-950/40 text-emerald-100"
   if (status === "rejected" || status === "canceled" || status === "expired") {
@@ -968,6 +974,32 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
       setSyncResult(`${data.message ?? "Internal CRM task created."} Refresh the page to reload task status.`)
     } catch (error) {
       setSyncResult(error instanceof Error ? error.message : "Unable to create internal task.")
+    } finally {
+      setQueueBusy(null)
+    }
+  }, [])
+
+  const runCompleteInternalTask = useCallback(async (task: WorkforceTaskUiItem) => {
+    if (!task.internalTaskId) return
+    setQueueBusy(`task:${task.taskKey}:complete-internal-task`)
+    setSyncResult(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "complete_internal_task",
+          taskId: task.internalTaskId,
+          note: "Linked internal CRM task marked done from the AI Workforce Data Foundation panel after human follow-up.",
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Unable to complete internal task.")
+      }
+      setSyncResult(`${data.message ?? "Internal task marked done."} Refresh the page to reload task status.`)
+    } catch (error) {
+      setSyncResult(error instanceof Error ? error.message : "Unable to complete internal task.")
     } finally {
       setQueueBusy(null)
     }
@@ -1122,7 +1154,7 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                     )}
                     {task.internalTaskId && (
                       <span className="rounded-full border border-emerald-700/50 bg-emerald-950/30 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-100">
-                        CRM Task Ready
+                        CRM {formatStatus(task.internalTaskStatus ?? "task_ready")}
                       </span>
                     )}
                   </div>
@@ -1276,6 +1308,16 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                         className="rounded-md border border-blue-700/50 bg-blue-950/50 px-3 py-1.5 text-xs font-bold text-blue-100 transition hover:bg-blue-900/50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {queueBusy === `task:${task.taskKey}:internal-task` ? "Creating..." : "Create Task"}
+                      </button>
+                    )}
+                    {canCompleteWorkforceInternalTask(task) && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runCompleteInternalTask(task)}
+                        className="rounded-md border border-emerald-700/50 bg-emerald-950/50 px-3 py-1.5 text-xs font-bold text-emerald-100 transition hover:bg-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:complete-internal-task` ? "Completing..." : "Complete Task"}
                       </button>
                     )}
                     {task.status !== "done" && (
