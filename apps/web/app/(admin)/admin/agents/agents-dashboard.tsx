@@ -2726,6 +2726,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   const filteredItems = items.filter((item) => matchesActionCenterFilter(item, actionFilter))
   const visibleItems = filteredItems.slice(0, 10)
   const recentEvents = actionCenter.recentEvents ?? []
+  const unavailableSources = actionCenter.sourceHealth.filter((source) => source.status === "unavailable")
   const filterButtons: Array<{ id: ActionCenterFilter; label: string; count: number }> = [
     { id: "all", label: "All", count: items.length },
     { id: "ai_workforce", label: "AI Workforce", count: aiWorkforceActions },
@@ -2837,6 +2838,30 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
       {actionError && (
         <div className="mb-4 rounded-xl border border-red-800/40 bg-red-950/30 p-3 text-sm text-red-200">
           {actionError}
+        </div>
+      )}
+
+      {unavailableSources.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-800/40 bg-amber-950/20 p-4">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">Source Health Attention</p>
+              <p className="text-sm leading-6 text-amber-100/80">
+                Some Action Center sources are unavailable, so the queue may be missing items until those integrations recover.
+              </p>
+            </div>
+            <span className="rounded-full border border-amber-700/50 bg-amber-900/30 px-3 py-1 text-xs font-bold text-amber-100">
+              {unavailableSources.length} source{unavailableSources.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {unavailableSources.slice(0, 4).map((source) => (
+              <div key={source.source} className="rounded-lg border border-amber-800/30 bg-black/20 p-3">
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-amber-200">{formatStatus(source.source)}</p>
+                {source.note ? <p className="mt-1 text-xs leading-5 text-amber-100/70">{source.note}</p> : null}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
