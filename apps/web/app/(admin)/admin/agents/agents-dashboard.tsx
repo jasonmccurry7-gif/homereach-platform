@@ -1550,6 +1550,19 @@ function userActionPriorityClass(priority: string) {
 }
 
 function UserActionReadinessPanel({ readiness }: { readiness: UserActionReadiness }) {
+  const [copied, setCopied] = useState(false)
+  const checklistText = readiness.items
+    .slice(0, 12)
+    .map((item, index) => `${index + 1}. [${item.priority.toUpperCase()}] ${item.title} - ${item.nextStep}`)
+    .join("\n")
+
+  const copyChecklist = useCallback(async () => {
+    if (!checklistText) return
+    await navigator.clipboard.writeText(checklistText)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1800)
+  }, [checklistText])
+
   return (
     <section className="mb-8 rounded-2xl border border-orange-900/40 bg-orange-950/10 p-5">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1562,6 +1575,14 @@ function UserActionReadinessPanel({ readiness }: { readiness: UserActionReadines
             A running list of credentials, approvals, migrations, and policy confirmations that need human action.
             These are separated from engineering work so I can keep building until one of them becomes a true blocker.
           </p>
+          <button
+            type="button"
+            onClick={copyChecklist}
+            disabled={!checklistText}
+            className="mt-4 rounded-lg border border-orange-700/40 bg-orange-900/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-orange-100 transition hover:bg-orange-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {copied ? "Copied" : "Copy Checklist"}
+          </button>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
