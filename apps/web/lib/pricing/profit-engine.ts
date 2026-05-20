@@ -275,7 +275,7 @@ export class ProfitAwarePricingEngine {
       (t) => households >= t.minHouseholds && households <= t.maxHouseholds
     );
     // Default to Starter if below minimum (shouldn't happen after validation)
-    return tier ?? CAMPAIGN_MARGIN_TIERS[CAMPAIGN_MARGIN_TIERS.length - 1];
+    return tier ?? CAMPAIGN_MARGIN_TIERS[CAMPAIGN_MARGIN_TIERS.length - 1]!;
   }
 
   /** All available margin tiers for display in admin */

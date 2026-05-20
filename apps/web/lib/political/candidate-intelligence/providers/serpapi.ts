@@ -62,8 +62,13 @@ const NON_CAMPAIGN_HOST_PARTS = [
   "pbs",
 ];
 
+export function isSerpApiPaused(): boolean {
+  const value = (process.env.SERPAPI_PAUSED ?? "true").trim().toLowerCase();
+  return !["false", "0", "off", "no"].includes(value);
+}
+
 export function isCandidateSerpApiEnabled(): boolean {
-  return process.env.ENABLE_CANDIDATE_SERPAPI === "true";
+  return process.env.ENABLE_CANDIDATE_SERPAPI === "true" && !isSerpApiPaused();
 }
 
 function clean(value: unknown, max = 260): string | null {
@@ -232,6 +237,14 @@ export async function fetchSerpapiCandidateIntel(args: {
   maxRecords?: number;
 }): Promise<CandidateIntelProviderResult> {
   const key = process.env.SERPAPI_KEY;
+  if (isSerpApiPaused()) {
+    return {
+      sourceKey: SOURCE_KEY,
+      skipped: true,
+      reason: "SERPAPI_PAUSED is active. Candidate SerpAPI enrichment is manually locked off.",
+      records: [],
+    };
+  }
   if (!isCandidateSerpApiEnabled()) {
     return {
       sourceKey: SOURCE_KEY,

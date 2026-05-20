@@ -33,7 +33,10 @@ export interface LegacyBusiness {
   google_place_id?: string;
   external_id?:     string;
   source?:          string;   // e.g. "gmb_scrape", "manual", "csv_import"
-  status?:          string;   // raw Replit status — will be normalized
+  status?:          string | null;   // raw Replit status — will be normalized
+  plan?:            string;
+  monthly_value?:   number | string;
+  mrr?:             number | string;
   notes?:           string;
   created_at?:      string;
   updated_at?:      string;
@@ -85,6 +88,7 @@ export interface LegacyMessage {
   business_id?:     string | number;
   direction?:       string;   // "inbound" | "outbound"
   channel?:         string;   // "sms" | "email"
+  subject?:         string;
   body?:            string;
   message?:         string;
   status?:          string;
@@ -225,7 +229,7 @@ export interface NormalizedMessage {
   conversationId: string;
   businessId?:    string;
   direction:      "inbound" | "outbound" | "unknown";
-  channel:        "sms" | "email" | "unknown";
+  channel:        "sms" | "email" | "call" | "unknown";
   body:           string;
   status?:        string;
   sentAt?:        string;

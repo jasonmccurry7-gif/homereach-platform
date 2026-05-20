@@ -91,9 +91,9 @@ export function buildFollowUpMessage(
   const categoryVariants = CATEGORY_FOLLOW_UPS[lead.category.toLowerCase()];
   let template: string;
 
-  if (categoryVariants && lead.followUpCount === 0) {
+  if (categoryVariants?.length && lead.followUpCount === 0) {
     const idx = lead.id.charCodeAt(0) % categoryVariants.length;
-    template = categoryVariants[idx];
+    template = categoryVariants[idx] ?? attempt.body;
   } else {
     template = attempt.body;
   }

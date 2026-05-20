@@ -8,7 +8,7 @@
 import type {
   AdCopy, AdDesignInput, AdSlotType,
   AnchorAdSchema, StandardAdSchema, AdSchema,
-  AdDimensions, ColorPalette,
+  AdDimensions, ColorPalette, ExportElement,
 } from "./types";
 import { AD_DIMENSIONS } from "./types";
 import { getTemplate }   from "./templates/category-templates";
@@ -96,18 +96,14 @@ export class LayoutEngine {
    * Convert a layout schema to a flat list of positioned elements
    * for Canva / PDF export. Uses percentage-based coordinates.
    */
-  static toExportElements(schema: AdSchema): Array<{
-    id: string; type: string; content?: string;
-    x: number; y: number; width: number; height: number;
-    style: Record<string, string | number>;
-  }> {
+  static toExportElements(schema: AdSchema): ExportElement[] {
     if (schema.type === "anchor") {
       return this._anchorToExport(schema);
     }
     return this._standardToExport(schema);
   }
 
-  private static _anchorToExport(schema: AnchorAdSchema) {
+  private static _anchorToExport(schema: AnchorAdSchema): ExportElement[] {
     const { contentSide: c, palette: p } = schema;
     return [
       // Content pane background
@@ -125,13 +121,13 @@ export class LayoutEngine {
       { id: "biz_name", type: "text", content: c.businessName, x: 14, y: 10, width: 38, height: 10,
         style: { color: p.muted, fontSize: 9, fontWeight: "600", textAlign: "left" } },
       // Badge
-      ...(c.badgeText ? [{
+      ...(c.badgeText ? ([{
         id: "badge", type: "shape", x: 37, y: 6, width: 16, height: 8,
         style: { bgColor: p.accent, borderRadius: 4 }
       }, {
         id: "badge_text", type: "text", content: c.badgeText, x: 37, y: 6, width: 16, height: 8,
         style: { color: p.accentText, fontSize: 7, fontWeight: "800", textAlign: "center" }
-      }] : []),
+      }] satisfies ExportElement[]) : []),
       // Headline
       { id: "headline", type: "text", content: c.headline, x: 4, y: 24, width: 48, height: 20,
         style: { color: p.primaryText, fontSize: 22, fontWeight: "800", textAlign: "left" } },
@@ -139,13 +135,13 @@ export class LayoutEngine {
       { id: "subheadline", type: "text", content: c.subheadline, x: 4, y: 44, width: 48, height: 10,
         style: { color: p.muted, fontSize: 11, fontWeight: "500", textAlign: "left" } },
       // Offer box
-      ...(c.offerText ? [{
+      ...(c.offerText ? ([{
         id: "offer_bg", type: "shape", x: 4, y: 56, width: 48, height: 12,
         style: { bgColor: p.accent + "33", borderRadius: 3 }
       }, {
         id: "offer_text", type: "text", content: `⭐ ${c.offerText}`, x: 6, y: 58, width: 44, height: 10,
         style: { color: p.accentText, fontSize: 10, fontWeight: "700", textAlign: "left" }
-      }] : []),
+      }] satisfies ExportElement[]) : []),
       // CTA button
       { id: "cta_bg", type: "shape", x: 4, y: 72, width: 28, height: 11,
         style: { bgColor: p.secondary, borderRadius: 4 } },
@@ -166,7 +162,7 @@ export class LayoutEngine {
     ];
   }
 
-  private static _standardToExport(schema: StandardAdSchema) {
+  private static _standardToExport(schema: StandardAdSchema): ExportElement[] {
     const { header: h, body: b, footer: f, palette: p } = schema;
     return [
       { id: "bg", type: "shape", x: 0, y: 0, width: 100, height: 100,
@@ -181,18 +177,18 @@ export class LayoutEngine {
         style: { color: p.primaryText, fontSize: 10, fontWeight: "700", textAlign: "left" } },
       { id: "headline", type: "text", content: b.headline, x: 5, y: 25, width: 90, height: 20,
         style: { color: p.primaryText, fontSize: 16, fontWeight: "800", textAlign: "center" } },
-      ...(b.offerLine ? [{
+      ...(b.offerLine ? ([{
         id: "offer", type: "text", content: b.offerLine, x: 5, y: 48, width: 90, height: 12,
         style: { color: p.accentText, fontSize: 11, fontWeight: "700", textAlign: "center" }
-      }] : []),
+      }] satisfies ExportElement[]) : []),
       { id: "footer_bg", type: "shape", x: 0, y: 78, width: 100, height: 22,
         style: { bgColor: p.secondary } },
       { id: "cta", type: "text", content: f.ctaText, x: 3, y: 80, width: 60, height: 18,
         style: { color: p.secondaryText, fontSize: 10, fontWeight: "700", textAlign: "center" } },
-      ...(f.phone ? [{
+      ...(f.phone ? ([{
         id: "phone", type: "text", content: `📞 ${f.phone}`, x: 60, y: 82, width: 37, height: 14,
         style: { color: p.secondaryText, fontSize: 8, fontWeight: "600", textAlign: "right" }
-      }] : []),
+      }] satisfies ExportElement[]) : []),
     ];
   }
 }

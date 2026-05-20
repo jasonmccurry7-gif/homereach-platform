@@ -41,15 +41,17 @@ export class MockSpotRepository implements ISpotRepository {
   async updateStatus(input: UpdateSpotStatusInput): Promise<Spot> {
     const idx = this.spots.findIndex((s) => s.id === input.spotId);
     if (idx === -1) throw new Error(`Spot not found: ${input.spotId}`);
+    const current = this.spots[idx];
+    if (!current) throw new Error(`Spot not found: ${input.spotId}`);
 
     const updated: Spot = {
-      ...this.spots[idx],
+      ...current,
       status: input.status,
       reservedUntil: input.reservedUntil !== undefined
         ? input.reservedUntil
-        : this.spots[idx].reservedUntil,
-      businessId:   input.businessId   !== undefined ? input.businessId   : this.spots[idx].businessId,
-      businessName: input.businessName !== undefined ? input.businessName : this.spots[idx].businessName,
+        : current.reservedUntil,
+      businessId:   input.businessId   !== undefined ? input.businessId   : current.businessId,
+      businessName: input.businessName !== undefined ? input.businessName : current.businessName,
     };
 
     this.spots[idx] = updated;

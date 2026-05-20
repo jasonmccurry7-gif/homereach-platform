@@ -50,6 +50,7 @@ export const ROUTE_PRICING_TIERS: RoutePricingTier[] = [
 ];
 
 export const MINIMUM_HOUSEHOLDS = 2_500;
+const BASE_ROUTE_PRICING_TIER = ROUTE_PRICING_TIERS[0]!;
 
 // ── Reach Summary ────────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ export class TargetedRouteEngine {
   static summarize(selectedRoutes: CarrierRoute[]): RouteSelection {
     const totalHouseholds = selectedRoutes.reduce((s, r) => s + r.households, 0);
     const tier             = TargetedRouteEngine.getTier(totalHouseholds);
-    const pricePerThousand = tier?.pricePerThousand ?? ROUTE_PRICING_TIERS[0].pricePerThousand;
+    const pricePerThousand = tier?.pricePerThousand ?? BASE_ROUTE_PRICING_TIER.pricePerThousand;
     const totalPrice       = TargetedRouteEngine.calculatePrice(totalHouseholds);
     const isBelowMinimum   = totalHouseholds < MINIMUM_HOUSEHOLDS;
     const shortfallHomes   = Math.max(0, MINIMUM_HOUSEHOLDS - totalHouseholds);
@@ -125,7 +126,7 @@ export class TargetedRouteEngine {
    * Returns null if already at the top tier.
    */
   static householdsToNextTier(currentHouseholds: number): number | null {
-    const sorted = ROUTE_PRICING_TIERS.sort((a, b) => a.minHouseholds - b.minHouseholds);
+    const sorted = [...ROUTE_PRICING_TIERS].sort((a, b) => a.minHouseholds - b.minHouseholds);
     const next = sorted.find((t) => t.minHouseholds > currentHouseholds);
     return next ? next.minHouseholds - currentHouseholds : null;
   }

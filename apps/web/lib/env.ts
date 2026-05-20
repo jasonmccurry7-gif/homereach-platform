@@ -225,6 +225,7 @@ const ENV_SPECS: EnvSpec[] = [
   { key: "STATE_BOE_FEED_CONFIG_JSON", required: false, productionOnly: false },
   { key: "MUNICIPAL_ELECTION_FEED_CONFIG_JSON", required: false, productionOnly: false },
   { key: "SERPAPI_KEY", required: false, productionOnly: false },
+  { key: "SERPAPI_PAUSED", required: false, productionOnly: false, validValues: ["true", "false"] },
   { key: "ENABLE_CANDIDATE_SERPAPI", required: false, productionOnly: false, validValues: ["true", "false"] },
   { key: "ENABLE_CANDIDATE_SERPAPI_DEFAULT_SYNC", required: false, productionOnly: false, validValues: ["true", "false"] },
   { key: "CANDIDATE_SERPAPI_MIN_REFRESH_HOURS", required: false, productionOnly: false },

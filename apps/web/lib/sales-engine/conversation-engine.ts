@@ -141,9 +141,10 @@ function pickVariant(
   leadId: string,
   seed: number = 0
 ): string {
+  if (templateSet.variants.length === 0) return "";
   // Deterministic variant selection — same lead always gets same variant unless overridden
   const hash = (leadId.charCodeAt(0) + leadId.length + seed) % templateSet.variants.length;
-  return templateSet.variants[hash];
+  return templateSet.variants[hash]!;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -19,16 +19,13 @@ export class SupabaseReservationRepository implements IReservationRepository {
       spotId:       _input.spotId,
       cityId:       _input.cityId,
       categoryId:   _input.categoryId,
-      businessId:   _input.businessId ?? null,
-      businessName: _input.businessName ?? null,
-      leadId:       _input.leadId ?? null,
+      businessId:   _input.businessId,
+      businessName: _input.businessName,
+      leadId:       _input.leadId,
       status:       "active",
       expiresAt:    new Date(Date.now() + (_input.ttlHours ?? 24) * 3_600_000).toISOString(),
       ttlHours:     _input.ttlHours ?? 24,
-      createdBy:    _input.createdBy ?? "system",
-      adminNote:    null,
       createdAt:    new Date().toISOString(),
-      updatedAt:    new Date().toISOString(),
     };
     return stub;
   }
@@ -51,16 +48,14 @@ export class SupabaseReservationRepository implements IReservationRepository {
       spotId:       "",
       cityId:       "",
       categoryId:   "",
-      businessId:   null,
-      businessName: null,
-      leadId:       null,
+      businessId:   "",
+      businessName: "",
+      leadId:       "",
       status,
       expiresAt:    new Date().toISOString(),
       ttlHours:     24,
-      createdBy:    "system",
-      adminNote:    _note ?? null,
       createdAt:    new Date().toISOString(),
-      updatedAt:    new Date().toISOString(),
+      ...(_note ? { adminNote: _note } : {}),
     };
   }
 
@@ -70,16 +65,13 @@ export class SupabaseReservationRepository implements IReservationRepository {
       spotId:       "",
       cityId:       "",
       categoryId:   "",
-      businessId:   null,
-      businessName: null,
-      leadId:       null,
+      businessId:   "",
+      businessName: "",
+      leadId:       "",
       status:       "active",
       expiresAt:    new Date(Date.now() + ttlHours * 3_600_000).toISOString(),
       ttlHours,
-      createdBy:    "system",
-      adminNote:    null,
       createdAt:    new Date().toISOString(),
-      updatedAt:    new Date().toISOString(),
     };
   }
 

@@ -1,6 +1,5 @@
 import {
   db,
-  profiles,
   businesses,
   marketingCampaigns,
   campaignMetrics,
@@ -55,20 +54,23 @@ export async function getCampaignsForUser(userId: string) {
       bundle: {
         id: bundles.id,
         name: bundles.name,
+        price: bundles.price,
         metadata: bundles.metadata,
       },
-      // Use order.total (actual amount charged) for ad spend — NOT bundle.price.
-      // bundle.price is display-only and must never be used for revenue calculations.
       order: {
+        id: orders.id,
+        status: orders.status,
+        subtotal: orders.subtotal,
         total: orders.total,
+        paidAt: orders.paidAt,
       },
     })
     .from(marketingCampaigns)
     .leftJoin(businesses, eq(marketingCampaigns.businessId, businesses.id))
+    .leftJoin(orders, eq(marketingCampaigns.orderId, orders.id))
     .leftJoin(cities, eq(marketingCampaigns.cityId, cities.id))
     .leftJoin(categories, eq(marketingCampaigns.categoryId, categories.id))
     .leftJoin(bundles, eq(marketingCampaigns.bundleId, bundles.id))
-    .leftJoin(orders, eq(marketingCampaigns.orderId, orders.id))
     .where(eq(marketingCampaigns.businessId, businessIds[0]!))
     .orderBy(desc(marketingCampaigns.createdAt));
 

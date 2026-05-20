@@ -1,0 +1,187 @@
+export type HomeReachOSMode = "command" | "sales";
+
+export type OSStatus = "online" | "watch" | "critical" | "idle";
+
+export interface OSMetric {
+  label: string;
+  value: string;
+  detail: string;
+  status: OSStatus;
+  trend?: string;
+}
+
+export interface OSOpportunity {
+  id: string;
+  name: string;
+  segment: "business" | "political" | "route";
+  location: string;
+  product: string;
+  score: number;
+  value: string;
+  nextAction: string;
+}
+
+export interface OSNextBestAction {
+  id: string;
+  title: string;
+  outcome: string;
+  reason: string;
+  ifIgnored: string;
+  actionLabel: string;
+  href: string;
+  confidence: number;
+  urgency: number;
+  impact: string;
+  risk: "Low" | "Medium" | "High";
+  status: OSStatus;
+  category:
+    | "revenue"
+    | "communications"
+    | "political"
+    | "procurement"
+    | "creative"
+    | "operations"
+    | "growth";
+}
+
+export interface OSConversation {
+  id: string;
+  name: string;
+  channel: "sms" | "email" | "dm" | "web" | "intake";
+  summary: string;
+  age: string;
+  unread: boolean;
+  urgency: number;
+  nextAction: string;
+}
+
+export interface OSActivity {
+  id: string;
+  title: string;
+  detail: string;
+  time: string;
+  status: OSStatus;
+}
+
+export interface OSAgent {
+  name: string;
+  status: OSStatus;
+  currentTask: string;
+  lastAction: string;
+  confidence: number;
+  queueCount: number;
+}
+
+export interface OSProductPanel {
+  name: string;
+  description: string;
+  href: string;
+  status: OSStatus;
+  metrics: OSMetric[];
+  actions: Array<{ label: string; href: string }>;
+}
+
+export interface OSMapLayer {
+  name: string;
+  type: string;
+  status: OSStatus;
+  count: number;
+  detail: string;
+}
+
+export interface OSPipelineStage {
+  name: string;
+  count: number;
+  value: string;
+  probability: number;
+}
+
+export interface OSMonitor {
+  name: string;
+  status: OSStatus;
+  detail: string;
+  href: string;
+}
+
+export interface OSRoleView {
+  role: string;
+  href: string;
+  focus: string;
+  status: OSStatus;
+}
+
+export interface HomeReachOSData {
+  generatedAt: string;
+  revenue: {
+    revenueToday: string;
+    mrr: string;
+    arr: string;
+    pendingInvoices: number;
+    pendingProposals: number;
+    failedPayments: number;
+    stripePipeline: string;
+    projectedRevenue: string;
+    closeProbability: number;
+  };
+  leadIntelligence: {
+    newLeads: number;
+    hotLeads: number;
+    staleLeads: number;
+    aiRanked: number;
+    politicalOpportunities: number;
+    businessOpportunities: number;
+    routeOpportunities: number;
+    opportunities: OSOpportunity[];
+  };
+  operations: {
+    activeCampaigns: number;
+    printJobs: number;
+    postcardSchedules: number;
+    bmeuDrops: number;
+    designApprovals: number;
+    deliveryWindows: number;
+    operationalAlerts: number;
+  };
+  communications: {
+    unreadTexts: number;
+    unreadEmails: number;
+    unreadDms: number;
+    websiteInquiries: number;
+    intakeSubmissions: number;
+    campaignReplies: number;
+    missedFollowUps: number;
+    pendingReplies: number;
+    conversations: OSConversation[];
+  };
+  ai: {
+    actions: number;
+    leadResearchUpdates: number;
+    newCandidateFilings: number;
+    newBusinessOpportunities: number;
+    scoringChanges: number;
+    drafts: number;
+    automationStatus: OSStatus;
+    agents: OSAgent[];
+  };
+  productOps: OSProductPanel[];
+  maps: OSMapLayer[];
+  pipeline: OSPipelineStage[];
+  performance: {
+    textsSent: number;
+    emailsSent: number;
+    dmsSent: number;
+    callsMade: number;
+    meetingsBooked: number;
+    proposalsSent: number;
+    dealsClosed: number;
+    revenueByProduct: OSMetric[];
+    humanActions: number;
+    aiActions: number;
+  };
+  automation: OSMonitor[];
+  notifications: OSActivity[];
+  roleViews: OSRoleView[];
+  activityFeed: OSActivity[];
+  nextBestActions: OSNextBestAction[];
+  audit: string[];
+}

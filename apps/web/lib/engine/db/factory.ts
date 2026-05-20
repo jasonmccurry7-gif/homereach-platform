@@ -44,7 +44,7 @@ let _reservationRepo:   IReservationRepository | null = null;
 let _conversationRepo:  IConversationRepository | null = null;
 let _pricingConfigRepo: IPricingConfigRepository | null = null;
 
-function useMock(): boolean {
+function shouldUseMockRepository(): boolean {
   // isMockDb() throws if USE_MOCK_DB is not explicitly set to "true" or "false".
   // There is NO silent default — production cannot accidentally run on mock data.
   return isMockDb();
@@ -54,7 +54,7 @@ function useMock(): boolean {
 
 export function getSpotRepository(): ISpotRepository {
   if (!_spotRepo) {
-    _spotRepo = useMock()
+    _spotRepo = shouldUseMockRepository()
       ? new MockSpotRepository()
       : new SupabaseSpotRepository();
   }
@@ -63,7 +63,7 @@ export function getSpotRepository(): ISpotRepository {
 
 export function getReservationRepository(): IReservationRepository {
   if (!_reservationRepo) {
-    _reservationRepo = useMock()
+    _reservationRepo = shouldUseMockRepository()
       ? new MockReservationRepository()
       : new SupabaseReservationRepository();
   }
@@ -72,7 +72,7 @@ export function getReservationRepository(): IReservationRepository {
 
 export function getConversationRepository(): IConversationRepository {
   if (!_conversationRepo) {
-    _conversationRepo = useMock()
+    _conversationRepo = shouldUseMockRepository()
       ? new MockConversationRepository()
       : new SupabaseConversationRepository();
   }
@@ -81,7 +81,7 @@ export function getConversationRepository(): IConversationRepository {
 
 export function getPricingConfigRepository(): IPricingConfigRepository {
   if (!_pricingConfigRepo) {
-    _pricingConfigRepo = useMock()
+    _pricingConfigRepo = shouldUseMockRepository()
       ? new MockPricingConfigRepository()
       : new SupabasePricingConfigRepository();
   }

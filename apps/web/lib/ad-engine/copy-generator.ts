@@ -14,7 +14,10 @@ import { getTemplate } from "./templates/category-templates";
 // ─────────────────────────────────────────────────────────────────────────────
 
 function pick<T>(arr: T[], seed: number): T {
-  return arr[seed % arr.length];
+  if (arr.length === 0) {
+    throw new Error("Copy template pool cannot be empty");
+  }
+  return arr[Math.abs(seed) % arr.length]!;
 }
 
 /** Abbreviate business name to max 2 words for logo initials */
