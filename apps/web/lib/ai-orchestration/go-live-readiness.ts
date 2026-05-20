@@ -2,6 +2,7 @@ import { getAiCommandCenterState } from "./command-center";
 import { getAiWorkforceSmokeReport } from "./ai-workforce-smoke";
 import { getSourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
+import { getUnifiedActionCenter } from "./action-center";
 
 export type GoLiveGateStatus = "passed" | "warning" | "blocked";
 export type GoLiveGateOwner = "jason" | "admin" | "developer" | "system";
@@ -62,10 +63,11 @@ function launchMode(status: GoLiveGateStatus, summary: GoLiveReadinessReport["su
 }
 
 export async function getGoLiveReadinessReport(): Promise<GoLiveReadinessReport> {
-  const [commandCenter, smokeReport, sourceFreshness] = await Promise.all([
+  const [commandCenter, smokeReport, sourceFreshness, actionCenter] = await Promise.all([
     getAiCommandCenterState(8),
     getAiWorkforceSmokeReport(),
     getSourceFreshnessReport(),
+    getUnifiedActionCenter(12),
   ]);
   const userActions = getUserActionReadiness();
 
@@ -79,6 +81,7 @@ export async function getGoLiveReadinessReport(): Promise<GoLiveReadinessReport>
   const missingRequiredEnv = userActions.items.filter((item) => item.id.startsWith("missing-required-env-"));
   const unavailableSources = sourceFreshness.items.filter((item) => item.status === "unavailable");
   const staleSources = sourceFreshness.items.filter((item) => item.status === "stale");
+  const unavailableActionSources = actionCenter.sourceHealth.filter((source) => source.status === "unavailable");
 
   const gates: GoLiveGate[] = [
     {
@@ -173,6 +176,18 @@ export async function getGoLiveReadinessReport(): Promise<GoLiveReadinessReport>
       nextStep: commandCenter.safeNextSteps[0] ?? "Keep command state visible in the admin Agent Command Center.",
       blocksProductionLaunch: commandCenter.status === "critical",
       blocksAutonomyExpansion: commandCenter.status !== "ok",
+    },
+    {
+      id: "action-center-guardrails",
+      title: "Action Center guardrails and queue visibility",
+      status: unavailableActionSources.length > 0 ? "warning" : actionCenter.summary.total > 0 ? "passed" : "warning",
+      owner: unavailableActionSources.length > 0 ? "admin" : "system",
+      detail:
+        `${actionCenter.summary.total} Action Center item(s), ${actionCenter.summary.highRisk} high-risk, ` +
+        `${actionCenter.summary.internalHandoffEligible} internal-handoff eligible, ${unavailableActionSources.length} unavailable source(s).`,
+      nextStep: unavailableActionSources[0]?.note ?? "Keep Action Center guardrails visible before expanding AI autonomy.",
+      blocksProductionLaunch: false,
+      blocksAutonomyExpansion: unavailableActionSources.length > 0,
     },
   ];
 
