@@ -1,10 +1,10 @@
-import { getUnifiedActionCenter } from "./action-center";
-import { getAgentMissionControl } from "./agent-mission-control";
+import { getUnifiedActionCenter, type UnifiedActionCenter } from "./action-center";
+import { getAgentMissionControl, type AgentMissionControl } from "./agent-mission-control";
 import { getDashboardAgentMatrix, getDashboardAgentSummary } from "./dashboard-agents";
-import { getAiWorkforceSmokeReport } from "./ai-workforce-smoke";
-import { getSourceFreshnessReport } from "./source-freshness";
+import { getAiWorkforceSmokeReport, type AiWorkforceSmokeReport } from "./ai-workforce-smoke";
+import { getSourceFreshnessReport, type SourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
-import { getAiWorkforceFoundationState, type WorkforceTaskQueueItem } from "./workforce-memory";
+import { getAiWorkforceFoundationState, type WorkforceFoundationState, type WorkforceTaskQueueItem } from "./workforce-memory";
 
 export interface AiCommandCenterState {
   generatedAt: string;
@@ -133,7 +133,16 @@ function priorityForWorkforceTask(task: WorkforceTaskQueueItem): AiCommandCenter
   return null;
 }
 
-export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCenterState> {
+export async function getAiCommandCenterState(
+  limit = 8,
+  options: {
+    actionCenter?: UnifiedActionCenter;
+    missionControl?: AgentMissionControl;
+    sourceFreshness?: SourceFreshnessReport;
+    smokeReport?: AiWorkforceSmokeReport;
+    workforceFoundation?: WorkforceFoundationState;
+  } = {}
+): Promise<AiCommandCenterState> {
   const dashboardAgents = getDashboardAgentMatrix();
   const [
     actionCenter,
@@ -142,11 +151,11 @@ export async function getAiCommandCenterState(limit = 8): Promise<AiCommandCente
     smokeReport,
     workforceFoundation,
   ] = await Promise.all([
-    getUnifiedActionCenter(24),
-    getAgentMissionControl(),
-    getSourceFreshnessReport(),
-    getAiWorkforceSmokeReport(),
-    getAiWorkforceFoundationState(12),
+    options.actionCenter ?? getUnifiedActionCenter(24),
+    options.missionControl ?? getAgentMissionControl(),
+    options.sourceFreshness ?? getSourceFreshnessReport(),
+    options.smokeReport ?? getAiWorkforceSmokeReport({ actionCenter: options.actionCenter }),
+    options.workforceFoundation ?? getAiWorkforceFoundationState(12),
   ]);
   const userActions = getUserActionReadiness();
   const dashboardSummary = getDashboardAgentSummary(dashboardAgents);

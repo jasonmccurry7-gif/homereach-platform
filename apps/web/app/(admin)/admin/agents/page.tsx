@@ -54,12 +54,9 @@ export default async function AgentsPage() {
     operationalBriefings,
     monitorRuns,
     operationalMemory,
-    smokeReport,
     sourceFreshness,
     missionControl,
-    commandCenter,
     workOrders,
-    goLiveReadiness,
     agentPermissions,
     workflowRecipes,
     workforceFoundation,
@@ -70,16 +67,28 @@ export default async function AgentsPage() {
     getRecentOperationalBriefings(4),
     getRecentDashboardMonitorRuns(6),
     getOperationalMemory(16),
-    getAiWorkforceSmokeReport(),
     getSourceFreshnessReport(),
     getAgentMissionControl(),
-    getAiCommandCenterState(),
     getAgentWorkOrderQueue(),
-    getGoLiveReadinessReport(),
     getAgentPermissionMatrix(),
     getWorkflowRecipeCatalog(),
     getAiWorkforceFoundationState(),
   ])
+
+  const smokeReport = await getAiWorkforceSmokeReport({ actionCenter })
+  const commandCenter = await getAiCommandCenterState(8, {
+    actionCenter,
+    smokeReport,
+    sourceFreshness,
+    missionControl,
+    workforceFoundation,
+  })
+  const goLiveReadiness = await getGoLiveReadinessReport({
+    actionCenter,
+    smokeReport,
+    sourceFreshness,
+    commandCenter,
+  })
 
   return (
     <AgentsDashboard

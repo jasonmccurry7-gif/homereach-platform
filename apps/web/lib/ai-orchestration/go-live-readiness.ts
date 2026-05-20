@@ -1,8 +1,9 @@
 import { getAiCommandCenterState } from "./command-center";
-import { getAiWorkforceSmokeReport } from "./ai-workforce-smoke";
-import { getSourceFreshnessReport } from "./source-freshness";
+import type { AiCommandCenterState } from "./command-center";
+import { getAiWorkforceSmokeReport, type AiWorkforceSmokeReport } from "./ai-workforce-smoke";
+import { getSourceFreshnessReport, type SourceFreshnessReport } from "./source-freshness";
 import { getUserActionReadiness } from "./user-action-items";
-import { getUnifiedActionCenter } from "./action-center";
+import { getUnifiedActionCenter, type UnifiedActionCenter } from "./action-center";
 
 export type GoLiveGateStatus = "passed" | "warning" | "blocked";
 export type GoLiveGateOwner = "jason" | "admin" | "developer" | "system";
@@ -62,12 +63,17 @@ function launchMode(status: GoLiveGateStatus, summary: GoLiveReadinessReport["su
   return "safe_to_expand_after_human_review";
 }
 
-export async function getGoLiveReadinessReport(): Promise<GoLiveReadinessReport> {
+export async function getGoLiveReadinessReport(options: {
+  commandCenter?: AiCommandCenterState;
+  smokeReport?: AiWorkforceSmokeReport;
+  sourceFreshness?: SourceFreshnessReport;
+  actionCenter?: UnifiedActionCenter;
+} = {}): Promise<GoLiveReadinessReport> {
   const [commandCenter, smokeReport, sourceFreshness, actionCenter] = await Promise.all([
-    getAiCommandCenterState(8),
-    getAiWorkforceSmokeReport(),
-    getSourceFreshnessReport(),
-    getUnifiedActionCenter(12),
+    options.commandCenter ?? getAiCommandCenterState(8),
+    options.smokeReport ?? getAiWorkforceSmokeReport({ actionCenter: options.actionCenter }),
+    options.sourceFreshness ?? getSourceFreshnessReport(),
+    options.actionCenter ?? getUnifiedActionCenter(12),
   ]);
   const userActions = getUserActionReadiness();
 

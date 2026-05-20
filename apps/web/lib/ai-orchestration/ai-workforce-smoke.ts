@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { getDashboardAgentMatrix, getDashboardAgentSummary } from "./dashboard-agents";
 import { getUserActionReadiness } from "./user-action-items";
-import { getUnifiedActionCenter } from "./action-center";
+import { getUnifiedActionCenter, type UnifiedActionCenter } from "./action-center";
 
 export type AiWorkforceSmokeStatus = "ok" | "warning" | "failed";
 
@@ -52,7 +52,7 @@ function overallStatus(checks: AiWorkforceSmokeCheck[]): AiWorkforceSmokeStatus 
   return "ok";
 }
 
-export async function getAiWorkforceSmokeReport(): Promise<AiWorkforceSmokeReport> {
+export async function getAiWorkforceSmokeReport(options: { actionCenter?: UnifiedActionCenter } = {}): Promise<AiWorkforceSmokeReport> {
   const checks: AiWorkforceSmokeCheck[] = [];
   const agents = getDashboardAgentMatrix();
   const agentSummary = getDashboardAgentSummary(agents);
@@ -102,7 +102,7 @@ export async function getAiWorkforceSmokeReport(): Promise<AiWorkforceSmokeRepor
   });
 
   try {
-    const actionCenter = await getUnifiedActionCenter(8);
+    const actionCenter = options.actionCenter ?? await getUnifiedActionCenter(8);
     const unavailableSources = actionCenter.sourceHealth.filter((source) => source.status === "unavailable");
     checks.push({
       key: "unified_action_center_generation",
