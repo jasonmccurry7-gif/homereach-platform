@@ -382,6 +382,16 @@ function actionStatusClass(status: UnifiedActionItem["status"]) {
   return "bg-gray-800 text-gray-300 border-gray-700"
 }
 
+type ActionCenterFilter = "all" | "ai_workforce" | "human_gates" | "blocked" | "high_impact"
+
+function matchesActionCenterFilter(item: UnifiedActionItem, filter: ActionCenterFilter) {
+  if (filter === "all") return true
+  if (filter === "ai_workforce") return item.source === "ai_workforce_task_queue"
+  if (filter === "human_gates") return item.requiresHumanApproval
+  if (filter === "blocked") return item.status === "blocked"
+  return item.urgency === "critical" || item.urgency === "high"
+}
+
 function formatStatus(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
@@ -2695,12 +2705,16 @@ function AutopilotTasksPanel({ queue }: { queue: AutopilotTaskQueue }) {
 function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActionCenter }) {
   const [items, setItems] = useState<UnifiedActionItem[]>(actionCenter.items)
   const [expanded, setExpanded] = useState<string | null>(actionCenter.items[0]?.id ?? null)
+  const [actionFilter, setActionFilter] = useState<ActionCenterFilter>("all")
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setItems(actionCenter.items)
+    setActionFilter((current) =>
+      actionCenter.items.some((item) => matchesActionCenterFilter(item, current)) ? current : "all"
+    )
     setExpanded((current) => {
       if (current && actionCenter.items.some((item) => item.id === current)) return current
       return actionCenter.items[0]?.id ?? null
@@ -2708,7 +2722,20 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
   }, [actionCenter])
 
   const summary = summarizeVisibleActions(items)
-  const visibleItems = items.slice(0, 10)
+  const aiWorkforceActions = items.filter((item) => item.source === "ai_workforce_task_queue").length
+  const filteredItems = items.filter((item) => matchesActionCenterFilter(item, actionFilter))
+  const visibleItems = filteredItems.slice(0, 10)
+  const filterButtons: Array<{ id: ActionCenterFilter; label: string; count: number }> = [
+    { id: "all", label: "All", count: items.length },
+    { id: "ai_workforce", label: "AI Workforce", count: aiWorkforceActions },
+    { id: "human_gates", label: "Human Gates", count: items.filter((item) => item.requiresHumanApproval).length },
+    { id: "blocked", label: "Blocked", count: items.filter((item) => item.status === "blocked").length },
+    {
+      id: "high_impact",
+      label: "High Impact",
+      count: items.filter((item) => item.urgency === "critical" || item.urgency === "high").length,
+    },
+  ]
 
   const mutateAction = useCallback(
     async (
@@ -2771,7 +2798,7 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
             You can now resolve, snooze, dismiss, and comment without triggering any live execution.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
             <p className="text-xs text-gray-500">Actions</p>
             <p className="text-2xl font-bold text-white">{summary.total}</p>
@@ -2788,6 +2815,10 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
             <p className="text-xs text-blue-400">Review</p>
             <p className="text-2xl font-bold text-blue-300">{summary.needsReview}</p>
           </div>
+          <div className="rounded-xl border border-sky-800/40 bg-sky-950/30 p-3">
+            <p className="text-xs text-sky-400">Workforce</p>
+            <p className="text-2xl font-bold text-sky-300">{aiWorkforceActions}</p>
+          </div>
           <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3">
             <p className="text-xs text-amber-400">Human Gate</p>
             <p className="text-2xl font-bold text-amber-300">{summary.humanApprovalRequired}</p>
@@ -2801,12 +2832,30 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
         </div>
       )}
 
+      <div className="mb-4 flex flex-wrap gap-2">
+        {filterButtons.map((filter) => (
+          <button
+            key={filter.id}
+            type="button"
+            onClick={() => setActionFilter(filter.id)}
+            className={cn(
+              "rounded-full border px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] transition",
+              actionFilter === filter.id
+                ? "border-emerald-400 bg-emerald-950/50 text-emerald-100"
+                : "border-white/10 bg-white/5 text-gray-300 hover:bg-white/10"
+            )}
+          >
+            {filter.label} ({filter.count})
+          </button>
+        ))}
+      </div>
+
       {visibleItems.length === 0 ? (
         <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-5">
-          <p className="font-semibold text-emerald-200">No immediate cross-dashboard actions found.</p>
+          <p className="font-semibold text-emerald-200">No immediate actions found for this filter.</p>
           <p className="mt-1 text-sm text-emerald-100/70">
             The action center will populate from approvals, political replies, Gov Contracts deadlines, sales lead activity,
-            failed webhooks, and agent readiness blockers.
+            failed webhooks, agent readiness blockers, and AI Workforce task lifecycle items.
           </p>
         </div>
       ) : (
@@ -2827,6 +2876,9 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
                       </span>
                       <span className={cn("rounded-full border px-2 py-1 text-xs font-bold", actionStatusClass(item.status))}>
                         {formatStatus(item.status)}
+                      </span>
+                      <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs font-bold uppercase">
+                        {formatStatus(item.source)}
                       </span>
                       {item.commentCount ? (
                         <span className="rounded-full border border-emerald-700/40 bg-emerald-900/20 px-2 py-1 text-xs font-bold text-emerald-200">
@@ -2876,6 +2928,16 @@ function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActio
                         </p>
                       </div>
                     </div>
+
+                    {item.source === "ai_workforce_task_queue" && (
+                      <div className="mt-4 rounded-xl border border-sky-800/40 bg-sky-950/20 p-3 text-xs leading-5 text-sky-100">
+                        <p className="font-bold uppercase tracking-[0.14em] text-sky-200">AI Workforce Triage Rule</p>
+                        <p className="mt-1">
+                          Resolve, snooze, dismiss, and comment here only manage the Action Center record. Use the AI Workforce
+                          task queue controls to run Plan Only, send approval, dry run, queue handoff, create task, or complete task.
+                        </p>
+                      </div>
+                    )}
 
                     <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
                       <textarea
