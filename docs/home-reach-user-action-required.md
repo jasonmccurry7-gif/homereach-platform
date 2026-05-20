@@ -4,9 +4,10 @@ This file tracks items that require Jason/admin/vendor action. Engineering can c
 
 ## Current Required Actions
 
-1. Apply Supabase migrations `097` through `102`.
-   - Blocks: AI Workforce OS go-live and safe autonomy.
-   - Does not block: continued local engineering work.
+1. Confirm AI Workforce OS production behavior after migrations `097` through `103`.
+   - Status: migrations `097` through `103` have been applied and the key tables were verified in Supabase.
+   - Remaining action: review `/admin/agents` in production and confirm the supervised AI Workforce panels look correct.
+   - Does not block: continued engineering work.
 
 2. Confirm Vercel environment variables for the Learning Engine.
    - `ENABLE_CONTENT_INTEL`

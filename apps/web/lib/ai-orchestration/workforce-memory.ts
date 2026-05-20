@@ -179,6 +179,32 @@ export interface UpdateWorkforceIngestionStatusInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface PlanWorkforceTaskInput {
+  taskId?: string;
+  taskKey?: string;
+  actorId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkforceTaskExecutionPlan {
+  taskId: string;
+  taskKey: string;
+  agentId: string;
+  dashboard: string;
+  title: string;
+  route?: string | null;
+  status: WorkforceQueueStatus;
+  requiresHumanApproval: boolean;
+  plan: {
+    mode: "plan_only";
+    externalWorkflowTouched: false;
+    recommendedSteps: string[];
+    humanApprovalGates: string[];
+    prohibitedActions: string[];
+    safeHandoff: string;
+  };
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -206,6 +232,118 @@ function eventTypeForQueueStatus(status: WorkforceQueueStatus | WorkforceIngesti
   if (status === "blocked") return "blocked";
   if (status === "done" || status === "completed" || status === "archived") return "resolved";
   return "queued";
+}
+
+function splitTaskText(value: unknown) {
+  return String(value ?? "")
+    .split(/\n+|;|\.\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function planForDashboard(dashboard: string) {
+  const normalized = dashboard.toLowerCase();
+
+  if (normalized.includes("political")) {
+    return {
+      recommendedSteps: [
+        "Review the campaign, candidate, geography, and compliance context before drafting recommendations.",
+        "Prepare strategy, route, creative, or outreach notes for human review only.",
+        "Confirm any political messaging stays draft-only or approval-only before release.",
+        "Record the final human decision back into AI Workforce memory.",
+      ],
+      humanApprovalGates: [
+        "Political outreach approval",
+        "Creative or message approval",
+        "Budget or payment approval",
+        "Launch approval",
+      ],
+    };
+  }
+
+  if (normalized.includes("procurement") || normalized.includes("inventory")) {
+    return {
+      recommendedSteps: [
+        "Review the business profile, item, vendor, savings, and delivery context.",
+        "Prepare a smart-buy, vendor-risk, or savings recommendation with transparent math.",
+        "Keep live ordering disabled unless owner approval and supplier integration are confirmed.",
+        "Record the owner/admin decision back into AI Workforce memory.",
+      ],
+      humanApprovalGates: [
+        "Owner purchase approval",
+        "Supplier commitment approval",
+        "Pricing or savings claim review",
+        "Payment approval",
+      ],
+    };
+  }
+
+  if (normalized.includes("gov") || normalized.includes("contract") || normalized.includes("sam")) {
+    return {
+      recommendedSteps: [
+        "Review the opportunity, deadline, agency, NAICS/PSC, and fit context.",
+        "Prepare a go/no-go, subcontractor, or compliance recommendation for review.",
+        "Keep bid submission, certifications, pricing, and subcontractor commitments human-controlled.",
+        "Record the final pursuit decision back into AI Workforce memory.",
+      ],
+      humanApprovalGates: [
+        "Go/no-go approval",
+        "Pricing approval",
+        "Certification/legal review",
+        "Final submission approval",
+      ],
+    };
+  }
+
+  if (normalized.includes("learning") || normalized.includes("content")) {
+    return {
+      recommendedSteps: [
+        "Review the source, transcript, webpage, RSS item, or research note before ingestion.",
+        "Extract ideas into reviewable recommendations, not production changes.",
+        "Send accepted ideas to backlog or implementation planning after human review.",
+        "Record feedback and duplicate/conflict findings back into AI Workforce memory.",
+      ],
+      humanApprovalGates: [
+        "Source approval",
+        "Recommendation approval",
+        "Implementation approval",
+        "Publishing approval",
+      ],
+    };
+  }
+
+  if (normalized.includes("outreach") || normalized.includes("sales") || normalized.includes("revenue")) {
+    return {
+      recommendedSteps: [
+        "Review the lead, customer, campaign, consent, and suppression context.",
+        "Prepare a draft follow-up, next-best-action, or pipeline recommendation.",
+        "Keep outbound sending approval-gated unless the business line is explicitly cleared.",
+        "Record the sales/admin decision back into AI Workforce memory.",
+      ],
+      humanApprovalGates: [
+        "Outbound message approval",
+        "Pricing approval",
+        "Payment link approval",
+        "Automation mode approval",
+      ],
+    };
+  }
+
+  return {
+    recommendedSteps: [
+      "Review the source workflow and the most recent related memory/events.",
+      "Prepare a short recommendation, risk note, and next action for human review.",
+      "Keep execution paused until an admin approves the specific action.",
+      "Record the human outcome back into AI Workforce memory.",
+    ],
+    humanApprovalGates: [
+      "Admin review",
+      "External action approval",
+      "Customer-impact approval",
+      "Completion confirmation",
+    ],
+  };
 }
 
 async function readCount(
@@ -417,7 +555,7 @@ export async function getAiWorkforceFoundationState(limit = 12): Promise<Workfor
     databaseReady
       ? "Start writing approved AI observations into memory through service-role only workflows."
       : "Apply migration 103 before relying on persistent AI Workforce memory.",
-    "Keep task execution separate from the queue until executor-specific approvals are connected.",
+    "Use Plan Only before execution so admins can review steps, gates, and prohibited actions.",
     "Use ingestion queue statuses for review and approval before any source analysis becomes autonomous.",
   ];
 
@@ -665,4 +803,124 @@ export async function updateAiWorkforceIngestionStatus(input: UpdateWorkforceIng
   });
 
   return data;
+}
+
+export async function planAiWorkforceTaskExecution(input: PlanWorkforceTaskInput): Promise<WorkforceTaskExecutionPlan> {
+  if (!input.taskId && !input.taskKey) {
+    throw new Error("taskId or taskKey is required.");
+  }
+
+  const supabase = createServiceClient();
+  let query = supabase
+    .from("ai_workforce_task_queue")
+    .select("id,task_key,agent_id,dashboard,title,description,recommended_action,route,priority,status,requires_human_approval,metadata")
+    .limit(1);
+
+  query = input.taskId ? query.eq("id", input.taskId) : query.eq("task_key", input.taskKey);
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("AI Workforce task was not found.");
+
+  const taskStatus = (data.status ?? "queued") as WorkforceQueueStatus;
+  if (["done", "rejected", "archived"].includes(taskStatus)) {
+    throw new Error("Completed, rejected, or archived tasks cannot be planned.");
+  }
+
+  const dashboardPlan = planForDashboard(String(data.dashboard));
+  const taskHints = [
+    ...splitTaskText(data.description),
+    ...splitTaskText(data.recommended_action),
+  ].slice(0, 4);
+
+  const recommendedSteps = [
+    ...taskHints.map((hint) => `Task context: ${hint}`),
+    ...dashboardPlan.recommendedSteps,
+  ].slice(0, 7);
+
+  const plan: WorkforceTaskExecutionPlan = {
+    taskId: String(data.id),
+    taskKey: String(data.task_key),
+    agentId: String(data.agent_id),
+    dashboard: String(data.dashboard),
+    title: String(data.title),
+    route: data.route ?? "/admin/agents",
+    status: taskStatus,
+    requiresHumanApproval: Boolean(data.requires_human_approval),
+    plan: {
+      mode: "plan_only",
+      externalWorkflowTouched: false,
+      recommendedSteps,
+      humanApprovalGates: dashboardPlan.humanApprovalGates,
+      prohibitedActions: [
+        "Do not send SMS, email, DM, or political outreach from this planning step.",
+        "Do not publish pages, posts, creative, or campaign content from this planning step.",
+        "Do not place orders, approve purchases, submit bids, or change Stripe/payment records.",
+        "Do not bypass human approval, permissions, suppression rules, quiet hours, or compliance gates.",
+      ],
+      safeHandoff: "Admin reviews this plan, edits or approves the task separately, then records the human outcome.",
+    },
+  };
+
+  const now = nowIso();
+  const existingMetadata = (data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata))
+    ? data.metadata as Record<string, unknown>
+    : {};
+
+  const { error: updateError } = await supabase
+    .from("ai_workforce_task_queue")
+    .update({
+      updated_at: now,
+      metadata: {
+        ...existingMetadata,
+        lastExecutionPlan: plan.plan,
+        lastExecutionPlanAt: now,
+        lastExecutionPlanBy: input.actorId ?? null,
+        externalWorkflowTouched: false,
+        ...(input.metadata ?? {}),
+      },
+    })
+    .eq("id", data.id);
+  if (updateError) throw updateError;
+
+  await upsertAiWorkforceMemoryItem({
+    memoryKey: `execution-plan:${data.task_key}`,
+    agentId: data.agent_id ?? null,
+    dashboard: String(data.dashboard),
+    memoryType: "playbook",
+    title: `Plan only: ${data.title}`,
+    summary: `Execution plan prepared for human review. ${plan.plan.safeHandoff}`,
+    source: "ai_workforce_task_queue",
+    sourceId: String(data.id),
+    route: data.route ?? "/admin/agents",
+    confidence: 0.86,
+    impactLevel: (data.priority ?? "medium") as WorkforceMemoryItem["impactLevel"],
+    metadata: {
+      taskKey: data.task_key,
+      plan: plan.plan,
+      externalWorkflowTouched: false,
+    },
+  });
+
+  await recordAiWorkforceEvent({
+    eventType: "recommended",
+    agentId: data.agent_id ?? null,
+    dashboard: String(data.dashboard),
+    actorType: "admin",
+    actorId: input.actorId ?? null,
+    title: `Plan only prepared: ${data.title}`,
+    summary: "A supervised execution plan was generated for review. No external workflow was executed.",
+    route: data.route ?? "/admin/agents",
+    severity: "info",
+    source: "ai_workforce_task_queue",
+    sourceId: String(data.id),
+    metadata: {
+      taskKey: data.task_key,
+      planMode: "plan_only",
+      externalWorkflowTouched: false,
+      ...(input.metadata ?? {}),
+    },
+  });
+
+  return plan;
 }

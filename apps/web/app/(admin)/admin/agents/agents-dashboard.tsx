@@ -873,7 +873,7 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
 
   const runQueueUpdate = useCallback(async (
     busyKey: string,
-    operation: "update_task_status" | "update_ingestion_status",
+    operation: "update_task_status" | "update_ingestion_status" | "plan_task_execution",
     payload: Record<string, unknown>,
     successMessage: string
   ) => {
@@ -1030,6 +1030,26 @@ function AiWorkforceFoundationPanel({ foundation }: { foundation: WorkforceFound
                   <p className="font-semibold text-white">{task.title}</p>
                   <p className="mt-1 text-sm leading-5 text-gray-300">{task.recommendedAction}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {task.status !== "done" && task.status !== "rejected" && (
+                      <button
+                        type="button"
+                        disabled={queueBusy !== null}
+                        onClick={() => runQueueUpdate(
+                          `task:${task.taskKey}:plan`,
+                          "plan_task_execution",
+                          {
+                            taskKey: task.taskKey,
+                            metadata: {
+                              requestedFrom: "AI Workforce Data Foundation panel",
+                            },
+                          },
+                          "Plan-only execution playbook saved. No external workflow was executed."
+                        )}
+                        className="rounded-md border border-sky-700/50 bg-sky-950/40 px-3 py-1.5 text-xs font-bold text-sky-100 transition hover:bg-sky-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueBusy === `task:${task.taskKey}:plan` ? "Planning..." : "Plan Only"}
+                      </button>
+                    )}
                     {task.status !== "done" && (
                       <button
                         type="button"

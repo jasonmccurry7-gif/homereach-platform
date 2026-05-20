@@ -4,6 +4,7 @@ import {
   enqueueAiWorkforceIngestionSource,
   enqueueAiWorkforceTask,
   getAiWorkforceFoundationState,
+  planAiWorkforceTaskExecution,
   recordAiWorkforceEvent,
   updateAiWorkforceIngestionStatus,
   updateAiWorkforceTaskStatus,
@@ -93,6 +94,13 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ ok: true, operation, result });
     }
+    if (operation === "plan_task_execution") {
+      const result = await planAiWorkforceTaskExecution({
+        ...(payload as Parameters<typeof planAiWorkforceTaskExecution>[0]),
+        actorId: guard.user?.id ?? null,
+      });
+      return NextResponse.json({ ok: true, operation, result });
+    }
 
     return NextResponse.json({
       error: "Unsupported operation.",
@@ -105,6 +113,7 @@ export async function POST(req: Request) {
         "enqueue_ingestion",
         "update_task_status",
         "update_ingestion_status",
+        "plan_task_execution",
       ],
     }, { status: 400 });
   } catch (error) {
