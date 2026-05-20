@@ -56,6 +56,39 @@ export interface AutopilotControlCenter {
   sourceHealth: Array<{ source: string; status: "ok" | "unavailable"; note?: string }>;
 }
 
+export interface AutopilotInternalTask {
+  executionRunId: string;
+  requestId: string;
+  sourceKey: string;
+  taskId: string;
+  title: string;
+  description: string | null;
+  status: "pending" | "in_progress" | "done" | "snoozed" | "cancelled" | string;
+  dueAt: string | null;
+  createdAt: string | null;
+  completedAt: string | null;
+  dashboard: string;
+  route: string;
+  source: string;
+  requestedAction: string;
+  expectedImpact: string;
+  guardrailSummary: string;
+  taskCreatedAt: string | null;
+}
+
+export interface AutopilotTaskQueue {
+  generatedAt: string;
+  summary: {
+    total: number;
+    pending: number;
+    done: number;
+    overdue: number;
+    dueSoon: number;
+  };
+  tasks: AutopilotInternalTask[];
+  sourceHealth: Array<{ source: string; status: "ok" | "unavailable"; note?: string }>;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -73,6 +106,18 @@ function summarize(requests: AutopilotApprovalRequest[]): AutopilotControlSummar
     critical: requests.filter((request) => request.riskLevel === "critical").length,
     high: requests.filter((request) => request.riskLevel === "high").length,
     approvalOnly: requests.filter((request) => request.executorStatus === "approval_only").length,
+  };
+}
+
+function summarizeTasks(tasks: AutopilotInternalTask[]): AutopilotTaskQueue["summary"] {
+  const now = Date.now();
+  const soon = now + 24 * 60 * 60 * 1000;
+  return {
+    total: tasks.length,
+    pending: tasks.filter((task) => task.status === "pending" || task.status === "in_progress").length,
+    done: tasks.filter((task) => task.status === "done").length,
+    overdue: tasks.filter((task) => task.status !== "done" && task.dueAt && new Date(task.dueAt).getTime() < now).length,
+    dueSoon: tasks.filter((task) => task.status !== "done" && task.dueAt && new Date(task.dueAt).getTime() <= soon).length,
   };
 }
 
@@ -299,6 +344,96 @@ export async function getAutopilotControlCenter(limit = 12): Promise<AutopilotCo
       note: error instanceof Error ? error.message : String(error),
     });
     return { generatedAt: nowIso(), summary: summarize([]), requests: [], sourceHealth };
+  }
+}
+
+export async function getAutopilotTaskQueue(limit = 12): Promise<AutopilotTaskQueue> {
+  const sourceHealth: AutopilotTaskQueue["sourceHealth"] = [];
+
+  if (!hasSupabaseEnv()) {
+    sourceHealth.push({
+      source: "ai_autopilot_execution_runs",
+      status: "unavailable",
+      note: "Supabase env is missing.",
+    });
+    return { generatedAt: nowIso(), summary: summarizeTasks([]), tasks: [], sourceHealth };
+  }
+
+  const supabase = createServiceClient();
+
+  try {
+    const { data: runs, error: runsError } = await supabase
+      .from("ai_autopilot_execution_runs")
+      .select("id,request_id,source_key,created_at,internal_task_id,internal_task_created_at,result_summary")
+      .not("internal_task_id", "is", null)
+      .order("internal_task_created_at", { ascending: false, nullsFirst: false })
+      .limit(limit);
+
+    if (runsError) throw runsError;
+    sourceHealth.push({ source: "ai_autopilot_execution_runs", status: "ok" });
+
+    if (!runs || runs.length === 0) {
+      return { generatedAt: nowIso(), summary: summarizeTasks([]), tasks: [], sourceHealth };
+    }
+
+    const taskIds = runs.map((run) => run.internal_task_id).filter(Boolean);
+    const requestIds = runs.map((run) => run.request_id).filter(Boolean);
+
+    const [tasksResult, requestsResult] = await Promise.all([
+      supabase
+        .from("crm_tasks")
+        .select("id,title,description,status,due_at,created_at,completed_at")
+        .in("id", taskIds),
+      supabase
+        .from("ai_autopilot_approval_requests")
+        .select("id,source_key,source,dashboard,route,title,requested_action,expected_impact,guardrail_summary")
+        .in("id", requestIds),
+    ]);
+
+    if (tasksResult.error) throw tasksResult.error;
+    if (requestsResult.error) throw requestsResult.error;
+    sourceHealth.push({ source: "crm_tasks", status: "ok" });
+    sourceHealth.push({ source: "ai_autopilot_approval_requests", status: "ok" });
+
+    const tasksById = new Map((tasksResult.data ?? []).map((task) => [task.id, task]));
+    const requestsById = new Map((requestsResult.data ?? []).map((request) => [request.id, request]));
+
+    const tasks: AutopilotInternalTask[] = runs
+      .map((run) => {
+        const task = tasksById.get(run.internal_task_id);
+        const request = requestsById.get(run.request_id);
+        if (!task || !request) return null;
+
+        return {
+          executionRunId: run.id,
+          requestId: run.request_id,
+          sourceKey: run.source_key,
+          taskId: task.id,
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          dueAt: task.due_at,
+          createdAt: task.created_at,
+          completedAt: task.completed_at,
+          dashboard: request.dashboard,
+          route: request.route,
+          source: request.source,
+          requestedAction: request.requested_action,
+          expectedImpact: request.expected_impact,
+          guardrailSummary: request.guardrail_summary,
+          taskCreatedAt: run.internal_task_created_at,
+        } satisfies AutopilotInternalTask;
+      })
+      .filter((task): task is AutopilotInternalTask => Boolean(task));
+
+    return { generatedAt: nowIso(), summary: summarizeTasks(tasks), tasks, sourceHealth };
+  } catch (error) {
+    sourceHealth.push({
+      source: "autopilot_task_queue",
+      status: "unavailable",
+      note: error instanceof Error ? error.message : String(error),
+    });
+    return { generatedAt: nowIso(), summary: summarizeTasks([]), tasks: [], sourceHealth };
   }
 }
 
@@ -663,6 +798,88 @@ export async function createAutopilotInternalTask(input: {
       dueAt,
       executionEnabled: false,
       message: "Internal CRM task created. No external workflow was executed.",
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function completeAutopilotInternalTask(input: {
+  taskId: string;
+  actorId?: string | null;
+  note?: string | null;
+}) {
+  if (!hasSupabaseEnv()) {
+    return { ok: false, error: "Supabase is not configured for autopilot task completion." };
+  }
+
+  const taskId = input.taskId?.trim();
+  if (!taskId) return { ok: false, error: "taskId is required." };
+
+  const supabase = createServiceClient();
+  const now = nowIso();
+  const note = input.note?.trim() || null;
+
+  try {
+    const { data: run, error: runError } = await supabase
+      .from("ai_autopilot_execution_runs")
+      .select("id,request_id,source_key,internal_task_id,metadata")
+      .eq("internal_task_id", taskId)
+      .maybeSingle();
+
+    if (runError) throw runError;
+    if (!run) return { ok: false, error: "Autopilot task link not found." };
+
+    const { error: taskError } = await supabase
+      .from("crm_tasks")
+      .update({
+        status: "done",
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq("id", taskId);
+
+    if (taskError) throw taskError;
+
+    const { error: runUpdateError } = await supabase
+      .from("ai_autopilot_execution_runs")
+      .update({
+        updated_at: now,
+        result_summary: "Internal CRM task marked done by admin. No external workflow was executed.",
+        metadata: {
+          ...((run.metadata && typeof run.metadata === "object" && !Array.isArray(run.metadata)) ? run.metadata : {}),
+          internalTaskCompletedAt: now,
+          internalTaskCompletedBy: input.actorId ?? null,
+        },
+      })
+      .eq("id", run.id);
+
+    if (runUpdateError) throw runUpdateError;
+
+    const { error: eventError } = await supabase.from("ai_autopilot_approval_events").insert({
+      request_id: run.request_id,
+      source_key: run.source_key,
+      event_type: "execution_completed",
+      actor_id: input.actorId ?? null,
+      note,
+      metadata: {
+        executionRunId: run.id,
+        internalTaskId: taskId,
+        internalTaskCompleted: true,
+        executionEnabled: false,
+        externalWorkflowTouched: false,
+      },
+    });
+
+    if (eventError) throw eventError;
+
+    return {
+      ok: true,
+      taskId,
+      executionRunId: run.id,
+      status: "done",
+      executionEnabled: false,
+      message: "Internal task marked done. No external workflow was executed.",
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

@@ -3,7 +3,12 @@
 import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import type { DashboardAgentRuntime } from "@/lib/ai-orchestration/dashboard-agents"
-import type { AutopilotApprovalRequest, AutopilotControlCenter } from "@/lib/ai-orchestration/autopilot"
+import type {
+  AutopilotApprovalRequest,
+  AutopilotControlCenter,
+  AutopilotInternalTask,
+  AutopilotTaskQueue,
+} from "@/lib/ai-orchestration/autopilot"
 import type { UnifiedActionCenter, UnifiedActionItem } from "@/lib/ai-orchestration/action-center"
 import type { DashboardMonitorRun, OperationalBriefing } from "@/lib/ai-orchestration/briefings"
 
@@ -58,6 +63,7 @@ interface Props {
   dashboardAgentSummary: DashboardAgentSummary
   actionCenter: UnifiedActionCenter
   autopilotControl: AutopilotControlCenter
+  autopilotTasks: AutopilotTaskQueue
   operationalBriefings: OperationalBriefing[]
   monitorRuns: DashboardMonitorRun[]
 }
@@ -868,6 +874,164 @@ function HumanApprovedAutopilotPanel({ control }: { control: AutopilotControlCen
   )
 }
 
+function taskStatusClass(status: AutopilotInternalTask["status"]) {
+  if (status === "done") return "border-emerald-700/40 bg-emerald-950/30 text-emerald-200"
+  if (status === "snoozed") return "border-amber-700/40 bg-amber-950/30 text-amber-100"
+  if (status === "cancelled") return "border-red-700/40 bg-red-950/30 text-red-200"
+  return "border-cyan-700/40 bg-cyan-950/30 text-cyan-100"
+}
+
+function AutopilotTasksPanel({ queue }: { queue: AutopilotTaskQueue }) {
+  const [tasks, setTasks] = useState<AutopilotInternalTask[]>(queue.tasks)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setTasks(queue.tasks)
+  }, [queue])
+
+  const summary = {
+    total: tasks.length,
+    pending: tasks.filter((task) => task.status === "pending" || task.status === "in_progress").length,
+    done: tasks.filter((task) => task.status === "done").length,
+    overdue: tasks.filter(
+      (task) => task.status !== "done" && task.dueAt && new Date(task.dueAt).getTime() < Date.now()
+    ).length,
+  }
+
+  const completeTask = useCallback(async (task: AutopilotInternalTask) => {
+    const key = `${task.taskId}:complete`
+    setBusyKey(key)
+    setError(null)
+    try {
+      const response = await fetch("/api/admin/ai-orchestration/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "complete_internal_task",
+          taskId: task.taskId,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Task completion failed")
+      }
+
+      setTasks((current) =>
+        current.map((item) =>
+          item.taskId === task.taskId
+            ? { ...item, status: "done", completedAt: new Date().toISOString() }
+            : item
+        )
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Task completion failed")
+    } finally {
+      setBusyKey(null)
+    }
+  }, [])
+
+  return (
+    <section className="mb-8 rounded-2xl border border-cyan-900/40 bg-cyan-950/10 p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-cyan-300">
+            Phase 8 Autopilot Tasks
+          </p>
+          <h2 className="text-2xl font-bold text-white">Internal Tasks Created By AI Handoffs</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
+            This is the work queue created after a human-approved safe handoff. These are internal reminders only;
+            completing one does not send outreach, place orders, submit bids, or change checkout.
+          </p>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+            <p className="text-xs text-gray-500">Tasks</p>
+            <p className="text-2xl font-bold text-white">{summary.total}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/30 p-3">
+            <p className="text-xs text-cyan-300">Pending</p>
+            <p className="text-2xl font-bold text-cyan-200">{summary.pending}</p>
+          </div>
+          <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-3">
+            <p className="text-xs text-red-300">Overdue</p>
+            <p className="text-2xl font-bold text-red-200">{summary.overdue}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-3">
+            <p className="text-xs text-emerald-300">Done</p>
+            <p className="text-2xl font-bold text-emerald-200">{summary.done}</p>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-800/40 bg-red-950/30 p-3 text-sm text-red-200">
+          {error}
+        </div>
+      )}
+
+      {tasks.length === 0 ? (
+        <div className="rounded-xl border border-cyan-800/30 bg-cyan-950/20 p-5">
+          <p className="font-semibold text-cyan-100">No AI handoff tasks yet.</p>
+          <p className="mt-1 text-sm text-cyan-100/70">
+            Tasks appear after an approved gate is queued as a safe handoff and converted into an internal CRM task.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {tasks.slice(0, 8).map((task) => (
+            <article key={task.taskId} className="rounded-xl border border-cyan-900/30 bg-gray-950/50 p-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className={cn("rounded-full border px-2 py-1 text-xs font-bold uppercase", taskStatusClass(task.status))}>
+                      {formatStatus(task.status)}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs font-bold uppercase text-gray-300">
+                      {task.dashboard}
+                    </span>
+                    {task.dueAt && (
+                      <span className="text-xs text-gray-500">
+                        Due {new Date(task.dueAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-bold text-white">{task.title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-gray-300">{task.requestedAction}</p>
+                  <p className="mt-2 text-xs leading-5 text-gray-500">{task.guardrailSummary}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[240px] lg:grid-cols-1">
+                  <a
+                    href={task.route}
+                    className="rounded-lg bg-white px-3 py-2 text-center text-xs font-bold text-gray-950 transition hover:bg-gray-200"
+                  >
+                    Open Source Workflow
+                  </a>
+                  <button
+                    type="button"
+                    disabled={busyKey === `${task.taskId}:complete` || task.status === "done"}
+                    onClick={() => completeTask(task)}
+                    className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-bold text-gray-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Mark Done
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col gap-2 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+        <span>Generated {new Date(queue.generatedAt).toLocaleString()}</span>
+        <span>
+          Sources online: {queue.sourceHealth.filter((source) => source.status === "ok").length}/{queue.sourceHealth.length}
+        </span>
+      </div>
+    </section>
+  )
+}
+
 function UnifiedActionCenterPanel({ actionCenter }: { actionCenter: UnifiedActionCenter }) {
   const [items, setItems] = useState<UnifiedActionItem[]>(actionCenter.items)
   const [expanded, setExpanded] = useState<string | null>(actionCenter.items[0]?.id ?? null)
@@ -1439,6 +1603,7 @@ export default function AgentsDashboard({
   dashboardAgentSummary,
   actionCenter,
   autopilotControl,
+  autopilotTasks,
   operationalBriefings,
   monitorRuns,
 }: Props) {
@@ -1452,6 +1617,7 @@ export default function AgentsDashboard({
 
           <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
           <HumanApprovedAutopilotPanel control={autopilotControl} />
+          <AutopilotTasksPanel queue={autopilotTasks} />
           <UnifiedActionCenterPanel actionCenter={actionCenter} />
           <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 
@@ -1514,6 +1680,7 @@ export default function AgentsDashboard({
 
         <OperationalBriefingPanel initialBriefings={operationalBriefings} initialMonitorRuns={monitorRuns} />
         <HumanApprovedAutopilotPanel control={autopilotControl} />
+        <AutopilotTasksPanel queue={autopilotTasks} />
         <UnifiedActionCenterPanel actionCenter={actionCenter} />
         <DashboardAgentMatrix agents={dashboardAgents} summary={dashboardAgentSummary} />
 

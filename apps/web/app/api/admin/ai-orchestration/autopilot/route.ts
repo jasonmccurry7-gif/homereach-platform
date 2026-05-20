@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/api-guards";
 import {
+  completeAutopilotInternalTask,
   createAutopilotInternalTask,
   decideAutopilotApproval,
   getAutopilotControlCenter,
@@ -65,7 +66,8 @@ export async function POST(req: Request) {
 
   let body: {
     requestId?: string;
-    operation?: "queue_internal_handoff" | "create_internal_task";
+    taskId?: string;
+    operation?: "queue_internal_handoff" | "create_internal_task" | "complete_internal_task";
     note?: string;
   };
 
@@ -75,11 +77,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
-  if (!body.requestId || !body.operation || !["queue_internal_handoff", "create_internal_task"].includes(body.operation)) {
+  if (!body.operation || !["queue_internal_handoff", "create_internal_task", "complete_internal_task"].includes(body.operation)) {
     return NextResponse.json(
       { ok: false, error: "requestId and a valid operation are required." },
       { status: 400 }
     );
+  }
+
+  if (body.operation === "complete_internal_task") {
+    if (!body.taskId) {
+      return NextResponse.json({ ok: false, error: "taskId is required." }, { status: 400 });
+    }
+    const result = await completeAutopilotInternalTask({
+      taskId: body.taskId,
+      note: body.note,
+      actorId: guard.user?.id ?? null,
+    });
+    return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+  }
+
+  if (!body.requestId) {
+    return NextResponse.json({ ok: false, error: "requestId is required." }, { status: 400 });
   }
 
   const result = body.operation === "create_internal_task"

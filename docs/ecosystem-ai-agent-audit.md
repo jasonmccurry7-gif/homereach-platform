@@ -416,3 +416,38 @@ Safety boundary:
 - The created CRM task is an internal admin reminder only.
 - It does not send outreach, place procurement orders, submit Gov bids, change pricing, generate checkout, or contact customers.
 - Humans still complete any external workflow from the original source dashboard.
+
+## Phase 8 Implementation
+
+Phase 8 surfaces AI-created internal tasks directly inside `/admin/agents`.
+
+New server helper:
+
+- `getAutopilotTaskQueue`
+  - Reads `ai_autopilot_execution_runs` with linked `crm_tasks`.
+  - Joins back to `ai_autopilot_approval_requests` so each task shows source dashboard, workflow route, requested action, expected impact, and guardrails.
+
+Route update:
+
+- `POST /api/admin/ai-orchestration/autopilot`
+  - Adds `operation=complete_internal_task`.
+  - Marks the linked internal `crm_tasks` row as `done`.
+  - Records an `execution_completed` audit event with `externalWorkflowTouched=false`.
+
+UI update:
+
+- `/admin/agents` now includes a Phase 8 Autopilot Tasks panel.
+- Shows total, pending, overdue, and completed AI handoff tasks.
+- Each task has:
+  - Status
+  - Source dashboard
+  - Due date
+  - Recommended action
+  - Safety guardrail
+  - Open Source Workflow
+  - Mark Done
+
+Safety boundary:
+
+- Marking a task done only updates the internal CRM task status and audit log.
+- It does not send outreach, trigger checkout, place orders, submit bids, or complete the source business workflow.
