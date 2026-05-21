@@ -1,13 +1,22 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useCallback } from "react";
 import type { CityExpansionData } from "./page";
+import {
+  authorityQualityRules,
+  getAuthorityClusters,
+  getTopAuthorityOpportunities,
+  listAuthorityGuides,
+  listOhioAuthorityPages,
+  listSeoVisualAssets,
+} from "@/lib/seo/authority";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = "fb-engine" | "outbound" | "city-expansion" | "ad-copy";
+type Tab = "seo-authority" | "fb-engine" | "outbound" | "city-expansion" | "ad-copy";
 
 interface Props {
   cities: CityExpansionData[];
@@ -121,8 +130,8 @@ const DM_SCRIPTS = [
   },
   {
     label: "They asked how much it costs",
-    script: (city: string, _cat: string) =>
-      `Great question! Pricing depends on your city and the spot type, but it's designed to be affordable for local businesses.\n\nYou can see exact pricing (and check if your market is still available) here:\n👉 homereach.com/get-started\n\nTakes about 60 seconds. No commitment to check.`,
+    script: (city: string, cat: string) =>
+      `Great question! Pricing for ${cat} in ${city} depends on the city and spot type, but it's designed to be affordable for local businesses.\n\nYou can see exact pricing (and check if your market is still available) here:\n👉 homereach.com/get-started\n\nTakes about 60 seconds. No commitment to check.`,
   },
   {
     label: "They went cold after showing interest",
@@ -325,12 +334,27 @@ function cityStatus(city: CityExpansionData) {
   return { label: "Near capacity", color: "red", dot: "bg-red-400 animate-pulse", badge: "bg-red-900/30 text-red-400 border-red-800/50" };
 }
 
+function SeoMetric({ label, value, detail }: { label: string; value: string | number; detail: string }) {
+  return (
+    <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-4">
+      <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="mt-2 text-3xl font-bold text-white">{value}</p>
+      <p className="mt-1 text-xs text-gray-500">{detail}</p>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function TrafficEngineClient({ cities }: Props) {
-  const [tab, setTab] = useState<Tab>("fb-engine");
+  const [tab, setTab] = useState<Tab>("seo-authority");
+  const authorityPages = listOhioAuthorityPages();
+  const authorityGuides = listAuthorityGuides();
+  const authorityVisuals = listSeoVisualAssets();
+  const authorityClusters = getAuthorityClusters();
+  const topAuthorityPages = getTopAuthorityOpportunities(12);
 
   // FB Engine state
   const [fbCity, setFbCity] = useState(DEFAULT_FB_CITY);
@@ -350,6 +374,7 @@ export function TrafficEngineClient({ cities }: Props) {
   const [dmCategory, setDmCategory] = useState(DEFAULT_CATEGORY);
 
   const TABS: { id: Tab; label: string; emoji: string }[] = [
+    { id: "seo-authority", label: "SEO Authority", emoji: "SEO" },
     { id: "fb-engine", label: "FB Growth Engine", emoji: "📱" },
     { id: "outbound", label: "Outbound Engine", emoji: "📞" },
     { id: "city-expansion", label: "City Expansion", emoji: "🗺️" },
@@ -373,7 +398,7 @@ export function TrafficEngineClient({ cities }: Props) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-xl bg-gray-800/50 p-1 border border-gray-700">
+      <div className="flex gap-1 overflow-x-auto rounded-xl bg-gray-800/50 p-1 border border-gray-700">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -384,13 +409,129 @@ export function TrafficEngineClient({ cities }: Props) {
                 : "text-gray-400 hover:text-white hover:bg-gray-700"
             }`}
           >
-            <span>{t.emoji}</span>
+            <span className="text-xs font-black">{t.emoji}</span>
             <span className="hidden sm:inline">{t.label}</span>
           </button>
         ))}
       </div>
 
       {/* ─── TAB: FB GROWTH ENGINE ─────────────────────────────────────────── */}
+      {tab === "seo-authority" && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">Dominant SEO authority platform</p>
+                <h2 className="mt-2 text-2xl font-bold text-white">Review-first pages that feed real revenue paths.</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-50/80">
+                  Ohio city hubs, city and category pages, political mail pages, educational guides, and visual assets now share one registry. The homepage stays premium and simple while long-tail authority grows through dedicated pages.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link href="/ohio" className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-gray-950">
+                  Open Ohio Hub
+                </Link>
+                <Link href="/image-sitemap.xml" className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-white hover:bg-white hover:text-gray-950">
+                  Image Sitemap
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <SeoMetric label="Authority pages" value={authorityPages.length} detail="city and city-topic URLs" />
+            <SeoMetric label="Guides" value={authorityGuides.length} detail="educational authority" />
+            <SeoMetric label="Visual assets" value={authorityVisuals.length} detail="sitemap-ready SVGs" />
+            <SeoMetric label="Auto-publish" value="Off" detail="human review required" />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-white">SEO flywheel clusters</h3>
+                  <p className="mt-1 text-sm text-gray-400">Each cluster routes traffic into proposal, campaign, or savings workflows.</p>
+                </div>
+                <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-300">
+                  {authorityClusters.length} clusters
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3">
+                {authorityClusters.map((cluster) => (
+                  <Link key={cluster.name} href={cluster.href} className="rounded-lg border border-gray-700 bg-gray-900/55 p-4 transition hover:border-blue-500/50 hover:bg-gray-900">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{cluster.name}</p>
+                        <p className="mt-1 text-sm leading-6 text-gray-400">{cluster.detail}</p>
+                      </div>
+                      <span className="rounded-lg bg-gray-800 px-3 py-2 text-lg font-bold text-white">{cluster.count}</span>
+                    </div>
+                    <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+                      Next: {cluster.nextAction}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-white">Quality guardrails</h3>
+              <p className="mt-1 text-sm text-gray-400">These rules prevent the authority system from becoming SEO clutter.</p>
+              <div className="mt-4 space-y-3">
+                {authorityQualityRules.map((rule) => (
+                  <div key={rule} className="rounded-lg border border-gray-700 bg-gray-900/55 p-3">
+                    <p className="text-sm leading-6 text-gray-200">{rule}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white">Top SEO revenue opportunities</h3>
+                <p className="mt-1 text-sm text-gray-400">Prioritized public pages with buyer intent, visual proof, and a clear CTA path.</p>
+              </div>
+              <Link href="/admin/growth-engine" className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white hover:text-gray-950">
+                Growth Engine
+              </Link>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-xl border border-gray-700">
+              <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+                <thead className="bg-gray-900 text-xs uppercase tracking-wider text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3">Page</th>
+                    <th className="px-4 py-3">Intent</th>
+                    <th className="px-4 py-3">Visual</th>
+                    <th className="px-4 py-3">CTA</th>
+                    <th className="px-4 py-3">Open</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {topAuthorityPages.map((page) => (
+                    <tr key={page.path} className="align-top hover:bg-gray-900/50">
+                      <td className="px-4 py-4">
+                        <p className="font-semibold text-white">{page.h1}</p>
+                        <p className="mt-1 font-mono text-xs text-gray-500">{page.path}</p>
+                      </td>
+                      <td className="px-4 py-4 text-gray-300">{page.topic?.buyerIntent ?? "high"}</td>
+                      <td className="px-4 py-4 text-gray-300">{page.visual.kind.replaceAll("_", " ")}</td>
+                      <td className="px-4 py-4 text-gray-300">{page.topic?.ctaLabel ?? "Get My Proposal"}</td>
+                      <td className="px-4 py-4">
+                        <Link href={page.path} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-500">
+                          Open page
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === "fb-engine" && (
         <div className="space-y-6">
           {/* Controls */}

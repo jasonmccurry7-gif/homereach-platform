@@ -118,3 +118,69 @@ export function buildFaqPageLd(pairs: Array<{ question: string; answer: string }
     })),
   };
 }
+
+export function buildItemListLd(args: {
+  name: string;
+  url: string;
+  items: Array<{ name: string; url: string }>;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: args.name,
+    url: args.url,
+    itemListElement: args.items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      url: item.url,
+    })),
+  };
+}
+
+export function buildArticleLd(args: {
+  headline: string;
+  description: string;
+  url: string;
+  image?: string;
+  dateModified?: string;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: args.headline,
+    description: args.description,
+    url: args.url,
+    image: args.image,
+    dateModified: args.dateModified,
+    author: {
+      "@type": "Organization",
+      name: "HomeReach",
+      url: getBaseUrl(),
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "HomeReach",
+      logo: {
+        "@type": "ImageObject",
+        url: `${getBaseUrl()}/icons/icon-512.png`,
+      },
+    },
+  };
+}
+
+export function buildImageObjectLd(args: {
+  name: string;
+  contentUrl: string;
+  caption?: string;
+  representativeOfPage?: boolean;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ImageObject",
+    name: args.name,
+    contentUrl: args.contentUrl,
+    caption: args.caption,
+    representativeOfPage: args.representativeOfPage ?? true,
+  };
+}

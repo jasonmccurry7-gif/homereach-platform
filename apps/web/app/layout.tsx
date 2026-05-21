@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { validateEnv } from "@/lib/env";
+import { buildOrganizationLd, buildWebsiteLd } from "@/lib/seo/schema";
 import "./globals.css";
 
 if (process.env.NODE_ENV === "production") {
@@ -43,6 +45,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-white font-sans antialiased">
+        <JsonLd schemas={[buildOrganizationLd(), buildWebsiteLd()]} />
         {children}
       </body>
     </html>
