@@ -54,6 +54,7 @@ const NAV = [
       { label: "CRM", href: "/admin/crm", icon: BriefcaseBusiness },
       { label: "Revenue Command", href: "/admin/revenue-operations", icon: MessagesSquare },
       { label: "Procurement", href: "/admin/procurement", icon: Package },
+      { label: "Gov Contracts", href: "/admin/gov-contracts", icon: Landmark },
       { label: "Businesses", href: "/admin/businesses", icon: Building2 },
       { label: "Orders", href: "/admin/orders", icon: ReceiptText },
       { label: "Profit Center", href: "/admin/profit-center", icon: CreditCard },

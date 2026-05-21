@@ -72,6 +72,59 @@ export interface OSAgent {
   queueCount: number;
 }
 
+export interface OSCommandCard {
+  id: string;
+  title: string;
+  segment:
+    | "revenue"
+    | "shared_postcards"
+    | "targeted_campaigns"
+    | "political"
+    | "procurement"
+    | "gov_contracts"
+    | "creative"
+    | "fulfillment"
+    | "client_success";
+  value: string;
+  detail: string;
+  nextAction: string;
+  href: string;
+  status: OSStatus;
+  priority: number;
+}
+
+export interface OSSpecializedAgent {
+  name: string;
+  domain: string;
+  found: string;
+  recommends: string;
+  draftsCreated: number;
+  nextAction: string;
+  approvalRequired: boolean;
+  revenueImpact: string;
+  status: OSStatus;
+  href: string;
+}
+
+export interface OSExperienceBoundary {
+  system: string;
+  publicExperience: string;
+  adminExperience: string;
+  migrationDecision: "keep_public" | "simplify_public" | "admin_only" | "preview_public";
+  href: string;
+}
+
+export interface OSExecutionLayer {
+  name: string;
+  purpose: string;
+  currentSource: string;
+  publicRole: string;
+  adminRole: string;
+  nextAction: string;
+  href: string;
+  status: OSStatus;
+}
+
 export interface OSProductPanel {
   name: string;
   description: string;
@@ -183,5 +236,9 @@ export interface HomeReachOSData {
   roleViews: OSRoleView[];
   activityFeed: OSActivity[];
   nextBestActions: OSNextBestAction[];
+  commandCards: OSCommandCard[];
+  specializedAgents: OSSpecializedAgent[];
+  experienceBoundaries: OSExperienceBoundary[];
+  executionLayers: OSExecutionLayer[];
   audit: string[];
 }

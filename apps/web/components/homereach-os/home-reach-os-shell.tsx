@@ -47,12 +47,16 @@ import { cn } from "@/lib/utils";
 import type {
   HomeReachOSData,
   HomeReachOSMode,
+  OSCommandCard,
   OSAgent,
   OSActivity,
+  OSExecutionLayer,
+  OSExperienceBoundary,
   OSMetric,
   OSNextBestAction,
   OSOpportunity,
   OSPipelineStage,
+  OSSpecializedAgent,
   OSStatus,
 } from "@/lib/homereach-os/types";
 
@@ -167,14 +171,18 @@ export function HomeReachOSShell({
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
               <div className="space-y-5">
                 <HeroCommand metrics={headlineMetrics} data={data} />
+                <UnifiedRevenueCockpit cards={data.commandCards} />
                 <NextBestActionCenter actions={data.nextBestActions} />
                 <EcosystemOrchestrationPanel data={data} />
+                <PublicAdminBoundary boundaries={data.experienceBoundaries} />
+                <UniversalExecutionLayer layers={data.executionLayers} />
                 <OneClickActions />
                 <OperationalGrid data={data} onSelectOpportunity={setSelectedOpportunity} />
                 <ProductOperations data={data} />
               </div>
               <div className="space-y-5">
                 <LiveActivity feed={data.activityFeed} notifications={data.notifications} />
+                <SpecializedAgentLayer agents={data.specializedAgents} />
                 <AIWorkforce agents={data.ai.agents} />
                 <Customer360 opportunity={selectedOpportunity} data={data} />
               </div>
@@ -548,6 +556,216 @@ function EcosystemOrchestrationPanel({ data }: { data: HomeReachOSData }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function UnifiedRevenueCockpit({ cards }: { cards: OSCommandCard[] }) {
+  const primary = cards[0];
+  const remaining = cards.slice(1, 9);
+
+  return (
+    <section className="rounded-lg border border-emerald-300/15 bg-emerald-300/[0.055] p-4 shadow-xl shadow-emerald-950/20 backdrop-blur-xl">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
+            Unified Revenue Command Center
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-white">Daily cockpit for every product line.</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
+            Each card answers what should happen next without duplicating the underlying system. Political, shared
+            postcards, targeted routes, procurement, government contracts, creative, fulfillment, and payments stay
+            tied to their current source records.
+          </p>
+        </div>
+        <StatusPill status={primary?.status ?? "online"} label={primary ? `${primary.priority} priority` : "Ready"} />
+      </div>
+
+      {primary && (
+        <Link
+          href={primary.href}
+          className="mt-4 block rounded-lg border border-white/10 bg-white p-4 text-slate-950 shadow-lg transition hover:-translate-y-0.5 hover:shadow-emerald-950/20"
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                Top action - {commandSegmentLabel(primary.segment)}
+              </p>
+              <h3 className="mt-2 text-2xl font-black tracking-tight">{primary.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{primary.detail}</p>
+              <p className="mt-3 rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">
+                Next: {primary.nextAction}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-4xl font-black">{primary.value}</p>
+              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">value / count</p>
+            </div>
+          </div>
+        </Link>
+      )}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {remaining.map((card) => {
+          const Icon = commandSegmentIcon(card.segment);
+          return (
+            <Link
+              key={card.id}
+              href={card.href}
+              className={cn(
+                "group rounded-lg border bg-slate-950/70 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:text-slate-950",
+                statusStyles[card.status].ring,
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <p className="truncate text-xs font-black uppercase tracking-[0.12em]">
+                    {commandSegmentLabel(card.segment)}
+                  </p>
+                </div>
+                <StatusDot status={card.status} />
+              </div>
+              <p className="mt-3 text-lg font-black">{card.title}</p>
+              <p className="mt-2 text-2xl font-black">{card.value}</p>
+              <p className="mt-2 line-clamp-2 text-xs leading-5 opacity-75">{card.detail}</p>
+              <p className="mt-3 text-xs font-semibold text-emerald-100 group-hover:text-emerald-700">{card.nextAction}</p>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PublicAdminBoundary({ boundaries }: { boundaries: OSExperienceBoundary[] }) {
+  return (
+    <section className="rounded-lg border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-slate-950/20 backdrop-blur-xl">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-200">
+            Public vs Admin Functionality Model
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-white">Simplify what customers see. Preserve what runs the business.</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
+            Public pages should sell the outcome with previews and CTAs. Admin pages keep the advanced maps,
+            AI orchestration, outreach, proposals, fulfillment, and compliance controls.
+          </p>
+        </div>
+        <StatusPill status="online" label={`${boundaries.length} systems audited`} />
+      </div>
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        {boundaries.map((item) => (
+          <Link
+            key={item.system}
+            href={item.href}
+            className="group rounded-lg border border-white/10 bg-slate-950/60 p-4 transition hover:bg-white hover:text-slate-950"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="font-semibold">{item.system}</p>
+                <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] opacity-60">
+                  {boundaryDecisionLabel(item.migrationDecision)}
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0" />
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <BoundaryCopy label="Public" value={item.publicExperience} />
+              <BoundaryCopy label="Admin" value={item.adminExperience} />
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function UniversalExecutionLayer({ layers }: { layers: OSExecutionLayer[] }) {
+  return (
+    <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+      <Panel title="Universal Execution Layer" icon={Network}>
+        <p className="text-sm leading-6 text-slate-300">
+          Outreach, proposals, visual proof, fulfillment, and cross-sell intelligence should become reusable layers
+          across products while source records remain in the existing systems.
+        </p>
+        <div className="mt-4 grid gap-2">
+          {layers.map((layer) => (
+            <Link
+              key={layer.name}
+              href={layer.href}
+              className={cn(
+                "rounded-lg border p-3 transition hover:bg-white hover:text-slate-950",
+                statusStyles[layer.status].ring,
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{layer.name}</p>
+                  <p className="mt-1 text-xs leading-5 opacity-75">{layer.purpose}</p>
+                </div>
+                <StatusDot status={layer.status} />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </Panel>
+      <Panel title="Next Build Sequence" icon={ClipboardCheck}>
+        <div className="grid gap-3 md:grid-cols-2">
+          {layers.map((layer) => (
+            <div key={layer.name} className="rounded-lg border border-white/10 bg-white/[0.05] p-3">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{layer.name}</p>
+              <p className="mt-2 text-sm font-semibold text-white">{layer.nextAction}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                Source: {layer.currentSource}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+function SpecializedAgentLayer({ agents }: { agents: OSSpecializedAgent[] }) {
+  return (
+    <Panel title="Specialized AI Agents" icon={Bot} action={{ href: "/admin/agents", label: "All agents" }}>
+      <div className="grid gap-3">
+        {agents.slice(0, 10).map((agent) => (
+          <Link
+            key={agent.name}
+            href={agent.href}
+            className={cn(
+              "rounded-lg border p-3 transition hover:bg-white hover:text-slate-950",
+              statusStyles[agent.status].ring,
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <StatusDot status={agent.status} />
+                  <p className="truncate text-sm font-semibold">{agent.name}</p>
+                </div>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] opacity-60">{agent.domain}</p>
+              </div>
+              {agent.approvalRequired && (
+                <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100 group-hover:border-amber-600/30 group-hover:bg-amber-100 group-hover:text-amber-700">
+                  Approval
+                </span>
+              )}
+            </div>
+            <p className="mt-3 text-xs leading-5 opacity-75">Found: {agent.found}</p>
+            <p className="mt-2 text-xs leading-5 opacity-75">Recommends: {agent.recommends}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <MiniStat label="Drafts" value={agent.draftsCreated} status={agent.status} />
+              <MiniStat label="Impact" value={agent.revenueImpact} status={agent.status} />
+            </div>
+            <p className="mt-3 rounded-md border border-white/10 bg-slate-950/50 px-3 py-2 text-xs font-semibold text-slate-200 group-hover:border-slate-200 group-hover:bg-slate-100 group-hover:text-slate-700">
+              Next: {agent.nextAction}
+            </p>
+          </Link>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
@@ -1327,6 +1545,75 @@ function OpportunityList({
           </div>
         </button>
       ))}
+    </div>
+  );
+}
+
+function commandSegmentLabel(segment: OSCommandCard["segment"]) {
+  switch (segment) {
+    case "revenue":
+      return "Revenue";
+    case "shared_postcards":
+      return "Shared postcards";
+    case "targeted_campaigns":
+      return "Targeted campaigns";
+    case "political":
+      return "Political";
+    case "procurement":
+      return "Procurement";
+    case "gov_contracts":
+      return "Gov contracts";
+    case "creative":
+      return "Creative";
+    case "fulfillment":
+      return "Fulfillment";
+    case "client_success":
+      return "Client success";
+  }
+}
+
+function commandSegmentIcon(segment: OSCommandCard["segment"]): LucideIcon {
+  switch (segment) {
+    case "revenue":
+      return CircleDollarSign;
+    case "shared_postcards":
+      return Layers3;
+    case "targeted_campaigns":
+      return Target;
+    case "political":
+    case "gov_contracts":
+      return Building2;
+    case "procurement":
+      return Package;
+    case "creative":
+      return Sparkles;
+    case "fulfillment":
+      return Truck;
+    case "client_success":
+      return Users;
+  }
+}
+
+function boundaryDecisionLabel(decision: OSExperienceBoundary["migrationDecision"]) {
+  switch (decision) {
+    case "keep_public":
+      return "Keep public";
+    case "simplify_public":
+      return "Simplify public";
+    case "admin_only":
+      return "Admin only";
+    case "preview_public":
+      return "Preview public";
+  }
+}
+
+function BoundaryCopy({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.05] p-3 group-hover:border-slate-200 group-hover:bg-slate-100">
+      <p className="text-[11px] font-black uppercase tracking-[0.14em] text-sky-200 group-hover:text-sky-700">
+        {label}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-300 group-hover:text-slate-600">{value}</p>
     </div>
   );
 }
