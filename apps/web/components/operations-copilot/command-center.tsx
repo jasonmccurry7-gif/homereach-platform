@@ -29,27 +29,28 @@ export function OperationsCommandCenter({
       <section className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
         <div className="rounded-lg border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_34%),#111111] p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
-            AI Cost Reduction Command Center
+            Inventory Purchasing Dashboard
           </p>
           <h1 className="mt-3 max-w-4xl text-4xl font-bold tracking-normal text-white md:text-5xl">
-            {snapshot.companyName}
+            Inventory purchasing command center
           </h1>
           <p className="mt-4 max-w-3xl text-base leading-7 text-neutral-300">
-            A simple owner-facing command center for savings, vendor risk,
-            inventory health, approval-ready orders, and weekly cost reduction.
+            {snapshot.companyName} can track recurring supplies, compare supplier
+            pricing, surface savings opportunities, and manage approval-ready
+            purchasing decisions from one owner-facing dashboard.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href="/operations-copilot/delivery"
+              href="/operations-copilot/supplier-prices"
               className="inline-flex items-center justify-center rounded-lg bg-emerald-300 px-4 py-2 text-sm font-bold text-neutral-950 transition-colors hover:bg-emerald-200"
             >
-              View Best Delivered Prices
+              View Supplier Price Intelligence
             </Link>
             <Link
               href="/operations-copilot/approvals"
               className="inline-flex items-center justify-center rounded-lg border border-white/10 px-4 py-2 text-sm font-bold text-neutral-100 transition-colors hover:bg-white/10"
             >
-              Review Approvals
+              Review Purchasing Approvals
             </Link>
           </div>
         </div>

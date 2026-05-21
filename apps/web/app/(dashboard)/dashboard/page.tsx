@@ -30,7 +30,36 @@ const fmtDate = (d: Date | null) =>
     ? new Date(d).toLocaleDateString("en-US", { month: "long", day: "numeric" })
     : null;
 
-export default async function DashboardPage() {
+type DashboardSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+const inventoryProductIntents = new Set([
+  "inventory",
+  "inventory-intelligence",
+  "inventory-purchasing",
+  "inventory_purchasing",
+  "purchasing",
+  "purchasing-intelligence",
+]);
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeProductIntent(value: string | undefined) {
+  return value?.trim().toLowerCase();
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: DashboardSearchParams;
+}) {
+  const params = await searchParams;
+  const productIntent = normalizeProductIntent(firstParam(params.product));
+  if (productIntent && inventoryProductIntents.has(productIntent)) {
+    redirect("/operations-copilot");
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
