@@ -48,11 +48,16 @@ import type {
   HomeReachOSData,
   HomeReachOSMode,
   OSCommandCard,
+  OSCommunityLoop,
   OSAgent,
   OSActivity,
+  OSDigitalEmployee,
   OSExecutionLayer,
   OSExperienceBoundary,
+  OSIndustryPlaybook,
   OSMetric,
+  OSMembershipPlan,
+  OSMoneyLeak,
   OSNextBestAction,
   OSOpportunity,
   OSPipelineStage,
@@ -171,17 +176,22 @@ export function HomeReachOSShell({
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
               <div className="space-y-5">
                 <HeroCommand metrics={headlineMetrics} data={data} />
+                <BusinessHealthPanel data={data} />
                 <UnifiedRevenueCockpit cards={data.commandCards} />
                 <NextBestActionCenter actions={data.nextBestActions} />
+                <MoneyLeakagePanel leaks={data.moneyLeaks} />
                 <EcosystemOrchestrationPanel data={data} />
                 <PublicAdminBoundary boundaries={data.experienceBoundaries} />
                 <UniversalExecutionLayer layers={data.executionLayers} />
+                <IndustryPlaybooksPanel playbooks={data.industryPlaybooks} />
+                <MembershipAndCommunityPanel plans={data.membershipPlans} loops={data.communityLoops} />
                 <OneClickActions />
                 <OperationalGrid data={data} onSelectOpportunity={setSelectedOpportunity} />
                 <ProductOperations data={data} />
               </div>
               <div className="space-y-5">
                 <LiveActivity feed={data.activityFeed} notifications={data.notifications} />
+                <DigitalEmployeePanel employees={data.digitalEmployees} />
                 <SpecializedAgentLayer agents={data.specializedAgents} />
                 <AIWorkforce agents={data.ai.agents} />
                 <Customer360 opportunity={selectedOpportunity} data={data} />
@@ -245,7 +255,7 @@ function TopBar({ data, mode }: { data: HomeReachOSData; mode: HomeReachOSMode }
             {mode === "sales" && <StatusPill status="online" label="Sales focus" />}
           </div>
           <p className="mt-1 max-w-3xl text-sm text-slate-300">
-            Operating system for geographic marketing, campaign execution, sales intelligence, communications, and revenue operations.
+            AI-powered operating system for local growth, visibility, follow-up, savings, fulfillment, and revenue operations.
           </p>
         </div>
       </div>
@@ -438,6 +448,275 @@ function HeroCommand({ metrics, data }: { metrics: OSMetric[]; data: HomeReachOS
           <PulseRow label="AI actions queued" value={data.ai.actions} icon={Bot} />
         </div>
       </div>
+    </section>
+  );
+}
+
+function BusinessHealthPanel({ data }: { data: HomeReachOSData }) {
+  const health = data.businessHealth;
+  const scoreStatus = statusStyles[statusFromHealthScore(health.score)];
+  const weakest = health.dimensions
+    .slice()
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 4);
+
+  return (
+    <section className="rounded-lg border border-white/10 bg-white/[0.07] p-4 shadow-xl shadow-slate-950/20 backdrop-blur-xl">
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className={cn("rounded-lg border p-4", scoreStatus.ring)}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-200">
+                Business Health Score
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Simple operating pulse.</h2>
+            </div>
+            <Gauge className="h-6 w-6 text-sky-200" />
+          </div>
+          <div className="mt-5 flex items-end gap-3">
+            <p className="text-6xl font-black tabular-nums text-white">{health.score}</p>
+            <p className={cn("pb-2 text-sm font-semibold uppercase tracking-[0.14em]", scoreStatus.text)}>
+              {health.trend.replace("_", " ")}
+            </p>
+          </div>
+          <div className="mt-4 h-2 rounded-full bg-white/10">
+            <div className="h-2 rounded-full bg-sky-300" style={{ width: `${health.score}%` }} />
+          </div>
+          <p className="mt-4 text-sm leading-6 text-slate-300">{health.summary}</p>
+          <div className="mt-4 grid gap-2">
+            {health.opportunities.slice(0, 2).map((item) => (
+              <div key={item} className="rounded-md border border-emerald-300/15 bg-emerald-300/10 px-3 py-2 text-xs leading-5 text-emerald-50">
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Weak spots and opportunities</p>
+              <p className="mt-1 text-sm text-slate-300">
+                The score blends visibility, follow-up, SEO, reviews, procurement, retention, and route saturation.
+              </p>
+            </div>
+            <LinkButton href="/dashboard" icon={Users} label="Client view" className="sm:w-auto" />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {weakest.map((dimension) => (
+              <Link
+                key={dimension.id}
+                href={dimension.href}
+                className={cn(
+                  "rounded-lg border p-3 transition hover:bg-white hover:text-slate-950",
+                  statusStyles[dimension.status].ring,
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{dimension.label}</p>
+                    <p className="mt-1 text-xs leading-5 opacity-75">{dimension.detail}</p>
+                  </div>
+                  <span className="shrink-0 text-2xl font-black tabular-nums">{dimension.score}</span>
+                </div>
+                <div className="mt-3 h-1.5 rounded-full bg-white/10">
+                  <div className="h-1.5 rounded-full bg-current opacity-70" style={{ width: `${dimension.score}%` }} />
+                </div>
+                <p className="mt-3 text-xs font-semibold text-sky-100 group-hover:text-sky-700">
+                  Next: {dimension.nextAction}
+                </p>
+              </Link>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            {health.weakSpots.slice(0, 4).map((spot) => (
+              <div key={spot} className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-50">
+                {spot}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MoneyLeakagePanel({ leaks }: { leaks: OSMoneyLeak[] }) {
+  return (
+    <Panel title="Money Leakage Detection" icon={AlertTriangle} action={{ href: "/admin/revenue-operations", label: "Revenue ops" }}>
+      <div className="grid gap-3 xl:grid-cols-2">
+        {leaks.slice(0, 6).map((leak) => (
+          <Link
+            key={leak.id}
+            href={leak.href}
+            className={cn(
+              "rounded-lg border p-4 transition hover:bg-white hover:text-slate-950",
+              statusStyles[leak.status].ring,
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{leak.title}</p>
+                <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] opacity-60">{leak.severity} severity</p>
+              </div>
+              <StatusDot status={leak.status} />
+            </div>
+            <p className="mt-3 text-xs leading-5 opacity-75">{leak.issue}</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <MiniStat label="Impact" value={leak.estimatedImpact} status={leak.status} />
+              <MiniStat label="Solution" value={leak.relatedSolution} status={leak.status} />
+            </div>
+            <p className="mt-3 rounded-md border border-white/10 bg-slate-950/50 px-3 py-2 text-xs font-semibold text-slate-200 group-hover:border-slate-200 group-hover:bg-slate-100 group-hover:text-slate-700">
+              {leak.recommendedAction}
+            </p>
+          </Link>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function DigitalEmployeePanel({ employees }: { employees: OSDigitalEmployee[] }) {
+  return (
+    <Panel title="Digital Employees" icon={Bot} action={{ href: "/admin/agents", label: "Agent layer" }}>
+      <p className="mb-4 text-sm leading-6 text-slate-300">
+        Owner-facing guidance stays simple: more customers, lower costs, better follow-up, stronger visibility.
+        The technical agent work remains inside admin approvals.
+      </p>
+      <div className="space-y-3">
+        {employees.map((employee) => (
+          <Link
+            key={employee.name}
+            href={employee.href}
+            className={cn(
+              "block rounded-lg border p-3 transition hover:bg-white hover:text-slate-950",
+              statusStyles[employee.status].ring,
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <StatusDot status={employee.status} />
+                  <p className="truncate text-sm font-semibold">{employee.name}</p>
+                </div>
+                <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] opacity-60">{employee.domain}</p>
+              </div>
+              {employee.approvalRequired && (
+                <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100">
+                  Approval
+                </span>
+              )}
+            </div>
+            <p className="mt-3 text-xs leading-5 opacity-75">{employee.promise}</p>
+            <p className="mt-2 rounded-md bg-white/[0.06] px-3 py-2 text-xs font-semibold text-sky-100 group-hover:bg-sky-50 group-hover:text-sky-800">
+              Owner sees: {employee.ownerSees}
+            </p>
+            <p className="mt-2 text-xs leading-5 opacity-75">Next: {employee.nextAction}</p>
+          </Link>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function IndustryPlaybooksPanel({ playbooks }: { playbooks: OSIndustryPlaybook[] }) {
+  return (
+    <Panel title="Industry Playbooks" icon={Target} action={{ href: "/admin/products", label: "Products" }}>
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        {playbooks.map((playbook) => (
+          <Link
+            key={playbook.systemName}
+            href={playbook.href}
+            className={cn(
+              "rounded-lg border p-4 transition hover:bg-white hover:text-slate-950",
+              statusStyles[playbook.status].ring,
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] opacity-60">{playbook.industry}</p>
+                <h3 className="mt-1 text-base font-semibold">{playbook.systemName}</h3>
+              </div>
+              <StatusDot status={playbook.status} />
+            </div>
+            <p className="mt-3 text-xs leading-5 opacity-75">{playbook.focus}</p>
+            <div className="mt-3 space-y-2 text-xs leading-5 opacity-75">
+              <p><span className="font-semibold">Campaign:</span> {playbook.campaignStrategy}</p>
+              <p><span className="font-semibold">SEO:</span> {playbook.seoRecommendation}</p>
+              <p><span className="font-semibold">Retention:</span> {playbook.retentionMove}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function MembershipAndCommunityPanel({
+  plans,
+  loops,
+}: {
+  plans: OSMembershipPlan[];
+  loops: OSCommunityLoop[];
+}) {
+  return (
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <Panel title="Recurring Growth Programs" icon={RefreshCw} action={{ href: "/admin/founding", label: "Memberships" }}>
+        <div className="grid gap-3 md:grid-cols-2">
+          {plans.map((plan) => (
+            <Link
+              key={plan.name}
+              href={plan.href}
+              className={cn(
+                "rounded-lg border p-4 transition hover:bg-white hover:text-slate-950",
+                statusStyles[plan.status].ring,
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] opacity-60">{plan.cadence}</p>
+                  <h3 className="mt-1 text-base font-semibold">{plan.name}</h3>
+                </div>
+                <StatusDot status={plan.status} />
+              </div>
+              <p className="mt-3 text-xs leading-5 opacity-75">{plan.bestFor}</p>
+              <p className="mt-2 text-xs font-semibold text-emerald-100 group-hover:text-emerald-700">{plan.outcome}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {plan.includes.slice(0, 4).map((item) => (
+                  <span key={item} className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </Panel>
+
+      <Panel title="Community Flywheel" icon={Users}>
+        <div className="space-y-3">
+          {loops.map((loop) => (
+            <Link
+              key={loop.title}
+              href={loop.href}
+              className={cn(
+                "block rounded-lg border p-3 transition hover:bg-white hover:text-slate-950",
+                statusStyles[loop.status].ring,
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">{loop.title}</p>
+                  <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] opacity-60">{loop.trustSignal}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              </div>
+              <p className="mt-3 text-xs leading-5 opacity-75">{loop.detail}</p>
+              <p className="mt-2 text-xs font-semibold text-sky-100 group-hover:text-sky-700">Next: {loop.nextAction}</p>
+            </Link>
+          ))}
+        </div>
+      </Panel>
     </section>
   );
 }
@@ -1569,6 +1848,14 @@ function commandSegmentLabel(segment: OSCommandCard["segment"]) {
       return "Fulfillment";
     case "client_success":
       return "Client success";
+    case "seo":
+      return "SEO";
+    case "reputation":
+      return "Reputation";
+    case "membership":
+      return "Membership";
+    case "retention":
+      return "Retention";
   }
 }
 
@@ -1591,6 +1878,14 @@ function commandSegmentIcon(segment: OSCommandCard["segment"]): LucideIcon {
       return Truck;
     case "client_success":
       return Users;
+    case "seo":
+      return Globe2;
+    case "reputation":
+      return ShieldCheck;
+    case "membership":
+      return RefreshCw;
+    case "retention":
+      return CheckCircle2;
   }
 }
 
@@ -1774,6 +2069,12 @@ function LinkButton({
       {content}
     </Link>
   );
+}
+
+function statusFromHealthScore(score: number): OSStatus {
+  if (score < 45) return "critical";
+  if (score < 72) return "watch";
+  return "online";
 }
 
 function StatusDot({ status }: { status: OSStatus }) {

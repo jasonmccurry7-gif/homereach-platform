@@ -147,30 +147,77 @@ export default async function DashboardPage({
   // ── No campaign ─────────────────────────────────────────────────────────────
   if (!activeCampaign || !camp) {
     return (
-      <div className="max-w-4xl">
+      <div className="max-w-5xl space-y-6">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">
             Welcome, {firstName}
           </h1>
           <p className="mt-1 text-gray-500">
-            You don&apos;t have an active campaign yet.
+            HomeReach helps you stay visible, get customers, save money, and keep the next step clear.
           </p>
         </div>
-        <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center">
+        <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-600 to-blue-700 p-6 text-white shadow-sm [&>div:first-child]:hidden">
           <div className="mx-auto mb-4 text-5xl">📬</div>
-          <h2 className="text-xl font-bold text-gray-900">
-            Ready to reach your neighborhood?
+          <p className="text-xs font-semibold uppercase tracking-widest text-blue-100">
+            Your Next Best Action
+          </p>
+          <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-tight">
+            Start with a simple visibility plan for your business.
           </h2>
-          <p className="mx-auto mt-2 max-w-sm text-gray-500">
-            Purchase a HomeReach campaign to start getting your business in
-            front of 2,500+ homes.
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-50">
+            We will help you choose where to show up, what to send, when to follow up,
+            and where there may be savings or missed opportunities.
           </p>
           <Link
             href="/get-started"
-            className="mt-6 inline-block rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white hover:bg-blue-700"
+            className="mt-5 inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50"
           >
             Get started →
           </Link>
+          <Link
+            href="/operations-copilot"
+            className="ml-0 mt-3 inline-flex items-center justify-center rounded-xl border border-white/25 px-5 py-3 text-sm font-bold text-white hover:bg-white/10 sm:ml-3"
+          >
+            See Savings Opportunities
+          </Link>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <SimpleOSCard
+            title="Get more customers"
+            body="Use shared postcards, targeted routes, and simple campaign plans to stay visible in the neighborhoods that matter."
+            href="/get-started"
+            cta="Start a campaign"
+          />
+          <SimpleOSCard
+            title="Lower recurring costs"
+            body="Track supplier pricing and recurring supplies so purchasing gaps are easier to catch before they repeat."
+            href="/operations-copilot"
+            cta="Open purchasing"
+          />
+          <SimpleOSCard
+            title="Stay organized"
+            body="Keep replies, billing, campaign timing, approvals, and follow-up in one clean customer portal."
+            href="/replies"
+            cta="Check replies"
+          />
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-bold text-gray-900">What HomeReach watches for you</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Visibility", "Are you showing up consistently?"],
+              ["Follow-up", "Are leads and replies getting attention?"],
+              ["Reviews", "Are happy customers becoming local proof?"],
+              ["Savings", "Are recurring purchases leaking money?"],
+            ].map(([label, detail]) => (
+              <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <p className="text-sm font-bold text-gray-900">{label}</p>
+                <p className="mt-2 text-sm leading-5 text-gray-500">{detail}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -526,6 +573,28 @@ export default async function DashboardPage({
 // ─────────────────────────────────────────────────────────────────────────────
 // HeroStat — large number display for the 3 primary KPIs
 // ─────────────────────────────────────────────────────────────────────────────
+
+function SimpleOSCard({
+  title,
+  body,
+  href,
+  cta,
+}: {
+  title: string;
+  body: string;
+  href: string;
+  cta: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-gray-900">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-gray-500">{body}</p>
+      <Link href={href} className="mt-4 inline-flex text-sm font-bold text-blue-600 hover:underline">
+        {cta} -&gt;
+      </Link>
+    </div>
+  );
+}
 
 function HeroStat({
   label,

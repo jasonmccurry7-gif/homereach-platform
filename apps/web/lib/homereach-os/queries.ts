@@ -34,10 +34,16 @@ import type {
   OSActivity,
   OSAgent,
   OSCommandCard,
+  OSCommunityLoop,
+  OSDigitalEmployee,
   OSExecutionLayer,
   OSExperienceBoundary,
+  OSHealthDimension,
+  OSIndustryPlaybook,
   OSMapLayer,
   OSMetric,
+  OSMembershipPlan,
+  OSMoneyLeak,
   OSNextBestAction,
   OSMonitor,
   OSOpportunity,
@@ -46,6 +52,7 @@ import type {
   OSStatus,
   OSSpecializedAgent,
 } from "./types";
+import { getSeoCommandCenterSnapshot } from "@/lib/seo/authority";
 
 async function safe<T>(promise: Promise<T>, fallback: T, timeoutMs = 2500): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -105,6 +112,16 @@ function metric(label: string, value: string, detail: string, status: OSStatus =
 
 function action(input: OSNextBestAction): OSNextBestAction {
   return input;
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function statusFromScore(score: number): OSStatus {
+  if (score < 45) return "critical";
+  if (score < 72) return "watch";
+  return "online";
 }
 
 export async function getHomeReachOSData(): Promise<HomeReachOSData> {
@@ -736,6 +753,522 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
   const pendingProposalCount = firstNumber(pendingProposalRows, "n");
   const activeMapPlanCount = firstNumber(mapPlanRows, "n");
   const websiteInquiryCount = firstNumber(websiteInquiryRows, "n");
+  const seoSnapshot = getSeoCommandCenterSnapshot();
+  const activeCampaignCount =
+    firstNumber(activeMarketingRows, "n") +
+    firstNumber(activeTargetedRows, "n") +
+    firstNumber(politicalCampaignRows, "n");
+  const reviewBaselineScore = 58;
+
+  const healthDimensions: OSHealthDimension[] = [
+    {
+      id: "marketing-consistency",
+      label: "Marketing consistency",
+      score: clampScore(44 + activeCampaignCount * 8 + firstNumber(upcomingMarketingRows, "n") * 4 - designApprovalCount * 2),
+      status: statusFromScore(clampScore(44 + activeCampaignCount * 8 + firstNumber(upcomingMarketingRows, "n") * 4 - designApprovalCount * 2)),
+      detail: `${activeCampaignCount} active campaign records and ${firstNumber(upcomingMarketingRows, "n")} upcoming shared postcard schedules.`,
+      weakSpot: activeCampaignCount > 0 ? "Keep the cadence visible and renewal-ready." : "No active campaign rhythm is visible yet.",
+      nextAction: activeCampaignCount > 0 ? "Review renewals and next-drop timing." : "Build a monthly visibility plan.",
+      href: "/admin/campaigns",
+    },
+    {
+      id: "local-visibility",
+      label: "Local visibility",
+      score: clampScore(42 + activeSpots * 3 + routeOpportunityCount * 5 + activeMapPlanCount * 4),
+      status: statusFromScore(clampScore(42 + activeSpots * 3 + routeOpportunityCount * 5 + activeMapPlanCount * 4)),
+      detail: `${activeSpots} shared spots, ${routeOpportunityCount} route opportunities, ${activeMapPlanCount} map plans.`,
+      weakSpot: "Visibility is strongest when routes, postcards, and follow-up stay connected.",
+      nextAction: "Package the next map-backed visibility offer.",
+      href: "/admin/availability",
+    },
+    {
+      id: "follow-up-activity",
+      label: "Follow-up activity",
+      score: clampScore(92 - pendingReplyCount * 4 - staleLeadCount * 3),
+      status: statusFromScore(clampScore(92 - pendingReplyCount * 4 - staleLeadCount * 3)),
+      detail: `${pendingReplyCount} pending replies and ${staleLeadCount} stale follow-ups.`,
+      weakSpot: staleLeadCount > 0 ? "Warm pipeline is cooling because follow-up is late." : "Keep response speed high.",
+      nextAction: "Open the unified communication center.",
+      href: "/admin/inbox",
+    },
+    {
+      id: "seo-strength",
+      label: "SEO strength",
+      score: clampScore(55 + seoSnapshot.totals.publicAuthorityRoutes * 0.18 + seoSnapshot.totals.keywordTargets * 1.8),
+      status: statusFromScore(clampScore(55 + seoSnapshot.totals.publicAuthorityRoutes * 0.18 + seoSnapshot.totals.keywordTargets * 1.8)),
+      detail: `${seoSnapshot.totals.publicAuthorityRoutes} authority routes, ${seoSnapshot.totals.keywordTargets} keyword targets, ${seoSnapshot.totals.visualAssets} visual assets.`,
+      weakSpot: "Search Console and analytics connectors are still needed before claiming live rankings.",
+      nextAction: "Open SEO Command Center.",
+      href: "/admin/marketing/seo-command-center",
+    },
+    {
+      id: "review-activity",
+      label: "Review activity",
+      score: reviewBaselineScore,
+      status: statusFromScore(reviewBaselineScore),
+      detail: "Review request workflows exist; live reputation connectors should be connected before automated claims.",
+      weakSpot: "Review volume and response timing should become part of the customer health rhythm.",
+      nextAction: "Open review operations.",
+      href: "/admin/reviews",
+    },
+    {
+      id: "procurement-efficiency",
+      label: "Procurement efficiency",
+      score: clampScore(52 + firstNumber(priceSnapshotRows, "n") * 0.6 + firstNumber(activeSupplierRows, "n") * 2 - pendingPurchasingActions * 3),
+      status: statusFromScore(clampScore(52 + firstNumber(priceSnapshotRows, "n") * 0.6 + firstNumber(activeSupplierRows, "n") * 2 - pendingPurchasingActions * 3)),
+      detail: `${firstNumber(priceSnapshotRows, "n")} price snapshots, ${firstNumber(activeSupplierRows, "n")} suppliers, ${pendingPurchasingActions} pending actions.`,
+      weakSpot: pendingPurchasingActions > 0 ? "Savings or reorder decisions are waiting on approval." : "Keep supplier checks fresh.",
+      nextAction: "Review supplier price intelligence.",
+      href: "/operations-copilot",
+    },
+    {
+      id: "retention",
+      label: "Customer retention",
+      score: clampScore(64 + activeSpots * 2 - pausedSpots * 8 - failedPaymentCount * 4),
+      status: statusFromScore(clampScore(64 + activeSpots * 2 - pausedSpots * 8 - failedPaymentCount * 4)),
+      detail: `${activeSpots} active spots, ${pausedSpots} paused spots, ${failedPaymentCount} payment blockers.`,
+      weakSpot: pausedSpots > 0 || failedPaymentCount > 0 ? "Renewal or payment friction can weaken retention." : "Retention signals are stable.",
+      nextAction: "Review renewals and payment blockers.",
+      href: "/admin/founding",
+    },
+    {
+      id: "neighborhood-saturation",
+      label: "Neighborhood saturation",
+      score: clampScore(46 + firstNumber(activeTargetedRows, "n") * 8 + activeMapPlanCount * 4 + activeSpots),
+      status: statusFromScore(clampScore(46 + firstNumber(activeTargetedRows, "n") * 8 + activeMapPlanCount * 4 + activeSpots)),
+      detail: `${firstNumber(activeTargetedRows, "n")} targeted campaigns and ${activeMapPlanCount} coverage plans.`,
+      weakSpot: "Saturation improves when repeat touches, maps, and postcard timing are planned together.",
+      nextAction: "Open targeted campaigns.",
+      href: "/admin/targeted-campaigns",
+    },
+  ];
+
+  const businessHealthScore = clampScore(
+    healthDimensions.reduce((total, dimension) => total + dimension.score, 0) / healthDimensions.length,
+  );
+  const businessHealth = {
+    score: businessHealthScore,
+    trend: businessHealthScore >= 78 ? "improving" as const : businessHealthScore >= 58 ? "steady" as const : "needs_attention" as const,
+    summary:
+      businessHealthScore >= 78
+        ? "The operating rhythm is strong. Keep revenue, follow-up, reviews, SEO, and renewals moving together."
+        : businessHealthScore >= 58
+          ? "The business has usable operating visibility, with a few weak spots worth tightening this week."
+          : "HomeReach OS found several places where revenue, visibility, or operations can leak if they are not handled.",
+    dimensions: healthDimensions,
+    weakSpots: healthDimensions
+      .filter((dimension) => dimension.score < 72)
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 4)
+      .map((dimension) => `${dimension.label}: ${dimension.weakSpot}`),
+    opportunities: [
+      "Turn the next campaign into a monthly visibility plan instead of a one-time order.",
+      "Use map and postcard visuals in proposals so value is obvious before checkout.",
+      "Route every reply, review request, and renewal into the same follow-up rhythm.",
+    ],
+  };
+
+  const moneyLeaks: OSMoneyLeak[] = [
+    failedPaymentCount > 0
+      ? {
+          id: "failed-payment-leak",
+          title: "Payment leakage",
+          issue: `${failedPaymentCount} failed, paused, refunded, or canceled payment records need review.`,
+          estimatedImpact: formatMoney(pendingOrderValueCents + pendingPoliticalValueCents),
+          recommendedAction: "Resolve payment blockers before production or renewal work expands.",
+          relatedSolution: "Revenue Integrity Agent",
+          actionLabel: "Open orders",
+          href: "/admin/orders",
+          status: "critical",
+          severity: "High",
+        }
+      : null,
+    staleLeadCount > 0
+      ? {
+          id: "missed-followup-leak",
+          title: "Missed follow-up",
+          issue: `${staleLeadCount} contacted leads are past the follow-up window.`,
+          estimatedImpact: formatMoney(staleLeadCount * 35000),
+          recommendedAction: "Send a short recovery touch and schedule the next step.",
+          relatedSolution: "Follow-Up Agent",
+          actionLabel: "Open sales engine",
+          href: "/admin/sales-engine",
+          status: "watch",
+          severity: "Medium",
+        }
+      : null,
+    pendingPurchasingActions > 0
+      ? {
+          id: "procurement-savings-leak",
+          title: "Purchasing savings leakage",
+          issue: `${pendingPurchasingActions} smart-buy or supplier actions are waiting for approval.`,
+          estimatedImpact: formatMoney(pendingPurchasingActions * 25000),
+          recommendedAction: "Approve, edit, or dismiss the savings recommendation while pricing is fresh.",
+          relatedSolution: "Procurement Agent",
+          actionLabel: "Open procurement",
+          href: "/admin/procurement",
+          status: "watch",
+          severity: "Medium",
+        }
+      : null,
+    activeCampaignCount === 0
+      ? {
+          id: "inactive-campaign-leak",
+          title: "Inactive visibility",
+          issue: "No active campaign rhythm is visible in the command snapshot.",
+          estimatedImpact: "Pipeline risk",
+          recommendedAction: "Create a monthly visibility plan with shared postcards, targeted routes, or SEO pages.",
+          relatedSolution: "Marketing Agent",
+          actionLabel: "Open campaigns",
+          href: "/admin/campaigns",
+          status: "watch",
+          severity: "Medium",
+        }
+      : null,
+    reviewBaselineScore < 72
+      ? {
+          id: "review-velocity-leak",
+          title: "Review activity gap",
+          issue: "Reputation workflows exist, but live review velocity is not yet part of the command score.",
+          estimatedImpact: "Local trust risk",
+          recommendedAction: "Connect review collection to completed jobs and renewals.",
+          relatedSolution: "Reputation Agent",
+          actionLabel: "Open reviews",
+          href: "/admin/reviews",
+          status: "watch",
+          severity: "Medium",
+        }
+      : null,
+    {
+      id: "seo-analytics-leak",
+      title: "Search visibility blind spot",
+      issue: "The SEO authority engine is built, but live Search Console and analytics data are not connected yet.",
+      estimatedImpact: "Inbound lead visibility",
+      recommendedAction: "Connect ranking, traffic, and conversion data before making live SEO performance claims.",
+      relatedSolution: "SEO Agent",
+      actionLabel: "Open SEO Command Center",
+      href: "/admin/marketing/seo-command-center",
+      status: "watch",
+      severity: "Medium",
+    },
+  ].filter((item): item is OSMoneyLeak => Boolean(item));
+
+  const digitalEmployees: OSDigitalEmployee[] = [
+    {
+      name: "Marketing Agent",
+      domain: "Visibility",
+      promise: "Keeps the business visible with the next campaign, route, or seasonal offer.",
+      ownerSees: "HomeReach is helping me stay visible.",
+      watches: ["campaign cadence", "route coverage", "seasonal timing", "upsell fit"],
+      recommends: activeCampaignCount > 0 ? "Review next-drop timing and renewal offers." : "Create a monthly visibility plan.",
+      nextAction: "Open campaign operations.",
+      href: "/admin/campaigns",
+      status: activeCampaignCount > 0 ? "online" : "watch",
+      approvalRequired: false,
+    },
+    {
+      name: "Procurement Agent",
+      domain: "Savings",
+      promise: "Finds overspending, reorder timing, and supplier savings opportunities.",
+      ownerSees: "HomeReach is helping me save money.",
+      watches: ["supplier pricing", "inventory risk", "approval backlog", "vendor reliability"],
+      recommends: pendingPurchasingActions > 0 ? "Review pending smart-buy actions." : "Keep supplier snapshots fresh.",
+      nextAction: "Open procurement.",
+      href: "/operations-copilot",
+      status: pendingPurchasingActions > 0 ? "watch" : "online",
+      approvalRequired: true,
+    },
+    {
+      name: "SEO Agent",
+      domain: "Local search",
+      promise: "Finds search opportunities so more customers can discover the business.",
+      ownerSees: "HomeReach is helping customers find me.",
+      watches: ["authority pages", "keyword targets", "visual assets", "analytics readiness"],
+      recommends: `${seoSnapshot.totals.keywordTargets} keyword targets are ready for review-first growth.`,
+      nextAction: "Open SEO Command Center.",
+      href: "/admin/marketing/seo-command-center",
+      status: "online",
+      approvalRequired: true,
+    },
+    {
+      name: "Follow-Up Agent",
+      domain: "Customer follow-up",
+      promise: "Keeps leads, proposals, replies, and renewals from slipping.",
+      ownerSees: "HomeReach helps me stay on top of customers.",
+      watches: ["unread replies", "stale leads", "proposal timing", "renewal reminders"],
+      recommends: pendingReplyCount + staleLeadCount > 0 ? "Work the follow-up queue today." : "Keep the response rhythm active.",
+      nextAction: "Open inbox.",
+      href: "/admin/inbox",
+      status: pendingReplyCount + staleLeadCount > 0 ? "watch" : "online",
+      approvalRequired: false,
+    },
+    {
+      name: "Reputation Agent",
+      domain: "Reviews",
+      promise: "Protects local trust through review requests, response timing, and sentiment checks.",
+      ownerSees: "HomeReach helps protect my reputation.",
+      watches: ["review requests", "sentiment", "response gaps", "local trust signals"],
+      recommends: "Tie review requests to completed jobs and renewal touchpoints.",
+      nextAction: "Open reviews.",
+      href: "/admin/reviews",
+      status: "watch",
+      approvalRequired: true,
+    },
+    {
+      name: "Sales Agent",
+      domain: "Revenue",
+      promise: "Prioritizes leads, proposals, and upsells so the next sale is clearer.",
+      ownerSees: "HomeReach helps me grow revenue.",
+      watches: ["hot leads", "proposal views", "payment status", "upsell fit"],
+      recommends: pendingProposalCount > 0 ? "Follow up on the proposal queue." : "Work the highest-scored lead.",
+      nextAction: "Open sales dashboard.",
+      href: "/admin/sales-dashboard",
+      status: firstNumber(hotSalesLeadsRows, "n") + pendingProposalCount > 0 ? "watch" : "online",
+      approvalRequired: false,
+    },
+    {
+      name: "Political Outreach Agent",
+      domain: "Campaign mail",
+      promise: "Identifies campaign opportunities and recommends outreach packages with maps and mockups.",
+      ownerSees: "HomeReach is finding campaign opportunities.",
+      watches: ["candidate records", "campaign timing", "proposal readiness", "map packages"],
+      recommends: "Contact Tier 1 opportunities with a map and postcard concept.",
+      nextAction: "Open political outreach.",
+      href: "/admin/political/outreach-strategy",
+      status: politicalOpportunityCount > 0 ? "watch" : "idle",
+      approvalRequired: true,
+    },
+    {
+      name: "Creative Agent",
+      domain: "Visual proof",
+      promise: "Turns offers into postcard, map, proposal, and savings visuals.",
+      ownerSees: "HomeReach makes my marketing easy to understand.",
+      watches: ["proof queue", "proposal visuals", "Canva handoff", "approval status"],
+      recommends: designApprovalCount > 0 ? "Clear proof approvals before the next mail window." : "Attach visuals to the next proposal.",
+      nextAction: "Open Canva Design OS.",
+      href: "/admin/canva",
+      status: designApprovalCount > 0 ? "watch" : "online",
+      approvalRequired: true,
+    },
+    {
+      name: "Fulfillment Agent",
+      domain: "Execution",
+      promise: "Keeps intake, proof, print-ready, vendor, mail, and delivery status visible.",
+      ownerSees: "HomeReach is keeping the work moving.",
+      watches: ["intake", "payment", "proof", "print-ready", "mail schedule"],
+      recommends: "Review open print jobs and scheduled drops.",
+      nextAction: "Open campaigns.",
+      href: "/admin/campaigns",
+      status: firstNumber(printJobRows, "n") + firstNumber(scheduledMailRows, "n") > 0 ? "watch" : "online",
+      approvalRequired: false,
+    },
+    {
+      name: "Revenue Integrity Agent",
+      domain: "Money path",
+      promise: "Finds payment blockers, missed renewals, and pipeline leakage.",
+      ownerSees: "HomeReach keeps my money path organized.",
+      watches: ["failed payments", "pending orders", "paused subscriptions", "checkout gaps"],
+      recommends: failedPaymentCount > 0 ? "Fix payment blockers first." : "Monitor pending payments and renewals.",
+      nextAction: "Open orders.",
+      href: "/admin/orders",
+      status: failedPaymentCount > 0 ? "critical" : "online",
+      approvalRequired: true,
+    },
+    {
+      name: "Customer Retention Agent",
+      domain: "Renewals",
+      promise: "Turns wins into renewals, upsells, reviews, and repeat campaigns.",
+      ownerSees: "HomeReach helps keep customers coming back.",
+      watches: ["renewal timing", "inactive customers", "review opportunities", "next product fit"],
+      recommends: "Bundle campaign status, review request, and next offer into the next customer touch.",
+      nextAction: "Open businesses.",
+      href: "/admin/businesses",
+      status: pausedSpots > 0 ? "watch" : "online",
+      approvalRequired: false,
+    },
+  ];
+
+  const industryPlaybooks: OSIndustryPlaybook[] = [
+    {
+      industry: "Roofing",
+      systemName: "Roofing Growth System",
+      focus: "Storm season, emergency repairs, roof replacements, and neighborhood proof.",
+      campaignStrategy: "Run route-level saturation around older housing pockets and recent storm paths.",
+      targetingStrategy: "Use city, route, home age, and neighborhood density signals.",
+      seoRecommendation: "Build city pages around roofing marketing, storm damage mail, and neighborhood visibility.",
+      procurementRecommendation: "Monitor common material, dumpster, fuel, and subcontractor cost categories.",
+      seasonalRecommendation: "Push spring inspection and post-storm follow-up campaigns.",
+      retentionMove: "Request reviews after completed roof jobs and schedule annual check-in mail.",
+      href: "/ohio/akron/roofing-marketing",
+      status: "online",
+    },
+    {
+      industry: "HVAC",
+      systemName: "HVAC Growth System",
+      focus: "Seasonal tune-ups, replacement urgency, service memberships, and review velocity.",
+      campaignStrategy: "Mail before heating and cooling peaks with simple maintenance CTAs.",
+      targetingStrategy: "Prioritize dense owner-occupied routes and repeat-touch neighborhoods.",
+      seoRecommendation: "Create HVAC postcard and direct mail pages by city.",
+      procurementRecommendation: "Track filters, refrigerant, service materials, and recurring vendor prices.",
+      seasonalRecommendation: "Run spring AC and fall furnace tune-up offers.",
+      retentionMove: "Convert service calls into review requests and maintenance reminders.",
+      href: "/ohio/akron/hvac-postcards",
+      status: "online",
+    },
+    {
+      industry: "Landscaping",
+      systemName: "Landscaping Growth System",
+      focus: "Recurring maintenance, seasonal cleanups, lawn care, and route density.",
+      campaignStrategy: "Dominate clustered neighborhoods where crews can serve multiple homes efficiently.",
+      targetingStrategy: "Use route density and city-level property signals.",
+      seoRecommendation: "Build lawn care advertising and neighborhood saturation pages.",
+      procurementRecommendation: "Watch mulch, fuel, seed, fertilizer, and equipment supply pricing.",
+      seasonalRecommendation: "Promote spring cleanup, summer mowing, and fall leaf campaigns.",
+      retentionMove: "Turn one-time jobs into monthly route plans.",
+      href: "/ohio/dayton/lawn-care-advertising",
+      status: "online",
+    },
+    {
+      industry: "Realtor",
+      systemName: "Realtor Growth System",
+      focus: "Neighborhood farming, listing visibility, just-sold proof, and repeat presence.",
+      campaignStrategy: "Use route farming with consistent postcard identity and listing proof.",
+      targetingStrategy: "Prioritize neighborhoods with ownership turnover and clear geographic identity.",
+      seoRecommendation: "Build realtor postcard and neighborhood farming authority pages.",
+      procurementRecommendation: "Bundle signs, business cards, and postcard packages for repeat use.",
+      seasonalRecommendation: "Plan spring listing season and fall inventory update mail.",
+      retentionMove: "Keep past-client touchpoints and review requests visible.",
+      href: "/ohio/cleveland/realtor-postcards",
+      status: "online",
+    },
+    {
+      industry: "Restaurant",
+      systemName: "Restaurant Growth System",
+      focus: "Neighborhood awareness, offers, menu drops, reviews, and local loyalty.",
+      campaignStrategy: "Use shared postcards and door hangers for nearby household reach.",
+      targetingStrategy: "Target tight trade-area routes and repeat delivery zones.",
+      seoRecommendation: "Create local restaurant marketing and menu mailer pages.",
+      procurementRecommendation: "Monitor paper goods, food categories, packaging, and supplier changes.",
+      seasonalRecommendation: "Run catering, holiday, patio, and back-to-school offers.",
+      retentionMove: "Request reviews after catering or high-value orders.",
+      href: "/shared-postcards",
+      status: "online",
+    },
+    {
+      industry: "Pizza Shop",
+      systemName: "Pizza Shop Growth System",
+      focus: "Delivery-zone awareness, repeat coupons, game days, schools, and family ordering.",
+      campaignStrategy: "Mail high-frequency offers to dense routes inside delivery range.",
+      targetingStrategy: "Focus on delivery zones, family neighborhoods, and school-adjacent routes.",
+      seoRecommendation: "Build pizza shop advertising and local coupon strategy content.",
+      procurementRecommendation: "Watch boxes, cheese, flour, sauce, and third-party delivery cost pressure.",
+      seasonalRecommendation: "Run football, school, graduation, and holiday party campaigns.",
+      retentionMove: "Convert coupon responders into review and SMS list opportunities.",
+      href: "/shared-postcards",
+      status: "online",
+    },
+    {
+      industry: "Political Campaign",
+      systemName: "Political Campaign System",
+      focus: "Geographic campaign mail, postcard waves, turnout, persuasion, and visual proposals.",
+      campaignStrategy: "Build persuasion, absentee, early vote, and GOTV mail waves by district geography.",
+      targetingStrategy: "Use geography, office level, district boundaries, timing, and logistics only.",
+      seoRecommendation: "Expand political mail pages by county, office type, and postcard type.",
+      procurementRecommendation: "Track print, postage, signs, and campaign material cost assumptions.",
+      seasonalRecommendation: "Work backward from filing, absentee, early vote, and Election Day dates.",
+      retentionMove: "Turn campaign wins into case studies and county authority pages.",
+      href: "/admin/political/outreach-strategy",
+      status: politicalOpportunityCount > 0 ? "watch" : "online",
+    },
+  ];
+
+  const membershipPlans: OSMembershipPlan[] = [
+    {
+      name: "Monthly Visibility Plan",
+      cadence: "Monthly",
+      bestFor: "Local businesses that need consistent neighborhood presence.",
+      includes: ["shared postcards", "next-drop planning", "renewal reminders", "simple reporting"],
+      outcome: "Stay visible year-round without rebuilding a campaign every month.",
+      priceSignal: "Recurring visibility",
+      href: "/admin/spots",
+      status: "online",
+    },
+    {
+      name: "SEO Visibility Plan",
+      cadence: "Monthly",
+      bestFor: "Businesses that want inbound search growth without managing content systems.",
+      includes: ["city pages", "authority content", "visual metadata", "review-first publishing"],
+      outcome: "Help customers find the business through local search.",
+      priceSignal: "Recurring authority",
+      href: "/admin/marketing/seo-command-center",
+      status: "online",
+    },
+    {
+      name: "Procurement Monitoring",
+      cadence: "Monthly",
+      bestFor: "Businesses with recurring supplier or inventory spend.",
+      includes: ["price snapshots", "savings alerts", "smart-buy approvals", "vendor visibility"],
+      outcome: "Reduce overspending and catch reorder risk earlier.",
+      priceSignal: "Savings-backed",
+      href: "/operations-copilot",
+      status: "online",
+    },
+    {
+      name: "Review and Follow-Up Plan",
+      cadence: "Monthly",
+      bestFor: "Owners who lose time chasing replies, reviews, and stale leads.",
+      includes: ["follow-up reminders", "review requests", "suggested responses", "retention nudges"],
+      outcome: "Keep customer communication from slipping.",
+      priceSignal: "Retention engine",
+      href: "/admin/inbox",
+      status: pendingReplyCount + staleLeadCount > 0 ? "watch" : "online",
+    },
+    {
+      name: "Local Domination Plan",
+      cadence: "Quarterly",
+      bestFor: "Businesses that want to own a city, neighborhood, or route cluster.",
+      includes: ["targeted campaigns", "coverage maps", "postcard cadence", "proposal visuals"],
+      outcome: "Become the local business people remember.",
+      priceSignal: "Premium growth",
+      href: "/admin/targeted-campaigns",
+      status: "online",
+    },
+  ];
+
+  const communityLoops: OSCommunityLoop[] = [
+    {
+      title: "Featured business spotlights",
+      detail: "Turn active clients into city showcases and proof snapshots.",
+      trustSignal: "Local familiarity",
+      nextAction: "Identify the next client story from active campaigns.",
+      href: "/admin/businesses",
+      status: activeCampaignCount > 0 ? "online" : "idle",
+    },
+    {
+      title: "City success stories",
+      detail: "Use campaign maps, postcard visuals, and outcomes to support local authority pages.",
+      trustSignal: "Geo-specific proof",
+      nextAction: "Connect case studies to city SEO clusters.",
+      href: "/case-studies",
+      status: "online",
+    },
+    {
+      title: "Shared campaign visibility",
+      detail: "Show category-exclusive businesses how shared campaigns build repeated local recognition.",
+      trustSignal: "Network effect",
+      nextAction: "Invite complementary categories into open city routes.",
+      href: "/admin/spots",
+      status: pendingSpots > 0 ? "watch" : "online",
+    },
+    {
+      title: "Local review flywheel",
+      detail: "Completed jobs should feed review requests, testimonials, and local proof.",
+      trustSignal: "Reputation compounding",
+      nextAction: "Attach review requests to fulfillment completion.",
+      href: "/admin/reviews",
+      status: "watch",
+    },
+  ];
 
   const nextBestActions = [
     failedPaymentCount > 0
@@ -1340,6 +1873,12 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
       { role: "Purchasing", href: "/operations-copilot", focus: "Supplier intelligence, savings, approvals, inventory", status: firstNumber(opActionRows, "n") > 0 ? "watch" : "online" },
     ],
     activityFeed,
+    businessHealth,
+    moneyLeaks,
+    digitalEmployees,
+    industryPlaybooks,
+    membershipPlans,
+    communityLoops,
     nextBestActions,
     commandCards,
     specializedAgents,

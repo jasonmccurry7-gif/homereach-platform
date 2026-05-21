@@ -41,7 +41,10 @@ export interface OSNextBestAction {
     | "procurement"
     | "creative"
     | "operations"
-    | "growth";
+    | "growth"
+    | "seo"
+    | "reputation"
+    | "retention";
 }
 
 export interface OSConversation {
@@ -84,7 +87,11 @@ export interface OSCommandCard {
     | "gov_contracts"
     | "creative"
     | "fulfillment"
-    | "client_success";
+    | "client_success"
+    | "seo"
+    | "reputation"
+    | "membership"
+    | "retention";
   value: string;
   detail: string;
   nextAction: string;
@@ -163,6 +170,86 @@ export interface OSRoleView {
   status: OSStatus;
 }
 
+export interface OSHealthDimension {
+  id: string;
+  label: string;
+  score: number;
+  status: OSStatus;
+  detail: string;
+  weakSpot: string;
+  nextAction: string;
+  href: string;
+}
+
+export interface OSBusinessHealthScore {
+  score: number;
+  trend: "improving" | "steady" | "needs_attention";
+  summary: string;
+  dimensions: OSHealthDimension[];
+  weakSpots: string[];
+  opportunities: string[];
+}
+
+export interface OSMoneyLeak {
+  id: string;
+  title: string;
+  issue: string;
+  estimatedImpact: string;
+  recommendedAction: string;
+  relatedSolution: string;
+  actionLabel: string;
+  href: string;
+  status: OSStatus;
+  severity: "Low" | "Medium" | "High";
+}
+
+export interface OSDigitalEmployee {
+  name: string;
+  domain: string;
+  promise: string;
+  ownerSees: string;
+  watches: string[];
+  recommends: string;
+  nextAction: string;
+  href: string;
+  status: OSStatus;
+  approvalRequired: boolean;
+}
+
+export interface OSIndustryPlaybook {
+  industry: string;
+  systemName: string;
+  focus: string;
+  campaignStrategy: string;
+  targetingStrategy: string;
+  seoRecommendation: string;
+  procurementRecommendation: string;
+  seasonalRecommendation: string;
+  retentionMove: string;
+  href: string;
+  status: OSStatus;
+}
+
+export interface OSMembershipPlan {
+  name: string;
+  cadence: string;
+  bestFor: string;
+  includes: string[];
+  outcome: string;
+  priceSignal: string;
+  href: string;
+  status: OSStatus;
+}
+
+export interface OSCommunityLoop {
+  title: string;
+  detail: string;
+  trustSignal: string;
+  nextAction: string;
+  href: string;
+  status: OSStatus;
+}
+
 export interface HomeReachOSData {
   generatedAt: string;
   revenue: {
@@ -235,6 +322,12 @@ export interface HomeReachOSData {
   notifications: OSActivity[];
   roleViews: OSRoleView[];
   activityFeed: OSActivity[];
+  businessHealth: OSBusinessHealthScore;
+  moneyLeaks: OSMoneyLeak[];
+  digitalEmployees: OSDigitalEmployee[];
+  industryPlaybooks: OSIndustryPlaybook[];
+  membershipPlans: OSMembershipPlan[];
+  communityLoops: OSCommunityLoop[];
   nextBestActions: OSNextBestAction[];
   commandCards: OSCommandCard[];
   specializedAgents: OSSpecializedAgent[];

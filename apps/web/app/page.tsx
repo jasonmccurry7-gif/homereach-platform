@@ -41,9 +41,9 @@ import {
 
 export const metadata: Metadata = {
   title:
-    "HomeReach | Geographic Intelligence & Operational Execution Platform",
+    "HomeReach | Grow Locally, Stay Visible, Operate Smarter",
   description:
-    "HomeReach unifies shared postcards, targeted direct mail, political mail, property intelligence, yard signs, door hangers, business cards, and inventory purchasing intelligence for local visibility.",
+    "HomeReach helps local businesses get more customers, stay visible, reduce costs, follow up better, and operate smarter through one simple growth ecosystem.",
   keywords: [
     "shared postcards",
     "targeted direct mail",
@@ -60,9 +60,9 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     title:
-      "HomeReach | Geographic Intelligence & Operational Execution Platform",
+      "HomeReach | Grow Locally, Stay Visible, Operate Smarter",
     description:
-      "A premium operational platform for shared postcards, targeted campaigns, political mail, property intelligence, purchasing savings, and supporting print products.",
+      "A premium growth and operations ecosystem for local visibility, direct mail, purchasing savings, follow-up, and campaign execution.",
   },
 };
 
@@ -186,15 +186,14 @@ export default function HomePage() {
           <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:py-20 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:px-6 lg:py-24">
             <div>
               <p className="inline-flex rounded-full border border-blue-300/25 bg-blue-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-blue-100">
-                HomeReach Platform Ecosystem
+                HomeReach OS for Local Growth
               </p>
               <h1 className="mt-6 max-w-4xl text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
-                Geographic Intelligence &amp; Operational Execution for Businesses and Campaigns
+                The easiest way for local businesses to grow, stay visible, and operate smarter.
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-                HomeReach helps businesses and campaigns dominate local visibility through shared postcards,
-                targeted campaigns, political mail, property intelligence, purchasing intelligence, and supporting
-                print products.
+                HomeReach brings local visibility, direct mail, follow-up, savings opportunities, and campaign execution
+                into one simple experience built for busy owners.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <CtaButton href={accountStartHref(PRODUCT_START_PATHS.sharedPostcards)} variant="primary">
@@ -206,9 +205,9 @@ export default function HomePage() {
               </div>
               <div className="mt-10 grid grid-cols-3 gap-3">
                 {[
-                  ["Route maps", "Plan by geography"],
-                  ["Mail ops", "Execute with control"],
-                  ["Savings", "See supplier gaps"],
+                  ["Customers", "Stay visible locally"],
+                  ["Follow-up", "Keep work organized"],
+                  ["Savings", "Catch supplier gaps"],
                 ].map(([value, label]) => (
                   <div key={value} className="rounded-lg border border-white/10 bg-white/[0.08] p-3 backdrop-blur">
                     <p className="text-sm font-black text-white">{value}</p>
