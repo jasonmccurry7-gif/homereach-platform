@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { createServiceClient } from "@/lib/supabase/service";
 import { listPublishedPages } from "@/lib/seo/registry";
-import { listAuthorityGuides, listOhioAuthorityPages } from "@/lib/seo/authority";
+import { listAllAuthorityRoutes } from "@/lib/seo/authority";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeReach sitemap
@@ -91,19 +91,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     slugRoutes = [];
   }
 
-  const ohioAuthorityRoutes: MetadataRoute.Sitemap = listOhioAuthorityPages().map((page) => ({
-    url: `${base}${page.path}`,
-    lastModified: now,
-    changeFrequency: "weekly",
-    priority: page.pageType === "city" ? 0.85 : page.topic?.kind === "political" ? 0.82 : 0.78,
-  }));
-
-  const educationalGuideRoutes: MetadataRoute.Sitemap = listAuthorityGuides().map((guide) => ({
-    url: `${base}/learn/${guide.slug}`,
-    lastModified: now,
-    changeFrequency: "monthly",
-    priority: 0.72,
-  }));
+  const authorityRoutes: MetadataRoute.Sitemap = listAllAuthorityRoutes()
+    .filter((route) => route.path !== "/ohio")
+    .map((route) => ({
+      url: `${base}${route.path}`,
+      lastModified: now,
+      changeFrequency: route.type === "dataset" || route.type === "guide" ? "monthly" : "weekly",
+      priority: route.priority,
+    }));
 
   // SEO engine: include published seo_pages URLs. Returns [] when
   // ENABLE_SEO_ENGINE is off, so flag-off preserves the pre-engine sitemap.
@@ -120,5 +115,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     seoEngineRoutes = [];
   }
 
-  return [...staticRoutes, ...slugRoutes, ...ohioAuthorityRoutes, ...educationalGuideRoutes, ...seoEngineRoutes];
+  return [...staticRoutes, ...slugRoutes, ...authorityRoutes, ...seoEngineRoutes];
 }

@@ -87,6 +87,160 @@ export type AuthorityGuide = {
   internalLinks: Array<{ label: string; href: string }>;
 };
 
+export type OhioAuthorityCounty = {
+  slug: string;
+  name: string;
+  region: string;
+  seat: string;
+  anchors: string[];
+  directMailAngle: string;
+  politicalAngle: string;
+  businessAngle: string;
+  campaignSignals: string[];
+};
+
+export type CountyAuthorityPage = {
+  path: string;
+  county: OhioAuthorityCounty;
+  topic: SeoAuthorityTopic | null;
+  pageType: "county" | "county_topic";
+  metaTitle: string;
+  metaDescription: string;
+  h1: string;
+  eyebrow: string;
+  intro: string;
+  strategy: string[];
+  proofPoints: string[];
+  faqs: Array<{ question: string; answer: string }>;
+  internalLinks: Array<{ label: string; href: string }>;
+  visual: SeoVisualAsset;
+};
+
+export type PoliticalAuthorityPage = {
+  slug: string;
+  path: string;
+  pageType: "statewide" | "county" | "office" | "campaign_type" | "postcard_strategy";
+  title: string;
+  metaTitle: string;
+  metaDescription: string;
+  h1: string;
+  eyebrow: string;
+  audience: string;
+  summary: string;
+  strategy: string[];
+  proofPoints: string[];
+  faqs: Array<{ question: string; answer: string }>;
+  ctaLabel: string;
+  ctaHref: string;
+  internalLinks: Array<{ label: string; href: string }>;
+  visual: SeoVisualAsset;
+};
+
+export type SeoCaseStudy = {
+  slug: string;
+  path: string;
+  title: string;
+  metaTitle: string;
+  metaDescription: string;
+  market: string;
+  category: string;
+  resultSignal: string;
+  summary: string;
+  rollout: string[];
+  strategy: string[];
+  proofPoints: string[];
+  ctaLabel: string;
+  ctaHref: string;
+  visual: SeoVisualAsset;
+  internalLinks: Array<{ label: string; href: string }>;
+};
+
+export type InteractiveSeoTool = {
+  slug: string;
+  path: string;
+  title: string;
+  metaTitle: string;
+  metaDescription: string;
+  eyebrow: string;
+  summary: string;
+  calculatorType:
+    | "postcard_roi"
+    | "household_reach"
+    | "political_mail"
+    | "coverage"
+    | "procurement_savings"
+    | "saturation";
+  inputs: Array<{ key: string; label: string; defaultValue: number; suffix?: string }>;
+  outputLabel: string;
+  guidance: string[];
+  ctaLabel: string;
+  ctaHref: string;
+  visual: SeoVisualAsset;
+  internalLinks: Array<{ label: string; href: string }>;
+};
+
+export type AuthorityInsight = {
+  slug: string;
+  path: string;
+  title: string;
+  metaTitle: string;
+  metaDescription: string;
+  eyebrow: string;
+  summary: string;
+  signals: string[];
+  recommendations: string[];
+  faqs: Array<{ question: string; answer: string }>;
+  visual: SeoVisualAsset;
+  internalLinks: Array<{ label: string; href: string }>;
+};
+
+export type VisualGallery = {
+  slug: string;
+  path: string;
+  title: string;
+  metaTitle: string;
+  metaDescription: string;
+  eyebrow: string;
+  summary: string;
+  categories: string[];
+  locations: string[];
+  items: Array<{
+    title: string;
+    category: string;
+    location: string;
+    description: string;
+    tags: string[];
+    visual: SeoVisualAsset;
+  }>;
+  visual: SeoVisualAsset;
+  internalLinks: Array<{ label: string; href: string }>;
+};
+
+export type AuthorityDataset = {
+  slug: string;
+  path: string;
+  title: string;
+  metaTitle: string;
+  metaDescription: string;
+  eyebrow: string;
+  summary: string;
+  metrics: Array<{ label: string; value: string; note: string }>;
+  methodology: string[];
+  useCases: string[];
+  visual: SeoVisualAsset;
+  internalLinks: Array<{ label: string; href: string }>;
+};
+
+export type SeoKeywordTarget = {
+  keyword: string;
+  cluster: string;
+  intent: "transactional" | "commercial" | "informational" | "local" | "political";
+  priority: "critical" | "high" | "medium";
+  targetPath: string;
+  opportunity: string;
+  nextAction: string;
+};
+
 export const ohioAuthorityCities: OhioAuthorityCity[] = [
   {
     slug: "columbus",
@@ -766,6 +920,663 @@ export const authorityGuides: AuthorityGuide[] = [
   }),
 ];
 
+export const ohioAuthorityCounties: OhioAuthorityCounty[] = [
+  {
+    slug: "franklin-county",
+    name: "Franklin County",
+    region: "Central Ohio",
+    seat: "Columbus",
+    anchors: ["Columbus", "Dublin", "Westerville", "Grove City", "Hilliard"],
+    directMailAngle:
+      "Franklin County rewards campaigns that separate dense urban routes, fast-growth suburbs, and professional homeowner pockets.",
+    politicalAngle:
+      "Countywide campaigns need clear turnout timing, precinct-aware geography, and direct mail creative that is useful without becoming cluttered.",
+    businessAngle:
+      "Local businesses can use route saturation to stay visible across high-competition suburbs without buying a full metro campaign.",
+    campaignSignals: ["dense route mix", "suburban growth", "countywide civic races", "high service competition"],
+  },
+  {
+    slug: "summit-county",
+    name: "Summit County",
+    region: "Northeast Ohio",
+    seat: "Akron",
+    anchors: ["Akron", "Cuyahoga Falls", "Hudson", "Green", "Fairlawn"],
+    directMailAngle:
+      "Summit County is practical for home-service and civic campaigns because older housing stock and suburb clusters create useful mail pockets.",
+    politicalAngle:
+      "Levy, judicial, and county campaigns can pair broad awareness with city-specific follow-up waves.",
+    businessAngle:
+      "Service businesses can focus offers around homeowner-heavy neighborhoods while preserving county-level brand reach.",
+    campaignSignals: ["older homes", "school levy potential", "service corridors", "countywide judicial races"],
+  },
+  {
+    slug: "stark-county",
+    name: "Stark County",
+    region: "Northeast Ohio",
+    seat: "Canton",
+    anchors: ["Canton", "Massillon", "North Canton", "Alliance", "Jackson Township"],
+    directMailAngle:
+      "Stark County is a strong long-tail market for postcard advertising, route density, and practical neighborhood saturation.",
+    politicalAngle:
+      "County races and issue campaigns benefit from clear household reach, staged mail drops, and simple visual proof.",
+    businessAngle:
+      "Home-service and local retail campaigns can use shared postcards or targeted route drops to reach neighborhoods without overbuying.",
+    campaignSignals: ["county race visibility", "homeowner routes", "suburban service demand", "issue campaign education"],
+  },
+  {
+    slug: "medina-county",
+    name: "Medina County",
+    region: "Northeast Ohio",
+    seat: "Medina",
+    anchors: ["Medina", "Wadsworth", "Brunswick", "Seville", "Lodi"],
+    directMailAngle:
+      "Medina County is useful for high-value homeowner campaigns, suburban route planning, and premium local service offers.",
+    politicalAngle:
+      "Local races and levy campaigns need credible creative, coverage clarity, and follow-up timing that respects smaller-market trust.",
+    businessAngle:
+      "Businesses can use postcards to build repeat visibility in suburbs where referral and neighborhood reputation matter.",
+    campaignSignals: ["high-value homes", "suburban family routes", "local trust signals", "school district issues"],
+  },
+  {
+    slug: "cuyahoga-county",
+    name: "Cuyahoga County",
+    region: "Northeast Ohio",
+    seat: "Cleveland",
+    anchors: ["Cleveland", "Lakewood", "Parma", "Shaker Heights", "Strongsville"],
+    directMailAngle:
+      "Cuyahoga County needs route-level discipline because city, inner-ring suburb, and outer-suburb audiences behave differently.",
+    politicalAngle:
+      "Judicial, issue, and GOTV campaigns can use mail to simplify timing, names, and voting actions across a dense media market.",
+    businessAngle:
+      "Local businesses can avoid broad waste by matching creative to older-home neighborhoods, lakefront routes, and suburb clusters.",
+    campaignSignals: ["dense civic market", "judicial races", "older homes", "inner-ring suburbs"],
+  },
+  {
+    slug: "hamilton-county",
+    name: "Hamilton County",
+    region: "Southwest Ohio",
+    seat: "Cincinnati",
+    anchors: ["Cincinnati", "Blue Ash", "Anderson Township", "Norwood", "Sharonville"],
+    directMailAngle:
+      "Hamilton County campaigns should separate city neighborhoods, river corridors, and northern suburb routes.",
+    politicalAngle:
+      "County and judicial campaigns need concise voter education and turnout mail that can scale across different communities.",
+    businessAngle:
+      "Service companies can use targeted mail to focus on higher-fit routes instead of buying broad Cincinnati impressions.",
+    campaignSignals: ["competitive local services", "judicial campaigns", "suburban households", "regional issue campaigns"],
+  },
+  {
+    slug: "montgomery-county",
+    name: "Montgomery County",
+    region: "Western Ohio",
+    seat: "Dayton",
+    anchors: ["Dayton", "Kettering", "Centerville", "Huber Heights", "Miamisburg"],
+    directMailAngle:
+      "Montgomery County is a practical fit for radius planning, repeat postcard visibility, and route-aware service campaigns.",
+    politicalAngle:
+      "County races and issue campaigns can use staged mail drops to reinforce voting deadlines and local credibility.",
+    businessAngle:
+      "Local service businesses can pair neighborhood saturation with proposal-ready maps and seasonal timing.",
+    campaignSignals: ["military-adjacent communities", "suburban family routes", "older neighborhoods", "county issues"],
+  },
+  {
+    slug: "lucas-county",
+    name: "Lucas County",
+    region: "Northwest Ohio",
+    seat: "Toledo",
+    anchors: ["Toledo", "Sylvania", "Maumee", "Oregon", "Ottawa Hills"],
+    directMailAngle:
+      "Lucas County lets campaigns connect city identity, suburban routes, and countywide reach in a plan buyers can understand quickly.",
+    politicalAngle:
+      "Issue, labor, and county campaigns can use mail for simple messages, turnout reminders, and geographic coverage proof.",
+    businessAngle:
+      "Local businesses can use shared postcards or targeted mail to stay visible in neighborhoods that match their service area.",
+    campaignSignals: ["countywide routes", "labor and issue campaigns", "suburban demand", "lake-region communities"],
+  },
+];
+
+const countyAuthorityTopicSlugs = new Set([
+  "direct-mail-marketing",
+  "targeted-neighborhood-campaigns",
+  "political-mail",
+  "campaign-postcards",
+  "school-levy-mail-campaigns",
+]);
+
+export const politicalAuthorityPages: PoliticalAuthorityPage[] = [
+  createPoliticalAuthorityPage({
+    slug: "ohio",
+    pageType: "statewide",
+    title: "Political Mail Ohio",
+    h1: "Political mail strategy for Ohio campaigns",
+    audience: "Statewide, county, judicial, levy, and local campaign teams that need credible direct mail without operational guesswork.",
+    summary:
+      "HomeReach political SEO pages explain campaign mail strategy, voter-facing creative, geography, rollout timing, and proposal visuals without exposing internal campaign operations.",
+    strategy: [
+      "Position Ohio political mail around geography, office level, timing, and creative clarity instead of vague persuasion language.",
+      "Use maps, postcard mockups, and rollout timelines as public proof while keeping outreach, targeting, and approvals admin-side.",
+      "Build internal links into county, office, GOTV, levy, and postcard design pages so search engines see a full political mail cluster.",
+    ],
+    proofPoints: ["statewide coverage framing", "campaign-safe creative guidance", "county and office-specific internal links"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "county-campaign-mail",
+    pageType: "county",
+    title: "County Campaign Mail",
+    h1: "County campaign mail that shows reach, timing, and execution",
+    audience: "County candidates, campaign managers, parties, consultants, and issue committees.",
+    summary:
+      "County campaign mail works best when household reach, message simplicity, mail timing, and follow-up visibility are planned together.",
+    strategy: [
+      "Create county-level authority pages that connect campaign goals to maps, household reach, and practical mail drops.",
+      "Use campaign option packages to explain volume, counties covered, timing, and why the mail should work.",
+      "Pair every county page with a recommended CTA into political outreach, proposal, or map review.",
+    ],
+    proofPoints: ["county coverage maps", "multi-drop schedule examples", "campaign option packaging"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "judicial-campaign-mail",
+    pageType: "office",
+    title: "Judicial Campaign Mail",
+    h1: "Judicial campaign mail with trust-first creative",
+    audience: "Judicial candidates and consultants who need professional, restrained, trust-building direct mail.",
+    summary:
+      "Judicial mail should make name recognition, credibility, endorsements, and voting information easy to understand.",
+    strategy: [
+      "Use premium, restrained design systems that feel credible and avoid generic political flyer energy.",
+      "Explain endorsement, biography, and turnout postcard types with front/back mockup support.",
+      "Keep voter-facing claims factual and campaign-approved before any public visual is reused.",
+    ],
+    proofPoints: ["trust-first postcard mockups", "endorsement and biography concepts", "USPS-ready visual framing"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "sheriff-campaign-mail",
+    pageType: "office",
+    title: "Sheriff Campaign Mail",
+    h1: "Sheriff campaign mail for countywide recognition and credibility",
+    audience: "Sheriff campaigns, public safety candidates, and county consultants.",
+    summary:
+      "Sheriff campaign mail needs clear credibility signals, countywide coverage, and direct language that can be understood quickly.",
+    strategy: [
+      "Frame public safety mail around service, credibility, community trust, and voting logistics.",
+      "Use county route coverage visuals to show where name recognition and turnout support can build.",
+      "Support biography, endorsement, and turnout concepts without inferring individual voter beliefs.",
+    ],
+    proofPoints: ["countywide mail planning", "biography postcard concepts", "turnout timing recommendations"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "gotv-postcards",
+    pageType: "campaign_type",
+    title: "Ohio GOTV Postcards",
+    h1: "GOTV postcards that make the next voting action obvious",
+    audience: "Campaigns and committees preparing election-week, absentee, early vote, or final turnout mail.",
+    summary:
+      "GOTV mail should be concise, deadline-driven, visual, and specific about what the recipient should do next.",
+    strategy: [
+      "Use timing pages for absentee, early voting, election-week, and final reminder mail.",
+      "Attach maps and rollout timelines so campaigns can see deployment phases before approving.",
+      "Keep messaging action-oriented and compliance-safe.",
+    ],
+    proofPoints: ["deadline mail concepts", "early vote postcard examples", "rollout timeline visuals"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "school-levy-campaign-mail",
+    pageType: "campaign_type",
+    title: "School Levy Campaign Mail",
+    h1: "School levy campaign mail that explains the vote clearly",
+    audience: "School levy committees, district supporters, campaign managers, and local consultants.",
+    summary:
+      "Levy mail needs explanation, trust, timing, and local relevance. The best pages make the plan feel understandable before the proposal.",
+    strategy: [
+      "Build educational pages around what the levy changes, what households need to know, and how mail waves support awareness.",
+      "Use maps and postcards to show deployment geography without overloading the public page.",
+      "Link levy pages into county pages and political campaign mail guides.",
+    ],
+    proofPoints: ["local issue education", "multi-wave mail timing", "county and district coverage visuals"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "state-senate-campaign-mail",
+    pageType: "office",
+    title: "State Senate Campaign Mail",
+    h1: "State senate campaign mail with district-level rollout clarity",
+    audience: "State senate candidates, campaign managers, and consultants planning district mail.",
+    summary:
+      "State senate mail needs district geography, message sequencing, and professional creative that can scale across communities.",
+    strategy: [
+      "Explain district coverage, household reach, and recommended postcard waves in plain language.",
+      "Use rollout visuals to connect geography, creative, and timing.",
+      "Create internal links from state senate pages to county and GOTV pages.",
+    ],
+    proofPoints: ["district rollout maps", "message sequence examples", "proposal-ready campaign options"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "campaign-postcard-designs",
+    pageType: "postcard_strategy",
+    title: "Best Campaign Postcard Designs",
+    h1: "Campaign postcard designs that feel real, strategic, and print-ready",
+    audience: "Campaigns that need premium political postcard mockups instead of generic AI flyers.",
+    summary:
+      "Political postcard design should look like real campaign mail, use restrained hierarchy, and make the strategy visible.",
+    strategy: [
+      "Show biography, persuasion, contrast, endorsement, turnout, absentee, rural, suburban, and issue postcard concepts.",
+      "Support front/back layouts, USPS formatting, indicia placement, bleed-safe composition, and editable design workflows.",
+      "Use gallery pages and proposal visuals to turn creative into a conversion asset.",
+    ],
+    proofPoints: ["front/back mockups", "USPS-safe formatting", "Canva and Figma handoff readiness"],
+  }),
+  createPoliticalAuthorityPage({
+    slug: "political-direct-mail-strategy",
+    pageType: "postcard_strategy",
+    title: "Political Direct Mail Strategy",
+    h1: "Political direct mail strategy that connects message, map, and moment",
+    audience: "Campaigns that need a strategic plan before they approve mail volume and creative.",
+    summary:
+      "The strongest political mail plans connect the campaign's moment, geography, office level, creative type, and deployment sequence.",
+    strategy: [
+      "Use structured answers, FAQs, and comparison blocks so AI search systems can understand the topic clearly.",
+      "Create internal links between office pages, county pages, postcard gallery pages, and campaign guides.",
+      "Keep every recommendation focused on campaign logistics, geography, and public-facing messaging.",
+    ],
+    proofPoints: ["AI-search-ready structured answers", "strategy-to-visual proof", "internal political SEO cluster"],
+  }),
+];
+
+export const seoCaseStudies: SeoCaseStudy[] = [
+  createCaseStudy({
+    slug: "akron-roofer-saturated-12-routes",
+    title: "How an Akron Roofer Saturated 12 Postal Routes",
+    market: "Akron, Ohio",
+    category: "Roofing marketing",
+    resultSignal: "12-route saturation plan",
+    summary:
+      "A route-aware roofing postcard campaign can show homeowners exactly why the business is visible in their neighborhood before storm season peaks.",
+    rollout: ["Define homeowner-heavy routes", "Create front/back roofing postcard", "Mail first awareness wave", "Follow with quote-focused CTA"],
+    strategy: ["Use older housing stock as local context", "Keep offer simple", "Attach route map to proposal", "Log follow-up in CRM"],
+    proofPoints: ["route map visual", "storm-season timing", "proposal-ready postcard preview"],
+    ctaLabel: "Build My Roofing Plan",
+    ctaHref: "/ohio/akron/roofing-marketing",
+    visualKind: "postcard_mockup",
+  }),
+  createCaseStudy({
+    slug: "county-campaign-reached-42000-households",
+    title: "How a County Campaign Could Reach 42,000 Households",
+    market: "Ohio county campaign",
+    category: "Political mail",
+    resultSignal: "42,000-household rollout model",
+    summary:
+      "A county campaign mail plan can turn geography, postcard types, and timing into a simple proposal package for campaign leadership.",
+    rollout: ["Map county coverage", "Select persuasion and GOTV waves", "Mock up campaign mail", "Schedule final follow-up"],
+    strategy: ["Show household reach", "Separate persuasion and turnout mail", "Use compliance-safe copy", "Attach county coverage visual"],
+    proofPoints: ["county map", "front/back political mockups", "multi-wave rollout"],
+    ctaLabel: "See Political Mail Strategy",
+    ctaHref: "/political-mail/county-campaign-mail",
+    visualKind: "political_mail",
+  }),
+  createCaseStudy({
+    slug: "shared-postcards-reduced-advertising-costs",
+    title: "How Shared Postcards Reduce Local Advertising Costs",
+    market: "Ohio service market",
+    category: "Shared postcards",
+    resultSignal: "category-exclusive shared cost model",
+    summary:
+      "Shared postcards can make premium neighborhood visibility easier to buy by spreading print and postage across category-separated advertisers.",
+    rollout: ["Choose city and category", "Reserve category spot", "Approve creative proof", "Track renewal opportunity"],
+    strategy: ["Reduce buyer complexity", "Show shared cost logic", "Keep category exclusivity visible", "Route leads into proposal"],
+    proofPoints: ["shared mailer visual", "category exclusivity", "renewal path"],
+    ctaLabel: "Reserve My Spot",
+    ctaHref: "/get-started",
+    visualKind: "proposal",
+  }),
+  createCaseStudy({
+    slug: "neighborhood-saturation-increased-visibility",
+    title: "How Neighborhood Saturation Marketing Increases Visibility",
+    market: "Ohio local business",
+    category: "Targeted campaigns",
+    resultSignal: "repeat neighborhood visibility model",
+    summary:
+      "Neighborhood saturation works when a business sees the same route plan, the same creative logic, and the same follow-up path repeated over time.",
+    rollout: ["Pick route cluster", "Define repeat mail cadence", "Attach coverage visual", "Measure leads and renewal"],
+    strategy: ["Keep geography obvious", "Use visual proof", "Create repeatability", "Connect campaign to CRM"],
+    proofPoints: ["coverage map", "cadence model", "conversion-focused CTA"],
+    ctaLabel: "Build Targeted Campaign",
+    ctaHref: "/targeted/start",
+    visualKind: "coverage_map",
+  }),
+];
+
+export const interactiveSeoTools: InteractiveSeoTool[] = [
+  createInteractiveTool({
+    slug: "postcard-roi-calculator",
+    title: "Postcard ROI Calculator",
+    eyebrow: "Interactive SEO tool",
+    summary:
+      "Estimate how many customers a postcard campaign needs to break even and why route selection, offer quality, and follow-up matter.",
+    calculatorType: "postcard_roi",
+    inputs: [
+      { key: "postcards", label: "Postcards mailed", defaultValue: 5000 },
+      { key: "cost", label: "Total campaign cost", defaultValue: 3250, suffix: "$" },
+      { key: "ticket", label: "Average customer value", defaultValue: 1200, suffix: "$" },
+      { key: "closeRate", label: "Lead close rate", defaultValue: 35, suffix: "%" },
+    ],
+    outputLabel: "Estimated customers needed to break even",
+    guidance: ["Use this as a planning estimate, not a guarantee.", "The proposal should still include geography, creative, and follow-up timing."],
+    ctaLabel: "Get My Proposal",
+    ctaHref: "/get-started",
+    visualKind: "dashboard",
+  }),
+  createInteractiveTool({
+    slug: "household-reach-calculator",
+    title: "Household Reach Calculator",
+    eyebrow: "Coverage planning",
+    summary:
+      "Estimate household reach across route counts, drops, and campaign phases before building a proposal package.",
+    calculatorType: "household_reach",
+    inputs: [
+      { key: "routes", label: "Routes", defaultValue: 12 },
+      { key: "homesPerRoute", label: "Homes per route", defaultValue: 615 },
+      { key: "drops", label: "Mail drops", defaultValue: 2 },
+    ],
+    outputLabel: "Estimated household impressions",
+    guidance: ["Useful for targeted campaigns and political mail.", "Pair the estimate with map visuals and a simple CTA."],
+    ctaLabel: "See Coverage Areas",
+    ctaHref: "/ohio",
+    visualKind: "coverage_map",
+  }),
+  createInteractiveTool({
+    slug: "political-mail-estimator",
+    title: "Political Mail Estimator",
+    eyebrow: "Political mail planning",
+    summary:
+      "Estimate postcard volume and phase timing for persuasion, absentee, early vote, and GOTV campaign mail.",
+    calculatorType: "political_mail",
+    inputs: [
+      { key: "households", label: "Households", defaultValue: 42000 },
+      { key: "waves", label: "Mail waves", defaultValue: 3 },
+      { key: "days", label: "Campaign window days", defaultValue: 21 },
+    ],
+    outputLabel: "Estimated total postcard volume",
+    guidance: ["Do not use this for individual voter profiling.", "Use geography, office level, and timing only."],
+    ctaLabel: "Plan Political Mail",
+    ctaHref: "/political-mail/ohio",
+    visualKind: "political_mail",
+  }),
+  createInteractiveTool({
+    slug: "campaign-coverage-calculator",
+    title: "Campaign Coverage Calculator",
+    eyebrow: "Route coverage",
+    summary:
+      "Turn route count, household density, and deployment waves into a simple campaign coverage estimate.",
+    calculatorType: "coverage",
+    inputs: [
+      { key: "routes", label: "Route count", defaultValue: 18 },
+      { key: "density", label: "Average households per route", defaultValue: 575 },
+      { key: "coverage", label: "Coverage confidence", defaultValue: 92, suffix: "%" },
+    ],
+    outputLabel: "Estimated reachable households",
+    guidance: ["Use this to frame a proposal conversation.", "Actual routes should be confirmed in operational maps."],
+    ctaLabel: "Build Targeted Campaign",
+    ctaHref: "/targeted/start",
+    visualKind: "coverage_map",
+  }),
+  createInteractiveTool({
+    slug: "procurement-savings-calculator",
+    title: "Procurement Savings Calculator",
+    eyebrow: "Savings snapshot",
+    summary:
+      "Estimate how supplier price changes, monthly order volume, and usage create a savings opportunity worth reviewing.",
+    calculatorType: "procurement_savings",
+    inputs: [
+      { key: "monthlySpend", label: "Monthly supply spend", defaultValue: 8500, suffix: "$" },
+      { key: "savingsRate", label: "Estimated savings", defaultValue: 12, suffix: "%" },
+      { key: "months", label: "Months", defaultValue: 12 },
+    ],
+    outputLabel: "Estimated annual savings opportunity",
+    guidance: ["Use this as a lead magnet for the procurement dashboard.", "Admin systems should verify supplier data before sending claims."],
+    ctaLabel: "See Savings Opportunities",
+    ctaHref: "/signup?redirect=%2Foperations-copilot%2Fsupplier-prices",
+    visualKind: "dashboard",
+  }),
+  createInteractiveTool({
+    slug: "saturation-calculator",
+    title: "Neighborhood Saturation Calculator",
+    eyebrow: "Local visibility planning",
+    summary:
+      "Estimate how repeat drops across a defined route cluster build neighborhood visibility over time.",
+    calculatorType: "saturation",
+    inputs: [
+      { key: "households", label: "Households in cluster", defaultValue: 7500 },
+      { key: "drops", label: "Repeat drops", defaultValue: 3 },
+      { key: "months", label: "Campaign months", defaultValue: 3 },
+    ],
+    outputLabel: "Estimated household touches",
+    guidance: ["Good for local service categories with repeat seasonal demand.", "Pair with a postcard preview and CTA."],
+    ctaLabel: "Get My Custom Plan",
+    ctaHref: "/get-started",
+    visualKind: "postcard_mockup",
+  }),
+];
+
+export const authorityInsights: AuthorityInsight[] = [
+  createInsight({
+    slug: "ohio-campaign-mail-trends",
+    title: "What We Are Seeing in Ohio Campaign Mail",
+    eyebrow: "Political mail insight",
+    summary:
+      "Campaign mail is strongest when it is visual, direct, geographically clear, and timed around a specific voting action.",
+    signals: ["front/back mail realism", "county coverage proof", "early vote timing", "endorsement and biography clarity"],
+    recommendations: ["Build office-specific pages", "Pair visuals with map context", "Keep compliance review admin-side"],
+    visualKind: "political_mail",
+  }),
+  createInsight({
+    slug: "top-counties-for-saturation-marketing",
+    title: "Top Ohio Counties for Saturation Marketing",
+    eyebrow: "Geographic insight",
+    summary:
+      "County-level SEO creates useful entry points for businesses and campaigns that think in service areas instead of single cities.",
+    signals: ["route density", "homeowner concentration", "suburban service demand", "local search intent"],
+    recommendations: ["Expand county hubs", "Add route visuals", "Link county pages to city and category pages"],
+    visualKind: "coverage_map",
+  }),
+  createInsight({
+    slug: "local-advertising-trends-by-industry",
+    title: "Local Advertising Trends by Industry",
+    eyebrow: "Industry insight",
+    summary:
+      "Roofing, HVAC, lawn care, real estate, and contractor categories benefit from pages that explain timing, offer clarity, and neighborhood fit.",
+    signals: ["seasonal demand", "high-ticket services", "repeat visibility", "proposal-ready proof"],
+    recommendations: ["Prioritize high-intent categories", "Use case studies", "Add calculators to improve dwell time"],
+    visualKind: "dashboard",
+  }),
+  createInsight({
+    slug: "ai-search-ready-direct-mail-content",
+    title: "How HomeReach Content Should Show Up in AI Search",
+    eyebrow: "AI search optimization",
+    summary:
+      "AI search systems need concise answers, structured FAQs, comparison logic, visuals, and clear source pages that avoid thin content.",
+    signals: ["structured answers", "FAQ schema", "comparison tables", "image metadata", "internal topical clusters"],
+    recommendations: ["Write answer-first sections", "Keep pages useful", "Connect guides, tools, and datasets"],
+    visualKind: "proposal",
+  }),
+];
+
+export const visualGalleries: VisualGallery[] = [
+  createVisualGallery({
+    slug: "political-postcard-gallery",
+    title: "Political Postcard Gallery",
+    eyebrow: "Visual SEO gallery",
+    summary:
+      "A searchable gallery for political postcard concepts, campaign mail types, and proposal-ready creative examples.",
+    categories: ["biography", "endorsement", "turnout", "levy"],
+    locations: ["Ohio", "Franklin County", "Stark County", "Cuyahoga County"],
+    visualKind: "political_mail",
+  }),
+  createVisualGallery({
+    slug: "shared-postcard-gallery",
+    title: "Shared Postcard Gallery",
+    eyebrow: "Shared mail visuals",
+    summary:
+      "Premium shared postcard examples for local businesses that need quick proof without operational complexity.",
+    categories: ["home services", "realtor", "lawn care", "HVAC"],
+    locations: ["Columbus", "Akron", "Dayton", "Toledo"],
+    visualKind: "postcard_mockup",
+  }),
+  createVisualGallery({
+    slug: "campaign-map-gallery",
+    title: "Campaign Map Gallery",
+    eyebrow: "Coverage visuals",
+    summary:
+      "Ohio coverage maps, county route visuals, deployment geography, and proposal map examples for campaign planning.",
+    categories: ["coverage map", "county map", "route cluster", "rollout"],
+    locations: ["Ohio", "Summit County", "Hamilton County", "Lucas County"],
+    visualKind: "coverage_map",
+  }),
+  createVisualGallery({
+    slug: "proposal-visual-gallery",
+    title: "Proposal Visual Gallery",
+    eyebrow: "Conversion visuals",
+    summary:
+      "Proposal visuals, savings snapshots, dashboard previews, and campaign package graphics that make buying easier.",
+    categories: ["proposal", "dashboard", "savings", "rollout"],
+    locations: ["Ohio", "National", "Local business", "Political campaign"],
+    visualKind: "proposal",
+  }),
+];
+
+export const authorityDatasets: AuthorityDataset[] = [
+  createDataset({
+    slug: "campaign-mail-benchmarks",
+    title: "Campaign Mail Benchmarks",
+    eyebrow: "Authority dataset",
+    summary:
+      "A benchmark model for political mail volume, rollout timing, postcard type, and proposal planning.",
+    metrics: [
+      { label: "Common mail waves", value: "2-4", note: "Planning baseline by campaign phase." },
+      { label: "Core visual types", value: "8", note: "Biography, persuasion, endorsement, turnout, and issue variations." },
+      { label: "Review mode", value: "Required", note: "Political creative should remain human-approved." },
+    ],
+    methodology: ["Use public campaign logistics and HomeReach proposal models", "Avoid individual political inference", "Refresh after completed campaigns"],
+    useCases: ["campaign proposal packages", "political SEO pages", "postcard gallery metadata"],
+    visualKind: "political_mail",
+  }),
+  createDataset({
+    slug: "route-density-benchmarks",
+    title: "Route Density Benchmarks",
+    eyebrow: "Geographic dataset",
+    summary:
+      "A planning model for route density, household reach, and neighborhood saturation opportunities.",
+    metrics: [
+      { label: "Planning route range", value: "8-24", note: "Typical proposal scenarios for local campaigns." },
+      { label: "Repeat drops", value: "2-3", note: "Useful for saturation and seasonality." },
+      { label: "Map requirement", value: "Yes", note: "Every proposal should include visual geography." },
+    ],
+    methodology: ["Use route counts, household estimates, and campaign scope", "Confirm operational maps before publishing claims"],
+    useCases: ["coverage tools", "targeted campaign pages", "case study planning"],
+    visualKind: "coverage_map",
+  }),
+  createDataset({
+    slug: "postcard-cost-benchmarks",
+    title: "Postcard Cost Benchmarks",
+    eyebrow: "Pricing dataset",
+    summary:
+      "A non-binding planning dataset for postcard volume, proposal pricing, and shared mail cost framing.",
+    metrics: [
+      { label: "Shared mail value", value: "Cost sharing", note: "Explains why shared postcards are easier to buy." },
+      { label: "Solo campaign model", value: "Custom", note: "Depends on volume, print, postage, and creative." },
+      { label: "Best next step", value: "Proposal", note: "Pricing should convert into a reviewed plan." },
+    ],
+    methodology: ["Use internal pricing providers and approved vendor assumptions", "Do not expose admin margin publicly"],
+    useCases: ["ROI calculator", "proposal pages", "pricing education"],
+    visualKind: "proposal",
+  }),
+  createDataset({
+    slug: "local-advertising-benchmarks",
+    title: "Local Advertising Benchmarks",
+    eyebrow: "Industry dataset",
+    summary:
+      "A benchmark model for which local business categories need repeat visibility, maps, and seasonal campaign timing.",
+    metrics: [
+      { label: "Priority categories", value: "12", note: "Home services and local service businesses." },
+      { label: "Seasonality", value: "High", note: "Roofing, HVAC, lawn care, and contractor demand can be time-sensitive." },
+      { label: "Visual proof", value: "Critical", note: "Maps and mockups reduce buyer uncertainty." },
+    ],
+    methodology: ["Use category intent, route fit, and proposal conversion patterns", "Update with campaign outcomes"],
+    useCases: ["city/category pages", "industry guides", "sales outreach"],
+    visualKind: "dashboard",
+  }),
+  createDataset({
+    slug: "procurement-savings-benchmarks",
+    title: "Procurement Savings Benchmarks",
+    eyebrow: "Procurement dataset",
+    summary:
+      "A planning model for supplier price visibility, reorder risk, and savings snapshot opportunities.",
+    metrics: [
+      { label: "Review mode", value: "Required", note: "Savings claims should be verified before outreach." },
+      { label: "Best CTA", value: "Savings snapshot", note: "Turn SEO traffic into a low-friction review." },
+      { label: "Cross-sell path", value: "Marketing", note: "Procurement clients can become postcard or website leads." },
+    ],
+    methodology: ["Use supplier price snapshots and approved dashboard data", "Keep internal procurement controls admin-side"],
+    useCases: ["procurement SEO", "calculator pages", "operations copilot proposals"],
+    visualKind: "dashboard",
+  }),
+];
+
+export const seoKeywordTargets: SeoKeywordTarget[] = [
+  {
+    keyword: "Political Mail Ohio",
+    cluster: "Political SEO",
+    intent: "political",
+    priority: "critical",
+    targetPath: "/political-mail/ohio",
+    opportunity: "Whitespace for statewide campaign mail and consulting searches.",
+    nextAction: "Add county and office internal links, then attach political postcard gallery visuals.",
+  },
+  {
+    keyword: "Direct Mail Columbus",
+    cluster: "Geographic SEO",
+    intent: "local",
+    priority: "critical",
+    targetPath: "/ohio/columbus/direct-mail-marketing",
+    opportunity: "High-intent local business search with clear proposal CTA.",
+    nextAction: "Add case study and ROI calculator links.",
+  },
+  {
+    keyword: "Roofing Marketing Akron",
+    cluster: "Industry SEO",
+    intent: "commercial",
+    priority: "high",
+    targetPath: "/ohio/akron/roofing-marketing",
+    opportunity: "Strong service category match with older housing stock context.",
+    nextAction: "Link Akron roofing case study and route-density benchmark.",
+  },
+  {
+    keyword: "Campaign Postcards Ohio",
+    cluster: "Political SEO",
+    intent: "political",
+    priority: "critical",
+    targetPath: "/political-mail/campaign-postcard-designs",
+    opportunity: "Visual authority and gallery SEO can differentiate HomeReach from generic printers.",
+    nextAction: "Publish gallery-ready political postcard concepts through review.",
+  },
+  {
+    keyword: "Shared Postcard Advertising",
+    cluster: "Shared postcards",
+    intent: "transactional",
+    priority: "high",
+    targetPath: "/ohio/columbus/shared-postcards",
+    opportunity: "Buyer education can explain cost sharing and category exclusivity.",
+    nextAction: "Connect shared postcard gallery and pricing guide.",
+  },
+  {
+    keyword: "Procurement Savings Calculator",
+    cluster: "Procurement SEO",
+    intent: "commercial",
+    priority: "medium",
+    targetPath: "/tools/procurement-savings-calculator",
+    opportunity: "Interactive tool creates lead capture path for operations copilot.",
+    nextAction: "Add verified supplier examples after dashboard data is approved.",
+  },
+];
+
 export const authorityQualityRules = [
   "Keep the homepage premium and simple; do not move long-tail SEO content into the homepage.",
   "Every public authority page needs local context, operational depth, visual proof, internal links, FAQs, and a clear CTA.",
@@ -812,6 +1623,13 @@ export function listSeoVisualAssets(): SeoVisualAsset[] {
       secondaryLabel: "Direct mail and campaign execution",
     }),
     ...listOhioAuthorityPages().map((page) => page.visual),
+    ...listCountyAuthorityPages().map((page) => page.visual),
+    ...politicalAuthorityPages.map((page) => page.visual),
+    ...seoCaseStudies.map((study) => study.visual),
+    ...interactiveSeoTools.map((tool) => tool.visual),
+    ...authorityInsights.map((insight) => insight.visual),
+    ...visualGalleries.flatMap((gallery) => [gallery.visual, ...gallery.items.map((item) => item.visual)]),
+    ...authorityDatasets.map((dataset) => dataset.visual),
     ...authorityGuides.map((guide) => guide.visual),
   ];
 
@@ -844,10 +1662,24 @@ export function getAuthorityClusters() {
     },
     {
       name: "Political mail authority",
-      count: pages.filter((page) => page.topic?.kind === "political").length,
-      detail: "Ohio political, levy, judicial, campaign postcard, and GOTV pages with compliance-safe positioning.",
+      count: pages.filter((page) => page.topic?.kind === "political").length + politicalAuthorityPages.length,
+      detail: "Ohio political, levy, judicial, campaign postcard, office, and GOTV pages with compliance-safe positioning.",
       nextAction: "Pair political pages with outreach strategy packages and true postcard mockups.",
-      href: "/admin/political/outreach-strategy",
+      href: "/admin/marketing/seo-command-center",
+    },
+    {
+      name: "County authority",
+      count: listCountyAuthorityPages().length,
+      detail: "County hubs and county-topic pages for political mail, campaign postcards, and direct mail markets.",
+      nextAction: "Expand county examples as campaigns produce approved visual proof.",
+      href: "/admin/marketing/seo-command-center",
+    },
+    {
+      name: "Trust builders",
+      count: seoCaseStudies.length + interactiveSeoTools.length + authorityDatasets.length,
+      detail: "Case studies, interactive calculators, and proprietary benchmark pages that can earn backlinks and leads.",
+      nextAction: "Connect analytics and search console data before labeling any result as live performance.",
+      href: "/admin/marketing/seo-command-center",
     },
     {
       name: "Educational authority",
@@ -864,6 +1696,158 @@ export function getAuthorityClusters() {
       href: "/image-sitemap.xml",
     },
   ];
+}
+
+export function listCountyAuthorityPages(): CountyAuthorityPage[] {
+  const countyTopics = seoAuthorityTopics.filter((topic) => countyAuthorityTopicSlugs.has(topic.slug));
+  return ohioAuthorityCounties.flatMap((county) => [
+    buildCountyPage(county),
+    ...countyTopics.map((topic) => buildCountyTopicPage(county, topic)),
+  ]);
+}
+
+export function getCountyAuthorityPage(countySlug: string, topicSlug?: string | null): CountyAuthorityPage | null {
+  const county = ohioAuthorityCounties.find((item) => item.slug === countySlug);
+  if (!county) return null;
+  if (!topicSlug) return buildCountyPage(county);
+  const topic = seoAuthorityTopics.find((item) => item.slug === topicSlug && countyAuthorityTopicSlugs.has(item.slug));
+  if (!topic) return null;
+  return buildCountyTopicPage(county, topic);
+}
+
+export function listPoliticalAuthorityPages(): PoliticalAuthorityPage[] {
+  return politicalAuthorityPages;
+}
+
+export function getPoliticalAuthorityPage(slug: string): PoliticalAuthorityPage | null {
+  return politicalAuthorityPages.find((page) => page.slug === slug) ?? null;
+}
+
+export function listSeoCaseStudies(): SeoCaseStudy[] {
+  return seoCaseStudies;
+}
+
+export function getSeoCaseStudy(slug: string): SeoCaseStudy | null {
+  return seoCaseStudies.find((study) => study.slug === slug) ?? null;
+}
+
+export function listInteractiveSeoTools(): InteractiveSeoTool[] {
+  return interactiveSeoTools;
+}
+
+export function getInteractiveSeoTool(slug: string): InteractiveSeoTool | null {
+  return interactiveSeoTools.find((tool) => tool.slug === slug) ?? null;
+}
+
+export function listAuthorityInsights(): AuthorityInsight[] {
+  return authorityInsights;
+}
+
+export function getAuthorityInsight(slug: string): AuthorityInsight | null {
+  return authorityInsights.find((insight) => insight.slug === slug) ?? null;
+}
+
+export function listVisualGalleries(): VisualGallery[] {
+  return visualGalleries;
+}
+
+export function getVisualGallery(slug: string): VisualGallery | null {
+  return visualGalleries.find((gallery) => gallery.slug === slug) ?? null;
+}
+
+export function listAuthorityDatasets(): AuthorityDataset[] {
+  return authorityDatasets;
+}
+
+export function getAuthorityDataset(slug: string): AuthorityDataset | null {
+  return authorityDatasets.find((dataset) => dataset.slug === slug) ?? null;
+}
+
+export function listSeoKeywordTargets(): SeoKeywordTarget[] {
+  return seoKeywordTargets;
+}
+
+export function listAllAuthorityRoutes() {
+  return [
+    { path: "/ohio", type: "hub", priority: 0.9 },
+    { path: "/political-mail", type: "hub", priority: 0.86 },
+    { path: "/case-studies", type: "hub", priority: 0.76 },
+    { path: "/tools", type: "hub", priority: 0.76 },
+    { path: "/insights", type: "hub", priority: 0.74 },
+    { path: "/visuals", type: "hub", priority: 0.72 },
+    { path: "/benchmarks", type: "hub", priority: 0.72 },
+    ...listOhioAuthorityPages().map((page) => ({
+      path: page.path,
+      type: page.pageType,
+      priority: page.pageType === "city" ? 0.85 : page.topic?.kind === "political" ? 0.82 : 0.78,
+    })),
+    ...listCountyAuthorityPages().map((page) => ({
+      path: page.path,
+      type: page.pageType,
+      priority: page.topic?.kind === "political" ? 0.8 : 0.76,
+    })),
+    ...politicalAuthorityPages.map((page) => ({ path: page.path, type: `political_${page.pageType}`, priority: 0.82 })),
+    ...authorityGuides.map((guide) => ({ path: `/learn/${guide.slug}`, type: "guide", priority: 0.72 })),
+    ...seoCaseStudies.map((study) => ({ path: study.path, type: "case_study", priority: 0.74 })),
+    ...interactiveSeoTools.map((tool) => ({ path: tool.path, type: "interactive_tool", priority: 0.74 })),
+    ...authorityInsights.map((insight) => ({ path: insight.path, type: "insight", priority: 0.7 })),
+    ...visualGalleries.map((gallery) => ({ path: gallery.path, type: "visual_gallery", priority: 0.7 })),
+    ...authorityDatasets.map((dataset) => ({ path: dataset.path, type: "dataset", priority: 0.7 })),
+  ];
+}
+
+export function getSeoCommandCenterSnapshot() {
+  const authorityRoutes = listAllAuthorityRoutes();
+  const countyPages = listCountyAuthorityPages();
+  const allVisuals = listSeoVisualAssets();
+  const keywordTargets = listSeoKeywordTargets();
+  const criticalKeywords = keywordTargets.filter((keyword) => keyword.priority === "critical");
+
+  return {
+    mode: "review-first authority engine",
+    totals: {
+      publicAuthorityRoutes: authorityRoutes.length,
+      ohioCityPages: listOhioAuthorityPages().length,
+      countyPages: countyPages.length,
+      politicalPages: politicalAuthorityPages.length + listOhioAuthorityPages().filter((page) => page.topic?.kind === "political").length,
+      educationalGuides: authorityGuides.length,
+      caseStudies: seoCaseStudies.length,
+      interactiveTools: interactiveSeoTools.length,
+      visualAssets: allVisuals.length,
+      benchmarkDatasets: authorityDatasets.length,
+      keywordTargets: keywordTargets.length,
+    },
+    analyticsReadiness: [
+      { label: "Google Search Console", status: "Connector needed", nextAction: "Connect query, page, and CTR data before live ranking claims." },
+      { label: "GA4 or server analytics", status: "Connector needed", nextAction: "Map organic visits, conversions, and proposals by landing page." },
+      { label: "Image sitemap", status: "Active", nextAction: "Replace generated placeholders with approved Canva/Figma visuals over time." },
+      { label: "Human publishing review", status: "Required", nextAction: "Keep AI content in draft and approval workflows before publish." },
+    ],
+    topKeywordTargets: criticalKeywords.length ? criticalKeywords : keywordTargets.slice(0, 4),
+    opportunityQueue: [
+      ...criticalKeywords.map((keyword) => ({
+        title: keyword.keyword,
+        area: keyword.cluster,
+        impact: keyword.priority,
+        targetPath: keyword.targetPath,
+        nextAction: keyword.nextAction,
+      })),
+      {
+        title: "County political mail cluster",
+        area: "Political SEO",
+        impact: "high",
+        targetPath: "/ohio/counties/stark-county/political-mail",
+        nextAction: "Use county pages to support political outreach packages and campaign postcards.",
+      },
+      {
+        title: "Interactive tools as link assets",
+        area: "Backlink growth",
+        impact: "high",
+        targetPath: "/tools/postcard-roi-calculator",
+        nextAction: "Add calculators to educational guides and proposal CTAs.",
+      },
+    ],
+  };
 }
 
 export function getTopAuthorityOpportunities(limit = 10): OhioAuthorityPage[] {
@@ -1012,6 +1996,386 @@ function buildTopicPage(city: OhioAuthorityCity, topic: SeoAuthorityTopic): Ohio
       { label: "Neighborhood saturation marketing", href: "/learn/neighborhood-saturation-marketing" },
     ],
     visual,
+  };
+}
+
+function buildCountyPage(county: OhioAuthorityCounty): CountyAuthorityPage {
+  const path = `/ohio/counties/${county.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `${county.slug}-direct-mail-campaign-map`,
+    title: `${county.name} direct mail and campaign map`,
+    alt: `${county.name} Ohio coverage map for direct mail, political mail, and campaign execution`,
+    caption: `${county.name} authority visual for direct mail, political mail, campaign postcards, and route coverage.`,
+    kind: "coverage_map",
+    path,
+    palette: "blue",
+    primaryLabel: county.name,
+    secondaryLabel: "County authority",
+  });
+
+  return {
+    path,
+    county,
+    topic: null,
+    pageType: "county",
+    metaTitle: `${county.name} Direct Mail, Political Mail, and Campaign Advertising | HomeReach`,
+    metaDescription: `Premium county-level direct mail, political mail, campaign postcards, coverage maps, and proposal visuals for ${county.name}, Ohio.`,
+    h1: `${county.name} direct mail and campaign advertising authority`,
+    eyebrow: `${county.name}, Ohio`,
+    intro:
+      `${county.directMailAngle} HomeReach keeps the public page simple while maps, outreach, proposals, creative review, and fulfillment stay inside the admin command center.`,
+    strategy: [
+      county.directMailAngle,
+      county.politicalAngle,
+      `Use ${county.name} as a county hub that links city pages, political mail pages, tools, case studies, and benchmark datasets together.`,
+    ],
+    proofPoints: [
+      `Local anchors include ${county.anchors.slice(0, 4).join(", ")}.`,
+      `Campaign signals include ${county.campaignSignals.slice(0, 4).join(", ")}.`,
+      county.businessAngle,
+    ],
+    faqs: [
+      {
+        question: `What HomeReach pages support ${county.name}?`,
+        answer:
+          `${county.name} pages support direct mail, targeted campaigns, political mail, campaign postcards, levy mail, and local advertising authority.`,
+      },
+      {
+        question: "Does this page expose campaign targeting controls?",
+        answer:
+          "No. Public pages show useful maps, examples, FAQs, and CTAs. Operational controls, outreach, and approvals stay admin-side.",
+      },
+    ],
+    internalLinks: [
+      { label: "Political mail", href: `${path}/political-mail` },
+      { label: "Campaign postcards", href: `${path}/campaign-postcards` },
+      { label: "Direct mail marketing", href: `${path}/direct-mail-marketing` },
+      { label: "Campaign coverage calculator", href: "/tools/campaign-coverage-calculator" },
+      { label: "Political mail Ohio", href: "/political-mail/ohio" },
+      { label: "Ohio authority hub", href: "/ohio" },
+    ],
+    visual,
+  };
+}
+
+function buildCountyTopicPage(county: OhioAuthorityCounty, topic: SeoAuthorityTopic): CountyAuthorityPage {
+  const path = `/ohio/counties/${county.slug}/${topic.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `${county.slug}-${topic.slug}-authority-visual`,
+    title: `${county.name} ${topic.label} authority visual`,
+    alt: `${county.name} ${topic.label.toLowerCase()} visual showing campaign map, postcard, or proposal proof`,
+    caption: `${topic.label} in ${county.name}: ${topic.proofAngle}`,
+    kind: topic.visualKind,
+    path,
+    palette: topic.kind === "political" ? "red" : "blue",
+    primaryLabel: topic.shortLabel,
+    secondaryLabel: county.name,
+  });
+
+  return {
+    path,
+    county,
+    topic,
+    pageType: "county_topic",
+    metaTitle: `${topic.label} in ${county.name}, Ohio | HomeReach`,
+    metaDescription: `${topic.summary} See ${county.name} maps, postcard visuals, campaign strategy, FAQs, and proposal CTAs.`,
+    h1: `${topic.label} in ${county.name}, Ohio`,
+    eyebrow: `${county.name} ${topic.shortLabel}`,
+    intro:
+      `${topic.summary} In ${county.name}, the plan should reflect ${county.campaignSignals.slice(0, 2).join(" and ")} while staying simple enough for a campaign or business buyer to act.`,
+    strategy: [
+      topic.headline,
+      topic.operatingDepth,
+      topic.kind === "political" ? county.politicalAngle : county.businessAngle,
+    ],
+    proofPoints: [
+      topic.proofAngle,
+      `Relevant anchors: ${county.anchors.slice(0, 4).join(", ")}.`,
+      `Useful campaign signals: ${county.campaignSignals.slice(0, 3).join(", ")}.`,
+    ],
+    faqs: [
+      ...topic.faqs,
+      {
+        question: `Why does ${county.name} matter for ${topic.label.toLowerCase()}?`,
+        answer:
+          `${county.directMailAngle} That makes the page stronger than a generic service description and gives the proposal a real geographic basis.`,
+      },
+    ],
+    internalLinks: [
+      { label: `${county.name} authority hub`, href: `/ohio/counties/${county.slug}` },
+      { label: "Political mail strategy", href: "/political-mail/political-direct-mail-strategy" },
+      { label: "Campaign postcard designs", href: "/political-mail/campaign-postcard-designs" },
+      { label: "Postcard ROI calculator", href: "/tools/postcard-roi-calculator" },
+      { label: "Campaign map gallery", href: "/visuals/campaign-map-gallery" },
+    ],
+    visual,
+  };
+}
+
+function createPoliticalAuthorityPage(input: {
+  slug: string;
+  pageType: PoliticalAuthorityPage["pageType"];
+  title: string;
+  h1: string;
+  audience: string;
+  summary: string;
+  strategy: string[];
+  proofPoints: string[];
+}): PoliticalAuthorityPage {
+  const path = `/political-mail/${input.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `political-mail-${input.slug}-home-reach-visual`,
+    title: `${input.title} visual`,
+    alt: `${input.title} visual with political postcard mockup, campaign map, or rollout proof`,
+    caption: `${input.title}: realistic political mail, rollout strategy, and proposal-ready visual proof.`,
+    kind: "political_mail",
+    path,
+    palette: "red",
+    primaryLabel: input.title,
+    secondaryLabel: "Political mail",
+  });
+
+  return {
+    ...input,
+    path,
+    metaTitle: `${input.title} | HomeReach Political Mail`,
+    metaDescription: input.summary,
+    eyebrow: "Political SEO authority",
+    ctaLabel: "Plan Political Mail",
+    ctaHref: "/political",
+    faqs: [
+      {
+        question: `Who should use ${input.title}?`,
+        answer: input.audience,
+      },
+      {
+        question: "Does HomeReach create individual voter persuasion profiles?",
+        answer:
+          "No. HomeReach public SEO pages focus on geography, logistics, creative concepts, mail timing, and campaign execution. Individual political belief inference is not part of this system.",
+      },
+    ],
+    internalLinks: [
+      { label: "Political postcard gallery", href: "/visuals/political-postcard-gallery" },
+      { label: "Political mail estimator", href: "/tools/political-mail-estimator" },
+      { label: "Campaign mail benchmarks", href: "/benchmarks/campaign-mail-benchmarks" },
+      { label: "County campaign mail", href: "/political-mail/county-campaign-mail" },
+      { label: "Ohio authority hub", href: "/ohio" },
+    ],
+    visual,
+  };
+}
+
+function createCaseStudy(input: {
+  slug: string;
+  title: string;
+  market: string;
+  category: string;
+  resultSignal: string;
+  summary: string;
+  rollout: string[];
+  strategy: string[];
+  proofPoints: string[];
+  ctaLabel: string;
+  ctaHref: string;
+  visualKind: AuthorityVisualKind;
+}): SeoCaseStudy {
+  const path = `/case-studies/${input.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `${input.slug}-case-study-visual`,
+    title: `${input.title} visual case study`,
+    alt: `${input.title} visual case study with map, postcard, rollout, or proposal proof`,
+    caption: `Case study visual for ${input.title}.`,
+    kind: input.visualKind,
+    path,
+    palette: input.visualKind === "political_mail" ? "red" : input.visualKind === "coverage_map" ? "blue" : "green",
+    primaryLabel: input.category,
+    secondaryLabel: input.market,
+  });
+
+  return {
+    ...input,
+    path,
+    metaTitle: `${input.title} | HomeReach Case Study`,
+    metaDescription: input.summary,
+    visual,
+    internalLinks: [
+      { label: "Case studies", href: "/case-studies" },
+      { label: "Postcard ROI calculator", href: "/tools/postcard-roi-calculator" },
+      { label: "Ohio authority hub", href: "/ohio" },
+    ],
+  };
+}
+
+function createInteractiveTool(input: Omit<InteractiveSeoTool, "path" | "metaTitle" | "metaDescription" | "visual" | "internalLinks"> & { visualKind: AuthorityVisualKind }): InteractiveSeoTool {
+  const path = `/tools/${input.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `${input.slug}-interactive-seo-tool`,
+    title: `${input.title} visual`,
+    alt: `${input.title} visual showing calculator, dashboard, or campaign planning output`,
+    caption: `${input.title}: interactive SEO tool for lead generation and buyer education.`,
+    kind: input.visualKind,
+    path,
+    palette: input.calculatorType === "political_mail" ? "red" : input.calculatorType === "procurement_savings" ? "green" : "blue",
+    primaryLabel: "Interactive tool",
+    secondaryLabel: input.title,
+  });
+
+  return {
+    ...input,
+    path,
+    metaTitle: `${input.title} | HomeReach Interactive Tool`,
+    metaDescription: input.summary,
+    visual,
+    internalLinks: [
+      { label: "All interactive tools", href: "/tools" },
+      { label: "EDDM vs targeted mail", href: "/learn/eddm-vs-targeted-mail" },
+      { label: "Case studies", href: "/case-studies" },
+    ],
+  };
+}
+
+function createInsight(input: {
+  slug: string;
+  title: string;
+  eyebrow: string;
+  summary: string;
+  signals: string[];
+  recommendations: string[];
+  visualKind: AuthorityVisualKind;
+}): AuthorityInsight {
+  const path = `/insights/${input.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `${input.slug}-authority-insight-visual`,
+    title: `${input.title} visual insight`,
+    alt: `${input.title} visual showing HomeReach authority insight, map, dashboard, or postcard proof`,
+    caption: `Authority insight visual for ${input.title}.`,
+    kind: input.visualKind,
+    path,
+    palette: input.visualKind === "political_mail" ? "red" : input.visualKind === "dashboard" ? "green" : "blue",
+    primaryLabel: "Insight",
+    secondaryLabel: input.title,
+  });
+
+  return {
+    ...input,
+    path,
+    metaTitle: `${input.title} | HomeReach Insights`,
+    metaDescription: input.summary,
+    faqs: [
+      {
+        question: "Why publish this as an insight instead of a generic blog post?",
+        answer:
+          "HomeReach insights are built around operational signals, maps, campaign examples, calculators, datasets, and proposal next steps rather than generic content.",
+      },
+      {
+        question: "How does this support AI search?",
+        answer:
+          "The page uses concise answers, structured sections, FAQs, visuals, and internal links so AI systems can understand and cite the topic more easily.",
+      },
+    ],
+    visual,
+    internalLinks: [
+      { label: "Insights center", href: "/insights" },
+      { label: "Benchmarks", href: "/benchmarks" },
+      { label: "Visual galleries", href: "/visuals" },
+    ],
+  };
+}
+
+function createVisualGallery(input: {
+  slug: string;
+  title: string;
+  eyebrow: string;
+  summary: string;
+  categories: string[];
+  locations: string[];
+  visualKind: AuthorityVisualKind;
+}): VisualGallery {
+  const path = `/visuals/${input.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `${input.slug}-gallery-cover`,
+    title: `${input.title} cover visual`,
+    alt: `${input.title} cover visual for HomeReach SEO gallery`,
+    caption: `${input.title}: searchable visual SEO gallery with category and location metadata.`,
+    kind: input.visualKind,
+    path,
+    palette: input.visualKind === "political_mail" ? "red" : input.visualKind === "proposal" ? "green" : "blue",
+    primaryLabel: "Visual gallery",
+    secondaryLabel: input.title,
+  });
+
+  const items = input.categories.map((category, index) => {
+    const location = input.locations[index % input.locations.length] ?? "Ohio";
+    const locationSlug = location.toLowerCase().replaceAll(" ", "-");
+    return {
+      title: `${input.title} - ${category}`,
+      category,
+      location,
+      description: `${category} visual concept for ${location}, designed to support SEO, proposal proof, outreach, or campaign planning.`,
+      tags: [category, location, "HomeReach", "SEO visual"],
+      visual: createVisualAsset({
+        assetSlug: `${input.slug}-${category.replaceAll(" ", "-")}-${locationSlug}`,
+        title: `${input.title} ${category} ${location}`,
+        alt: `${input.title} ${category} visual for ${location}`,
+        caption: `${category} gallery visual for ${location}.`,
+        kind: input.visualKind,
+        path,
+        palette: input.visualKind === "political_mail" ? "red" : "blue",
+        primaryLabel: category,
+        secondaryLabel: location,
+      }),
+    };
+  });
+
+  return {
+    ...input,
+    path,
+    metaTitle: `${input.title} | HomeReach Visual SEO Gallery`,
+    metaDescription: input.summary,
+    items,
+    visual,
+    internalLinks: [
+      { label: "All visual galleries", href: "/visuals" },
+      { label: "Political mail designs", href: "/political-mail/campaign-postcard-designs" },
+      { label: "Campaign map gallery", href: "/visuals/campaign-map-gallery" },
+    ],
+  };
+}
+
+function createDataset(input: {
+  slug: string;
+  title: string;
+  eyebrow: string;
+  summary: string;
+  metrics: AuthorityDataset["metrics"];
+  methodology: string[];
+  useCases: string[];
+  visualKind: AuthorityVisualKind;
+}): AuthorityDataset {
+  const path = `/benchmarks/${input.slug}`;
+  const visual = createVisualAsset({
+    assetSlug: `${input.slug}-authority-dataset-visual`,
+    title: `${input.title} dataset visual`,
+    alt: `${input.title} dataset visual with benchmarks, metrics, or dashboard preview`,
+    caption: `${input.title}: proprietary HomeReach benchmark dataset for SEO authority and proposal planning.`,
+    kind: input.visualKind,
+    path,
+    palette: input.visualKind === "political_mail" ? "red" : input.visualKind === "dashboard" ? "green" : "slate",
+    primaryLabel: "Benchmark",
+    secondaryLabel: input.title,
+  });
+
+  return {
+    ...input,
+    path,
+    metaTitle: `${input.title} | HomeReach Benchmarks`,
+    metaDescription: input.summary,
+    visual,
+    internalLinks: [
+      { label: "All benchmarks", href: "/benchmarks" },
+      { label: "Interactive tools", href: "/tools" },
+      { label: "Insights", href: "/insights" },
+    ],
   };
 }
 

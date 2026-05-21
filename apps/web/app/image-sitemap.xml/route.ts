@@ -1,4 +1,4 @@
-import { listAuthorityGuides, listOhioAuthorityPages, listSeoVisualAssets } from "@/lib/seo/authority";
+import { listSeoVisualAssets } from "@/lib/seo/authority";
 
 export const runtime = "nodejs";
 export const revalidate = 86400;
@@ -6,44 +6,38 @@ export const revalidate = 86400;
 const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://www.home-reach.com";
 
 export function GET() {
-  const pageAssets = new Map<string, { title: string; caption: string; image: string }>();
+  const pageAssets = new Map<string, Array<{ title: string; caption: string; image: string }>>();
 
-  pageAssets.set("/ohio", {
-    title: "Ohio direct mail authority map",
-    caption: "HomeReach Ohio authority hub for direct mail and campaign execution.",
-    image: "/seo-assets/ohio-authority-direct-mail-map.svg",
-  });
-
-  for (const page of listOhioAuthorityPages()) {
-    pageAssets.set(page.path, {
-      title: page.visual.title,
-      caption: page.visual.caption,
-      image: `/seo-assets/${page.visual.assetSlug}.svg`,
+  for (const asset of listSeoVisualAssets()) {
+    const existing = pageAssets.get(asset.path) ?? [];
+    existing.push({
+      title: asset.title,
+      caption: asset.caption,
+      image: `/seo-assets/${asset.assetSlug}.svg`,
     });
-  }
-
-  for (const guide of listAuthorityGuides()) {
-    pageAssets.set(`/learn/${guide.slug}`, {
-      title: guide.visual.title,
-      caption: guide.visual.caption,
-      image: `/seo-assets/${guide.visual.assetSlug}.svg`,
-    });
+    pageAssets.set(asset.path, existing);
   }
 
   const knownAssets = new Set(listSeoVisualAssets().map((asset) => `/seo-assets/${asset.assetSlug}.svg`));
-  const entries = Array.from(pageAssets.entries()).filter(([, asset]) => knownAssets.has(asset.image));
+  const entries = Array.from(pageAssets.entries())
+    .map(([path, assets]) => [path, assets.filter((asset) => knownAssets.has(asset.image))] as const)
+    .filter(([, assets]) => assets.length > 0);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 ${entries
   .map(
-    ([path, asset]) => `  <url>
+    ([path, assets]) => `  <url>
     <loc>${escapeXml(`${BASE}${path}`)}</loc>
-    <image:image>
+${assets
+  .map(
+    (asset) => `    <image:image>
       <image:loc>${escapeXml(`${BASE}${asset.image}`)}</image:loc>
       <image:title>${escapeXml(asset.title)}</image:title>
       <image:caption>${escapeXml(asset.caption)}</image:caption>
-    </image:image>
+    </image:image>`,
+  )
+  .join("\n")}
   </url>`,
   )
   .join("\n")}

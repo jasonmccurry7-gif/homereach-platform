@@ -25,6 +25,7 @@ import {
   Package,
   Palette,
   ReceiptText,
+  Search,
   Settings,
   Sparkles,
   Star,
@@ -75,6 +76,12 @@ const NAV = [
       { label: "Availability", href: "/admin/availability", icon: Map },
       { label: "Ad Designer", href: "/admin/ad-designer", icon: Palette },
       { label: "Canva Design OS", href: "/admin/canva", icon: Palette },
+    ],
+  },
+  {
+    label: "Marketing",
+    items: [
+      { label: "SEO Command Center", href: "/admin/marketing/seo-command-center", icon: Search },
     ],
   },
   {

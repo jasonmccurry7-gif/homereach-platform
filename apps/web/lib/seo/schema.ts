@@ -184,3 +184,46 @@ export function buildImageObjectLd(args: {
     representativeOfPage: args.representativeOfPage ?? true,
   };
 }
+
+export function buildSoftwareApplicationLd(args: {
+  name: string;
+  description: string;
+  url: string;
+  applicationCategory?: string;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: args.name,
+    description: args.description,
+    url: args.url,
+    applicationCategory: args.applicationCategory ?? "BusinessApplication",
+    operatingSystem: "Web",
+    provider: {
+      "@type": "Organization",
+      name: "HomeReach",
+      url: getBaseUrl(),
+    },
+  };
+}
+
+export function buildDatasetLd(args: {
+  name: string;
+  description: string;
+  url: string;
+  keywords?: string[];
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    name: args.name,
+    description: args.description,
+    url: args.url,
+    keywords: args.keywords?.join(", "),
+    creator: {
+      "@type": "Organization",
+      name: "HomeReach",
+      url: getBaseUrl(),
+    },
+  };
+}
