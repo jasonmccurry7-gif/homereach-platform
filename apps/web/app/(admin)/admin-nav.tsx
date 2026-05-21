@@ -33,6 +33,7 @@ import {
   Upload,
   Users,
   Wand2,
+  Workflow,
 } from "lucide-react";
 import { signOut } from "@/app/actions/auth";
 import { HomeReachLogo } from "@/components/brand/home-reach-logo";
@@ -43,6 +44,7 @@ const NAV = [
     label: "HomeReach OS",
     items: [
       { label: "Command Center", href: "/admin", icon: Gauge },
+      { label: "Growth Execution", href: "/admin/growth-execution", icon: Workflow },
       { label: "Sales Intelligence", href: "/admin/sales-dashboard", icon: BarChart3 },
       { label: "Communications", href: "/admin/inbox", icon: Inbox },
       { label: "AI Workforce", href: "/admin/agents", icon: Bot },

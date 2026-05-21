@@ -53,6 +53,7 @@ import type {
   OSSpecializedAgent,
 } from "./types";
 import { getSeoCommandCenterSnapshot } from "@/lib/seo/authority";
+import { getGrowthExecutionSnapshot } from "@/lib/growth-execution/services";
 
 async function safe<T>(promise: Promise<T>, fallback: T, timeoutMs = 2500): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -754,6 +755,7 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
   const activeMapPlanCount = firstNumber(mapPlanRows, "n");
   const websiteInquiryCount = firstNumber(websiteInquiryRows, "n");
   const seoSnapshot = getSeoCommandCenterSnapshot();
+  const growthExecution = getGrowthExecutionSnapshot();
   const activeCampaignCount =
     firstNumber(activeMarketingRows, "n") +
     firstNumber(activeTargetedRows, "n") +
@@ -1518,6 +1520,50 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
       priority: 70,
     },
     {
+      id: "ai-website-assistant",
+      title: "AI website assistant leads",
+      segment: "client_success",
+      value: String(websiteInquiryCount),
+      detail: "Gateway product for FAQ answers, lead capture, qualification, callback requests, and CRM routing.",
+      nextAction: websiteInquiryCount > 0 ? "Turn today's website inquiries into CRM follow-up tasks." : "Package the AI Website Assistant as the low-friction entry offer.",
+      href: "/services/ai-website-assistant",
+      status: websiteInquiryCount > 0 ? "watch" : "online",
+      priority: 69,
+    },
+    {
+      id: "seo-landing-pages",
+      title: "Local SEO and landing pages",
+      segment: "seo",
+      value: String(seoSnapshot.totals.publicAuthorityRoutes),
+      detail: `${seoSnapshot.totals.keywordTargets} keyword targets, ${seoSnapshot.totals.visualAssets} visual assets, and QR-ready landing page strategy.`,
+      nextAction: "Open SEO Command Center and connect campaign QR pages to lead capture.",
+      href: "/admin/marketing/seo-command-center",
+      status: seoSnapshot.opportunityQueue.length > 0 ? "watch" : "online",
+      priority: 65,
+    },
+    {
+      id: "reputation-engine",
+      title: "Reputation and review management",
+      segment: "reputation",
+      value: "Ready",
+      detail: "Review requests, Google review links, AI response drafts, low-rating alerts, and reputation score stay approval-led.",
+      nextAction: "Open Reviews and queue the next review request campaign for active customers.",
+      href: "/admin/reviews",
+      status: "online",
+      priority: 64,
+    },
+    {
+      id: "social-content-engine",
+      title: "Social content engine",
+      segment: "creative",
+      value: "Draft",
+      detail: "Facebook group drafts, business page ideas, political post drafts, seasonal prompts, and Canva/Figma creative briefs.",
+      nextAction: "Open Content Intelligence and approve export-ready local visibility drafts.",
+      href: "/admin/content-intel",
+      status: "online",
+      priority: 63,
+    },
+    {
       id: "sam-gov",
       title: "SAM.gov opportunities",
       segment: "gov_contracts",
@@ -1884,6 +1930,7 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
     specializedAgents,
     experienceBoundaries,
     executionLayers,
+    growthExecution,
     audit: [
       "Admin architecture audited: route group at /admin with role-gated layout and existing module pages.",
       "Sales dashboard audited: API-driven sales funnel, leaderboard, insights, and polling client preserved.",
@@ -1895,6 +1942,7 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
       "Public/admin boundary audited: customer pages should show premium previews and guided CTAs while admin owns AI orchestration, outreach, proposals, maps, fulfillment, and compliance.",
       "Government contract system audited: existing /admin/gov-contracts and bid-room flows remain admin-only with compliance locks.",
       "Protected live functionality preserved: no schema migration, payment mutation, webhook, auth, intake, exclusivity, or Stripe/Twilio/Postmark send-path change.",
+      "Growth execution registry added: service modules, AI safety gates, event model, integration gaps, and next build sequence are surfaced without creating duplicate data flows.",
     ],
   };
 }

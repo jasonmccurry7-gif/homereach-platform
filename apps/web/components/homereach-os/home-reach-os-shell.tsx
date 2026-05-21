@@ -181,6 +181,7 @@ export function HomeReachOSShell({
                 <NextBestActionCenter actions={data.nextBestActions} />
                 <MoneyLeakagePanel leaks={data.moneyLeaks} />
                 <EcosystemOrchestrationPanel data={data} />
+                <MultiChannelGrowthExecutionPanel snapshot={data.growthExecution} />
                 <PublicAdminBoundary boundaries={data.experienceBoundaries} />
                 <UniversalExecutionLayer layers={data.executionLayers} />
                 <IndustryPlaybooksPanel playbooks={data.industryPlaybooks} />
@@ -193,6 +194,7 @@ export function HomeReachOSShell({
                 <LiveActivity feed={data.activityFeed} notifications={data.notifications} />
                 <DigitalEmployeePanel employees={data.digitalEmployees} />
                 <SpecializedAgentLayer agents={data.specializedAgents} />
+                <GrowthExecutionSafetyPanel snapshot={data.growthExecution} />
                 <AIWorkforce agents={data.ai.agents} />
                 <Customer360 opportunity={selectedOpportunity} data={data} />
               </div>
@@ -835,6 +837,104 @@ function EcosystemOrchestrationPanel({ data }: { data: HomeReachOSData }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function MultiChannelGrowthExecutionPanel({ snapshot }: { snapshot: HomeReachOSData["growthExecution"] }) {
+  const publicReady = snapshot.services.filter((service) => service.publicExposure !== "admin_only").length;
+  const liveOrEnhanced = snapshot.services.filter((service) => service.status === "live" || service.status === "enhanced").length;
+
+  return (
+    <section className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] p-4 shadow-xl shadow-cyan-950/20 backdrop-blur-xl">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
+            Multi-Channel Growth Execution Platform
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-white">Postcards stay the wedge. Every service plugs into the same OS.</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
+            The registry connects public service pathways, admin source modules, customer surfaces, AI agents, event tracking,
+            and approval gates without rebuilding or duplicating existing systems.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <MiniDarkStat label="Services" value={snapshot.services.length} />
+          <MiniDarkStat label="Live" value={liveOrEnhanced} />
+          <MiniDarkStat label="Public" value={publicReady} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {snapshot.services.map((service) => {
+          const Icon = growthCategoryIcon(service.category);
+          return (
+            <Link
+              key={service.slug}
+              href={service.adminPath}
+              className="group rounded-lg border border-white/10 bg-slate-950/65 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:text-slate-950"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <p className="truncate text-sm font-semibold">{service.shortTitle}</p>
+                </div>
+                <span className={growthServiceStatusClass(service.status)}>{service.status.replaceAll("_", " ")}</span>
+              </div>
+              <p className="mt-3 line-clamp-2 text-xs leading-5 opacity-75">{service.outcome}</p>
+              <p className="mt-3 text-xs font-semibold text-cyan-100 group-hover:text-cyan-700">
+                Next: {service.executionActions[0]}
+              </p>
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.05] p-3">
+        <div className="grid gap-3 lg:grid-cols-3">
+          {snapshot.nextBuildSequence.slice(0, 3).map((step) => (
+            <Link key={step.phase} href={step.ownerSurface} className="rounded-lg border border-white/10 bg-slate-950/55 p-3 transition hover:bg-white hover:text-slate-950">
+              <p className="text-xs font-black uppercase tracking-[0.14em] opacity-60">Phase {step.phase}</p>
+              <p className="mt-2 text-sm font-semibold">{step.title}</p>
+              <p className="mt-2 line-clamp-2 text-xs leading-5 opacity-75">{step.objective}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GrowthExecutionSafetyPanel({ snapshot }: { snapshot: HomeReachOSData["growthExecution"] }) {
+  const approvalGates = Array.from(new Set(snapshot.services.flatMap((service) => service.approvalGates)));
+
+  return (
+    <Panel title="Growth Execution Safety" icon={ShieldCheck} action={{ href: "/admin/growth-execution", label: "Registry" }}>
+      <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-3">
+        <p className="text-sm font-semibold text-amber-50">Approval-first automation</p>
+        <p className="mt-2 text-xs leading-5 text-amber-50/80">
+          AI may draft, recommend, summarize, analyze, and prepare. Sending, bidding, payment changes,
+          ad launches, publishing, and sensitive political work stay human-approved.
+        </p>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {approvalGates.map((gate) => (
+          <span key={gate} className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-1 text-[11px] font-semibold capitalize text-slate-300">
+            {gate.replaceAll("_", " ")}
+          </span>
+        ))}
+      </div>
+      <div className="mt-4 space-y-2">
+        {snapshot.integrationGaps.slice(0, 3).map((gap) => (
+          <div key={gap.system} className="rounded-lg border border-white/10 bg-white/[0.05] p-3">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-white">{gap.system}</p>
+              <span className={gapSeverityClass(gap.severity)}>{gap.severity}</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-400">{gap.safeCurrentBehavior}</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
@@ -1826,6 +1926,66 @@ function OpportunityList({
       ))}
     </div>
   );
+}
+
+function MiniDarkStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-slate-950/65 px-3 py-2">
+      <p className="text-lg font-black text-white">{value}</p>
+      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function growthCategoryIcon(category: string): React.ComponentType<{ className?: string }> {
+  switch (category) {
+    case "postcards":
+      return Mail;
+    case "lead_capture":
+      return Bot;
+    case "follow_up":
+      return MessageSquare;
+    case "seo":
+      return Globe2;
+    case "reputation":
+      return ShieldCheck;
+    case "content":
+      return Sparkles;
+    case "paid_media":
+      return Radar;
+    case "procurement":
+      return Package;
+    case "government":
+      return LandmarkIcon;
+    default:
+      return Network;
+  }
+}
+
+function growthServiceStatusClass(status: string) {
+  const base = "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em]";
+  switch (status) {
+    case "live":
+      return `${base} border-emerald-300/25 bg-emerald-300/10 text-emerald-100 group-hover:text-emerald-700`;
+    case "enhanced":
+      return `${base} border-cyan-300/25 bg-cyan-300/10 text-cyan-100 group-hover:text-cyan-700`;
+    case "preview":
+      return `${base} border-amber-300/25 bg-amber-300/10 text-amber-100 group-hover:text-amber-700`;
+    case "future_ready":
+      return `${base} border-slate-300/20 bg-slate-300/10 text-slate-100 group-hover:text-slate-700`;
+    default:
+      return `${base} border-rose-300/25 bg-rose-300/10 text-rose-100 group-hover:text-rose-700`;
+  }
+}
+
+function gapSeverityClass(severity: "low" | "medium" | "high") {
+  if (severity === "high") {
+    return "rounded-full border border-rose-300/25 bg-rose-300/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-rose-100";
+  }
+  if (severity === "medium") {
+    return "rounded-full border border-amber-300/25 bg-amber-300/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100";
+  }
+  return "rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100";
 }
 
 function commandSegmentLabel(segment: OSCommandCard["segment"]) {

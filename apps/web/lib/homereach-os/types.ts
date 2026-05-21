@@ -1,3 +1,5 @@
+import type { GrowthExecutionSnapshot } from "../growth-execution/services";
+
 export type HomeReachOSMode = "command" | "sales";
 
 export type OSStatus = "online" | "watch" | "critical" | "idle";
@@ -333,5 +335,6 @@ export interface HomeReachOSData {
   specializedAgents: OSSpecializedAgent[];
   experienceBoundaries: OSExperienceBoundary[];
   executionLayers: OSExecutionLayer[];
+  growthExecution: GrowthExecutionSnapshot;
   audit: string[];
 }

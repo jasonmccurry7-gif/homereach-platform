@@ -203,6 +203,22 @@ export default async function DashboardPage({
           />
         </div>
 
+        <CustomerGrowthSnapshot
+          stats={[
+            ["Active campaigns", "0", "Start with a simple campaign plan."],
+            ["Leads generated", "0", "Lead capture turns on with your first campaign."],
+            ["Postcards mailed", "0", "Shared or targeted mail can be launched from here."],
+            ["QR scans", "Ready", "QR destination pages connect campaign traffic."],
+            ["Follow-ups sent", "Ready", "HomeReach helps keep replies from going cold."],
+            ["Reviews requested", "Ready", "Reputation support can turn happy customers into proof."],
+            ["Reputation score", "Not started", "Review signals appear after setup."],
+            ["SEO pages live", "0", "City and service pages can be added next."],
+            ["AI chat leads", "0", "Website assistant leads route into follow-up."],
+          ]}
+          nextAction="Start a visibility plan."
+          upgradeOptions={["Shared postcards", "AI Website Assistant", "Local SEO", "Reputation"]}
+        />
+
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-bold text-gray-900">What HomeReach watches for you</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -327,6 +343,28 @@ export default async function DashboardPage({
           isMock={!metrics?.hasRealData}
         />
       </div>
+
+      <CustomerGrowthSnapshot
+        stats={[
+          ["Active campaigns", String(campaigns.length), "Your active HomeReach campaign records."],
+          ["Leads generated", metrics?.hasRealData && t ? String(t.leads) : "Pending", "Tracked phone, form, and QR responses."],
+          ["Postcards mailed", totalActualReach > 0 ? totalActualReach.toLocaleString() : "Scheduled", "Mailed or scheduled household reach."],
+          ["QR scans", metrics?.hasRealData && t ? String(t.qrScans) : "Pending", "Campaign scan traffic."],
+          ["Follow-ups sent", "Ready", "Replies and outreach stay available in the portal."],
+          ["Reviews requested", "Ready", "Reputation requests can be added as a growth service."],
+          ["Reputation score", "Tracking", "Review status and sentiment can appear here."],
+          ["SEO pages live", "Available", "City, service, and QR pages can support the campaign."],
+          ["AI chat leads", "Available", "Website assistant leads can route into HomeReach follow-up."],
+        ]}
+        nextAction={
+          daysUntilRenewal !== null && daysUntilRenewal <= 14
+            ? "Renew before the campaign window closes."
+            : metrics?.hasRealData && t && t.totalEngagements > 0
+              ? "Review engagement and plan the next follow-up."
+              : "Watch for QR scans, replies, and proof updates."
+        }
+        upgradeOptions={["Targeted campaign", "Review requests", "Local SEO page", "AI website assistant"]}
+      />
 
       {/* ── ROI Estimator ─────────────────────────────────────────────────────── */}
       {metrics?.hasRealData && t && t.totalEngagements > 0 && (
@@ -565,6 +603,52 @@ export default async function DashboardPage({
             Send a referral →
           </Link>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerGrowthSnapshot({
+  stats,
+  nextAction,
+  upgradeOptions,
+}: {
+  stats: Array<[string, string, string]>;
+  nextAction: string;
+  upgradeOptions: string[];
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">
+            HomeReach Growth Snapshot
+          </p>
+          <h2 className="mt-2 text-lg font-bold text-gray-900">Simple visibility across every active growth channel.</h2>
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            Campaigns, leads, QR scans, follow-up, reviews, SEO, website assistant activity, and upgrade paths stay in one simple view.
+          </p>
+        </div>
+        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">Next action</p>
+          <p className="mt-1 text-sm font-bold text-blue-900">{nextAction}</p>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {stats.map(([label, value, detail]) => (
+          <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">{label}</p>
+            <p className="mt-2 text-xl font-black text-gray-900">{value}</p>
+            <p className="mt-1 text-xs leading-5 text-gray-500">{detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        {upgradeOptions.map((option) => (
+          <span key={option} className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-bold text-gray-600">
+            {option}
+          </span>
+        ))}
       </div>
     </div>
   );

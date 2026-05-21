@@ -4,6 +4,12 @@ export const PRODUCT_OVERVIEW_PATHS = {
   politicalCampaigns: "/political",
   inventoryIntelligence: "/inventory-purchasing",
   propertyIntelligence: "/property-intelligence",
+  services: "/services",
+  aiWebsiteAssistant: "/services/ai-website-assistant",
+  localSeo: "/services/local-seo",
+  reputation: "/services/reputation",
+  socialContent: "/services/social-content",
+  governmentContracts: "/services/government-contracts",
 } as const;
 
 export const PRODUCT_START_PATHS = {
@@ -12,6 +18,11 @@ export const PRODUCT_START_PATHS = {
   politicalCampaigns: "/political/plan",
   inventoryIntelligence: "/operations-copilot/supplier-prices",
   propertyIntelligence: "/intelligence",
+  aiWebsiteAssistant: "/waitlist?product=ai-website-assistant",
+  localSeo: "/waitlist?product=local-seo",
+  reputation: "/waitlist?product=reputation",
+  socialContent: "/waitlist?product=social-content",
+  governmentContracts: "/waitlist?product=government-contracts",
   yardSigns: "/targeted/start?product=yard-signs",
   doorHangers: "/targeted/start?product=door-hangers",
   businessCards: "/targeted/start?product=business-cards",
