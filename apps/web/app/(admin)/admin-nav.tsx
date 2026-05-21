@@ -68,6 +68,7 @@ const NAV = [
       { label: "AI Intake Carts", href: "/admin/ai-intake", icon: Bot },
       { label: "Targeted Campaigns", href: "/admin/targeted-campaigns", icon: Target },
       { label: "Political", href: "/admin/political", icon: Landmark },
+      { label: "Political Outreach", href: "/admin/political/outreach-strategy", icon: Megaphone },
       { label: "Maps", href: "/admin/political/maps", icon: Map },
       { label: "Campaigns", href: "/admin/campaigns", icon: Activity },
       { label: "Availability", href: "/admin/availability", icon: Map },
