@@ -19,6 +19,7 @@ import {
   Landmark,
   Layers3,
   LogOut,
+  Mail,
   Map,
   Megaphone,
   MessagesSquare,
@@ -56,6 +57,7 @@ const NAV = [
     items: [
       { label: "CRM", href: "/admin/crm", icon: BriefcaseBusiness },
       { label: "Revenue Command", href: "/admin/revenue-operations", icon: MessagesSquare },
+      { label: "Email Infrastructure", href: "/admin/email-infrastructure", icon: Mail },
       { label: "Procurement", href: "/admin/procurement", icon: Package },
       { label: "Gov Contracts", href: "/admin/gov-contracts", icon: Landmark },
       { label: "Businesses", href: "/admin/businesses", icon: Building2 },

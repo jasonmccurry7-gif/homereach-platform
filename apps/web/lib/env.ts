@@ -158,6 +158,11 @@ const ENV_SPECS: EnvSpec[] = [
     productionOnly: false,
   },
   {
+    key: "POSTMARK_ACCOUNT_TOKEN",
+    required: false,
+    productionOnly: false,
+  },
+  {
     key: "POSTMARK_FROM_EMAIL",
     required: false,
     productionOnly: false,
