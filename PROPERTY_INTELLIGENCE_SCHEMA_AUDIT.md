@@ -75,6 +75,14 @@ Recommended sequence:
 6. Validate against a Supabase branch or isolated test database before applying to production.
 7. Replay only test-mode Stripe events against isolated data before any production webhook replay.
 
+Local migration proposal:
+
+- Created `supabase/migrations/20260525175220_property_intelligence_schema_alignment.sql` with `supabase migration new property_intelligence_schema_alignment`.
+- The migration captures the three out-of-band tables for fresh environments, enables RLS, recreates the observed read/service policies when missing, adds `founding_memberships.stripe_checkout_session_id text`, and adds a unique partial index for non-null checkout session ids.
+- This migration has not been applied to the live Supabase project.
+- `git diff --check` passed after creating the migration.
+- `supabase migration list --local` could not run because the local Supabase Postgres service is not running on `127.0.0.1:54322`. This is an environment limitation, not a remote validation attempt.
+
 Approval gate:
 
 - No approval needed for this audit documentation.

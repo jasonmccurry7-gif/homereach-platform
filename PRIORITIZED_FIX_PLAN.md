@@ -41,9 +41,11 @@ Files:
 - `apps/web/app/(admin)/admin/founding/page.tsx`
 - `PROPERTY_INTELLIGENCE_SCHEMA_AUDIT.md`
 
-Safest fix: take a controlled Supabase schema snapshot, create an additive migration for `founding_memberships.stripe_checkout_session_id text`, add a unique index for webhook idempotency, bring the three out-of-band property-intelligence tables under committed migration/schema control, validate on a Supabase branch or isolated test database, and only then apply to production.
+Safest fix: take a controlled Supabase schema snapshot, create an additive migration for `founding_memberships.stripe_checkout_session_id text`, add a unique index for webhook idempotency, bring the three out-of-band property-intelligence tables under committed migration/schema control, validate on a Supabase branch or isolated test database, and only then apply to production. A local migration proposal now exists at `supabase/migrations/20260525175220_property_intelligence_schema_alignment.sql`; it has not been applied to the live project.
 
 Risk of fix: low-to-medium if limited to an additive nullable column and index, but high operational sensitivity because it touches payment finalization. Production DDL requires backup/snapshot and an explicit rollback path.
+
+Validation: `git diff --check` passed after creating the migration proposal. `supabase migration list --local` could not run because the local Supabase Postgres service is not running on `127.0.0.1:54322`.
 
 Approval needed: yes before applying live Supabase DDL or replaying Stripe webhooks. No for documentation or a migration proposal.
 
