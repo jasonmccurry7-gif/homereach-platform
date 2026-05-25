@@ -40,6 +40,7 @@ Date: 2026-05-25
 - Hardened Meta/Facebook webhook verification and POST signature handling so production webhooks fail closed when verify tokens or app secrets are missing, and unsigned payloads cannot reach service-role Facebook work.
 - Hardened the remaining high-risk admin service-role route cluster: AI agent scans, internal alert sending, founding slot updates, pricing updates, and Facebook mission logging now require admin/sales session or cron access before privileged work.
 - Expanded the admin service-role access sweep to sensitive admin reads and send-capable routes: sales lead/reply/funnel/leaderboard/insight APIs, close-deal sending, sales nudges, email warmup, internal alert logs, founding member data, intelligence pricing, operator summary, Facebook scorecards/leaderboards, and admin health now require admin/sales-agent or cron access as appropriate.
+- Hardened public property-intelligence checkout so founding memberships and slot counts are no longer activated before Stripe confirms payment; signed Stripe webhook handling now finalizes founding membership activation after `checkout.session.completed`.
 
 ## Validation
 
@@ -57,6 +58,8 @@ Date: 2026-05-25
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
 - Local focused request secret helper test: passed, 4 tests.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
+- Local focused property-intelligence checkout helper test: passed, 6 tests.
+- Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
 - Latest provider/admin durability sweep: focused inbound SMS helper test, focused request secret helper test, focused Facebook webhook auth helper test, admin service-role access sweep, full unit suite, typecheck, web lint, and web build all passed locally; a second admin service-role scan now finds no unguarded `apps/web/app/api/admin` service-client routes outside custom authorized routes.
 - Local `pnpm test`: passed, 161 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
@@ -89,7 +92,7 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion. Public intelligence checkout still needs a dedicated payment-finalization audit before it should be trusted for founding-member slot/membership accounting.
+Reason: payment webhook retry behavior, targeted checkout authorization, property-intelligence checkout finalization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 

@@ -59,6 +59,15 @@ Targeted route checkout flow:
 8. User is redirected to Stripe via returned session URL.
 9. Add-on copy now describes recurring services as first-month charges with ongoing service activated separately after onboarding unless true subscription mode is implemented later.
 
+Property intelligence checkout flow:
+
+1. Public caller posts tier, city, category, market size, business name, email, and phone to `/api/intelligence/checkout`.
+2. Route reads `property_intelligence_tiers` and `founding_slots` through the Supabase service-role client.
+3. Route creates a Stripe Checkout session with explicit `property_intelligence` metadata.
+4. Route no longer writes `founding_memberships` or updates `founding_slots` before payment confirmation.
+5. Signed Stripe webhook handling for `checkout.session.completed` now finalizes founding membership activation and recalculates slot usage from active memberships.
+6. Repo search found references to `property_intelligence_tiers`, `founding_slots`, and `founding_memberships`, but did not find committed Drizzle schema or Supabase migration definitions for those tables. Treat production schema as out-of-band until verified through a controlled Supabase schema pull/audit.
+
 Stripe webhook flow:
 
 1. `/api/webhooks/stripe` reads the raw body.

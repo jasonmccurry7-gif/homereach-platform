@@ -20,6 +20,11 @@ import {
   type StripeEventClaim,
 } from "@/lib/stripe/webhook-idempotency";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import {
+  PROPERTY_INTELLIGENCE_CHECKOUT_TYPE,
+  stripeResourceId,
+  toPositiveCents,
+} from "@/lib/intelligence/checkout";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/stripe
@@ -167,6 +172,8 @@ export async function POST(req: Request) {
         // Route to correct handler based on metadata.type
         if (session.metadata?.type === "targeted_route_campaign") {
           await handleTargetedCheckoutCompleted(session);
+        } else if (session.metadata?.type === PROPERTY_INTELLIGENCE_CHECKOUT_TYPE) {
+          await handlePropertyIntelligenceCheckoutCompleted(session);
         } else {
           await handleCheckoutCompleted(session);
         }
@@ -381,6 +388,134 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+async function handlePropertyIntelligenceCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const metadata = session.metadata ?? {};
+
+  if (session.payment_status && !["paid", "no_payment_required"].includes(session.payment_status)) {
+    throw new Error(
+      `Property intelligence checkout ${session.id} completed with payment_status=${session.payment_status}`,
+    );
+  }
+
+  if (metadata.founding_flag !== "true") {
+    console.log(`[stripe/webhook] property intelligence checkout ${session.id} paid without founding slot`);
+    return;
+  }
+
+  const businessName = metadata.business_name;
+  const city = metadata.city;
+  const product = metadata.product || (metadata.tier ? `intelligence_${metadata.tier}` : "");
+  const tier = metadata.tier;
+  const category = metadata.category || null;
+  const slotId = metadata.slot_id || null;
+  const lockedPriceCents = toPositiveCents(metadata.locked_price);
+  const standardPriceCents = toPositiveCents(metadata.standard_price);
+
+  if (!businessName || !city || !product || !tier || lockedPriceCents === null || standardPriceCents === null) {
+    throw new Error(`Property intelligence checkout ${session.id} is missing required metadata`);
+  }
+
+  const supabase = createServiceClient();
+  const { data: existingMembership, error: existingError } = await supabase
+    .from("founding_memberships")
+    .select("id")
+    .eq("stripe_checkout_session_id", session.id)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (!existingMembership) {
+    const { error: insertError } = await supabase
+      .from("founding_memberships")
+      .insert({
+        business_name: businessName,
+        city,
+        category,
+        product,
+        tier,
+        locked_price_cents: lockedPriceCents,
+        standard_price_cents: standardPriceCents,
+        stripe_subscription_id: stripeResourceId(session.subscription),
+        stripe_checkout_session_id: session.id,
+        status: "active",
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
+  }
+
+  if (slotId) {
+    await syncPropertyIntelligenceFoundingSlotCount(supabase, {
+      slotId,
+      city,
+      category,
+      product,
+    });
+  } else {
+    console.warn(`[stripe/webhook] property intelligence checkout ${session.id} has no slot_id metadata`);
+  }
+
+  console.log(`[stripe/webhook] property intelligence founding checkout ${session.id} finalized`);
+}
+
+async function syncPropertyIntelligenceFoundingSlotCount(
+  supabase: ReturnType<typeof createServiceClient>,
+  input: {
+    slotId: string;
+    city: string;
+    category: string | null;
+    product: string;
+  },
+) {
+  let membershipCountQuery = supabase
+    .from("founding_memberships")
+    .select("id", { count: "exact", head: true })
+    .eq("product", input.product)
+    .eq("city", input.city)
+    .eq("status", "active");
+
+  membershipCountQuery = input.category
+    ? membershipCountQuery.eq("category", input.category)
+    : membershipCountQuery.is("category", null);
+
+  const { count, error: countError } = await membershipCountQuery;
+  if (countError) {
+    throw countError;
+  }
+
+  const { data: slot, error: slotError } = await supabase
+    .from("founding_slots")
+    .select("id,total_slots")
+    .eq("id", input.slotId)
+    .maybeSingle();
+
+  if (slotError) {
+    throw slotError;
+  }
+
+  if (!slot) {
+    console.warn(`[stripe/webhook] founding slot ${input.slotId} not found during intelligence checkout finalization`);
+    return;
+  }
+
+  const slotsTaken = count ?? 0;
+  const totalSlots = Number(slot.total_slots ?? slotsTaken);
+  const { error: updateError } = await supabase
+    .from("founding_slots")
+    .update({
+      slots_taken: slotsTaken,
+      slots_remaining: Math.max(0, totalSlots - slotsTaken),
+    })
+    .eq("id", input.slotId);
+
+  if (updateError) {
+    throw updateError;
+  }
+}
+
 // Subscription lifecycle handlers
 // ─────────────────────────────────────────────────────────────────────────────
 

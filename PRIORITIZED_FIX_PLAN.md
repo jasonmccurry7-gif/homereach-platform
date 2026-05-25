@@ -4,6 +4,29 @@ Updated: 2026-05-25
 
 ## CRITICAL
 
+### Resolved: Public Intelligence Checkout Activated Founding Membership Before Payment
+
+What was wrong: `/api/intelligence/checkout` created a Stripe Checkout session, then immediately inserted an `active` `founding_memberships` row and decremented `founding_slots` before Stripe confirmed payment.
+
+Why it mattered: a public caller could consume founding inventory and create active founding-member records by starting checkout and abandoning payment. This was a revenue-integrity and inventory-accuracy risk.
+
+Files:
+
+- `apps/web/app/api/intelligence/checkout/route.ts`
+- `apps/web/app/api/webhooks/stripe/route.ts`
+- `apps/web/lib/intelligence/checkout.ts`
+- `apps/web/lib/intelligence/__tests__/checkout.test.ts`
+- `apps/web/app/(funnel)/intelligence/checkout/intelligence-checkout-client.tsx`
+- `apps/web/app/(admin)/admin/founding/page.tsx`
+
+Fix applied: public checkout creation now adds explicit `property_intelligence` Stripe metadata and no longer writes `founding_memberships` or updates `founding_slots`. The signed Stripe webhook now finalizes founding memberships only after `checkout.session.completed`, then recalculates slot usage from active memberships so webhook retries stay idempotent.
+
+Additional schema concern: `property_intelligence_tiers`, `founding_slots`, and `founding_memberships` are referenced by app code but are not present in committed Drizzle schema or Supabase migration files found by repo search. Production may have out-of-band tables; before any schema migration, pull/verify the live schema in a controlled Supabase workflow.
+
+Validation: focused property-intelligence checkout helper tests and full workspace typecheck passed locally after the change.
+
+Approval needed: no for local code hardening and documentation; yes before Stripe provider-live validation or production data reconciliation.
+
 ### Resolved: Stripe Webhook Could Drop Retried Events Stuck In Received
 
 What was wrong: the Stripe webhook inserted a new event as `received`, but duplicate retries for an existing fresh `received` event returned 200 as `processing_duplicate`.
