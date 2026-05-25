@@ -57,6 +57,10 @@ Date: 2026-05-25
 - Remote Vercel deployment for commit `2d525aa`: passed after the Vercel project env repair.
 - Remote GitHub Actions `Validate` run #12 for commit `e3adc7a`: passed.
 - Remote Vercel deployment for commit `e3adc7a`: passed after the provider sample-payload test layer.
+- Remote GitHub Actions `Validate` run #21 for commit `0f6ff91`: passed after the generated-link URL resolver sweep.
+- Remote Vercel deployment for commit `0f6ff91`: passed after the generated-link URL resolver sweep.
+- Remote GitHub Actions `Validate` run #22 for commit `ffae794`: passed after adding Vercel deployment URL fallbacks.
+- Remote Vercel deployment for commit `ffae794`: passed at `https://homereach-platform-d5rm7sfy3-jason-mccurrys-projects.vercel.app`.
 - Stripe CLI: installed but unauthenticated; provider-tool validation still needs test/sandbox auth and isolated DB setup.
 
 ## Revenue And Reliability Risks
@@ -67,7 +71,7 @@ Date: 2026-05-25
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
 - Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.
-- Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; the branch-preview build passed for current pushed head `26db14d`.
+- Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; the branch-preview build passed for current pushed head `ffae794`.
 
 ## Production Readiness Status
 
