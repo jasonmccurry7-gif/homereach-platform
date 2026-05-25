@@ -6,6 +6,10 @@ import { sendEmail } from "@homereach/services/outreach";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import { cleanEmailSubjectPart } from "@/lib/security/email";
 import { escapeHtml, escapeHtmlOr } from "@/lib/security/html";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/intake/[token]
@@ -28,7 +32,22 @@ interface Params {
   params: Promise<{ token: string }>;
 }
 
+const SHARED_INTAKE_RATE_LIMIT = {
+  scope: "lead-capture:shared-intake",
+  limit: 60,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: Request, { params }: Params) {
+  const rateLimit = checkPublicRateLimit(req, SHARED_INTAKE_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many intake form requests." },
+      { status: 429, headers }
+    );
+  }
+
   try {
     const { token } = await params;
 
@@ -38,7 +57,7 @@ export async function POST(req: Request, { params }: Params) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400, headers }
       );
     }
 
@@ -54,13 +73,13 @@ export async function POST(req: Request, { params }: Params) {
       .limit(1);
 
     if (!record) {
-      return NextResponse.json({ error: "Intake form not found." }, { status: 404 });
+      return NextResponse.json({ error: "Intake form not found." }, { status: 404, headers });
     }
 
     if (record.status === "submitted" || record.status === "reviewed") {
       return NextResponse.json(
         { error: "This form has already been submitted." },
-        { status: 409 }
+        { status: 409, headers }
       );
     }
 
@@ -117,10 +136,10 @@ export async function POST(req: Request, { params }: Params) {
       }).catch((err) => console.error("[api/intake] admin notification error:", err));
     }
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json({ success: true }, { status: 200, headers });
 
   } catch (err) {
     console.error("[api/intake/[token]] error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers });
   }
 }

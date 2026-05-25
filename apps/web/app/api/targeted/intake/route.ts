@@ -11,6 +11,10 @@ import {
   notifyAdminIntakeReceived,
   sendIntakeConfirmationToCustomer,
 } from "@homereach/services/targeted";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 // ── Pricing validation constants ──────────────────────────────────────────
 // Cost basis: ~$0.25 print + ~$0.25 postage = ~$0.50/piece
@@ -53,7 +57,22 @@ const IntakeSchema = z.object({
   priceCents: z.number().int().positive().optional().default(40000),
 });
 
+const TARGETED_INTAKE_RATE_LIMIT = {
+  scope: "lead-capture:targeted-intake",
+  limit: 20,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: Request) {
+  const rateLimit = checkPublicRateLimit(req, TARGETED_INTAKE_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many targeted intake requests." },
+      { status: 429, headers }
+    );
+  }
+
   try {
     const body = await req.json();
     const parsed = IntakeSchema.safeParse(body);
@@ -61,7 +80,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400, headers }
       );
     }
 
@@ -70,7 +89,7 @@ export async function POST(req: Request) {
     // ── Pricing floor enforcement (server-side, anti-spoof) ───────────────────
     const pricingError = validatePricing(data.homesCount, data.priceCents);
     if (pricingError) {
-      return NextResponse.json({ error: pricingError }, { status: 400 });
+      return NextResponse.json({ error: pricingError }, { status: 400, headers });
     }
 
     // ── Resolve lead if token/id provided ─────────────────────────────────────
@@ -116,7 +135,7 @@ export async function POST(req: Request) {
       .returning();
 
     if (!campaign) {
-      return NextResponse.json({ error: "Failed to create campaign" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to create campaign" }, { status: 500, headers });
     }
 
     const checkoutToken = createTargetedCheckoutToken({
@@ -163,10 +182,10 @@ export async function POST(req: Request) {
         status:        campaign.status,
         checkoutToken: checkoutToken ?? undefined,
       },
-    }, { status: 201 });
+    }, { status: 201, headers });
 
   } catch (err) {
     console.error("[api/targeted/intake] error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers });
   }
 }

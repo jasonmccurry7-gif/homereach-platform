@@ -8,6 +8,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db, waitlistEntries } from "@homereach/db";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 const Schema = z.object({
   businessName: z.string().min(1),
@@ -23,7 +27,22 @@ const Schema = z.object({
   tierLabel:    z.string().optional(),
 });
 
+const TARGETED_CAMPAIGN_LEAD_RATE_LIMIT = {
+  scope: "lead-capture:targeted-campaign",
+  limit: 10,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: NextRequest) {
+  const rateLimit = checkPublicRateLimit(req, TARGETED_CAMPAIGN_LEAD_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many targeted campaign requests." },
+      { status: 429, headers }
+    );
+  }
+
   try {
     const body = await req.json();
     const data = Schema.parse(body);
@@ -63,12 +82,12 @@ export async function POST(req: NextRequest) {
       console.error("[TargetedCampaign] SMS alert failed:", smsErr);
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { headers });
   } catch (err) {
     console.error("[TargetedCampaign] Error:", err);
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: err.flatten() }, { status: 400 });
+      return NextResponse.json({ error: err.flatten() }, { status: 400, headers });
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers });
   }
 }

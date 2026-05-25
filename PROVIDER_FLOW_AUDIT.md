@@ -28,6 +28,7 @@ The most important remaining items to fix next are:
 14. Public political map-plan saves now reject empty route/geography selections before service-role persistence work and reject oversized request bodies before JSON parsing.
 15. Public political candidate search now strips direct campaign email/phone fields from autocomplete responses and clamps public query/state/limit inputs before service-role lookup.
 16. Public political candidate search and map-plan saves now have basic in-process rate limits before service-role lookup or request-body processing.
+17. Public lead-capture routes now apply basic in-process rate limits before body parsing on nonprofit, waitlist, targeted campaign, targeted lead, targeted intake, and tokenized shared-intake submissions.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -101,9 +102,29 @@ Observed flow:
 
 1. `/api/nonprofit` stores a public nonprofit application, then may send an admin notification and applicant confirmation email.
 2. `/api/intake/[token]` updates a token-authenticated intake submission, then may send an admin notification email.
-3. User-submitted values are still stored as submitted, but notification email HTML now escapes form values before rendering.
-4. Dynamic subject fragments now strip control characters and collapse whitespace before sending.
-5. No live emails were sent during validation.
+3. Both public routes now apply a basic in-process rate limit before body parsing.
+4. User-submitted values are still stored as submitted, but notification email HTML now escapes form values before rendering.
+5. Dynamic subject fragments now strip control characters and collapse whitespace before sending.
+6. No live emails were sent during validation.
+
+### Public Lead-Capture Mutations
+
+Primary files:
+
+- `apps/web/app/api/nonprofit/route.ts`
+- `apps/web/app/api/waitlist/route.ts`
+- `apps/web/app/api/targeted-campaign/route.ts`
+- `apps/web/app/api/targeted/leads/route.ts`
+- `apps/web/app/api/targeted/intake/route.ts`
+- `apps/web/app/api/intake/[token]/route.ts`
+
+Observed flow:
+
+1. These routes remain unauthenticated public form or tokenized-intake surfaces.
+2. The route now checks the shared public rate-limit helper before reading/parsing the request body.
+3. Normal validation, database persistence, and notification behavior are otherwise unchanged.
+4. Blocked requests return `429` with rate-limit retry metadata.
+5. The current guard is per-process and should be treated as a first layer, not a distributed quota system.
 
 ### Stripe
 
@@ -798,6 +819,7 @@ Validation:
 - Public political map-plan persistence now rejects empty route/geography selections before service-role writes and rejects oversized request bodies before JSON parsing.
 - Public political candidate search now removes direct campaign email/phone fields from public responses and clamps query/state/limit inputs.
 - Public political candidate search and map-plan save routes now have basic in-process public rate limits, with 429 retry metadata on blocked requests.
+- Public nonprofit, waitlist, targeted lead/campaign, targeted intake, and shared intake POST routes now apply basic in-process rate limits before body parsing.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -819,6 +841,7 @@ Latest validation for this follow-up guard sweep:
 - Focused map-plan persistence tests, focused ESLint on the route/helper/test files, full `pnpm test` with 181 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, and placeholder-env web build with 248 routes passed after the public political map-plan hardening patch.
 - Focused public candidate suggestion tests and focused ESLint on the route/helper/test files passed after the public political candidate-search minimization patch.
 - Focused public rate-limit helper tests, focused ESLint on the helper plus touched political public routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after adding basic public endpoint rate limits.
+- Focused public rate-limit helper tests, focused ESLint on the touched public lead-capture routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after extending basic lead-capture rate limits.
 
 ## Safe Validation Path
 
@@ -837,11 +860,12 @@ Latest validation for this follow-up guard sweep:
 13. Probe `/api/political/map-plans` with an empty JSON payload and expect local-only rejection or module-disabled `404` with no database writes.
 14. Probe `/api/political/candidates/search` with a harmless short query and confirm public responses omit direct campaign email/phone fields.
 15. In local/test only, exceed the political public endpoint rate limit and expect `429` with retry metadata; do not stress production previews.
-16. Add admin health checks for provider telemetry freshness, not just table readability.
-17. Only then perform provider-level test-mode checks.
+16. Probe lead-capture routes with invalid empty payloads and expect `400` plus rate-limit metadata, without valid submissions, sends, charges, or DB-success paths.
+17. Add admin health checks for provider telemetry freshness, not just table readability.
+18. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political endpoint rate limiting, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.

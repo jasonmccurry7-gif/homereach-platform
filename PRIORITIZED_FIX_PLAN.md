@@ -246,6 +246,29 @@ Validation: focused public rate-limit helper tests, focused ESLint on the helper
 
 Approval needed: no for defensive route guards; yes before broader WAF/firewall configuration changes or public traffic launch decisions.
 
+### Partially Resolved: Public Lead-Capture Endpoints Lacked Basic Anti-Abuse Controls
+
+What was wrong: public lead-capture routes accepted unauthenticated POST requests, parsed request bodies, and could create records or trigger operator/customer notifications without a route-level request-rate guard.
+
+Why it mattered: lead forms are revenue-positive, but they are also public mutation surfaces. Abuse can create noisy records, trigger internal notifications, consume email/SMS safety budgets, and make operators chase low-quality submissions.
+
+Files:
+
+- `apps/web/app/api/nonprofit/route.ts`
+- `apps/web/app/api/waitlist/route.ts`
+- `apps/web/app/api/targeted-campaign/route.ts`
+- `apps/web/app/api/targeted/leads/route.ts`
+- `apps/web/app/api/targeted/intake/route.ts`
+- `apps/web/app/api/intake/[token]/route.ts`
+
+Fix applied: applied the shared public rate-limit helper before body parsing on nonprofit applications, waitlist submissions, targeted campaign leads, targeted lead creation, targeted intake, and tokenized shared-postcard intake. Limits are intentionally generous enough for normal conversion paths and tighter where a route can send internal alerts or customer confirmations.
+
+Safest remaining fix: move these first-layer per-process limits into a distributed traffic-control layer before scaling paid traffic. Continue the same review across payment-adjacent checkout creation and public political chat before broad launch.
+
+Validation: focused public rate-limit helper tests, focused ESLint on the touched lead-capture route files, full unit suite, full workspace typecheck, full web lint, placeholder-env web build, and `git diff --check` passed locally.
+
+Approval needed: no for defensive route guards; yes before Vercel Firewall changes, payment-flow behavior changes, or live-send testing.
+
 ### Email Provider Runtime Value Needs Explicit Confirmation
 
 What is wrong: Vercel has `EMAIL_PROVIDER`, Mailgun names, and Postmark names, but no `RESEND_API_KEY`. The Vercel CLI metadata audit intentionally did not reveal the hidden `EMAIL_PROVIDER` value.

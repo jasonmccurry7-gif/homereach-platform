@@ -55,6 +55,7 @@ Date: 2026-05-25
 - Hardened public political map-plan persistence so empty public selections stay local-only instead of creating service-role-backed map sessions/plans, and oversized map-plan payloads are rejected before persistence work begins.
 - Hardened public political candidate search so service-role-backed autocomplete responses no longer expose direct campaign email/phone fields and public query/state/limit inputs are clamped before lookup.
 - Added a reusable in-process public rate-limit helper and applied it to political candidate search and public map-plan saves before service-role lookup or request-body processing.
+- Expanded the public rate-limit guard to lead-capture form routes: nonprofit applications, waitlist, targeted campaign leads, targeted lead creation, targeted intake, and tokenized shared-postcard intake.
 
 ## Validation
 
@@ -84,6 +85,7 @@ Date: 2026-05-25
 - Latest public political map-plan persistence sweep: focused map-plan persistence tests passed, focused ESLint on the route/helper/test files passed, full `pnpm test` passed with 181 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, and placeholder-env web build generated 248 routes locally.
 - Latest public political candidate-search minimization sweep: focused public candidate suggestion tests passed and focused ESLint on the route/helper/test files passed locally.
 - Latest public endpoint rate-limit sweep: focused public rate-limit helper tests, focused ESLint on the helper plus touched political public routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed locally.
+- Latest lead-capture rate-limit sweep: focused public rate-limit helper tests, focused ESLint on touched public lead-capture routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed locally.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
@@ -114,8 +116,8 @@ Date: 2026-05-25
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
 - Medium: send-capable AI workforce routes are now access-gated, but live-sending behavior still needs explicit approval/test-mode validation before automation expansion.
-- Medium: public lead-capture endpoints such as targeted campaign and nonprofit registration still need anti-abuse/rate-limit review before traffic scaling; no live sends were tested in this pass.
-- Medium: public political map-plan saves and candidate search now have basic in-process rate limits, but traffic scaling still needs a distributed Vercel Firewall/Edge/Redis-grade strategy before broader public launch.
+- Medium: public nonprofit, waitlist, targeted lead/campaign, targeted intake, shared intake, political map-plan, and political candidate-search routes now have basic in-process rate limits, but traffic scaling still needs a distributed Vercel Firewall/Edge/Redis-grade strategy before broader public launch.
+- Medium: remaining public mutation routes, including payment-adjacent and political chat surfaces, still need dedicated anti-abuse review before traffic scaling; no live sends or charges were tested in this pass.
 - Medium: authenticated team-wide sales/CRM reports remain visible to admin/sales-agent sessions where product behavior appeared intentional; a later product review should decide whether to narrow those dashboards further.
 - Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.
 - Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; recent branch-preview builds have passed after the URL resolver hardening.
@@ -124,7 +126,7 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, property-intelligence checkout finalization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, public political map-plan persistence guards, public political candidate-search data minimization, public political endpoint rate limiting, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, property-intelligence checkout finalization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, public political map-plan persistence guards, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 
@@ -134,4 +136,4 @@ Reason: payment webhook retry behavior, targeted checkout authorization, propert
 4. Validate Twilio status, inbound SMS, Postmark, and Facebook webhook endpoints with local tunnel or provider test tools, still with no mass sends and no production data mutation.
 5. Review monthly-billing intent before changing any Stripe mode or subscription behavior.
 6. Resolve env-name drift by adding/verifying canonical Vercel names first, then adding compatibility readers only after a focused route audit.
-7. Broaden public endpoint anti-abuse controls beyond political map/search to targeted intake, nonprofit registration, and other lead-capture forms before traffic scaling.
+7. Continue the anti-abuse pass across remaining public mutation routes, especially payment-adjacent checkout creation and public political chat, before traffic scaling.

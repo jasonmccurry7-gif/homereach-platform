@@ -9,6 +9,10 @@ import { db, publicNonprofitApplications } from "@homereach/db";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import { cleanEmailSubjectPart } from "@/lib/security/email";
 import { escapeHtml, escapeHtmlOr } from "@/lib/security/html";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 const NonprofitSchema = z.object({
   orgName:     z.string().min(1, "Organization name is required"),
@@ -21,7 +25,22 @@ const NonprofitSchema = z.object({
   city:        z.string().optional(),
 });
 
+const NONPROFIT_APPLICATION_RATE_LIMIT = {
+  scope: "lead-capture:nonprofit-application",
+  limit: 10,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: Request) {
+  const rateLimit = checkPublicRateLimit(req, NONPROFIT_APPLICATION_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many nonprofit application requests." },
+      { status: 429, headers }
+    );
+  }
+
   try {
     const body   = await req.json();
     const parsed = NonprofitSchema.safeParse(body);
@@ -29,7 +48,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400, headers }
       );
     }
 
@@ -119,9 +138,9 @@ export async function POST(req: Request) {
       // Non-fatal
     }
 
-    return NextResponse.json({ success: true, id: applicationId });
+    return NextResponse.json({ success: true, id: applicationId }, { headers });
   } catch (err) {
     console.error("[/api/nonprofit] Unexpected error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers });
   }
 }
