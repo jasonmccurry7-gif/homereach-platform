@@ -207,6 +207,24 @@ Validation: focused map-plan persistence tests passed, focused ESLint on the tou
 
 Approval needed: no for the defensive public endpoint hardening; yes before changing political launch posture, live political workflows, or production database records.
 
+### Resolved: Public Political Candidate Search Exposed Direct Contact Fields
+
+What was wrong: `/api/political/candidates/search` is a public feature-flagged autocomplete route backed by the Supabase service-role client. It returned the full internal `CandidateSuggestion` shape, including direct campaign email and phone fields that the public autofill UI does not use.
+
+Why it mattered: public autocomplete should return only the operational fields needed to prefill race, geography, election, and map-planning context. Direct contact fields raise scraping, reputation, and political-workflow approval risk even when the source data is public.
+
+Files:
+
+- `apps/web/app/api/political/candidates/search/route.ts`
+- `apps/web/lib/political/candidate-suggestions-public.ts`
+- `apps/web/lib/political/__tests__/candidate-suggestions-public.test.ts`
+
+Fix applied: added a public candidate-suggestion helper that clamps query length, state, and result limit before lookup, then strips campaign email and phone fields from the public API response while leaving the internal repository/admin data model unchanged.
+
+Validation: focused public candidate suggestion tests passed and focused ESLint on the route/helper/test files passed locally.
+
+Approval needed: no for data minimization; yes before launching broader political traffic, changing candidate research/contact workflows, or using candidate contact details for outreach.
+
 ### Email Provider Runtime Value Needs Explicit Confirmation
 
 What is wrong: Vercel has `EMAIL_PROVIDER`, Mailgun names, and Postmark names, but no `RESEND_API_KEY`. The Vercel CLI metadata audit intentionally did not reveal the hidden `EMAIL_PROVIDER` value.

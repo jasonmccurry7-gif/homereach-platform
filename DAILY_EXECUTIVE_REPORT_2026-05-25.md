@@ -53,6 +53,7 @@ Date: 2026-05-25
 - Hardened the public political candidate chat helper so `DISABLE_POLITICAL_AI=true` now forces static fallback replies instead of allowing OpenAI calls.
 - Hardened public nonprofit and intake notification emails so user-submitted form values are HTML-escaped before rendering into admin/applicant email bodies and control characters are stripped from dynamic subject fragments.
 - Hardened public political map-plan persistence so empty public selections stay local-only instead of creating service-role-backed map sessions/plans, and oversized map-plan payloads are rejected before persistence work begins.
+- Hardened public political candidate search so service-role-backed autocomplete responses no longer expose direct campaign email/phone fields and public query/state/limit inputs are clamped before lookup.
 
 ## Validation
 
@@ -80,6 +81,7 @@ Date: 2026-05-25
 - Latest political candidate chat kill-switch sweep: focused political tests passed, full `pnpm test` passed with 175 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, placeholder-env web build generated 248 routes, and `git diff --check` passed locally.
 - Latest public-form email rendering hardening sweep: focused HTML escaping and email subject tests passed, focused ESLint on the helpers and touched public form routes passed, full `pnpm test` passed with 179 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, placeholder-env web build generated 248 routes, and `git diff --check` passed locally.
 - Latest public political map-plan persistence sweep: focused map-plan persistence tests passed, focused ESLint on the route/helper/test files passed, full `pnpm test` passed with 181 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, and placeholder-env web build generated 248 routes locally.
+- Latest public political candidate-search minimization sweep: focused public candidate suggestion tests passed and focused ESLint on the route/helper/test files passed locally.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
@@ -112,6 +114,7 @@ Date: 2026-05-25
 - Medium: send-capable AI workforce routes are now access-gated, but live-sending behavior still needs explicit approval/test-mode validation before automation expansion.
 - Medium: public lead-capture endpoints such as targeted campaign and nonprofit registration still need anti-abuse/rate-limit review before traffic scaling; no live sends were tested in this pass.
 - Medium: public political map-plan saves now reject empty selections and very large payloads before database persistence, but broader public endpoint rate limiting still needs a dedicated traffic-scaling pass.
+- Medium: public political candidate search now removes direct campaign contact fields and clamps inputs, but still needs traffic/rate-limit controls before broader public launch.
 - Medium: authenticated team-wide sales/CRM reports remain visible to admin/sales-agent sessions where product behavior appeared intentional; a later product review should decide whether to narrow those dashboards further.
 - Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.
 - Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; recent branch-preview builds have passed after the URL resolver hardening.
@@ -120,7 +123,7 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, property-intelligence checkout finalization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, public political map-plan persistence guards, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, property-intelligence checkout finalization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, public political map-plan persistence guards, public political candidate-search data minimization, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 

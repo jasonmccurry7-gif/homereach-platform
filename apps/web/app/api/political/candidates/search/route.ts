@@ -2,6 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isPoliticalEnabled } from "@/lib/political/env";
 import { searchCandidateSuggestions } from "@/lib/political/candidate-intelligence/repository";
+import {
+  normalizePublicCandidateSearchParams,
+  toPublicCandidateSuggestion,
+} from "@/lib/political/candidate-suggestions-public";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +18,11 @@ export async function GET(req: NextRequest) {
   }
 
   const url = new URL(req.url);
-  const query = (url.searchParams.get("q") ?? "").trim();
-  const state = (url.searchParams.get("state") ?? "").trim().toUpperCase() || undefined;
-  const limit = Number(url.searchParams.get("limit") ?? 8);
+  const { query, state, limit } = normalizePublicCandidateSearchParams({
+    query: url.searchParams.get("q"),
+    state: url.searchParams.get("state"),
+    limit: url.searchParams.get("limit"),
+  });
 
   if (query.length < 2) {
     return NextResponse.json({ ok: true, candidates: [] });
@@ -25,7 +31,8 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = createServiceClient();
     const candidates = await searchCandidateSuggestions(supabase, { query, state, limit });
-    return NextResponse.json({ ok: true, candidates });
+    const publicCandidates = candidates.map(toPublicCandidateSuggestion);
+    return NextResponse.json({ ok: true, candidates: publicCandidates });
   } catch (err) {
     const message = err instanceof Error
       ? err.message
