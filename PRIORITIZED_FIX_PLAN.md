@@ -73,6 +73,24 @@ Approval needed: yes for any provider-mutating or production-data test.
 
 Current tooling status: Stripe CLI is installed, but not authenticated. Use `PROVIDER_TEST_MODE_RUNBOOK.md` and test/sandbox credentials only.
 
+### Resolved: APEX SMS Command Endpoint Trusted Spoofable Form Fields
+
+What was wrong: `/api/command` parsed inbound SMS form fields and trusted the `From` value before validating Twilio's request signature. If a caller spoofed an approved sender phone number, the route could call protected admin/agent routes using the server's `CRON_SECRET`.
+
+Why it mattered: APEX is an operator command surface. Even though downstream routes have cron/admin guards, this endpoint could have become a remote-control bridge because it supplied the cron secret on internal self-calls after only checking a request-provided phone number.
+
+Files:
+
+- `apps/web/app/api/command/route.ts`
+- `apps/web/lib/outreach/inbound-sms-webhook.ts`
+- `apps/web/lib/outreach/__tests__/inbound-sms-webhook.test.ts`
+
+Fix applied: added Twilio signature validation to `/api/command` before approved-sender checks or command execution, using the shared inbound SMS signature helper with a custom canonical path for `/api/command`. The public liveness response now returns only configuration booleans/counts and no longer exposes approved sender phone numbers or the APEX number.
+
+Validation: focused inbound SMS helper tests, focused request-secret/agent-scope tests, focused ESLint on the touched route/helper files, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with existing warning debt only, placeholder-env web build with 248 routes, and `git diff --check` passed locally. No live Twilio request or command execution was performed.
+
+Approval needed: no for fail-closed hardening; yes before live Twilio command validation or any command that can trigger sends, pricing, payments, campaign changes, or provider-side activity.
+
 ### Resolved: Targeted Route Checkout Trusted A Bare Campaign UUID
 
 What was wrong: `/api/stripe/targeted-checkout` accepted only `campaignId`/`addons`, used the Supabase service-role client, created a Stripe Checkout session, and wrote `stripe_checkout_session_id` to the campaign row.
@@ -228,6 +246,24 @@ Fix applied: added a shared `requireAdminSalesAgentOrCron` guard, moved request-
 Validation: focused request-secret tests, full test suite, typecheck, web lint, and web build passed locally after the change.
 
 Approval needed: no for access-control hardening; yes before any live automation send/provider validation.
+
+### Resolved: Facebook Follow-Up Cron Could Fail Open When CRON_SECRET Was Missing
+
+What was wrong: `/api/facebook/followup` only rejected unauthorized callers when `CRON_SECRET` existed. If the secret was missing in production, the public cron endpoint could run service-role reads, update Facebook lead/message records, and attempt Facebook follow-up sends.
+
+Why it mattered: missing cron secrets should disable send-capable automation, not open it. This endpoint can create outbound Facebook messages and mutate lead state.
+
+Files:
+
+- `apps/web/app/api/facebook/followup/route.ts`
+- `apps/web/lib/auth/api-guards.ts`
+- `apps/web/lib/auth/request-secret.ts`
+
+Fix applied: replaced the optional inline secret check with the shared `requireCron()` guard, which returns `503` when `CRON_SECRET` is not configured and `401` when the provided Bearer or `x-cron-secret` value is wrong.
+
+Validation: focused ESLint on the touched route passed, focused request-secret helper tests passed, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with existing warning debt only, placeholder-env web build with 248 routes, and `git diff --check` passed locally. No Facebook send or provider call was executed.
+
+Approval needed: no for fail-closed hardening; yes before live Facebook automation validation or any outbound Facebook messaging.
 
 ### Resolved: Meta/Facebook Webhooks Could Process Unsigned Payloads When Secret Was Missing
 

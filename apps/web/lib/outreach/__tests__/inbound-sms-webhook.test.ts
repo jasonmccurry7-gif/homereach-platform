@@ -26,6 +26,16 @@ describe("inbound SMS Twilio signature validation", () => {
     );
   });
 
+  it("can build a canonical URL for another Twilio SMS endpoint", () => {
+    expect(
+      buildInboundSmsWebhookUrl(
+        "https://preview.example.com/api/command",
+        appUrl,
+        "/api/command",
+      ),
+    ).toBe("https://home-reach.com/api/command");
+  });
+
   it("accepts a valid Twilio signature", () => {
     const params = sampleParams();
     const signature = buildTwilioInboundSignature(
@@ -42,6 +52,27 @@ describe("inbound SMS Twilio signature validation", () => {
         requestUrl,
         appUrl,
         params,
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts a valid signature for a custom canonical path", () => {
+    const params = sampleParams();
+    const signature = buildTwilioInboundSignature(
+      authToken,
+      "https://home-reach.com/api/command",
+      params,
+    );
+
+    expect(
+      validateTwilioInboundSignature({
+        authToken,
+        nodeEnv: "production",
+        signature,
+        requestUrl: "https://preview.example.com/api/command",
+        appUrl,
+        params,
+        canonicalPath: "/api/command",
       }),
     ).toBe(true);
   });

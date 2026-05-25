@@ -19,8 +19,9 @@ function timingSafeEqual(a: string, b: string): boolean {
 export function buildInboundSmsWebhookUrl(
   requestUrl: string,
   appUrl?: string,
+  canonicalPath = "/api/webhooks/outreach/sms",
 ): string {
-  return appUrl ? `${appUrl}/api/webhooks/outreach/sms` : requestUrl;
+  return appUrl ? `${appUrl}${canonicalPath}` : requestUrl;
 }
 
 export function buildTwilioInboundSignature(
@@ -45,6 +46,7 @@ export function validateTwilioInboundSignature({
   requestUrl,
   appUrl,
   params,
+  canonicalPath,
 }: {
   authToken?: string;
   nodeEnv?: string;
@@ -52,11 +54,12 @@ export function validateTwilioInboundSignature({
   requestUrl: string;
   appUrl?: string;
   params: URLSearchParams;
+  canonicalPath?: string;
 }): boolean {
   if (!authToken) return nodeEnv !== "production";
   if (!signature) return false;
 
-  const url = buildInboundSmsWebhookUrl(requestUrl, appUrl);
+  const url = buildInboundSmsWebhookUrl(requestUrl, appUrl, canonicalPath);
   const expected = buildTwilioInboundSignature(authToken, url, params);
 
   return timingSafeEqual(expected, signature);

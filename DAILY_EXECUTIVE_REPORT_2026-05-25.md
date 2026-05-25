@@ -47,6 +47,9 @@ Date: 2026-05-25
 - Hardened AI workforce/admin agent surfaces so agent runner, agent status endpoints, scraper, anchor, closer, echo, scout, atlas, beacon, horizon, sentinel, sales call-script writes, and sales lead alert logging require admin, sales-agent, or cron access before service-role reads or mutations.
 - Hardened the remaining scanned admin CRM, automation, Facebook, migration, alert-preference, and system-agent surfaces so lead lists/details, CRM notes/tasks/dedup/quarantine/metrics/leaderboards, automation sequence/enrollment controls, Facebook revenue engine updates, migration helpers, alert preferences, and system-agent endpoints require admin, sales-agent, or cron access before privileged reads or mutations. Political candidate-intelligence sync/webhook routes were inspected and left unchanged because they already fail closed behind explicit secrets.
 - Hardened admin-adjacent routes outside `/api/admin`: admin inbox conversation reads/read-marking/replies now require admin access before service-role reads, reply persistence, or optional SMS sending; targeted campaign admin status, intake-link send, mark-mailed/review-request actions, and growth activity logs now require admin access before Drizzle updates or communication sends.
+- Hardened the SMS APEX command endpoint so `/api/command` POSTs must carry a valid Twilio signature before any approved-sender check or internal admin/agent cron self-call can run.
+- Redacted `/api/command` liveness output so it no longer returns approved sender phone numbers or the configured APEX phone number to public callers.
+- Hardened `/api/facebook/followup` so the cron/send-capable Facebook follow-up job fails closed through `requireCron()` when `CRON_SECRET` is missing or invalid.
 
 ## Validation
 
@@ -70,6 +73,7 @@ Date: 2026-05-25
 - Local focused CRM/automation/migration/Facebook/admin guard ESLint: passed with only pre-existing warnings in touched route files.
 - Local focused admin-adjacent route ESLint: passed with only pre-existing `status as any` warnings in `apps/web/app/api/targeted/admin/update-status/route.ts`.
 - Latest admin-adjacent guard patch: full workspace typecheck, full unit suite, full web lint, placeholder-env web build, admin-like route scanner, and `git diff --check` passed locally.
+- Latest APEX command/Facebook cron hardening sweep: focused inbound SMS signature helper tests, request-secret helper tests, agent-scope helper tests, focused ESLint on `/api/command` and `/api/facebook/followup`, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed locally.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
@@ -100,6 +104,7 @@ Date: 2026-05-25
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
 - Medium: send-capable AI workforce routes are now access-gated, but live-sending behavior still needs explicit approval/test-mode validation before automation expansion.
+- Medium: public lead-capture endpoints such as targeted campaign and nonprofit registration still need anti-abuse/rate-limit review before traffic scaling; no live sends were tested in this pass.
 - Medium: authenticated team-wide sales/CRM reports remain visible to admin/sales-agent sessions where product behavior appeared intentional; a later product review should decide whether to narrow those dashboards further.
 - Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.
 - Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; recent branch-preview builds have passed after the URL resolver hardening.
@@ -108,7 +113,7 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, property-intelligence checkout finalization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, property-intelligence checkout finalization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 

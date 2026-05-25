@@ -21,6 +21,8 @@ The most important remaining items to fix next are:
 7. Additional admin service-role routes for agent scans, agent status/runner surfaces, scraper, internal alerts, pricing/founding updates, Facebook mission logging, sales lead/revenue reads, send-capable sales/email routes, operator summaries, and admin health now require admin/sales session or cron access before privileged work.
 8. The follow-up admin sweep now also covers CRM lead/detail/task/note/dedup/quarantine/reporting routes, automation sequence/enrollment controls, alert preferences, migration helpers, Facebook revenue-engine routes, and system-agent utility endpoints. Political candidate-intelligence sync/webhook routes were inspected and already have explicit secret gates.
 9. Admin-adjacent non-`/api/admin` routes now also fail closed: admin inbox conversation reads/replies, growth activity logs, and targeted campaign admin status/send/mailed actions require admin access before service-role reads, Drizzle updates, or outbound communication helpers.
+10. The SMS APEX command endpoint now validates Twilio signatures before trusted command execution and no longer exposes approved sender phone numbers through its public liveness response.
+11. The public Facebook follow-up cron route now fails closed through the shared cron guard when `CRON_SECRET` is missing or invalid.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -101,6 +103,7 @@ Observed posture:
 Primary files:
 
 - `packages/services/src/outreach/index.ts`
+- `apps/web/app/api/command/route.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 - `apps/web/app/api/webhooks/outreach/sms/route.ts`
 - `apps/web/lib/outreach/twilio-status-webhook.ts`
@@ -114,6 +117,14 @@ Outbound SMS flow:
 3. Prospecting SMS is blocked when manual approval mode is active or live prospecting is disabled.
 4. Twilio send uses messaging service SID when available, otherwise a from number.
 5. Optional `statusCallbackUrl` is passed to Twilio.
+
+APEX SMS command flow:
+
+1. Twilio posts owner SMS commands to `/api/command`.
+2. The route parses form-encoded Twilio parameters.
+3. The route now validates `X-Twilio-Signature` with `TWILIO_AUTH_TOKEN` and a canonical `/api/command` URL before checking approved senders.
+4. Approved commands can route to guarded admin/agent endpoints using the server-side cron secret.
+5. Public `GET /api/command` is liveness-only and now returns configuration booleans/counts, not approved sender phone numbers or the APEX number.
 
 Inbound status flow:
 
@@ -182,6 +193,7 @@ Access-control flow:
 5. Webhook verify-token handling requires `FACEBOOK_WEBHOOK_VERIFY_TOKEN`/legacy `FACEBOOK_VERIFY_TOKEN` in production and no longer uses a production default token.
 6. Shared Meta signature/verify-token parsing is isolated in `apps/web/lib/facebook/webhook-auth.ts` and covered by focused tests.
 7. Shared request-secret parsing is isolated in `apps/web/lib/auth/request-secret.ts` and covered by focused tests.
+8. `/api/facebook/followup` now uses the shared `requireCron()` guard so missing `CRON_SECRET` returns `503` instead of allowing the send-capable follow-up sweep to run.
 
 ### Deployment And CI
 
@@ -701,8 +713,10 @@ Validation:
 - Twilio status webhook now returns retryable 503 for telemetry insert/handler failures after signature validation.
 - Inbound SMS reply webhook signature validation and unmatched-reply retry decisions are covered by focused helper tests.
 - Inbound SMS reply webhook now returns retryable 503 for unmatched replies when the revenue messaging bridge fails or misses the event ledger.
+- APEX SMS command POSTs now require valid Twilio signatures before trusted command execution, and the liveness response no longer exposes configured phone numbers.
 - Facebook webhook signature validation and production missing-secret/verify-token behavior are covered by focused helper tests.
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
+- Facebook follow-up cron now fails closed when `CRON_SECRET` is missing.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -718,6 +732,7 @@ Latest validation for this follow-up guard sweep:
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 248 routes.
 - `git diff --check` and the admin route guard scanner passed.
 - Focused ESLint on admin-adjacent conversation and targeted admin routes passed with only pre-existing warnings.
+- Focused inbound SMS signature helper tests, request-secret helper tests, agent-scope helper tests, focused ESLint on `/api/command` and `/api/facebook/followup`, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the APEX command/Facebook cron hardening patch.
 
 ## Safe Validation Path
 
@@ -730,13 +745,14 @@ Latest validation for this follow-up guard sweep:
 7. Validate Postmark webhook with sample payloads and test Basic Auth.
 8. Probe Facebook webhook POSTs without signatures and expect 401/503 without service-role mutations or Facebook sends.
 9. Probe Facebook/APEX admin automation POSTs without credentials and expect 401/403 without service-role mutations or SMS sends.
-10. Probe newly guarded admin service-role POST/PUT routes without credentials and expect 401/403 without mutations or SMS sends.
-11. Probe newly guarded admin read/send surfaces without credentials and expect 401/403 without exposing lead, alert, revenue, health, or warmup data.
-12. Add admin health checks for provider telemetry freshness, not just table readability.
-13. Only then perform provider-level test-mode checks.
+10. Probe `/api/command` POST without `X-Twilio-Signature` and expect 403 before any internal self-call.
+11. Probe newly guarded admin service-role POST/PUT routes without credentials and expect 401/403 without mutations or SMS sends.
+12. Probe newly guarded admin read/send surfaces without credentials and expect 401/403 without exposing lead, alert, revenue, health, or warmup data.
+13. Add admin health checks for provider telemetry freshness, not just table readability.
+14. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, Postmark callback durability, Meta webhook fail-closed, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.

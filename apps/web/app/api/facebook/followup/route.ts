@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireCron } from "@/lib/auth/api-guards";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
@@ -30,11 +31,8 @@ async function fbSend(psid: string, text: string): Promise<void> {
 }
 
 export async function POST(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = requireCron(req);
+  if (!guard.ok) return guard.response;
 
   const db  = createServiceClient();
   const now = new Date();
