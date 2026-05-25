@@ -72,21 +72,21 @@ Approval needed: production must set `TARGETED_CHECKOUT_SIGNING_SECRET` before d
 
 ## HIGH
 
-### Twilio Status Webhook May Lose Delivery Telemetry Under RLS
+### Resolved: Twilio Status Webhook Could Lose Delivery Telemetry Under RLS
 
-What is wrong: `/api/webhooks/twilio/status` validates Twilio signatures but inserts delivery status rows using the session/anon Supabase server client, then returns 200 even if the insert fails.
+What was wrong: `/api/webhooks/twilio/status` validated Twilio signatures but inserted delivery status rows using the session/anon Supabase server client, then returned 200 even if the insert failed.
 
-Why it matters: Twilio requests do not have a Supabase user session. If RLS blocks anon inserts into `twilio_message_status`, delivery events will be lost while Twilio stops retrying.
+Why it mattered: Twilio requests do not have a Supabase user session. If RLS blocked anon inserts into `twilio_message_status`, delivery events could be lost while Twilio stopped retrying.
 
 Files:
 
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 
-Safest fix: after signature validation, use a service-role client for the narrow append-only insert or verify a dedicated insert-only RLS policy; add a no-send signed sample validation.
+Fix applied: after signature validation, the route now uses the Supabase service-role client for the narrow append-only `twilio_message_status` insert and keeps the existing no-send mutation boundary.
 
-Risk of fix: medium.
+Validation: typecheck and web build passed locally after the change.
 
-Approval needed: yes before live Twilio validation; code/test preparation can proceed safely.
+Approval needed: no for the code change; yes before live Twilio validation or any SMS send.
 
 ### GitHub CLI Not Authenticated
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/twilio/status
@@ -33,8 +33,10 @@ import { createClient } from "@/lib/supabase/server";
 //     https://<your-domain>/api/webhooks/twilio/status
 //
 // Mutation contract
-//   This route ONLY inserts into public.twilio_message_status. It NEVER
-//   updates outreach_messages, sales_events, or any send-side table.
+//   After signature validation, this route ONLY inserts into
+//   public.twilio_message_status using the service-role client so RLS cannot
+//   silently drop provider telemetry. It NEVER updates outreach_messages,
+//   sales_events, or any send-side table.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EMPTY_TWIML = new Response("<Response/>", {
@@ -102,7 +104,7 @@ export async function POST(req: Request) {
     }
 
     // ── Insert into twilio_message_status (additive — never updates sends) ──
-    const supabase = await createClient();
+    const supabase = createServiceClient();
     const { error } = await supabase.from("twilio_message_status").insert({
       message_sid:           messageSid,
       message_status:        messageStatus,

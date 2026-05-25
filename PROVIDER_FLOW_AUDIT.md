@@ -12,8 +12,8 @@ The branch is much healthier than the original laptop-migration state: install, 
 
 The most important remaining items to fix next are:
 
-1. Twilio status telemetry can be lost if RLS blocks anon inserts from provider webhooks.
-2. Billing intent still needs confirmation where monthly language is paired with one-time Stripe payment sessions.
+1. Billing intent still needs confirmation where monthly language is paired with one-time Stripe payment sessions.
+2. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
 
 ## Provider Surface Map
 
@@ -264,24 +264,32 @@ Safest fix:
 
 Risk of fix: high if changed blindly; medium if behind feature flag/test path.
 
-### MEDIUM: Twilio Status Webhook Uses Session/Anon Supabase Client
+### RESOLVED: Twilio Status Webhook Used Session/Anon Supabase Client
 
-Evidence:
+Original evidence before fix:
 
-- `apps/web/app/api/webhooks/twilio/status/route.ts:3` imports `createClient` from the server Supabase auth helper.
-- `apps/web/app/api/webhooks/twilio/status/route.ts:105` uses that client for a public Twilio webhook insert.
-- `apps/web/app/api/webhooks/twilio/status/route.ts:120` logs insert errors but returns 200.
+- `apps/web/app/api/webhooks/twilio/status/route.ts` imported `createClient` from the server Supabase auth helper.
+- The route used that session/anon client for a public Twilio webhook insert.
+- The route logged insert errors but returned 200.
 
 Why it matters:
 
 Twilio requests do not have a Supabase user session. If RLS does not allow anon inserts into `twilio_message_status`, delivery status events may never persist, while Twilio still receives 200 and stops retrying.
 
-Safest fix:
+Fix applied:
 
-- After Twilio signature validation, use the service-role client for the narrow append-only insert, or verify a dedicated RLS policy allows only the required insert shape.
-- Add a health check that verifies insert capability without sending live SMS.
+- Switched the route to `createServiceClient()` only after Twilio signature validation.
+- Kept the mutation contract narrow: append-only insert into `twilio_message_status`; no send-side table updates.
+- Updated route comments to document why service-role is used here.
 
-Risk of fix: medium.
+Validation:
+
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
+
+Residual risk:
+
+- No live Twilio webhook was invoked. Provider validation should use a signed sample payload first and avoid sending live SMS.
 
 ### MEDIUM: Postmark Webhook Acknowledges DB Failures
 

@@ -13,6 +13,7 @@ Date: 2026-05-25
 - Added focused Stripe idempotency unit tests.
 - Hardened targeted route checkout so public payment links no longer trust a bare campaign UUID.
 - Added signed targeted checkout tokens, a legacy customer-email confirmation fallback, add-on allowlisting, and the production env requirement/template entries for `TARGETED_CHECKOUT_SIGNING_SECRET`.
+- Hardened Twilio status webhook persistence by switching the post-signature append-only insert to the Supabase service-role client.
 - Pushed provider audit documentation to the draft PR.
 
 ## Validation
@@ -29,7 +30,6 @@ Date: 2026-05-25
 
 ## Revenue And Reliability Risks
 
-- High: Twilio status webhook may lose delivery telemetry if anon/session Supabase insert is blocked by RLS.
 - Medium: targeted checkout billing copy references ongoing monthly billing while Stripe uses one-time `payment` mode.
 - Medium: main bundle checkout still routes monthly-priced bundle purchases through one-time payment mode.
 - Medium: Postmark webhook intentionally acknowledges DB failures; this needs telemetry alerting.
@@ -39,12 +39,12 @@ Date: 2026-05-25
 
 Current status: stabilization branch is build/CI ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior and targeted checkout authorization now have tested branch fixes, but communication telemetry durability and Stripe/Twilio/email test-mode validation still need completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, and Twilio status persistence now have tested branch fixes, but Stripe/Twilio/email test-mode validation still needs completion.
 
 ## Recommended Next Actions
 
 1. Set `TARGETED_CHECKOUT_SIGNING_SECRET` in Vercel production/preview before promoting this branch.
 2. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
-3. Harden Twilio status inserts after signature validation.
-4. Add provider telemetry health checks for webhook logging tables.
-5. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
+3. Add provider telemetry health checks for webhook logging tables.
+4. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
+5. Validate Twilio status webhook with a signed sample payload and no live SMS send.
