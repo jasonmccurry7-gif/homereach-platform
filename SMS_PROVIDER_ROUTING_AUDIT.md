@@ -10,7 +10,7 @@ Safety posture: this audit is based on local code inspection only. No live SMS w
 
 HomeReach has a central SMS sender in `packages/services/src/outreach/index.ts` that wraps Twilio and supports test mode, prospecting approval gates, messaging-service sends, explicit sender numbers, and status callback URLs.
 
-Most newer SMS send paths use `sendSms()`. The close-deal SMS route still uses a direct route-local Twilio helper, while close-deal email now uses the central email provider router.
+Most newer SMS send paths use `sendSms()`. Close-deal email now uses the central email provider router, and close-deal SMS now uses the central SMS provider router with the assigned agent sender number, follow-up intent, and Twilio status callback telemetry.
 
 The main shared SMS routing risk found and fixed in this pass is sender identity precedence:
 
@@ -95,7 +95,7 @@ Risk of fix:
 Approval needed:
 
 - No for branch-local shared-service identity selection hardening and unit tests.
-- Yes before live Twilio validation, SMS sends, production messaging-service changes, or close-deal SMS behavior changes.
+- Yes before live Twilio validation, SMS sends, or production messaging-service changes.
 
 ## Close-Deal SMS Posture
 
@@ -105,16 +105,31 @@ Primary file:
 
 Observed behavior:
 
-- Close-deal SMS currently uses a direct Twilio REST helper with `To`, `From`, and `Body`.
+- Close-deal SMS now calls central `sendSms()` instead of a route-local direct Twilio helper.
 - The route is admin/sales-agent gated and validates lead ownership for sales agents.
 - The SMS body includes a STOP opt-out line.
-- The helper does not use central `sendSms()` test mode, prospecting approval gates, messaging-service handling, or status callback support.
+- The route requires `agent_identities.twilio_phone` for SMS sends and passes it as `fromNumber`, preserving the assigned rep/sender identity.
+- The route passes `intent: "follow_up"` so the existing prospecting-specific live-send gates do not block an already-active close-deal follow-up.
+- The route passes `statusCallbackUrl` to `/api/webhooks/twilio/status` using the shared public app URL resolver.
+- The route now benefits from central `sendSms()` test mode, explicit sender precedence, optional explicit messaging-service handling, and status callback support.
 
-Risk:
+Fix applied:
 
-- Changing close-deal SMS to `sendSms()` could be beneficial, but it may intentionally change live behavior through test-mode, approval, messaging-service, or callback semantics.
+- Imported `sendSms()` from `@homereach/services/outreach`.
+- Removed the direct route-local Twilio helper from `/api/admin/sales/close-deal`.
+- Added focused route coverage proving the SMS path calls `sendSms()` with the lead phone, assigned agent `fromNumber`, `follow_up` intent, status callback URL, and STOP-compliant body.
 
-Safest next step:
+Validation:
 
-- First harden and test shared `sendSms()` sender identity precedence.
-- Then separately decide whether close-deal SMS should move to central `sendSms()` with `intent: "follow_up"` or another explicit intent, status callback URL, and preserved agent sender identity.
+- `pnpm exec vitest run apps/web/app/api/admin/sales/__tests__/close-deal.test.ts packages/services/src/outreach/__tests__/sms.test.ts` passed with 7 tests.
+- `pnpm --filter @homereach/web exec eslint app/api/admin/sales/close-deal/route.ts app/api/admin/sales/__tests__/close-deal.test.ts` passed with 0 warnings/errors.
+- `pnpm --filter @homereach/web type-check` passed.
+- `pnpm test` passed with 204 tests across 30 files.
+- `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
+- `pnpm --filter @homereach/web lint` passed with 492 existing warnings and 0 errors.
+- Placeholder-env `pnpm --filter @homereach/web build` passed and generated 247 static pages.
+- `git diff --check` passed.
+
+Remaining risk:
+
+- Live Twilio behavior still needs test-mode/sandbox validation before production SMS trust because no live SMS was sent and no hosted send-capable endpoint was invoked in this branch pass.

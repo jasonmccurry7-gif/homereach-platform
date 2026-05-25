@@ -2,7 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
-import { sendEmail } from "@homereach/services/outreach";
+import { sendEmail, sendSms } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -35,56 +35,7 @@ interface Lead {
 interface AgentIdentity {
   from_email: string;
   from_name: string;
-  twilio_phone: string;
-}
-
-// ─── Twilio SMS Helper ────────────────────────────────────────────────────────
-
-async function sendViaTwilio(
-  to: string,
-  from: string,
-  body: string
-): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-    if (!accountSid || !authToken) {
-      return {
-        success: false,
-        error: "Twilio credentials not configured",
-      };
-    }
-
-    const form = new URLSearchParams();
-    form.append("To", to);
-    form.append("From", from);
-    form.append("Body", body);
-
-    const resp = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Twilio ${resp.status}: ${detail}`);
-    }
-
-    const data = (await resp.json()) as { sid?: string };
-    return { success: true, externalId: data.sid };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown SMS error";
-    console.error("[sales/close-deal/sms]", error);
-    return { success: false, error };
-  }
+  twilio_phone: string | null;
 }
 
 // ─── Build Close Messages ─────────────────────────────────────────────────────
@@ -320,12 +271,20 @@ export async function POST(request: Request) {
     let sendResult: { success: boolean; externalId?: string; error?: string };
 
     if (channel === "sms") {
+      if (!agent.twilio_phone) {
+        return NextResponse.json(
+          { error: "Agent SMS sender is not configured" },
+          { status: 500 }
+        );
+      }
       closedMessage = buildCloseSmsMessage(firstName, agent.from_name, typedLead.city);
-      sendResult = await sendViaTwilio(
-        typedLead.phone!,
-        agent.twilio_phone,
-        closedMessage
-      );
+      sendResult = await sendSms({
+        to: typedLead.phone!,
+        body: closedMessage,
+        fromNumber: agent.twilio_phone,
+        intent: "follow_up",
+        statusCallbackUrl: `${getPublicAppBaseUrl()}/api/webhooks/twilio/status`,
+      });
     } else {
       const emailData = buildCloseEmailMessage(
         firstName,

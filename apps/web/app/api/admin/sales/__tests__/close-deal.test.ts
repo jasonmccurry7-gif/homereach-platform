@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requireAdminOrSalesAgent: vi.fn(),
   resolveAgentScope: vi.fn(),
   sendEmail: vi.fn(),
+  sendSms: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/service", () => ({
@@ -23,6 +24,7 @@ vi.mock("@/lib/runtime/app-url", () => ({
 
 vi.mock("@homereach/services/outreach", () => ({
   sendEmail: mocks.sendEmail,
+  sendSms: mocks.sendSms,
 }));
 
 function closeDealDbMock() {
@@ -97,6 +99,7 @@ function closeDealDbMock() {
 describe("admin sales close-deal", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
     mocks.requireAdminOrSalesAgent.mockResolvedValue({
       ok: true,
       user: { id: "admin-1", app_metadata: { user_role: "admin" } },
@@ -107,6 +110,7 @@ describe("admin sales close-deal", () => {
       isSalesAgent: false,
     });
     mocks.sendEmail.mockResolvedValue({ success: true, externalId: "email-1", provider: "postmark" });
+    mocks.sendSms.mockResolvedValue({ success: true, externalId: "sms-1", provider: "twilio" });
   });
 
   it("routes email close-deal sends through the central email provider", async () => {
@@ -131,6 +135,35 @@ describe("admin sales close-deal", () => {
       fromName: "Agent One",
       replyTo: "",
     }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.inserts.sales_events).toHaveLength(1);
+    expect(db.updates.sales_leads).toHaveLength(1);
+  });
+
+  it("routes SMS close-deal sends through the central SMS provider", async () => {
+    const db = closeDealDbMock();
+    mocks.createServiceClient.mockReturnValue(db);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const response = await POST(new Request("https://home-reach.test/api/admin/sales/close-deal", {
+      method: "POST",
+      body: JSON.stringify({
+        agent_id: "agent-1",
+        lead_id: "lead-1",
+        channel: "sms",
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.sendSms).toHaveBeenCalledTimes(1);
+    expect(mocks.sendSms).toHaveBeenCalledWith(expect.objectContaining({
+      to: "+15555550100",
+      fromNumber: "+15555550101",
+      intent: "follow_up",
+      statusCallbackUrl: "https://home-reach.test/api/webhooks/twilio/status",
+      body: expect.stringContaining("Reply STOP to opt out."),
+    }));
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(db.inserts.sales_events).toHaveLength(1);
     expect(db.updates.sales_leads).toHaveLength(1);

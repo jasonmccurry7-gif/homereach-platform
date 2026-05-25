@@ -34,8 +34,9 @@ The most important remaining items to fix next are:
 20. Authenticated agent proxy wrappers for log-action and alert preferences now also require admin or sales-agent roles before request parsing or downstream admin proxying.
 21. Public `/api/spots/resolve`, `/api/spots/availability`, and `/api/political/routes/coverage` service-role-backed read lookups now have first-layer in-process rate limits before catalog, availability, or political route coverage reads.
 22. The email warmup job now passes agent sender identity directly to the central email provider router instead of mutating `process.env.MAILGUN_FROM_EMAIL` / `process.env.MAILGUN_FROM_NAME` during each send.
-23. Close-deal email sends now route through the central `sendEmail()` provider service instead of a Mailgun-only helper, while the existing SMS helper remains unchanged for separate review.
+23. Close-deal email sends now route through the central `sendEmail()` provider service instead of a Mailgun-only helper.
 24. Shared `sendSms()` now preserves an explicit caller-supplied sender number over an environment-derived messaging-service SID, while preserving explicit messaging-service overrides.
+25. Close-deal SMS now routes through central `sendSms()` with the assigned agent sender number, `follow_up` intent, and Twilio status callback telemetry.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -246,6 +247,8 @@ Primary files:
 
 - `packages/services/src/outreach/index.ts`
 - `packages/services/src/outreach/__tests__/sms.test.ts`
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/admin/sales/__tests__/close-deal.test.ts`
 - `apps/web/app/api/command/route.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 - `apps/web/app/api/webhooks/outreach/sms/route.ts`
@@ -260,6 +263,7 @@ Outbound SMS flow:
 3. Prospecting SMS is blocked when manual approval mode is active or live prospecting is disabled.
 4. Twilio send uses an explicit sender number when supplied, an explicit messaging-service SID when supplied, or the environment messaging-service SID when no explicit sender number exists.
 5. Optional `statusCallbackUrl` is passed to Twilio.
+6. `/api/admin/sales/close-deal` now uses this path with `intent: "follow_up"`, assigned agent `fromNumber`, and `/api/webhooks/twilio/status` callback telemetry.
 
 APEX SMS command flow:
 
@@ -309,7 +313,6 @@ Outbound email flow:
 5. Prospecting identity rotation is handled in the outreach identity layer.
 6. Email warmup now supplies `fromEmail` and `fromName` explicitly from `agent_identities`, preserving provider routing while avoiding global env mutation.
 7. `/api/admin/sales/close-deal` email now supplies the agent sender identity to central `sendEmail()`, so close-deal email follows the same provider selection path as the rest of the outreach service.
-8. Remaining review item: close-deal SMS still uses the existing direct Twilio helper; evaluate separately before changing because `sendSms()` safety/test-mode gates may alter live send behavior.
 
 Postmark inbound flow:
 
@@ -881,6 +884,7 @@ Validation:
 - Email warmup now passes agent sender identity directly to `sendEmail()` and avoids request-time mutation of provider environment variables.
 - Close-deal email now routes through the central `sendEmail()` provider service instead of a Mailgun-only helper.
 - Shared SMS routing now preserves explicit agent sender numbers unless a caller intentionally supplies a messaging-service SID.
+- Close-deal SMS now routes through central `sendSms()` with assigned agent `fromNumber`, `follow_up` intent, and Twilio status callback telemetry.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -911,6 +915,7 @@ Latest validation for this follow-up guard sweep:
 - Focused email warmup route test passed with 1 test, focused warmup ESLint passed with 0 warnings/errors, full `pnpm test` passed with 197 tests across 28 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after replacing warmup env mutation with explicit sender identity options.
 - Focused close-deal route test passed with 1 test, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 198 tests across 29 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after routing close-deal email through central `sendEmail()`.
 - Focused shared SMS routing tests passed with 5 tests, services typecheck passed, full `pnpm test` passed with 203 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after preserving explicit SMS sender identity over env-derived messaging-service defaults.
+- Focused close-deal SMS provider tests passed with 7 tests across the close-deal route and shared SMS service, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 204 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after routing close-deal SMS through central `sendSms()`.
 
 ## Safe Validation Path
 
@@ -942,4 +947,4 @@ Latest validation for this follow-up guard sweep:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation through the authenticated agent proxy wrapper checkpoint. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, checkout creation rate limiting, non-admin agent API role gates, authenticated agent proxy gates, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, public spot resolution rate limiting, public spot availability rate limiting, public political route coverage rate limiting, and admin service-role access risks have branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema is not production-ready yet: live tables exist, but `founding_memberships` lacks the `stripe_checkout_session_id` column used by the Stripe webhook finalizer. A local migration proposal exists, but live Supabase DDL still requires a backup/snapshot, isolated validation, and approval before application.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation through the latest provider-routing checkpoints. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, checkout creation rate limiting, non-admin agent API role gates, authenticated agent proxy gates, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, close-deal email/SMS provider routing, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, public spot resolution rate limiting, public spot availability rate limiting, public political route coverage rate limiting, and admin service-role access risks have branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema is not production-ready yet: live tables exist, but `founding_memberships` lacks the `stripe_checkout_session_id` column used by the Stripe webhook finalizer. A local migration proposal exists, but live Supabase DDL still requires a backup/snapshot, isolated validation, and approval before application.

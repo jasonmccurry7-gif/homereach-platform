@@ -211,7 +211,7 @@ Fix applied: the email warmup route now passes `fromEmail` and `fromName` direct
 
 Validation: focused close-deal route test passed with 1 test, focused close-deal ESLint passed with 0 warnings/errors, full `pnpm test` passed with 198 tests across 29 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
 
-Safest remaining fix: treat Twilio close-deal routing separately because moving the existing SMS helper to `sendSms()` may intentionally introduce safety gates that block live sends unless configured.
+Safest remaining fix: completed in a follow-up patch; close-deal SMS now routes through central `sendSms()` with `intent: "follow_up"` so the protected SMS path benefits from shared test-mode, sender precedence, and callback telemetry without using prospecting-specific live-send gates.
 
 Risk of fix: low for the warmup identity fix; medium for close-deal provider migration because it is revenue-sensitive and send-capable. The implemented close-deal change was kept narrow and covered with focused tests.
 
@@ -233,11 +233,34 @@ Fix applied: shared `sendSms()` now preserves explicit `fromNumber` values over 
 
 Validation: focused shared SMS routing tests passed with 5 tests, services typecheck passed, full `pnpm test` passed with 203 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
 
-Safest remaining fix: review close-deal SMS separately before routing that route through central `sendSms()` because test-mode, approval, messaging-service, and status-callback semantics can intentionally alter live behavior.
+Safest remaining fix: completed in a follow-up patch; close-deal SMS now routes through central `sendSms()` with the assigned agent `fromNumber`, `follow_up` intent, and Twilio status callback URL.
 
 Risk of fix: low to medium. The code change is centralized and covered by tests, but SMS sender selection is revenue/reputation-sensitive.
 
 Approval needed: no for this branch-local sender identity hardening; yes before live Twilio validation, live SMS sends, production messaging-service config changes, or close-deal SMS behavior changes.
+
+### Resolved: Close-Deal SMS Bypassed Shared SMS Provider
+
+What was wrong: `/api/admin/sales/close-deal` used a route-local direct Twilio helper for SMS while most newer send paths used central `sendSms()`.
+
+Why it mattered: the direct helper bypassed shared `OUTREACH_TEST_MODE`, explicit sender precedence, optional messaging-service handling, and Twilio status callback support. That made a revenue-sensitive close-deal send path harder to validate and observe consistently.
+
+Files:
+
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/admin/sales/__tests__/close-deal.test.ts`
+- `SMS_PROVIDER_ROUTING_AUDIT.md`
+- `PROVIDER_FLOW_AUDIT.md`
+
+Fix applied: close-deal SMS now requires the assigned agent `twilio_phone`, sends through central `sendSms()`, passes `fromNumber`, uses `intent: "follow_up"`, and attaches the `/api/webhooks/twilio/status` callback URL from the shared public app URL resolver. The route-local Twilio helper was removed.
+
+Validation: focused close-deal/shared SMS tests passed with 7 tests, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 204 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
+
+Safest remaining fix: validate Twilio behavior through test-mode/sandbox tooling and signed callback samples before trusting production sends. Do not invoke hosted send-capable close-deal endpoints against live leads during smoke testing.
+
+Risk of fix: medium. The code change is narrow and tested, but close-deal SMS is revenue-sensitive and send-capable, so live-provider validation must stay controlled.
+
+Approval needed: no for branch-local code hardening and docs; yes before live SMS sends, production Twilio validation, or messaging-service configuration changes.
 
 ### Resolved: Public Form Email Notifications Rendered Unsanitized HTML
 
