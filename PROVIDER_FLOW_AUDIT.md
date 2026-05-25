@@ -24,6 +24,7 @@ The most important remaining items to fix next are:
 10. The SMS APEX command endpoint now validates Twilio signatures before trusted command execution and no longer exposes approved sender phone numbers through its public liveness response.
 11. The public Facebook follow-up cron route now fails closed through the shared cron guard when `CRON_SECRET` is missing or invalid.
 12. The public political candidate chat helper now honors `DISABLE_POLITICAL_AI=true` and falls back to static operational replies instead of calling OpenAI.
+13. Public nonprofit and intake notification emails now HTML-escape user-controlled form values before rendering admin/applicant email bodies and clean dynamic subject fragments.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -45,6 +46,25 @@ Observed flow:
 3. The helper now checks `DISABLE_POLITICAL_AI=true` before creating an OpenAI client.
 4. When AI is disabled or `OPENAI_API_KEY` is absent, the route returns static fallback replies from the loaded campaign plan and compliance rules.
 5. Human approval remains required before political outreach, proposal, checkout, or production use.
+
+### Public Form Notification Emails
+
+Primary files:
+
+- `apps/web/app/api/nonprofit/route.ts`
+- `apps/web/app/api/intake/[token]/route.ts`
+- `apps/web/lib/security/email.ts`
+- `apps/web/lib/security/__tests__/email.test.ts`
+- `apps/web/lib/security/html.ts`
+- `apps/web/lib/security/__tests__/html.test.ts`
+
+Observed flow:
+
+1. `/api/nonprofit` stores a public nonprofit application, then may send an admin notification and applicant confirmation email.
+2. `/api/intake/[token]` updates a token-authenticated intake submission, then may send an admin notification email.
+3. User-submitted values are still stored as submitted, but notification email HTML now escapes form values before rendering.
+4. Dynamic subject fragments now strip control characters and collapse whitespace before sending.
+5. No live emails were sent during validation.
 
 ### Stripe
 
@@ -735,6 +755,7 @@ Validation:
 - Facebook webhook signature validation and production missing-secret/verify-token behavior are covered by focused helper tests.
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
 - Facebook follow-up cron now fails closed when `CRON_SECRET` is missing.
+- Public nonprofit and intake notification emails now escape user-controlled HTML before rendering and clean dynamic subject fragments.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -752,6 +773,7 @@ Latest validation for this follow-up guard sweep:
 - Focused ESLint on admin-adjacent conversation and targeted admin routes passed with only pre-existing warnings.
 - Focused inbound SMS signature helper tests, request-secret helper tests, agent-scope helper tests, focused ESLint on `/api/command` and `/api/facebook/followup`, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the APEX command/Facebook cron hardening patch.
 - Focused political candidate chat kill-switch tests, full `pnpm test` with 175 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the political AI kill-switch hardening patch.
+- Focused HTML escaping and email subject tests, focused ESLint on the helpers and touched public form routes, full `pnpm test` with 179 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the public form email hardening patch.
 
 ## Safe Validation Path
 
@@ -774,4 +796,4 @@ Latest validation for this follow-up guard sweep:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.

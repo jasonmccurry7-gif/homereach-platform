@@ -51,6 +51,7 @@ Date: 2026-05-25
 - Redacted `/api/command` liveness output so it no longer returns approved sender phone numbers or the configured APEX phone number to public callers.
 - Hardened `/api/facebook/followup` so the cron/send-capable Facebook follow-up job fails closed through `requireCron()` when `CRON_SECRET` is missing or invalid.
 - Hardened the public political candidate chat helper so `DISABLE_POLITICAL_AI=true` now forces static fallback replies instead of allowing OpenAI calls.
+- Hardened public nonprofit and intake notification emails so user-submitted form values are HTML-escaped before rendering into admin/applicant email bodies and control characters are stripped from dynamic subject fragments.
 
 ## Validation
 
@@ -76,6 +77,7 @@ Date: 2026-05-25
 - Latest admin-adjacent guard patch: full workspace typecheck, full unit suite, full web lint, placeholder-env web build, admin-like route scanner, and `git diff --check` passed locally.
 - Latest APEX command/Facebook cron hardening sweep: focused inbound SMS signature helper tests, request-secret helper tests, agent-scope helper tests, focused ESLint on `/api/command` and `/api/facebook/followup`, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed locally.
 - Latest political candidate chat kill-switch sweep: focused political tests passed, full `pnpm test` passed with 175 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, placeholder-env web build generated 248 routes, and `git diff --check` passed locally.
+- Latest public-form email rendering hardening sweep: focused HTML escaping and email subject tests passed, focused ESLint on the helpers and touched public form routes passed, full `pnpm test` passed with 179 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, placeholder-env web build generated 248 routes, and `git diff --check` passed locally.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.

@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { sendEmail } from "@homereach/services/outreach";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { cleanEmailSubjectPart } from "@/lib/security/email";
+import { escapeHtml, escapeHtmlOr } from "@/lib/security/html";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/intake/[token]
@@ -87,20 +89,29 @@ export async function POST(req: Request, { params }: Params) {
     const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? process.env.ADMIN_EMAILS?.split(",")[0];
 
     if (adminEmail) {
-      const appUrl = getPublicAppBaseUrl();
+      const appUrl = escapeHtml(getPublicAppBaseUrl());
+      const emailHtml = {
+        businessName:    escapeHtmlOr(biz?.name, "Unknown"),
+        businessEmail:   escapeHtmlOr(biz?.email, "Unknown"),
+        serviceArea:     escapeHtml(parsed.data.serviceArea),
+        targetCustomer:  escapeHtml(parsed.data.targetCustomer),
+        keyOffer:        escapeHtml(parsed.data.keyOffer),
+        differentiators: escapeHtml(parsed.data.differentiators),
+        additionalNotes: escapeHtml(parsed.data.additionalNotes),
+      };
 
       await sendEmail({
         to:      adminEmail,
-        subject: `[HomeReach] Intake Submitted — ${biz?.name ?? "Unknown Business"}`,
+        subject: `[HomeReach] Intake Submitted — ${cleanEmailSubjectPart(biz?.name, "Unknown Business")}`,
         html: `
           <h2>New Intake Form Submitted</h2>
-          <p><strong>Business:</strong> ${biz?.name ?? "Unknown"}</p>
-          <p><strong>Email:</strong> ${biz?.email ?? "Unknown"}</p>
-          <p><strong>Service Area:</strong> ${parsed.data.serviceArea}</p>
-          <p><strong>Target Customer:</strong> ${parsed.data.targetCustomer}</p>
-          <p><strong>Key Offer:</strong> ${parsed.data.keyOffer}</p>
-          <p><strong>Differentiators:</strong> ${parsed.data.differentiators}</p>
-          ${parsed.data.additionalNotes ? `<p><strong>Notes:</strong> ${parsed.data.additionalNotes}</p>` : ""}
+          <p><strong>Business:</strong> ${emailHtml.businessName}</p>
+          <p><strong>Email:</strong> ${emailHtml.businessEmail}</p>
+          <p><strong>Service Area:</strong> ${emailHtml.serviceArea}</p>
+          <p><strong>Target Customer:</strong> ${emailHtml.targetCustomer}</p>
+          <p><strong>Key Offer:</strong> ${emailHtml.keyOffer}</p>
+          <p><strong>Differentiators:</strong> ${emailHtml.differentiators}</p>
+          ${parsed.data.additionalNotes ? `<p><strong>Notes:</strong> ${emailHtml.additionalNotes}</p>` : ""}
           <p><a href="${appUrl}/admin/intake">Review in Admin →</a></p>
         `,
       }).catch((err) => console.error("[api/intake] admin notification error:", err));

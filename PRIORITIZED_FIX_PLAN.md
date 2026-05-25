@@ -170,6 +170,25 @@ Risk of fix: low for adding missing names; medium for changing runtime fallback 
 
 Approval needed: yes for Vercel env mutation; no for documentation-only audit.
 
+### Resolved: Public Form Email Notifications Rendered Unsanitized HTML
+
+What was wrong: public nonprofit registration and shared-postcard intake submissions rendered user-controlled fields directly into HTML email bodies, and dynamic subject fragments were not cleaned for control characters.
+
+Why it mattered: malicious or malformed form values could change the rendered admin/applicant notification email, hide content, inject links, or make spam payloads harder to review safely.
+
+Files:
+
+- `apps/web/app/api/nonprofit/route.ts`
+- `apps/web/app/api/intake/[token]/route.ts`
+- `apps/web/lib/security/html.ts`
+- `apps/web/lib/security/__tests__/html.test.ts`
+
+Fix applied: added small HTML escaping and email subject-cleaning helpers. User-controlled nonprofit and intake values are escaped before rendering notification email HTML, and dynamic subject fragments strip control characters and collapse whitespace. Stored submission values are unchanged.
+
+Validation: focused HTML escaping and email subject tests passed, focused ESLint on the helpers and touched public form routes passed, full `pnpm test` passed with 179 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, placeholder-env web build generated 248 routes, and `git diff --check` passed locally.
+
+Approval needed: no for the defensive rendering change; yes before sending live test emails or changing public form business behavior.
+
 ### Email Provider Runtime Value Needs Explicit Confirmation
 
 What is wrong: Vercel has `EMAIL_PROVIDER`, Mailgun names, and Postmark names, but no `RESEND_API_KEY`. The Vercel CLI metadata audit intentionally did not reveal the hidden `EMAIL_PROVIDER` value.
