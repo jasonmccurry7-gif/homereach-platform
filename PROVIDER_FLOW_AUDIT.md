@@ -35,6 +35,7 @@ The most important remaining items to fix next are:
 21. Public `/api/spots/resolve`, `/api/spots/availability`, and `/api/political/routes/coverage` service-role-backed read lookups now have first-layer in-process rate limits before catalog, availability, or political route coverage reads.
 22. The email warmup job now passes agent sender identity directly to the central email provider router instead of mutating `process.env.MAILGUN_FROM_EMAIL` / `process.env.MAILGUN_FROM_NAME` during each send.
 23. Close-deal email sends now route through the central `sendEmail()` provider service instead of a Mailgun-only helper, while the existing SMS helper remains unchanged for separate review.
+24. Shared `sendSms()` now preserves an explicit caller-supplied sender number over an environment-derived messaging-service SID, while preserving explicit messaging-service overrides.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -244,6 +245,7 @@ Observed flow:
 Primary files:
 
 - `packages/services/src/outreach/index.ts`
+- `packages/services/src/outreach/__tests__/sms.test.ts`
 - `apps/web/app/api/command/route.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 - `apps/web/app/api/webhooks/outreach/sms/route.ts`
@@ -256,7 +258,7 @@ Outbound SMS flow:
 1. App calls `sendSms`.
 2. Outreach safety config can force test mode.
 3. Prospecting SMS is blocked when manual approval mode is active or live prospecting is disabled.
-4. Twilio send uses messaging service SID when available, otherwise a from number.
+4. Twilio send uses an explicit sender number when supplied, an explicit messaging-service SID when supplied, or the environment messaging-service SID when no explicit sender number exists.
 5. Optional `statusCallbackUrl` is passed to Twilio.
 
 APEX SMS command flow:
@@ -856,6 +858,7 @@ Validation:
 - Primary checkout derives founding and military discount eligibility server-side instead of trusting client input.
 - Outreach service supports test mode.
 - Prospecting SMS is guarded by manual approval and live-prospecting flags.
+- Shared SMS sender identity now preserves explicit agent `fromNumber` values over environment messaging-service defaults.
 - Postmark webhook can be disabled with `ENABLE_POSTMARK_WEBHOOK=false`.
 - Postmark webhook fails closed in production if Basic Auth is not configured.
 - Twilio status webhook validates signatures and fails closed in production if `TWILIO_AUTH_TOKEN` is missing.
@@ -877,6 +880,7 @@ Validation:
 - Public spot slug resolution, availability checks, and political route coverage checks now apply basic in-process rate limits before service-role-backed catalog, availability, or route coverage reads.
 - Email warmup now passes agent sender identity directly to `sendEmail()` and avoids request-time mutation of provider environment variables.
 - Close-deal email now routes through the central `sendEmail()` provider service instead of a Mailgun-only helper.
+- Shared SMS routing now preserves explicit agent sender numbers unless a caller intentionally supplies a messaging-service SID.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -906,6 +910,7 @@ Latest validation for this follow-up guard sweep:
 - Focused agent proxy guard tests passed with 4 tests, focused auth guard tests passed with 4 tests, focused agent proxy/auth ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 196 tests across 27 files, full workspace typecheck passed across 5 packages, full web lint passed with 493 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after adding direct role gates to `/api/agent/log-action` and `/api/agent/preferences`. GitHub Actions `Validate` run #56 passed, Vercel deployment `dpl_7yeeUfDqkGMXsnZEpuLnRzGoCr5L` reached `READY`, and hosted unauthenticated probes confirmed `/api/agent/preferences` and invalid-body `/api/agent/log-action` both return 401.
 - Focused email warmup route test passed with 1 test, focused warmup ESLint passed with 0 warnings/errors, full `pnpm test` passed with 197 tests across 28 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after replacing warmup env mutation with explicit sender identity options.
 - Focused close-deal route test passed with 1 test, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 198 tests across 29 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after routing close-deal email through central `sendEmail()`.
+- Focused shared SMS routing tests passed with 5 tests, services typecheck passed, full `pnpm test` passed with 203 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after preserving explicit SMS sender identity over env-derived messaging-service defaults.
 
 ## Safe Validation Path
 

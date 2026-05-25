@@ -217,6 +217,28 @@ Risk of fix: low for the warmup identity fix; medium for close-deal provider mig
 
 Approval needed: no for local branch code hardening and docs; yes before live email/SMS send validation or production automation runs.
 
+### Resolved: Shared SMS Routing Could Override Explicit Agent Sender Numbers
+
+What was wrong: `sendSms()` accepted explicit `fromNumber` values from customer-facing sales flows, but if `OUTREACH_TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_MESSAGING_SERVICE_SID` existed in env, the final Twilio payload used the messaging service instead of the explicit agent number.
+
+Why it mattered: agent sender identity matters for reply continuity, coordinated outreach, and Josh/Chelsi/Heather/Jason identity separation. The old behavior made SMS sender identity depend on env configuration even when the caller supplied a specific `agent_identities.twilio_phone` value.
+
+Files:
+
+- `packages/services/src/outreach/index.ts`
+- `packages/services/src/outreach/__tests__/sms.test.ts`
+- `SMS_PROVIDER_ROUTING_AUDIT.md`
+
+Fix applied: shared `sendSms()` now preserves explicit `fromNumber` values over env-derived messaging-service defaults, while still honoring an explicitly supplied `messagingServiceSid` when a caller intentionally passes one.
+
+Validation: focused shared SMS routing tests passed with 5 tests, services typecheck passed, full `pnpm test` passed with 203 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
+
+Safest remaining fix: review close-deal SMS separately before routing that route through central `sendSms()` because test-mode, approval, messaging-service, and status-callback semantics can intentionally alter live behavior.
+
+Risk of fix: low to medium. The code change is centralized and covered by tests, but SMS sender selection is revenue/reputation-sensitive.
+
+Approval needed: no for this branch-local sender identity hardening; yes before live Twilio validation, live SMS sends, production messaging-service config changes, or close-deal SMS behavior changes.
+
 ### Resolved: Public Form Email Notifications Rendered Unsanitized HTML
 
 What was wrong: public nonprofit registration and shared-postcard intake submissions rendered user-controlled fields directly into HTML email bodies, and dynamic subject fragments were not cleaned for control characters.

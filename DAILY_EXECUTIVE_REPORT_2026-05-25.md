@@ -68,6 +68,7 @@ Date: 2026-05-25
 - Audited email provider routing and created `EMAIL_PROVIDER_ROUTING_AUDIT.md`; found and documented warmup sender identity mutation plus close-deal Mailgun-only routing risk.
 - Hardened the email warmup sender identity path so it passes agent sender identity directly to `sendEmail()` instead of mutating `process.env.MAILGUN_FROM_EMAIL` / `process.env.MAILGUN_FROM_NAME` during each send.
 - Routed close-deal email sends through central `sendEmail()` with the assigned agent sender identity instead of the route-local Mailgun-only helper; left close-deal SMS unchanged for separate safety review.
+- Created `SMS_PROVIDER_ROUTING_AUDIT.md` and hardened shared `sendSms()` sender selection so explicit agent `fromNumber` values are not overridden by env-derived messaging-service defaults.
 
 ## Validation
 
@@ -108,6 +109,7 @@ Date: 2026-05-25
 - Latest email warmup identity hardening: focused route test passed with 1 test and confirmed provider env variables remain unchanged while agent `fromEmail` / `fromName` are passed directly to `sendEmail()`.
 - Latest email provider routing sweep: focused ESLint passed with 0 warnings/errors on touched warmup files, full `pnpm test` passed with 197 tests across 28 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
 - Latest close-deal email provider routing sweep: focused route test passed with 1 test and confirmed close-deal email calls central `sendEmail()` with agent sender identity without direct provider `fetch`; focused ESLint passed with 0 warnings/errors; full `pnpm test` passed with 198 tests across 29 files; full workspace typecheck passed across 5 packages; full web lint passed with 492 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; `git diff --check` passed.
+- Latest shared SMS sender identity sweep: focused SMS routing test passed with 5 tests and confirmed explicit agent `fromNumber` wins over env-derived messaging-service defaults, explicit `messagingServiceSid` still wins when supplied, test mode avoids Twilio client creation, and prospecting manual approval blocks before Twilio client creation; services typecheck passed; full `pnpm test` passed with 203 tests across 30 files; full workspace typecheck passed across 5 packages; full web lint passed with 492 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; `git diff --check` passed.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
