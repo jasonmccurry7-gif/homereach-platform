@@ -26,14 +26,6 @@ interface SpotAssignment {
   created_at: string;
 }
 
-interface Business {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  city: string | null;
-}
-
 interface AnchorResult {
   success: boolean;
   summary: {
@@ -209,8 +201,6 @@ export async function POST(req: Request) {
       throw new Error(`Failed to fetch paused spots: ${pausedError.message}`);
     }
 
-    // Combine all spots to process
-    const allSpots = [...(renewalSpots || []), ...(pausedSpots || [])];
     const processedSpotIds = new Set<string>();
 
     // 2. Process paused spots (win-back)
@@ -260,7 +250,6 @@ export async function POST(req: Request) {
             continue;
           }
 
-          const agent = getAgentByCity(business.city);
           const winBackMessage = `Hi ${business.name}, your HomeReach spot in ${cityName} is paused due to a billing issue. Update your payment to keep your exclusive spot: ${getPublicAppBaseUrl()}/dashboard`;
 
           const result = await sendRetentionSms(
@@ -336,15 +325,6 @@ export async function POST(req: Request) {
             });
             continue;
           }
-
-          // Get city name
-          const { data: cityData } = await supabase
-            .from("cities")
-            .select("name")
-            .eq("id", typedSpot.city_id)
-            .maybeSingle();
-
-          const cityName = cityData?.name || "your area";
 
           // Get business
           const { data: business } = await supabase
