@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -106,5 +106,8 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   return NextResponse.json({ agent: "Scout", status: "ready", description: "POST to run market intelligence analysis" });
 }

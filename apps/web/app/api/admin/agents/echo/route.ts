@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 import { NextResponse } from "next/server";
 import {
@@ -620,6 +620,9 @@ export async function POST(req: Request) {
 
 export async function GET() {
   try {
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
     const supabase = createServiceClient();
 
     // Count queued leads

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 min — scraping takes time
@@ -148,23 +148,8 @@ interface HunterResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
-  // Allow: valid cron secret OR authenticated admin session
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  const isCron     = cronSecret && authHeader === `Bearer ${cronSecret}`;
-
-  if (!isCron) {
-    // Fall back to session auth (dashboard "Run Now" button)
-    try {
-      const sessionClient = await createClient();
-      const { data: { user } } = await sessionClient.auth.getUser();
-      if (!user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    } catch {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
 
   const db = createServiceClient();
   const summary = {
@@ -288,6 +273,9 @@ export async function POST(req: Request) {
 
 // GET: run status check
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const db = createServiceClient();
   const { data } = await db
     .from("sales_leads")

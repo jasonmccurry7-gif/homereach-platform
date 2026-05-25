@@ -1,7 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
 import { getInternalAppBaseUrl, getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Closer Agent — Follow-up & Payment Link Delivery
@@ -73,7 +74,7 @@ const DEFAULT_AGENT: AgentIdentity = {
 // ─── Helper: Resolve Agent Identity ───────────────────────────────────────────
 
 async function resolveAgentIdentity(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   lead: CloserLead
 ): Promise<AgentIdentity> {
   // Try agent_identities table first
@@ -109,7 +110,7 @@ async function resolveAgentIdentity(
 // ─── Helper: Check if payment link already sent recently ──────────────────────
 
 async function hasRecentPaymentLink(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   leadId: string
 ): Promise<boolean> {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -129,7 +130,7 @@ async function hasRecentPaymentLink(
 // ─── Helper: Send via /api/admin/sales/event ─────────────────────────────────
 
 async function sendFollowUp(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   lead: CloserLead,
   agent: AgentIdentity
 ): Promise<{ success: boolean; error?: string }> {
@@ -171,8 +172,11 @@ async function sendFollowUp(
 
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
-export async function POST() {
-  const supabase = await createClient();
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const details: CloserResult["summary"] = {
     leads_processed: 0,
     follow_ups_sent: 0,
@@ -376,7 +380,10 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
+    const supabase = createServiceClient();
 
     // Count warm leads
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();

@@ -1,7 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
 import { getInternalAppBaseUrl, getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Anchor Agent — Client Retention & Renewal Management
@@ -99,7 +100,7 @@ function daysUntilRenewal(commitmentEndsAt: string): number {
 // ─── Helper: Send SMS via /api/admin/sales/event ────────────────────────────
 
 async function sendRetentionSms(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   businessId: string | null,
   businessPhone: string,
   businessName: string,
@@ -146,8 +147,11 @@ async function sendRetentionSms(
 
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
-export async function POST() {
-  const supabase = await createClient();
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const details: AnchorResult["summary"] = {
     spots_processed: 0,
     renewals_approaching: 0,
@@ -423,7 +427,10 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
+    const supabase = createServiceClient();
 
     // Count spots approaching renewal
     const thirtyDaysFromNow = new Date(

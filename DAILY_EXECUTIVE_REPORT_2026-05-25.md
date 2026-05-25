@@ -44,6 +44,7 @@ Date: 2026-05-25
 - Fixed a preview-discovered property-intelligence checkout validation edge case so malformed JSON returns `400 Invalid checkout payload` before Supabase or Stripe work can begin.
 - Hardened explicit sales `agent_id` scoping so sales-agent sessions cannot query or act as another rep on funnel, lead queue, next-lead, replies, insights, Facebook scorecard, Facebook mission, Facebook alert, or close-deal routes.
 - Completed the second sales dashboard ownership pass for at-risk deals, priority actions, call lists, call logs, call stats, follow-up sequence logging, and power-mode checks; sales-agent sessions now resolve to their own agent id, and admin sessions must intentionally scope rep-specific call/power routes.
+- Hardened AI workforce/admin agent surfaces so agent runner, agent status endpoints, scraper, anchor, closer, echo, scout, atlas, beacon, horizon, sentinel, sales call-script writes, and sales lead alert logging require admin, sales-agent, or cron access before service-role reads or mutations.
 
 ## Validation
 
@@ -62,6 +63,8 @@ Date: 2026-05-25
 - Local focused request secret helper test: passed, 4 tests.
 - Local focused agent scope helper test: passed, 4 tests.
 - Local focused sales dashboard scope lint: passed with only pre-existing warnings in the touched route files.
+- Local focused admin agent/access route TypeScript check: passed.
+- Local focused admin agent/access route ESLint: passed with only pre-existing warnings in touched route files.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
@@ -90,6 +93,7 @@ Date: 2026-05-25
 - Medium: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; runtime self-calls and generated public links now use shared resolvers with Vercel deployment URL fallbacks, but Vercel should still get the canonical name.
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
+- Medium: send-capable AI workforce routes are now access-gated, but live-sending behavior still needs explicit approval/test-mode validation before automation expansion.
 - Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.
 - Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; recent branch-preview builds have passed after the URL resolver hardening.
 

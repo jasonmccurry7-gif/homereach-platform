@@ -18,7 +18,7 @@ The most important remaining items to fix next are:
 4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS/Facebook signature behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
 5. Meta/Facebook webhook POST routes now fail closed in production when `FACEBOOK_APP_SECRET` is missing and reject unsigned/invalid signatures before service-role work.
 6. Facebook/APEX admin automation POST routes now require cron or authenticated operator access before service-role work can run.
-7. Additional admin service-role routes for agent scans, internal alerts, pricing/founding updates, Facebook mission logging, sales lead/revenue reads, send-capable sales/email routes, operator summaries, and admin health now require admin/sales session or cron access before privileged work.
+7. Additional admin service-role routes for agent scans, agent status/runner surfaces, scraper, internal alerts, pricing/founding updates, Facebook mission logging, sales lead/revenue reads, send-capable sales/email routes, operator summaries, and admin health now require admin/sales session or cron access before privileged work.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -206,9 +206,14 @@ Observed posture:
 Primary files:
 
 - `apps/web/app/api/admin/agents/atlas/route.ts`
+- `apps/web/app/api/admin/agents/anchor/route.ts`
 - `apps/web/app/api/admin/agents/beacon/route.ts`
+- `apps/web/app/api/admin/agents/closer/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
 - `apps/web/app/api/admin/agents/horizon/route.ts`
+- `apps/web/app/api/admin/agents/run/route.ts`
 - `apps/web/app/api/admin/agents/scout/route.ts`
+- `apps/web/app/api/admin/agents/scraper/route.ts`
 - `apps/web/app/api/admin/agents/sentinel/route.ts`
 - `apps/web/app/api/admin/alerts/send/route.ts`
 - `apps/web/app/api/admin/founding/slots/route.ts`
@@ -220,10 +225,12 @@ Primary files:
 - `apps/web/app/api/admin/agents/closer/route.ts`
 - `apps/web/app/api/admin/sales/nudge/route.ts`
 - `apps/web/app/api/admin/sales/power-mode/end-of-day/route.ts`
+- `apps/web/app/api/admin/sales/alert/route.ts`
+- `apps/web/app/api/admin/sales/call-scripts/route.ts`
 
 Access-control flow:
 
-1. Agent scan POSTs (`atlas`, `beacon`, `horizon`, `scout`, `sentinel`) now require authenticated admin or `CRON_SECRET`.
+1. Agent scan/status/runner routes (`anchor`, `atlas`, `beacon`, `closer`, `echo`, `horizon`, `run`, `scout`, `scraper`, `sentinel`) now require authenticated admin or `CRON_SECRET` for automation POSTs, and admin access for status GETs.
 2. Internal alert send POST now requires authenticated admin or `CRON_SECRET` before resolving phones, inserting alert rows, or sending SMS.
 3. Internal alert callers now pass `x-cron-secret` for trusted automation calls.
 4. Founding slot GET/PUT and pricing mutation routes now require authenticated admin.
@@ -231,6 +238,7 @@ Access-control flow:
 6. Remaining unguarded service-role mutation scan results are expected public/provider surfaces: targeted checkout proof boundary, intelligence checkout, and Twilio status signature flow.
 7. Follow-up admin service-role scan now finds no unguarded `apps/web/app/api/admin` service-client routes outside custom authorized routes. This second sweep covered sensitive read routes and send-capable routes, not only POST/PUT mutation routes.
 8. Explicit sales `agent_id` scope now uses a shared helper: sales agents are limited to their own agent id, while admins can intentionally request another rep. This covers sales funnel, leads, next-lead, replies, insights, Facebook scorecard, Facebook mission, Facebook alert, close-deal, at-risk deals, priority actions, call lists, call logs, call stats, follow-up sequence logging, and power-mode checks.
+9. Sales call-script writes are admin-only; call-script reads remain available to admin/sales-agent sessions. Sales alert logging now requires admin/sales-agent access and rejects sales-agent attempts to alert leads assigned to another rep.
 
 ## Findings
 
@@ -556,7 +564,7 @@ Residual risk:
 
 Original evidence before fix:
 
-- Multiple `/api/admin/agents/*` POST routes created Supabase service-role clients and read/logged operational data without admin or cron checks.
+- Multiple `/api/admin/agents/*` POST/GET routes created Supabase service-role clients and read/logged operational data without admin or cron checks.
 - `/api/admin/alerts/send` could resolve personal alert phones, insert internal alert rows, and potentially send SMS without an operator or cron gate.
 - `/api/admin/founding/slots`, `/api/admin/pricing/bundle`, and `/api/admin/pricing/city` could expose or mutate revenue/pricing configuration without an admin check.
 - `/api/admin/sales/facebook/mission` could read Facebook mission data and log mission completion rows without an operator check.
@@ -567,7 +575,10 @@ These are admin surfaces that use service-role access. Public invocation could l
 
 Fix applied:
 
-- Added `requireAdminOrCron` to service-role agent scan POSTs and internal alert sending.
+- Added `requireAdminOrCron` to service-role agent scan/runner POSTs and internal alert sending.
+- Added `requireAdmin` to agent status GET routes and service-role runner status reads.
+- Restricted scraper execution to admin-or-cron instead of any authenticated user.
+- Restricted sales call-script writes to admins and sales lead alerts to admin/sales sessions, with lead ownership enforcement for sales agents.
 - Added `requireAdmin` to founding slot and pricing configuration routes.
 - Added `requireAdminOrSalesAgent` to Facebook mission GET/POST.
 - Updated internal alert self-calls to pass `x-cron-secret` so trusted automation can still use the newly guarded alert route.

@@ -257,9 +257,14 @@ Why it mattered: these routes can read privileged operational data, mutate prici
 Files:
 
 - `apps/web/app/api/admin/agents/atlas/route.ts`
+- `apps/web/app/api/admin/agents/anchor/route.ts`
 - `apps/web/app/api/admin/agents/beacon/route.ts`
+- `apps/web/app/api/admin/agents/closer/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
 - `apps/web/app/api/admin/agents/horizon/route.ts`
+- `apps/web/app/api/admin/agents/run/route.ts`
 - `apps/web/app/api/admin/agents/scout/route.ts`
+- `apps/web/app/api/admin/agents/scraper/route.ts`
 - `apps/web/app/api/admin/agents/sentinel/route.ts`
 - `apps/web/app/api/admin/alerts/send/route.ts`
 - `apps/web/app/api/admin/founding/slots/route.ts`
@@ -271,10 +276,12 @@ Files:
 - `apps/web/app/api/admin/agents/closer/route.ts`
 - `apps/web/app/api/admin/sales/nudge/route.ts`
 - `apps/web/app/api/admin/sales/power-mode/end-of-day/route.ts`
+- `apps/web/app/api/admin/sales/alert/route.ts`
+- `apps/web/app/api/admin/sales/call-scripts/route.ts`
 
-Fix applied: added existing admin/cron/sales-agent guards before service-role work and updated internal alert self-calls to pass the cron secret for trusted automation calls.
+Fix applied: added existing admin/cron/sales-agent guards before service-role work and updated internal alert self-calls to pass the cron secret for trusted automation calls. Follow-up hardening now also protects AI workforce agent status GET routes, the agent runner, scraper, anchor/closer retention-follow-up agents, call-script create/update, and sales lead alert logging. Sales agents can trigger lead alerts only for leads assigned to them; call-script writes are admin-only while call-script reads remain available to admin/sales-agent sessions.
 
-Validation: service-role route scan, full test suite, typecheck, web lint, and web build passed locally after the change.
+Validation: service-role route scan, focused admin-agent guard scan, focused TypeScript check, focused ESLint on touched routes, full test suite, typecheck, web lint, and web build passed locally after the access-control sweeps.
 
 Approval needed: no for access-control hardening; yes before any live alert-send validation or production automation send.
 
@@ -308,6 +315,8 @@ Files:
 Fix applied: added `requireAdmin`, `requireAdminOrSalesAgent`, or `requireAdminOrCron` at route entry based on caller intent. `/api/admin/operator/summary` now forwards the authenticated request cookie to protected internal dashboard subfetches.
 
 Additional scope hardening: added a tested shared agent-scope helper so authenticated sales agents cannot use explicit `agent_id` query/body values to read or act as another rep. Applied to sales funnel, leads, next-lead, replies, insights, Facebook scorecard, Facebook mission logging, Facebook alert routing, close-deal sending, at-risk deals, priority actions, call lists, call logs, call stats, follow-up sequence logging, and power-mode checks. Admins retain explicit cross-agent scope where needed; rep-specific call/power routes now require an intentional agent scope for admins.
+
+Additional agent-surface hardening: AI workforce status and runner routes under `apps/web/app/api/admin/agents` now require admin/cron access before service-role reads or automation dispatch. The scraper now uses the shared admin-or-cron guard instead of accepting any authenticated user. Sales call-script writes are admin-only, and sales lead alert logging now requires admin/sales-agent access plus lead ownership for sales agents.
 
 Validation: follow-up service-role scan across `apps/web/app/api/admin` reports no unguarded service-client routes outside custom authorized political sync routes. Full unit suite, typecheck, web lint, and web build passed locally after this second sweep.
 
