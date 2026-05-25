@@ -12,6 +12,7 @@
 - Added a GitHub Actions validation workflow.
 - Pushed the current-main stabilization branch to GitHub.
 - Opened draft PR #7.
+- Observed the first GitHub-hosted validation run passing.
 - Started local dev servers for read-only validation.
 - Smoke-tested primary public revenue routes, intake routes, admin protection, spot resolution, availability, and political feature-flag behavior.
 
@@ -28,7 +29,6 @@
 
 - Lint warning debt remains and should be reduced in focused passes.
 - GitHub CLI is still unauthenticated in this shell, so PR creation must be done through the compare URL or after `gh` auth.
-- First GitHub-hosted CI run needs to be observed after the workflow commit is pushed.
 - Political and AI workforce systems are large and need deeper workflow QA beyond route smoke checks.
 - No provider-mutating checks have been run yet; Stripe/Twilio/email must remain dry-run/test-mode only.
 
@@ -43,11 +43,11 @@ Validated locally:
 - typecheck
 - lint
 - build
+- hosted CI
 - read-only route smoke
 
 Still required before production:
 
-- first GitHub-hosted CI pass
 - Vercel env audit
 - Supabase migration/RLS review
 - Stripe test-mode webhook validation
@@ -55,4 +55,4 @@ Still required before production:
 
 ## Recommended Priority
 
-Open the PR, then run deeper workflow QA on AI workforce, procurement, political, Stripe test mode, Twilio/email dry-run, and deployment readiness.
+Run deeper workflow QA on AI workforce, procurement, political, Stripe test mode, Twilio/email dry-run, and deployment readiness.

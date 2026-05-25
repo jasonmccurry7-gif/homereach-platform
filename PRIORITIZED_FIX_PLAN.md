@@ -4,23 +4,27 @@ Updated: 2026-05-24
 
 ## CRITICAL
 
-### First GitHub-Hosted CI Run Needs Observation
+### Provider-Backed Production Flow Validation Pending
 
-What is wrong: `.github/workflows/validate.yml` has been added, but the first hosted run has not yet been observed.
+What is wrong: Stripe, Twilio, email, Supabase, and webhook flows have not been exercised against provider test/dry-run paths on this branch.
 
-Why it matters: local Windows validation is strong, but GitHub's Linux runner may expose path, cache, package-manager, or env differences.
+Why it matters: these systems can affect payments, customer communication, auth activation, and revenue records.
 
 Files:
 
-- `.github/workflows/validate.yml`
-- `package.json`
-- `pnpm-lock.yaml`
+- `apps/web/app/api/stripe/checkout/route.ts`
+- `apps/web/app/api/stripe/targeted-checkout/route.ts`
+- `apps/web/app/api/webhooks/stripe/route.ts`
+- `apps/web/app/api/webhooks/twilio/status/route.ts`
+- `apps/web/app/api/webhooks/postmark/route.ts`
+- `apps/web/lib/supabase/*`
+- `packages/services/src/outreach/*`
 
-Safest fix: push the workflow commit, observe PR #7 Actions, and patch only runner-specific issues if they appear.
+Safest fix: validate only in Stripe test mode and communication dry-run/test-mode first; do not send live SMS/email or mutate production records.
 
-Risk of fix: low to medium.
+Risk of fix: medium to high if pointed at live providers or production data.
 
-Approval needed: no production approval.
+Approval needed: yes for any provider-mutating or production-data test.
 
 ## HIGH
 
