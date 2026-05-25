@@ -6,6 +6,9 @@ const KEYS = [
   "NEXT_PUBLIC_APP_URL",
   "NEXT_PUBLIC_SITE_URL",
   "NEXT_PUBLIC_BASE_URL",
+  "VERCEL_BRANCH_URL",
+  "VERCEL_PROJECT_PRODUCTION_URL",
+  "VERCEL_URL",
 ] as const;
 
 const originalEnv = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -40,5 +43,27 @@ describe("app url helpers", () => {
     process.env.NEXT_PUBLIC_BASE_URL = "https://base.example.com/";
 
     expect(getPublicAppBaseUrl()).toBe("https://site.example.com");
+  });
+
+  it("uses Vercel deployment URLs when canonical app aliases are missing", () => {
+    delete process.env.NEXTAUTH_URL;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    process.env.VERCEL_BRANCH_URL = "branch-preview.vercel.app/";
+    process.env.VERCEL_URL = "unique-preview.vercel.app";
+
+    expect(getPublicAppBaseUrl()).toBe("https://branch-preview.vercel.app");
+  });
+
+  it("uses Vercel URLs before localhost for internal deployed calls", () => {
+    delete process.env.NEXTAUTH_URL;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.VERCEL_BRANCH_URL;
+    process.env.VERCEL_URL = "unique-preview.vercel.app";
+
+    expect(getInternalAppBaseUrl()).toBe("https://unique-preview.vercel.app");
   });
 });

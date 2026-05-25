@@ -14,7 +14,7 @@ Scope: local checkout plus Vercel project metadata for `homereach-platform-web`.
 - Static startup-required variables from `apps/web/lib/env.ts` are present by name in production, preview, and development.
 - `TARGETED_CHECKOUT_SIGNING_SECRET` is present as a sensitive variable in production and as a branch-scoped sensitive preview variable for `codex/current-main-audit-20260524`.
 - Branch preview and GitHub Actions have already passed with the current env hardening branch, but provider-live validation remains pending.
-- Follow-up compatibility repair added after this audit: runtime admin/agent self-calls and APEX command agent routing now use the shared internal URL resolver before localhost; targeted/spot/intelligence checkout, Stripe post-payment links, SEO metadata, sitemap/robots, auth reset redirects, internal alert links, political proposal links, admin notification links, and generated outreach/Facebook links now use the shared public URL resolver; Apex accepts both approved-sender env names; SerpAPI/Hunter readers accept the legacy Vercel aliases; and Twilio messaging-service validation accepts both naming conventions.
+- Follow-up compatibility repair added after this audit: runtime admin/agent self-calls and APEX command agent routing now use the shared internal URL resolver before localhost; targeted/spot/intelligence checkout, Stripe post-payment links, SEO metadata, sitemap/robots, auth reset redirects, internal alert links, political proposal links, admin notification links, and generated outreach/Facebook links now use the shared public URL resolver; the resolver also accepts Vercel deployment URL fallbacks (`VERCEL_BRANCH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`, `VERCEL_URL`) when canonical aliases are absent; Apex accepts both approved-sender env names; SerpAPI/Hunter readers accept the legacy Vercel aliases; and Twilio messaging-service validation accepts both naming conventions.
 
 ## Sources Inspected
 
@@ -110,7 +110,7 @@ Treat these as sensitive or operationally dangerous if wrong:
 | Integration | Key variables | Current posture |
 | --- | --- | --- |
 | Supabase DB/Auth/Storage | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `DATABASE_URL_POOLED` | Required names present in Vercel. Connection and RLS behavior still require test-mode validation. |
-| Stripe checkout/webhooks | `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `TARGETED_CHECKOUT_SIGNING_SECRET`, `NEXT_PUBLIC_APP_URL` | Required names present. Stripe CLI is installed but unauthenticated; no provider test-mode events have been run yet. |
+| Stripe checkout/webhooks | `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `TARGETED_CHECKOUT_SIGNING_SECRET`, `NEXT_PUBLIC_APP_URL` | Required names present. Public URLs use the shared resolver and can fall back to Vercel deployment URL names if canonical aliases drift. Stripe CLI is installed but unauthenticated; no provider test-mode events have been run yet. |
 | Twilio SMS/webhooks | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `OUTREACH_SMS_FROM_NUMBER`, `ENABLE_TWILIO_STATUS_WEBHOOK` | Core names present. Messaging-service SID is not configured by name. No live SMS validation performed. |
 | Postmark | `EMAIL_PROVIDER`, `POSTMARK_API_TOKEN`, `POSTMARK_FROM_EMAIL`, `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD`, `ENABLE_POSTMARK_WEBHOOK` | Production/preview names present. Local development lacks Postmark names. |
 | Mailgun | `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM_EMAIL`, `MAILGUN_FROM_NAME` | Core Mailgun names present. `MAILGUN_FROM_NAME` is referenced/tracked but not in production Vercel. |
@@ -131,13 +131,13 @@ Impact: if production `EMAIL_PROVIDER=resend`, the production env validator requ
 
 Safest fix: verify the provider value in the Vercel dashboard or with a value-safe local runtime check. If the active provider is Resend, add `RESEND_API_KEY`; otherwise document the intended provider.
 
-### HIGH: Internal Agent Routes May Fall Back To Localhost
+### HIGH: Internal Agent Routes Could Fall Back To Localhost
 
-`apps/web/app/api/admin/agents/run/route.ts` uses `NEXTAUTH_URL || "http://localhost:3000"` for internal calls. `NEXTAUTH_URL` is tracked in `turbo.json` and referenced in multiple agent routes, but is not listed in production Vercel.
+`apps/web/app/api/admin/agents/run/route.ts` previously used `NEXTAUTH_URL || "http://localhost:3000"` for internal calls. `NEXTAUTH_URL` is tracked in `turbo.json` and referenced in multiple agent routes, but is not listed in production Vercel.
 
 Impact: production agent orchestration can call `localhost` inside a Vercel function instead of the deployed app URL.
 
-Repair status: code now uses `getInternalAppBaseUrl()` for the run/closer/anchor agent event calls that had the localhost-only fallback.
+Repair status: code now uses `getInternalAppBaseUrl()` for the run/closer/anchor agent event calls that had the localhost-only fallback, and that resolver falls back through Vercel deployment URL names before localhost.
 
 Safest remaining fix: add `NEXTAUTH_URL` to Vercel production/preview with the canonical deployed origin so every route and future script has an explicit internal origin.
 
@@ -175,7 +175,9 @@ Safest remaining fix: configure the plural canonical name in Vercel, then keep t
 
 Several paths reference `NEXT_PUBLIC_SITE_URL` or `NEXT_PUBLIC_BASE_URL`, but Vercel is configured around `NEXT_PUBLIC_APP_URL`.
 
-Impact: most code has a fallback, but some callbacks and generated links may use hardcoded defaults instead of the exact deployed URL.
+Impact: without a shared resolver, callbacks and generated links can use hardcoded defaults instead of the exact deployed URL.
+
+Repair status: generated payment-adjacent, SEO, auth, admin notification, proposal, internal alert, and outreach/Facebook links now route through the shared resolver. The resolver keeps compatibility with the older aliases and falls back to Vercel deployment URL names.
 
 Safest fix: standardize on `NEXT_PUBLIC_APP_URL`, preserving compatibility readers for older names.
 
