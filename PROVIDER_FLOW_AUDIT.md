@@ -136,6 +136,8 @@ Observed posture:
 - GitHub Actions validation is passing on the current PR head.
 - The Vercel deployment for commit `2d525aa` passed after the `TARGETED_CHECKOUT_SIGNING_SECRET` env repair.
 - `TARGETED_CHECKOUT_SIGNING_SECRET` is now present as a sensitive Vercel env var in production and in the `codex/current-main-audit-20260524` branch preview environment; values were not printed.
+- Stripe CLI is installed as `stripe version 1.41.2`, but it is not authenticated yet and no Stripe account commands were run.
+- `PROVIDER_TEST_MODE_RUNBOOK.md` now defines the safe provider-tool validation path.
 - `next.config.ts` still ignores Next's internal build-time TypeScript/lint checks, so explicit CI gates remain mandatory.
 - GitHub CLI is installed but not authenticated in this shell; the GitHub connector remains the working PR/Actions path.
 - `/api/admin/outreach/health` now reports provider telemetry freshness and warnings when email/SMS sends exist without recent provider callbacks.
@@ -180,7 +182,7 @@ Synthetic signature validation:
 - A signed SDK-generated `checkout.session.completed` payload constructs a Stripe event successfully.
 - A payload signed with the wrong webhook secret is rejected.
 - Missing `STRIPE_WEBHOOK_SECRET` fails closed before any payload is trusted.
-- Stripe CLI is not installed on this laptop, so provider-tool forwarding validation remains pending.
+- Stripe CLI is now installed, but provider-tool forwarding validation remains pending until test/sandbox auth and isolated DB setup are ready.
 
 ### RESOLVED: Stripe Webhook Has Redundant Idempotency Blocks
 

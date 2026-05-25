@@ -20,6 +20,8 @@ Date: 2026-05-25
 - Confirmed `TARGETED_CHECKOUT_SIGNING_SECRET` is now configured in Vercel production and in the branch preview environment for `codex/current-main-audit-20260524`; values were not printed.
 - Added synthetic Stripe webhook signature verification tests using Stripe SDK test headers; no Stripe API calls, charges, or provider events were created.
 - Added provider-shaped Twilio status and Postmark webhook sample-payload tests without live sends, live provider calls, charges, or production data mutation.
+- Installed Stripe CLI through Scoop and verified `stripe version 1.41.2`; CLI auth is not configured yet and no Stripe account commands were run.
+- Created `PROVIDER_TEST_MODE_RUNBOOK.md` with the safe provider-tool validation sequence and stop conditions.
 - Pushed provider audit documentation to the draft PR.
 
 ## Validation
@@ -41,12 +43,14 @@ Date: 2026-05-25
 - Remote Vercel deployment for commit `2d525aa`: passed after the Vercel project env repair.
 - Remote GitHub Actions `Validate` run #12 for commit `e3adc7a`: passed.
 - Remote Vercel deployment for commit `e3adc7a`: passed after the provider sample-payload test layer.
+- Stripe CLI: installed but unauthenticated; provider-tool validation still needs test/sandbox auth and isolated DB setup.
 
 ## Revenue And Reliability Risks
 
 - Medium: targeted checkout billing copy references ongoing monthly billing while Stripe uses one-time `payment` mode.
 - Medium: main bundle checkout still routes monthly-priced bundle purchases through one-time payment mode.
-- Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; the repaired branch-preview build passed for commit `2d525aa`.
+- Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.
+- Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; the branch-preview build passed for current pushed head `26db14d`.
 
 ## Production Readiness Status
 
@@ -56,7 +60,7 @@ Reason: payment webhook retry behavior, targeted checkout authorization, Twilio 
 
 ## Recommended Next Actions
 
-1. Push the synthetic provider-validation layer and confirm hosted checks again.
+1. Use `PROVIDER_TEST_MODE_RUNBOOK.md` to run Stripe/Twilio/Postmark validation against test/sandbox tooling and an isolated database.
 2. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
 3. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
 4. Validate Twilio and Postmark webhook endpoints with local tunnel or provider test tools, still with no mass sends and no production data mutation.

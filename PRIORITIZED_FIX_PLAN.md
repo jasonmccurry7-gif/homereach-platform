@@ -46,6 +46,8 @@ Risk of fix: medium to high if pointed at live providers or production data.
 
 Approval needed: yes for any provider-mutating or production-data test.
 
+Current tooling status: Stripe CLI is installed, but not authenticated. Use `PROVIDER_TEST_MODE_RUNBOOK.md` and test/sandbox credentials only.
+
 ### Resolved: Targeted Route Checkout Trusted A Bare Campaign UUID
 
 What was wrong: `/api/stripe/targeted-checkout` accepted only `campaignId`/`addons`, used the Supabase service-role client, created a Stripe Checkout session, and wrote `stripe_checkout_session_id` to the campaign row.
