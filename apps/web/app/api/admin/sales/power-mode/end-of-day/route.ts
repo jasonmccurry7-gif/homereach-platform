@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/power-mode/end-of-day
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
   // Fires quota_warning personal SMS alerts for agents who missed Power Mode today.
   // Guarded by ENABLE_INTERNAL_ALERTS flag.
   if (process.env.ENABLE_INTERNAL_ALERTS === "true") {
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = getInternalAppBaseUrl();
     const missedAgents = (streaks ?? []).filter(s => !s.today_power_mode);
 
     for (const streak of missedAgents) {

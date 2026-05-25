@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 import { NextResponse } from "next/server";
 import {
   appendEmailComplianceHtml,
@@ -570,7 +571,7 @@ export async function POST(req: Request) {
     // Guarded by ENABLE_INTERNAL_ALERTS flag.
     const currentHour = new Date().getHours(); // UTC; cron fires at 8am EST = 13:00 UTC
     if (process.env.ENABLE_INTERNAL_ALERTS === "true" && currentHour === 13) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = getInternalAppBaseUrl();
       Promise.resolve().then(async () => {
         try {
           const { data: agents } = await supabase

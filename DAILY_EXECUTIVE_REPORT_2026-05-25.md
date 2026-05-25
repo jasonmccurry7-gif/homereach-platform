@@ -29,6 +29,7 @@ Date: 2026-05-25
 - Clarified targeted checkout billing copy so first-month add-on charges no longer imply Stripe starts automatic monthly billing.
 - Confirmed the active get-started spot checkout uses `/api/spots/checkout` with Stripe `subscription` mode; the older `/api/stripe/checkout` route has no current callers found in repo search.
 - Standardized public URL resolution for payment-adjacent checkout redirects and Stripe post-payment links so deployed aliases do not fall back to stale/hardcoded domains.
+- Removed remaining runtime `localhost` fallbacks from admin/agent self-calls; local-only `curl` examples remain documented separately.
 
 ## Validation
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
     // Always sends to SYSTEM_ALERT_PHONE (+13302069639) regardless of shadow mode.
     // Guarded by ENABLE_INTERNAL_ALERTS flag.
     if (process.env.ENABLE_INTERNAL_ALERTS === "true" && status === "critical") {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = getInternalAppBaseUrl();
       const JASON_AGENT_ID = process.env.JASON_AGENT_ID || "";
       Promise.resolve().then(() =>
         fetch(`${baseUrl}/api/admin/alerts/send`, {

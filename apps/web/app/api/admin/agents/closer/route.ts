@@ -285,7 +285,7 @@ export async function POST() {
     // alerts for leads active in the last 4h. Guarded by ENABLE_INTERNAL_ALERTS.
     if (process.env.ENABLE_INTERNAL_ALERTS === "true") {
       const { origin } = new URL("http://placeholder");
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = getInternalAppBaseUrl();
       Promise.resolve().then(async () => {
         try {
           const alertPromises: Promise<unknown>[] = [];
