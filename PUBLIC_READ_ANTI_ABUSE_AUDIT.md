@@ -45,6 +45,7 @@ Behavior intentionally preserved:
 - Full `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
 - Full `pnpm --filter @homereach/web lint` passed with 494 existing warnings and 0 errors.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 247 static pages.
+- Hosted Vercel preview probe returned 400 for missing parameters with `RateLimit-Limit: 120`, `RateLimit-Remaining: 119`, and `RateLimit-Reset: 60`.
 
 ## Remaining Risk
 

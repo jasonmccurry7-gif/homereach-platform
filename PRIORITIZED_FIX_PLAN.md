@@ -592,7 +592,7 @@ Fix applied: added a `spots:resolve` public rate-limit scope before service-role
 
 Safest remaining fix: move public read/mutation/checkout rate limiting to a distributed edge/provider-backed control before paid traffic scaling.
 
-Validation: focused public-read and shared public rate-limit tests passed with 4 tests; focused route/helper/test ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed; full `pnpm test` passed with 189 tests across 26 files; full workspace typecheck passed across 5 packages; full web lint passed with 494 existing warnings and 0 errors; and placeholder-env web build generated 247 static pages. Preview probes are pending until deployment.
+Validation: focused public-read and shared public rate-limit tests passed with 4 tests; focused route/helper/test ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed; full `pnpm test` passed with 189 tests across 26 files; full workspace typecheck passed across 5 packages; full web lint passed with 494 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; GitHub Actions `Validate` run #50 passed; and the hosted Vercel preview probe returned 400 for missing parameters with rate-limit metadata.
 
 Approval needed: no for local anti-abuse guard; yes before changing funnel lookup behavior, availability behavior, or distributed production firewall policy.
 
