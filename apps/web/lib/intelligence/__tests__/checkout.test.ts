@@ -4,6 +4,7 @@ import {
   normalizeIntelligenceCheckoutBody,
   pickFoundingSlot,
   PROPERTY_INTELLIGENCE_CHECKOUT_TYPE,
+  readIntelligenceCheckoutPayload,
   stripeResourceId,
   toPositiveCents,
 } from "../checkout";
@@ -38,6 +39,19 @@ describe("property intelligence checkout helpers", () => {
     expect(normalizeIntelligenceCheckoutBody({ tier: "t1" })).toEqual({
       ok: false,
       error: "Missing required fields: tier, city, businessName, email, phone",
+    });
+  });
+
+  it("rejects malformed JSON before checkout side effects", async () => {
+    await expect(
+      readIntelligenceCheckoutPayload({
+        json: async () => {
+          throw new SyntaxError("Unexpected token");
+        },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Invalid checkout payload",
     });
   });
 

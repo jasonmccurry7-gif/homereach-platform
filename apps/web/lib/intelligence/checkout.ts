@@ -21,6 +21,16 @@ export type NormalizeIntelligenceCheckoutResult =
   | { ok: true; value: IntelligenceCheckoutInput }
   | { ok: false; error: string };
 
+export async function readIntelligenceCheckoutPayload(
+  req: Pick<Request, "json">,
+): Promise<NormalizeIntelligenceCheckoutResult> {
+  try {
+    return normalizeIntelligenceCheckoutBody(await req.json());
+  } catch {
+    return { ok: false, error: "Invalid checkout payload" };
+  }
+}
+
 function cleanString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }

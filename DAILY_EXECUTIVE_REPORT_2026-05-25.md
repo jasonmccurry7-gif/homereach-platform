@@ -41,6 +41,7 @@ Date: 2026-05-25
 - Hardened the remaining high-risk admin service-role route cluster: AI agent scans, internal alert sending, founding slot updates, pricing updates, and Facebook mission logging now require admin/sales session or cron access before privileged work.
 - Expanded the admin service-role access sweep to sensitive admin reads and send-capable routes: sales lead/reply/funnel/leaderboard/insight APIs, close-deal sending, sales nudges, email warmup, internal alert logs, founding member data, intelligence pricing, operator summary, Facebook scorecards/leaderboards, and admin health now require admin/sales-agent or cron access as appropriate.
 - Hardened public property-intelligence checkout so founding memberships and slot counts are no longer activated before Stripe confirms payment; signed Stripe webhook handling now finalizes founding membership activation after `checkout.session.completed`.
+- Fixed a preview-discovered property-intelligence checkout validation edge case so malformed JSON returns `400 Invalid checkout payload` before Supabase or Stripe work can begin.
 
 ## Validation
 
@@ -58,13 +59,13 @@ Date: 2026-05-25
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
 - Local focused request secret helper test: passed, 4 tests.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
-- Local focused property-intelligence checkout helper test: passed, 6 tests.
+- Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
 - Latest provider/admin durability sweep: focused inbound SMS helper test, focused request secret helper test, focused Facebook webhook auth helper test, admin service-role access sweep, full unit suite, typecheck, web lint, and web build all passed locally; a second admin service-role scan now finds no unguarded `apps/web/app/api/admin` service-client routes outside custom authorized routes.
-- Local `pnpm test`: passed, 161 tests.
+- Local `pnpm test`: passed, 168 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
-- Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
+- Local `pnpm --filter @homereach/web build`: passed with non-secret test-shaped env after confirming the env validator rejects unsafe placeholders.
 - Local browser smoke on targeted checkout: passed. No-token checkout links show email confirmation and disable Pay; token-bearing links skip the email prompt and enable Pay.
 - Remote GitHub Actions `Validate` run #10 for commit `7ab5d0c`: passed.
 - Remote Vercel deployment for commit `7ab5d0c`: failed before the Vercel project env repair because `TARGETED_CHECKOUT_SIGNING_SECRET` was missing at build time. A fresh deployment is needed after the env repair.

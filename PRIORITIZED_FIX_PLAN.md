@@ -19,11 +19,11 @@ Files:
 - `apps/web/app/(funnel)/intelligence/checkout/intelligence-checkout-client.tsx`
 - `apps/web/app/(admin)/admin/founding/page.tsx`
 
-Fix applied: public checkout creation now adds explicit `property_intelligence` Stripe metadata and no longer writes `founding_memberships` or updates `founding_slots`. The signed Stripe webhook now finalizes founding memberships only after `checkout.session.completed`, then recalculates slot usage from active memberships so webhook retries stay idempotent.
+Fix applied: public checkout creation now adds explicit `property_intelligence` Stripe metadata and no longer writes `founding_memberships` or updates `founding_slots`. The signed Stripe webhook now finalizes founding memberships only after `checkout.session.completed`, then recalculates slot usage from active memberships so webhook retries stay idempotent. Malformed JSON checkout payloads now return `400 Invalid checkout payload` before Supabase or Stripe work can begin.
 
 Additional schema concern: `property_intelligence_tiers`, `founding_slots`, and `founding_memberships` are referenced by app code but are not present in committed Drizzle schema or Supabase migration files found by repo search. Production may have out-of-band tables; before any schema migration, pull/verify the live schema in a controlled Supabase workflow.
 
-Validation: focused property-intelligence checkout helper tests and full workspace typecheck passed locally after the change.
+Validation: focused property-intelligence checkout helper tests, full unit suite, full workspace typecheck, web lint, and web build with non-secret test-shaped env passed locally after the change.
 
 Approval needed: no for local code hardening and documentation; yes before Stripe provider-live validation or production data reconciliation.
 

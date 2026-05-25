@@ -2,8 +2,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import {
   buildPropertyIntelligenceCheckoutMetadata,
-  normalizeIntelligenceCheckoutBody,
   pickFoundingSlot,
+  readIntelligenceCheckoutPayload,
   toPositiveCents,
 } from "@/lib/intelligence/checkout";
 import { NextResponse } from "next/server";
@@ -22,7 +22,7 @@ import type Stripe from "stripe";
 
 export async function POST(req: Request) {
   try {
-    const normalized = normalizeIntelligenceCheckoutBody(await req.json());
+    const normalized = await readIntelligenceCheckoutPayload(req);
     if (!normalized.ok) {
       return NextResponse.json({ error: normalized.error }, { status: 400 });
     }

@@ -18,6 +18,7 @@ The goal is to prove that the V1a merge, with the flag off, has zero effect on t
 - [ ] `GET /agent/qa` returns **HTTP 404** (proving the agent page gate).
 - [ ] The Sales Dashboard (existing) looks identical to the pre-V1a snapshot. No new Q&A tab visible.
 - [ ] Run a Stripe test-mode checkout end-to-end. Confirm webhook received, order created, subscription active. Stripe is unaffected.
+- [ ] `POST /api/intelligence/checkout` with malformed JSON returns HTTP 400 and does not create a Stripe Checkout session or mutate founding membership/slot data.
 - [ ] Trigger the Apex orchestrator. Confirm all 10 agents complete (modulo the already-known `.catch()` bug status). No new errors.
 
 **If any check fails:** STOP. Do not proceed. Investigate which new file is leaking behavior through the flag.

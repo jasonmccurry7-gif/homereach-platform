@@ -62,11 +62,12 @@ Targeted route checkout flow:
 Property intelligence checkout flow:
 
 1. Public caller posts tier, city, category, market size, business name, email, and phone to `/api/intelligence/checkout`.
-2. Route reads `property_intelligence_tiers` and `founding_slots` through the Supabase service-role client.
-3. Route creates a Stripe Checkout session with explicit `property_intelligence` metadata.
-4. Route no longer writes `founding_memberships` or updates `founding_slots` before payment confirmation.
-5. Signed Stripe webhook handling for `checkout.session.completed` now finalizes founding membership activation and recalculates slot usage from active memberships.
-6. Repo search found references to `property_intelligence_tiers`, `founding_slots`, and `founding_memberships`, but did not find committed Drizzle schema or Supabase migration definitions for those tables. Treat production schema as out-of-band until verified through a controlled Supabase schema pull/audit.
+2. Route parses and normalizes the payload before creating a Supabase service-role client; malformed JSON returns `400 Invalid checkout payload`.
+3. Route reads `property_intelligence_tiers` and `founding_slots` through the Supabase service-role client.
+4. Route creates a Stripe Checkout session with explicit `property_intelligence` metadata.
+5. Route no longer writes `founding_memberships` or updates `founding_slots` before payment confirmation.
+6. Signed Stripe webhook handling for `checkout.session.completed` now finalizes founding membership activation and recalculates slot usage from active memberships.
+7. Repo search found references to `property_intelligence_tiers`, `founding_slots`, and `founding_memberships`, but did not find committed Drizzle schema or Supabase migration definitions for those tables. Treat production schema as out-of-band until verified through a controlled Supabase schema pull/audit.
 
 Stripe webhook flow:
 
@@ -603,7 +604,7 @@ Validation:
 Residual risk:
 
 - Unauthenticated external monitors or undocumented callers must now use an admin session or cron secret, which is intentional for service-role admin data.
-- Public intelligence checkout remains a separate revenue-accounting risk because it writes founding membership/slot data before confirmed payment.
+- Public intelligence checkout no longer activates founding membership or slot data before confirmed payment; the remaining risk is schema drift because the referenced property-intelligence tables are not present in committed schema or migrations.
 
 ### MEDIUM: Stripe API Version Needs Scheduled Upgrade Review
 
@@ -684,4 +685,4 @@ Validation:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, inbound SMS reply capture, Postmark callback durability, Meta webhook fail-closed, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Public intelligence checkout remains a separate revenue-accounting risk because it writes founding membership/slot data before confirmed payment.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, Postmark callback durability, Meta webhook fail-closed, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
