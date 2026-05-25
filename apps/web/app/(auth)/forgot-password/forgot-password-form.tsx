@@ -3,14 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+  const appUrl = getPublicAppBaseUrl();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

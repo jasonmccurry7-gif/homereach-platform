@@ -97,14 +97,25 @@ Files:
 - `apps/web/app/api/spots/checkout/route.ts`
 - `apps/web/app/api/stripe/checkout/route.ts`
 - `apps/web/app/api/webhooks/stripe/route.ts`
+- `apps/web/app/layout.tsx`
+- `apps/web/app/sitemap.ts`
+- `apps/web/app/robots.ts`
+- `apps/web/app/api/intake/[token]/route.ts`
+- `apps/web/app/api/nonprofit/route.ts`
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/facebook/webhook/route.ts`
+- `apps/web/app/api/facebook/followup/route.ts`
+- `apps/web/lib/engine/automation.ts`
 - `apps/web/lib/runtime/app-url.ts`
+- `apps/web/lib/seo/schema.ts`
+- `apps/web/lib/seo/quality.ts`
 - `apps/web/lib/political/candidate-intelligence/providers/serpapi.ts`
 - `apps/web/lib/env.ts`
 - `packages/services/src/targeted/index.ts`
 - `turbo.json`
 - `.env.example`
 
-Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from runtime admin/agent self-calls, moved APEX command agent routing off the hardcoded production domain, moved payment-adjacent checkout redirects and Stripe post-payment links onto the public resolver, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
+Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from runtime admin/agent self-calls, moved APEX command agent routing off the hardcoded production domain, moved payment-adjacent checkout redirects and Stripe post-payment links onto the public resolver, moved SEO metadata/sitemap/robots/auth reset/admin notification/proposal/internal-alert/generated outreach links onto shared resolvers, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
 
 Validation: focused app URL helper test, full unit suite, typecheck, web lint gate, and web build with non-secret placeholder env all passed locally.
 

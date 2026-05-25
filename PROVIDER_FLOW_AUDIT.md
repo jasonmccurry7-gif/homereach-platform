@@ -16,6 +16,8 @@ The most important remaining items to fix next are:
 2. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
 3. Stripe now has synthetic SDK-signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload tests, but those are not substitutes for provider test-mode validation.
 
+Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through the shared app URL resolver instead of scattered hardcoded domains.
+
 ## Provider Surface Map
 
 ### Stripe

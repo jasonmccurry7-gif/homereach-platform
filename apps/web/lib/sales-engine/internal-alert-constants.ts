@@ -14,6 +14,8 @@
 // Used when agent_alert_preferences has no record for an agent.
 // Keyed by first name (lowercase) — matched against profiles.full_name.split(' ')[0].toLowerCase()
 
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+
 export const AGENT_ALERT_PHONES: Record<string, string> = {
   josh:    "+13303222746",
   heather: "+12034176080",
@@ -61,7 +63,7 @@ export const DEFAULT_ENABLED_TYPES: AlertType[] = [
 // ── Deep link patterns (full URLs) ───────────────────────────────────────────
 
 export function buildDeepLink(alertType: AlertType, leadId?: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+  const base = getPublicAppBaseUrl();
   switch (alertType) {
     case "hot_lead":          return leadId ? `${base}/agent/leads/${leadId}` : `${base}/agent/hot-leads`;
     case "reply_waiting":     return leadId ? `${base}/agent/replies/${leadId}` : `${base}/agent/replies`;

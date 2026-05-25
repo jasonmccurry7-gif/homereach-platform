@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Facebook Revenue Engine API
@@ -129,6 +130,7 @@ function generateDmFlow(
   const loc  = city ?? "your area";
   const cat  = category ?? "your industry";
   const firstName = businessName.split(/\s+/)[0] ?? "there";
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
 
   return {
     stage1: `Hey! Saw your post in the group and had to reach out — we work with ${cat} businesses in ${loc} specifically. Are you doing anything right now to get in front of homeowners consistently, or is it mostly referrals and social?`,
@@ -139,7 +141,7 @@ function generateDmFlow(
 
     stage4: `Real talk — we have one spot open right now for ${cat} in ${loc}. I don't know how long it'll stay open because we had another business asking about it earlier this week. Spots typically go in 3–5 days once we start outreach. Want me to send you the details on what it costs and what it looks like?`,
 
-    stage5: `Here's how to lock it in — takes 3 minutes: home-reach.com/get-started\n\nPick your spot size (starts at $200/mo), enter your info, and you're in. I can hold your category for 24 hours if you want to look it over first — just let me know.\n\nOr if it's easier, call/text me directly: ${agentPhone} — happy to walk you through it.\n\n— ${agentName}, HomeReach`,
+    stage5: `Here's how to lock it in — takes 3 minutes: ${startUrl}\n\nPick your spot size (starts at $200/mo), enter your info, and you're in. I can hold your category for 24 hours if you want to look it over first — just let me know.\n\nOr if it's easier, call/text me directly: ${agentPhone} — happy to walk you through it.\n\n— ${agentName}, HomeReach`,
   };
 }
 

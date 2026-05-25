@@ -3,6 +3,7 @@ import { db, intakeSubmissions, businesses } from "@homereach/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { sendEmail } from "@homereach/services/outreach";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/intake/[token]
@@ -86,7 +87,7 @@ export async function POST(req: Request, { params }: Params) {
     const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? process.env.ADMIN_EMAILS?.split(",")[0];
 
     if (adminEmail) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+      const appUrl = getPublicAppBaseUrl();
 
       await sendEmail({
         to:      adminEmail,

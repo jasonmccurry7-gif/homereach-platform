@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TODAY'S FACEBOOK EXECUTION
@@ -70,13 +71,14 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const DM_STAGE_LABELS = ["", "Warm Opener", "Diagnose Marketing", "Position HomeReach", "Scarcity + Close", "Final Close"];
+const GET_STARTED_URL = `${getPublicAppBaseUrl()}/get-started`;
 
 // Objection handlers
 const OBJECTION_RESPONSES: Record<string, string> = {
   "too expensive":    "Totally get it — let me ask though: what's it costing you to NOT be in front of those homeowners? Our Back Feature starts at $200/mo reaching 2,500 homes. That's 8 cents per home per month. Hard to find that anywhere.",
   "not interested":   "No worries at all. Quick question before I let you go — is it the timing, the price, or just not the right fit? Only asking because I want to make sure I'm not missing something.",
   "already advertise":"That's smart — what's working best for you right now? I ask because HomeReach is different from digital. Physical postcards in homeowners' hands, exclusive category, no algorithm. Most businesses run us alongside what they're already doing.",
-  "send info":        "Absolutely — here's everything you need: home-reach.com/get-started\n\nYou'll see exact pricing, what the postcard looks like, and how many spots are left in your city. Takes 3 minutes to lock in. Want me to hold your category for 24 hours while you look?",
+  "send info":        `Absolutely — here's everything you need: ${GET_STARTED_URL}\n\nYou'll see exact pricing, what the postcard looks like, and how many spots are left in your city. Takes 3 minutes to lock in. Want me to hold your category for 24 hours while you look?`,
   "maybe later":      "I hear you. The only thing I can't guarantee is the spot will still be open later — we had two other businesses ask about that category this week. But I respect the timing. Can I check back in 3 days?",
   "need to think":    "Of course. What's the main thing you're thinking through — is it budget, the concept, or just timing? I want to make sure you have what you need to decide.",
 };

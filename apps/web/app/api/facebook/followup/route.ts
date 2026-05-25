@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
 
   const db  = createServiceClient();
   const now = new Date();
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
   const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const h48 = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
@@ -57,8 +59,8 @@ export async function POST(req: Request) {
     const loc  = lead.city ?? "your area";
 
     const msg = lead.lead_status === "hot"
-      ? `Hey ${name}! 👋 Just checking in — that ${cat} spot in ${loc} is still available but filling up fast. Ready to lock it in? home-reach.com/get-started`
-      : `Hey ${name}! Wanted to follow up — are you still interested in reaching homeowners in ${loc}? We have exclusive spots available for ${cat} businesses. Takes 3 minutes to get started: home-reach.com/get-started`;
+      ? `Hey ${name}! 👋 Just checking in — that ${cat} spot in ${loc} is still available but filling up fast. Ready to lock it in? ${startUrl}`
+      : `Hey ${name}! Wanted to follow up — are you still interested in reaching homeowners in ${loc}? We have exclusive spots available for ${cat} businesses. Takes 3 minutes to get started: ${startUrl}`;
 
     await fbSend(lead.fb_psid, msg);
     await Promise.resolve(db.from("facebook_leads").update({
@@ -91,7 +93,7 @@ export async function POST(req: Request) {
 
     const msg = `Hey ${name}, last message from me — I know you're busy.\n\n` +
       `We have ONE exclusive spot open for your business type in ${loc}. Once it's claimed, it's gone.\n\n` +
-      `If you're ever ready: home-reach.com/get-started 🏠\n\nWishing you continued success!`;
+      `If you're ever ready: ${startUrl} 🏠\n\nWishing you continued success!`;
 
     await fbSend(lead.fb_psid, msg);
     await Promise.resolve(db.from("facebook_leads").update({

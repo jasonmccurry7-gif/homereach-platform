@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 type RevenueBusinessLine =
   | "targeted_mailing"
@@ -576,7 +577,7 @@ async function logJasonPoliticalAlert(
     typeof subject.metadata?.office_sought === "string"
       ? subject.metadata.office_sought
       : subject.category ?? "campaign";
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+  const appUrl = getPublicAppBaseUrl();
   const systemAlertPhone = getSystemAlertPhone();
   const deepLink = `${appUrl}/admin/political/outreach`;
   const preview = input.body.length > 140 ? `${input.body.slice(0, 137)}...` : input.body;

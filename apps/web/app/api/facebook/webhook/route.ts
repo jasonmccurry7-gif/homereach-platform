@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -432,6 +433,7 @@ function buildCloserResponse(
   const cat  = category ?? (lead.category as string) ?? "your category";
   const loc  = city ?? (lead.city as string) ?? "your area";
   const lower = text.toLowerCase();
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
 
   // Objection handling
   if (/too expensive|too much|can't afford|not in budget/.test(lower)) {
@@ -453,14 +455,14 @@ function buildCloserResponse(
 
   // Hot intent
   if (/interested|tell me more|want to know|availability|spots left/.test(lower)) {
-    return `${name}, here's the deal — we have limited spots open in ${loc} for ${cat} right now.\n\n📬 Your postcard goes to 2,500+ verified homeowners monthly\n🔒 You're the ONLY ${cat.toLowerCase()} in the mailer\n💰 Starts at just $200/mo\n\nTo lock your spot right now: home-reach.com/get-started\n\nSpots have been filling fast this week. Want me to hold yours while you check it out?`;
+    return `${name}, here's the deal — we have limited spots open in ${loc} for ${cat} right now.\n\n📬 Your postcard goes to 2,500+ verified homeowners monthly\n🔒 You're the ONLY ${cat.toLowerCase()} in the mailer\n💰 Starts at just $200/mo\n\nTo lock your spot right now: ${startUrl}\n\nSpots have been filling fast this week. Want me to hold yours while you check it out?`;
   }
 
   // Affirmative / ready to close
   if (/yes|yeah|sure|ok|let's|ready|sign|lock in|reserve/.test(lower)) {
-    return `🎉 Awesome ${name}! Let's lock in your ${cat} spot in ${loc} before someone else grabs it.\n\nHere's your signup link:\nhome-reach.com/get-started\n\nTakes about 3 minutes. Choose your spot size, enter your business info, and you're in.\n\nIf you have any questions while you're going through it, just text me here. Let's get you live! 🚀`;
+    return `🎉 Awesome ${name}! Let's lock in your ${cat} spot in ${loc} before someone else grabs it.\n\nHere's your signup link:\n${startUrl}\n\nTakes about 3 minutes. Choose your spot size, enter your business info, and you're in.\n\nIf you have any questions while you're going through it, just text me here. Let's get you live! 🚀`;
   }
 
   // Default closer response
-  return `${name}, based on what you've told me — this is exactly what HomeReach was built for.\n\n${cat} in ${loc}, reaching 2,500+ homeowners monthly with ZERO competition in your category.\n\nHere's your link to claim your spot:\nhome-reach.com/get-started\n\nWhat's holding you back from locking it in today?`;
+  return `${name}, based on what you've told me — this is exactly what HomeReach was built for.\n\n${cat} in ${loc}, reaching 2,500+ homeowners monthly with ZERO competition in your category.\n\nHere's your link to claim your spot:\n${startUrl}\n\nWhat's holding you back from locking it in today?`;
 }

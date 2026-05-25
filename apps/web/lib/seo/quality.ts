@@ -10,6 +10,7 @@
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { isSeoEngineEnabled } from "./env";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export type QualityCheckResult = {
   passed: boolean;
@@ -32,7 +33,7 @@ export async function runQualityCheck(pageId: string): Promise<QualityCheckResul
 
 /** HEAD-checks a relative funnel URL against the current deployment. */
 export async function ctaUrlResolves(relativeUrl: string): Promise<{ ok: boolean; status: number }> {
-  const base = process.env.NEXT_PUBLIC_APP_URL || "https://www.home-reach.com";
+  const base = getPublicAppBaseUrl();
   const fullUrl = relativeUrl.startsWith("http") ? relativeUrl : `${base}${relativeUrl}`;
   try {
     const res = await fetch(fullUrl, { method: "HEAD", redirect: "follow" });

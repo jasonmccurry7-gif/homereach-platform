@@ -31,6 +31,7 @@ Date: 2026-05-25
 - Standardized public URL resolution for payment-adjacent checkout redirects and Stripe post-payment links so deployed aliases do not fall back to stale/hardcoded domains.
 - Removed remaining runtime `localhost` fallbacks from admin/agent self-calls; local-only `curl` examples remain documented separately.
 - Moved APEX command agent routing off the hardcoded production domain and onto the internal app URL resolver.
+- Expanded shared URL resolver coverage across SEO metadata, sitemap/robots, auth reset redirects, admin self-calls, intake/nonprofit notifications, political proposal handoffs, internal alert deep links, and generated outreach/Facebook links.
 
 ## Validation
 
@@ -43,6 +44,7 @@ Date: 2026-05-25
 - Local focused Twilio status webhook helper test: passed, 5 tests.
 - Local focused provider telemetry health test: passed, 5 tests.
 - Local focused app URL helper test: passed, 3 tests.
+- Latest URL resolver sweep: focused app URL helper test, full unit suite, typecheck, web lint, and web build all passed locally.
 - Local `pnpm test`: passed, 133 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
@@ -60,7 +62,7 @@ Date: 2026-05-25
 
 - Medium: targeted checkout now avoids misleading recurring-billing copy, but a true targeted add-on subscription path still needs business approval and Stripe test-mode validation if wanted.
 - Medium: legacy `/api/stripe/checkout` still uses one-time payment mode for a monthly-priced path, but repo search found no active caller; active spot checkout uses `/api/spots/checkout` subscription mode.
-- Medium: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; the worst localhost-only agent fallbacks now use `NEXT_PUBLIC_APP_URL`, but Vercel should still get the canonical name.
+- Medium: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; runtime self-calls and generated public links now use shared resolvers, but Vercel should still get the canonical name.
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
 - Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.

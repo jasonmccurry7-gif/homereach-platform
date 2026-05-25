@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -141,7 +142,9 @@ function buildCloseSmsMessage(
   agentName: string,
   city: string | null | undefined
 ): string {
-  return `Hey ${firstName}, this is ${agentName} — wanted to lock in your spot before someone else grabs it. Here's everything you need to get started: https://home-reach.com/get-started
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
+
+  return `Hey ${firstName}, this is ${agentName} — wanted to lock in your spot before someone else grabs it. Here's everything you need to get started: ${startUrl}
 
 Pricing:
 • Back Spot: $200/mo (6 available)
@@ -158,6 +161,7 @@ function buildCloseEmailMessage(
   city: string | null | undefined
 ): { subject: string; html: string; text: string } {
   const subject = `Your ${city || "local"} spot — lock it in today, ${firstName}`;
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
 
   const text = `Hi ${firstName},
 
@@ -171,7 +175,7 @@ We're offering limited advertising spots in your category with guaranteed access
 
 All packages include professional design, category exclusivity, and direct homeowner access.
 
-Ready to lock in your spot? Visit: https://home-reach.com/get-started
+Ready to lock in your spot? Visit: ${startUrl}
 
 It takes just 3 minutes to secure your position before another business in your category claims it.
 
@@ -244,7 +248,7 @@ ${agentEmail}`;
 
         <p class="scarcity">⚡ Only a few spots remaining in ${city || "your area"}. Lock yours in today.</p>
 
-        <a href="https://home-reach.com/get-started" class="cta">Lock In Your Spot</a>
+        <a href="${startUrl}" class="cta">Lock In Your Spot</a>
 
         <p style="color: #666; font-size: 14px; margin-top: 30px;">It takes just 3 minutes to secure your position before another business claims it.</p>
 

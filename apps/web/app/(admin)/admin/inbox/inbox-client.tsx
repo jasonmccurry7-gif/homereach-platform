@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { AutomationMessage, AutomationMode, IntentType, LeadStatus } from "@/lib/engine/types";
 import { AutomationEngine } from "@/lib/engine/automation";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 // MOCK_CONVERSATIONS removed — inbox now loads from real DB via /api/conversations
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,6 +164,7 @@ export function InboxClient() {
   const [replyText, setReplyText] = useState("");
   const [sending, setSending]   = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const appUrl = getPublicAppBaseUrl();
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
 
@@ -520,7 +522,7 @@ export function InboxClient() {
                 onClick={() => {
                   const firstName = active.leadName.split(" ")[0];
                   setReplyText(
-                    `Hi ${firstName}, here's your intake link to lock in the ${active.category} spot in ${active.city}: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/get-started\n\nTakes about 3 minutes! — HomeReach`
+                    `Hi ${firstName}, here's your intake link to lock in the ${active.category} spot in ${active.city}: ${appUrl}/get-started\n\nTakes about 3 minutes! — HomeReach`
                   );
                 }}
                 className="text-xs px-2 py-1 rounded-full border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors"

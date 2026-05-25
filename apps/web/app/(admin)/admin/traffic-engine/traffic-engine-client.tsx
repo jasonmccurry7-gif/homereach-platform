@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import type { CityExpansionData } from "./page";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -63,6 +64,8 @@ const FB_CITIES = [
   "Las Vegas, NV",
 ];
 
+const GET_STARTED_URL = `${getPublicAppBaseUrl()}/get-started`;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FB Post Templates
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,12 +117,12 @@ const DM_SCRIPTS = [
   {
     label: "After they confirm ownership",
     script: (city: string, cat: string) =>
-      `Perfect! We help ${cat} businesses reach 2,500+ homeowners in ${city} every month through direct mail — exclusive placement, one business per category.\n\nIt takes about 2 minutes to see if your spot is still available:\n👉 homereach.com/get-started\n\nWant me to check availability in ${city} for you right now?`,
+      `Perfect! We help ${cat} businesses reach 2,500+ homeowners in ${city} every month through direct mail — exclusive placement, one business per category.\n\nIt takes about 2 minutes to see if your spot is still available:\n👉 ${GET_STARTED_URL}\n\nWant me to check availability in ${city} for you right now?`,
   },
   {
     label: "They asked how much it costs",
-    script: (city: string, _cat: string) =>
-      `Great question! Pricing depends on your city and the spot type, but it's designed to be affordable for local businesses.\n\nYou can see exact pricing (and check if your market is still available) here:\n👉 homereach.com/get-started\n\nTakes about 60 seconds. No commitment to check.`,
+    script: () =>
+      `Great question! Pricing depends on your city and the spot type, but it's designed to be affordable for local businesses.\n\nYou can see exact pricing (and check if your market is still available) here:\n👉 ${GET_STARTED_URL}\n\nTakes about 60 seconds. No commitment to check.`,
   },
   {
     label: "They went cold after showing interest",
@@ -168,7 +171,7 @@ Here's what a few partners have said:
 - "Best ROI of anything we've tried locally"
 - "The exclusivity alone is worth it"
 
-If you're interested, you can check if your spot is still available here: homereach.com/get-started
+If you're interested, you can check if your spot is still available here: ${GET_STARTED_URL}
 
 Takes about 2 minutes.
 
@@ -187,7 +190,7 @@ The ${category} spot in ${city} is still available. After it fills, the next ope
 
 If the timing isn't right, totally understand — no hard feelings. Just reply and let me know and I'll take you off my list.
 
-If you want to see if it's a fit: homereach.com/get-started
+If you want to see if it's a fit: ${GET_STARTED_URL}
 
 Either way, appreciate your time.
 
@@ -232,7 +235,7 @@ const AD_COPY = {
     "Facebook groups: Post in local business owner groups, home services groups, entrepreneur groups in each target city",
   ],
   landingOptions: [
-    "Option A: homereach.com/get-started — City selection page (warm traffic)",
+    `Option A: ${GET_STARTED_URL} — City selection page (warm traffic)`,
     "Option B: homereach.com/targeted — Calculator page (colder traffic, higher intent filter)",
     "Option C: Direct to /get-started/[city-slug] — Skip city picker, use if targeting city-specific ads",
   ],
@@ -519,7 +522,7 @@ export function TrafficEngineClient({ cities }: Props) {
               {[
                 {
                   label: "They asked about price",
-                  text: `Hey! Pricing depends on your city — you can check availability and see exact rates here: homereach.com/get-started — takes about 60 seconds 👍`,
+                  text: `Hey! Pricing depends on your city — you can check availability and see exact rates here: ${GET_STARTED_URL} — takes about 60 seconds 👍`,
                 },
                 {
                   label: "They asked how it works",
@@ -531,7 +534,7 @@ export function TrafficEngineClient({ cities }: Props) {
                 },
                 {
                   label: "They tagged someone else",
-                  text: `Hey [tagged person] — happy to answer any questions! DM me or check availability here: homereach.com/get-started 👋`,
+                  text: `Hey [tagged person] — happy to answer any questions! DM me or check availability here: ${GET_STARTED_URL} 👋`,
                 },
                 {
                   label: "They said they already tried direct mail",

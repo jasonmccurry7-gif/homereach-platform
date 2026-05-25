@@ -6,6 +6,7 @@ import {
   getRampEntry,
   getSeedTemplate,
 } from "@/lib/sales-engine/email-warmup-config";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/email/warmup/send
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServiceClient();
+  const appUrl = getPublicAppBaseUrl();
   const now = new Date().toISOString();
   const summary = { agents_processed: 0, seeds_sent: 0, real_sent: 0, errors: 0 };
 
@@ -160,10 +162,10 @@ export async function POST(req: NextRequest) {
               <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
               <p style="color: #999; font-size: 12px;">
                 You're receiving this from HomeReach.
-                <a href="https://home-reach.com/unsubscribe?email=${encodeURIComponent(prospect.email)}">Unsubscribe</a>
+                <a href="${appUrl}/unsubscribe?email=${encodeURIComponent(prospect.email)}">Unsubscribe</a>
               </p>
             </div>`,
-            text:    `${template.body}\n\nTo unsubscribe: https://home-reach.com/unsubscribe?email=${encodeURIComponent(prospect.email)}`,
+            text:    `${template.body}\n\nTo unsubscribe: ${appUrl}/unsubscribe?email=${encodeURIComponent(prospect.email)}`,
           });
 
           process.env.MAILGUN_FROM_EMAIL = savedFromEmail;

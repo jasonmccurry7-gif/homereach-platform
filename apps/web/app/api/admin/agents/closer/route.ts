@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
-import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
+import { getInternalAppBaseUrl, getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Closer Agent — Follow-up & Payment Link Delivery
@@ -134,7 +134,7 @@ async function sendFollowUp(
   agent: AgentIdentity
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const message = `Hi ${lead.business_name}! This is ${agent.name} from HomeReach. Ready to lock in your exclusive ${lead.city || "your area"} spot? Here's your link: https://home-reach.com/get-started Reply STOP to opt out.`;
+    const message = `Hi ${lead.business_name}! This is ${agent.name} from HomeReach. Ready to lock in your exclusive ${lead.city || "your area"} spot? Here's your link: ${getPublicAppBaseUrl()}/get-started Reply STOP to opt out.`;
 
     const payload = {
       agent_id: lead.assigned_agent_id,

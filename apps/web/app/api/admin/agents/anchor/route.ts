@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
-import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
+import { getInternalAppBaseUrl, getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Anchor Agent — Client Retention & Renewal Management
@@ -257,7 +257,7 @@ export async function POST() {
           }
 
           const agent = getAgentByCity(business.city);
-          const winBackMessage = `Hi ${business.name}, your HomeReach spot in ${cityName} is paused due to a billing issue. Update your payment to keep your exclusive spot: https://home-reach.com/dashboard`;
+          const winBackMessage = `Hi ${business.name}, your HomeReach spot in ${cityName} is paused due to a billing issue. Update your payment to keep your exclusive spot: ${getPublicAppBaseUrl()}/dashboard`;
 
           const result = await sendRetentionSms(
             supabase,

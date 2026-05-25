@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db, publicNonprofitApplications } from "@homereach/db";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 const NonprofitSchema = z.object({
   orgName:     z.string().min(1, "Organization name is required"),
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
       console.error("[/api/nonprofit] DB insert failed:", err);
     }
 
-    const adminUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/admin/nonprofits`;
+    const adminUrl = `${getPublicAppBaseUrl()}/admin/nonprofits`;
 
     // ── 2. Notify admin ───────────────────────────────────────────────────────
     const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL;

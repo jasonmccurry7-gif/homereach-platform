@@ -14,7 +14,7 @@ Scope: local checkout plus Vercel project metadata for `homereach-platform-web`.
 - Static startup-required variables from `apps/web/lib/env.ts` are present by name in production, preview, and development.
 - `TARGETED_CHECKOUT_SIGNING_SECRET` is present as a sensitive variable in production and as a branch-scoped sensitive preview variable for `codex/current-main-audit-20260524`.
 - Branch preview and GitHub Actions have already passed with the current env hardening branch, but provider-live validation remains pending.
-- Follow-up compatibility repair added after this audit: runtime admin/agent self-calls and APEX command agent routing now use the shared internal URL resolver before localhost, targeted/spot/intelligence checkout and Stripe post-payment links use the shared public URL resolver, Apex accepts both approved-sender env names, SerpAPI/Hunter readers accept the legacy Vercel aliases, and Twilio messaging-service validation accepts both naming conventions.
+- Follow-up compatibility repair added after this audit: runtime admin/agent self-calls and APEX command agent routing now use the shared internal URL resolver before localhost; targeted/spot/intelligence checkout, Stripe post-payment links, SEO metadata, sitemap/robots, auth reset redirects, internal alert links, political proposal links, admin notification links, and generated outreach/Facebook links now use the shared public URL resolver; Apex accepts both approved-sender env names; SerpAPI/Hunter readers accept the legacy Vercel aliases; and Twilio messaging-service validation accepts both naming conventions.
 
 ## Sources Inspected
 

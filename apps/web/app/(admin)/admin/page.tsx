@@ -10,6 +10,7 @@ import {
   outreachReplies,
 } from "@homereach/db";
 import { eq, count, sum, gte, lte, isNull, desc, and } from "drizzle-orm";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard — HomeReach Admin" };
@@ -17,7 +18,7 @@ export const metadata: Metadata = { title: "Dashboard — HomeReach Admin" };
 // ── System health fetch (non-blocking) ────────────────────────────────────────
 async function getSystemHealth() {
   try {
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+    const base = getInternalAppBaseUrl();
     const res = await fetch(`${base}/api/admin/health`, { cache: "no-store" });
     if (!res.ok) return null;
     return res.json() as Promise<{
