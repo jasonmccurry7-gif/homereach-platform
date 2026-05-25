@@ -37,6 +37,7 @@ The most important remaining items to fix next are:
 23. Close-deal email sends now route through the central `sendEmail()` provider service instead of a Mailgun-only helper.
 24. Shared `sendSms()` now preserves an explicit caller-supplied sender number over an environment-derived messaging-service SID, while preserving explicit messaging-service overrides.
 25. Close-deal SMS now routes through central `sendSms()` with the assigned agent sender number, `follow_up` intent, and Twilio status callback telemetry.
+26. Sales-event SMS sends, scheduled automation SMS sends, Echo agent SMS sends, and `AutomationEngine.sendSms()` now also pass the shared Twilio status callback URL so customer/outreach delivery telemetry does not depend solely on Twilio-side defaults.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -249,7 +250,12 @@ Primary files:
 
 - `packages/services/src/outreach/index.ts`
 - `packages/services/src/outreach/__tests__/sms.test.ts`
+- `apps/web/lib/outreach/twilio-status-callback.ts`
 - `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/admin/sales/event/route.ts`
+- `apps/web/app/api/admin/automation/send-due/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
+- `apps/web/lib/engine/automation.ts`
 - `apps/web/app/api/admin/sales/__tests__/close-deal.test.ts`
 - `apps/web/app/api/command/route.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
@@ -266,6 +272,7 @@ Outbound SMS flow:
 4. Twilio send uses an explicit sender number when supplied, an explicit messaging-service SID when supplied, or the environment messaging-service SID when no explicit sender number exists.
 5. Optional `statusCallbackUrl` is passed to Twilio.
 6. `/api/admin/sales/close-deal` now uses this path with `intent: "follow_up"`, assigned agent `fromNumber`, and `/api/webhooks/twilio/status` callback telemetry.
+7. `/api/admin/sales/event`, `/api/admin/automation/send-due`, `/api/admin/agents/echo`, and `AutomationEngine.sendSms()` now use the same shared status callback helper for customer/outreach SMS telemetry.
 
 APEX SMS command flow:
 
@@ -864,6 +871,7 @@ Validation:
 - Outreach service supports test mode.
 - Prospecting SMS is guarded by manual approval and live-prospecting flags.
 - Shared SMS sender identity now preserves explicit agent `fromNumber` values over environment messaging-service defaults.
+- Customer/outreach SMS paths now pass the shared Twilio status callback URL from the web app when sending through central `sendSms()`.
 - Postmark webhook can be disabled with `ENABLE_POSTMARK_WEBHOOK=false`.
 - Postmark webhook fails closed in production if Basic Auth is not configured.
 - Twilio status webhook validates signatures and fails closed in production if `TWILIO_AUTH_TOKEN` is missing.
@@ -887,7 +895,7 @@ Validation:
 - Email warmup now passes agent sender identity directly to `sendEmail()` and avoids request-time mutation of provider environment variables.
 - Close-deal email now routes through the central `sendEmail()` provider service instead of a Mailgun-only helper.
 - Shared SMS routing now preserves explicit agent sender numbers unless a caller intentionally supplies a messaging-service SID.
-- Close-deal SMS now routes through central `sendSms()` with assigned agent `fromNumber`, `follow_up` intent, and Twilio status callback telemetry.
+- Close-deal, sales-event, scheduled automation, Echo agent, and `AutomationEngine` SMS sends now route through central `sendSms()` with route-level Twilio status callback telemetry where applicable.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -919,6 +927,7 @@ Latest validation for this follow-up guard sweep:
 - Focused close-deal route test passed with 1 test, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 198 tests across 29 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after routing close-deal email through central `sendEmail()`.
 - Focused shared SMS routing tests passed with 5 tests, services typecheck passed, full `pnpm test` passed with 203 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after preserving explicit SMS sender identity over env-derived messaging-service defaults.
 - Focused close-deal SMS provider tests passed with 7 tests across the close-deal route and shared SMS service, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 204 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after routing close-deal SMS through central `sendSms()`.
+- Focused Twilio status callback helper, close-deal route, and shared SMS provider tests passed with 8 tests; full `pnpm test` passed with 209 tests across 33 files; full workspace typecheck passed across 5 packages; full web lint passed with 492 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; `git diff --check` passed after adding shared status callback telemetry to the remaining customer/outreach SMS paths.
 - Focused property-intelligence schema-readiness, checkout-route, and checkout-helper tests passed with 11 tests; focused checkout/webhook/schema ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed after adding the fail-closed founding schema readiness guard.
 
 ## Safe Validation Path

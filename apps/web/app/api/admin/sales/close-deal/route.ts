@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 import { sendEmail, sendSms } from "@homereach/services/outreach";
 
@@ -283,7 +284,7 @@ export async function POST(request: Request) {
         body: closedMessage,
         fromNumber: agent.twilio_phone,
         intent: "follow_up",
-        statusCallbackUrl: `${getPublicAppBaseUrl()}/api/webhooks/twilio/status`,
+        statusCallbackUrl: getTwilioStatusCallbackUrl(),
       });
     } else {
       const emailData = buildCloseEmailMessage(

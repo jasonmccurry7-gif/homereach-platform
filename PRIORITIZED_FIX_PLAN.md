@@ -267,6 +267,32 @@ Risk of fix: medium. The code change is narrow and tested, but close-deal SMS is
 
 Approval needed: no for branch-local code hardening and docs; yes before live SMS sends, production Twilio validation, or messaging-service configuration changes.
 
+### Resolved: Other Customer SMS Paths Lacked Route-Level Status Callback Telemetry
+
+What was wrong: close-deal SMS attached `/api/webhooks/twilio/status`, but sales-event sends, scheduled automation sends, Echo agent sends, and `AutomationEngine.sendSms()` called central `sendSms()` without a `statusCallbackUrl`.
+
+Why it mattered: Twilio delivery callbacks are how the platform sees queued/sent/delivered/failed/undelivered status. Without a route-level callback, telemetry depended on Twilio-side defaults and could be inconsistent across customer outreach paths.
+
+Files:
+
+- `apps/web/lib/outreach/twilio-status-callback.ts`
+- `apps/web/lib/outreach/__tests__/twilio-status-callback.test.ts`
+- `apps/web/lib/engine/automation.ts`
+- `apps/web/app/api/admin/sales/event/route.ts`
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/admin/automation/send-due/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
+- `SMS_PROVIDER_ROUTING_AUDIT.md`
+- `PROVIDER_FLOW_AUDIT.md`
+
+Fix applied: added a shared web-app Twilio status callback helper and passed it into the remaining central-provider customer/outreach SMS send paths. Internal/operator alert SMS paths were left unchanged.
+
+Validation: focused Twilio callback helper, close-deal route, and shared SMS provider tests passed with 8 tests; full `pnpm test` passed with 209 tests across 33 files; full workspace typecheck passed across 5 packages; full web lint passed with 492 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; `git diff --check` passed.
+
+Risk of fix: low to medium. The send policy and message content are unchanged, but the Twilio payload now includes callback metadata on more outbound SMS paths.
+
+Approval needed: no for additive telemetry metadata; yes before live Twilio validation or provider-side callback configuration changes.
+
 ### Resolved: Public Form Email Notifications Rendered Unsanitized HTML
 
 What was wrong: public nonprofit registration and shared-postcard intake submissions rendered user-controlled fields directly into HTML email bodies, and dynamic subject fragments were not cleaned for control characters.

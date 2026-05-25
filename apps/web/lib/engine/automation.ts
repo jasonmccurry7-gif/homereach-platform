@@ -28,6 +28,7 @@ import type { IConversationRepository, UpsertConversationInput } from "./db/inte
 import { getConversationRepository } from "./db/factory";
 import { getOwnerIdentity } from "@homereach/services/outreach";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 
 // ── OpenAI (optional — loaded lazily if OPENAI_API_KEY is present) ─────────────
 // Using dynamic import to avoid breaking the build when openai package isn't
@@ -661,7 +662,12 @@ export class AutomationEngine {
 
       const { appendSmsCompliance, sendSms } = await import("@homereach/services/outreach");
       const finalBody = opts.skipStopFooter ? body : appendSmsCompliance(body);
-      const result = await sendSms({ to, body: finalBody, intent: "follow_up" });
+      const result = await sendSms({
+        to,
+        body: finalBody,
+        intent: "follow_up",
+        statusCallbackUrl: getTwilioStatusCallbackUrl(),
+      });
       if (!result.success) {
         console.error(`[AutomationEngine] SMS to ${to} failed: ${result.error}`);
       }

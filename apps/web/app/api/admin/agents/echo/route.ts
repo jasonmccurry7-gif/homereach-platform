@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 import { NextResponse } from "next/server";
 import {
   appendEmailComplianceHtml,
@@ -467,6 +468,7 @@ export async function POST(req: Request) {
             fromNumber: agent.phone,
             body: message,
             intent: "prospecting",
+            statusCallbackUrl: getTwilioStatusCallbackUrl(),
           });
           sendResult = { success: result.success, messageId: result.externalId, error: result.error };
         } else {

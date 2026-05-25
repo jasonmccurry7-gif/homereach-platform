@@ -22,6 +22,10 @@ vi.mock("@/lib/runtime/app-url", () => ({
   getPublicAppBaseUrl: () => "https://home-reach.test",
 }));
 
+vi.mock("@/lib/outreach/twilio-status-callback", () => ({
+  getTwilioStatusCallbackUrl: () => "https://home-reach.test/api/webhooks/twilio/status",
+}));
+
 vi.mock("@homereach/services/outreach", () => ({
   sendEmail: mocks.sendEmail,
   sendSms: mocks.sendSms,

@@ -2,7 +2,7 @@
 
 Updated: 2026-05-25
 
-Scope: shared SMS provider routing, Twilio sender identity selection, close-deal SMS posture, and outbound SMS safety gates.
+Scope: shared SMS provider routing, Twilio sender identity selection, outbound status callback telemetry, close-deal SMS posture, and outbound SMS safety gates.
 
 Safety posture: this audit is based on local code inspection only. No live SMS was sent, no Twilio API was called, no production data was mutated, and no secret values were printed.
 
@@ -10,7 +10,7 @@ Safety posture: this audit is based on local code inspection only. No live SMS w
 
 HomeReach has a central SMS sender in `packages/services/src/outreach/index.ts` that wraps Twilio and supports test mode, prospecting approval gates, messaging-service sends, explicit sender numbers, and status callback URLs.
 
-Most newer SMS send paths use `sendSms()`. Close-deal email now uses the central email provider router, and close-deal SMS now uses the central SMS provider router with the assigned agent sender number, follow-up intent, and Twilio status callback telemetry.
+Most newer SMS send paths use `sendSms()`. Close-deal email now uses the central email provider router, and close-deal SMS now uses the central SMS provider router with the assigned agent sender number, follow-up intent, and Twilio status callback telemetry. A follow-up telemetry pass added the same `/api/webhooks/twilio/status` callback URL to the remaining web-app customer/outreach SMS paths that already call the central SMS provider.
 
 The main shared SMS routing risk found and fixed in this pass is sender identity precedence:
 
@@ -36,6 +36,7 @@ Observed behavior:
 5. Sender identity comes from explicit `fromNumber`, `OUTREACH_SMS_FROM_NUMBER`, or `TWILIO_PHONE_NUMBER`.
 6. Messaging service identity comes from explicit `messagingServiceSid`, `OUTREACH_TWILIO_MESSAGING_SERVICE_SID`, or `TWILIO_MESSAGING_SERVICE_SID`.
 7. Send payload now prefers an explicit `fromNumber` over an environment-derived messaging-service SID, while preserving explicit `messagingServiceSid` when a caller intentionally supplies one.
+8. Customer/outreach SMS paths in the web app now pass the shared Twilio status callback URL when the call site is intended to track outbound delivery state.
 
 Relevant env names:
 
@@ -133,3 +134,40 @@ Validation:
 Remaining risk:
 
 - Live Twilio behavior still needs test-mode/sandbox validation before production SMS trust because no live SMS was sent and no hosted send-capable endpoint was invoked in this branch pass.
+
+## Status Callback Coverage
+
+Primary files:
+
+- `apps/web/lib/outreach/twilio-status-callback.ts`
+- `apps/web/lib/engine/automation.ts`
+- `apps/web/app/api/admin/sales/event/route.ts`
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/admin/automation/send-due/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
+
+Observed gap:
+
+- `/api/admin/sales/close-deal` already passed a Twilio status callback URL.
+- Other customer/outreach SMS paths used central `sendSms()` but did not pass `statusCallbackUrl`, so delivery telemetry could depend on Twilio-side default configuration instead of route-level intent.
+
+Fix applied:
+
+- Added `getTwilioStatusCallbackUrl()` as the shared web-app callback helper.
+- Passed the helper into sales-event sends, scheduled automation sends, Echo agent sends, close-deal sends, and `AutomationEngine.sendSms()`.
+- Internal/operator alert SMS paths were left unchanged; they already log their own alert records and are not customer outreach sequences.
+
+Validation:
+
+- `pnpm exec vitest run apps/web/lib/outreach/__tests__/twilio-status-callback.test.ts apps/web/app/api/admin/sales/__tests__/close-deal.test.ts packages/services/src/outreach/__tests__/sms.test.ts` passed with 8 tests.
+- Focused ESLint on the touched helper/routes passed with 0 errors and 14 pre-existing warnings in `apps/web/app/api/admin/agents/echo/route.ts` and `apps/web/app/api/admin/sales/event/route.ts`.
+- `pnpm test` passed with 209 tests across 33 files.
+- `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
+- `pnpm --filter @homereach/web lint` passed with 492 existing warnings and 0 errors.
+- Placeholder-env `pnpm --filter @homereach/web build` passed and generated 247 static pages.
+- `git diff --check` passed with Windows line-ending warnings only.
+
+Approval needed:
+
+- No for additive callback metadata on existing central-provider SMS calls.
+- Yes before live Twilio validation, SMS sends, or provider-side status callback configuration changes.

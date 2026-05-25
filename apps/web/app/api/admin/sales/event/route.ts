@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import {
@@ -312,6 +313,7 @@ export async function POST(request: Request) {
           body: smsBody,
           fromNumber: agentPhone || undefined,
           intent: "prospecting",
+          statusCallbackUrl: getTwilioStatusCallbackUrl(),
           testMode,
         });
       } else if (isEmail) {

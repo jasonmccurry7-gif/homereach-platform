@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 import { recordOutboundRevenueMessage } from "@/lib/revenue-messaging/outbound";
 import {
   appendEmailComplianceHtml,
@@ -325,6 +326,7 @@ export async function POST(req: NextRequest) {
         body: smsBody,
         fromNumber: twilioPhone ?? undefined,
         intent: "prospecting",
+        statusCallbackUrl: getTwilioStatusCallbackUrl(),
         testMode,
       });
     } else {
