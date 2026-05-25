@@ -485,6 +485,24 @@ Risk of fix: low for audit; medium for mutation validation.
 
 Approval needed: provider-mutating tests require explicit test-mode controls.
 
+### Resolved: Political Candidate Chat Did Not Honor The AI Kill Switch
+
+What was wrong: the public political candidate-agent chat helper checked for `OPENAI_API_KEY` and could call OpenAI even when the existing subsystem kill switch `DISABLE_POLITICAL_AI=true` was set.
+
+Why it mattered: political AI output must be easy to freeze while keeping read-only/manual planning tools online. The route has compliance prompting and static fallback behavior, but the operator kill switch needs to stop model calls deterministically.
+
+Files:
+
+- `apps/web/lib/political/candidate-agent-chat.ts`
+- `apps/web/lib/political/env.ts`
+- `apps/web/lib/political/__tests__/candidate-agent-chat.test.ts`
+
+Fix applied: `getOpenAIClient()` now returns `null` when `DISABLE_POLITICAL_AI=true`, which forces the existing static fallback reply path and avoids provider calls.
+
+Validation: focused candidate-agent chat kill-switch test passed. Full `pnpm test` passed with 175 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, placeholder-env web build generated 248 routes, and `git diff --check` passed locally.
+
+Approval needed: no for the kill-switch fix; yes before enabling or validating live political AI responses with provider calls.
+
 ## MEDIUM
 
 ### Partially Resolved: Targeted Checkout Billing Copy Did Not Match Stripe Payment Mode

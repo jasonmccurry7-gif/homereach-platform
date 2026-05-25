@@ -23,10 +23,28 @@ The most important remaining items to fix next are:
 9. Admin-adjacent non-`/api/admin` routes now also fail closed: admin inbox conversation reads/replies, growth activity logs, and targeted campaign admin status/send/mailed actions require admin access before service-role reads, Drizzle updates, or outbound communication helpers.
 10. The SMS APEX command endpoint now validates Twilio signatures before trusted command execution and no longer exposes approved sender phone numbers through its public liveness response.
 11. The public Facebook follow-up cron route now fails closed through the shared cron guard when `CRON_SECRET` is missing or invalid.
+12. The public political candidate chat helper now honors `DISABLE_POLITICAL_AI=true` and falls back to static operational replies instead of calling OpenAI.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
 ## Provider Surface Map
+
+### Political AI Provider Calls
+
+Primary files:
+
+- `apps/web/app/api/political/candidate-agent/chat/route.ts`
+- `apps/web/lib/political/candidate-agent-chat.ts`
+- `apps/web/lib/political/env.ts`
+- `apps/web/lib/political/__tests__/candidate-agent-chat.test.ts`
+
+Observed flow:
+
+1. Public political chat is available only when `ENABLE_POLITICAL=true`.
+2. Chat payloads are bounded and resolved to a supported candidate context before any answer is generated.
+3. The helper now checks `DISABLE_POLITICAL_AI=true` before creating an OpenAI client.
+4. When AI is disabled or `OPENAI_API_KEY` is absent, the route returns static fallback replies from the loaded campaign plan and compliance rules.
+5. Human approval remains required before political outreach, proposal, checkout, or production use.
 
 ### Stripe
 
@@ -733,6 +751,7 @@ Latest validation for this follow-up guard sweep:
 - `git diff --check` and the admin route guard scanner passed.
 - Focused ESLint on admin-adjacent conversation and targeted admin routes passed with only pre-existing warnings.
 - Focused inbound SMS signature helper tests, request-secret helper tests, agent-scope helper tests, focused ESLint on `/api/command` and `/api/facebook/followup`, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the APEX command/Facebook cron hardening patch.
+- Focused political candidate chat kill-switch tests, full `pnpm test` with 175 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the political AI kill-switch hardening patch.
 
 ## Safe Validation Path
 

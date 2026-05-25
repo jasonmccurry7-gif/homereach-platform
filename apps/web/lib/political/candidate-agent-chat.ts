@@ -7,6 +7,7 @@ import {
   OHIO_TOP_CANDIDATE_SELECTOR_OPTIONS,
   type OhioCandidateSelectorOption,
 } from "./ohio-candidate-selector";
+import { isPoliticalAiDisabled } from "./env";
 
 export type CandidateAgentChatRole = "agent" | "user";
 
@@ -140,6 +141,7 @@ export function buildCandidateAgentFallbackReply(
 }
 
 async function getOpenAIClient(): Promise<import("openai").OpenAI | null> {
+  if (isPoliticalAiDisabled()) return null;
   if (!process.env.OPENAI_API_KEY) return null;
 
   try {
