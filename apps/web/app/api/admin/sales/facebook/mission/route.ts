@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
-import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/sales/facebook/mission?agent_id=xxx
@@ -108,7 +108,11 @@ export async function GET(req: Request) {
   if (!guard.ok) return guard.response;
 
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agent_id");
+  const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"), {
+    requireAgentId: true,
+  });
+  if (!agentScope.ok) return agentScope.response;
+  const agentId = agentScope.agentId!;
 
   const supabase = createServiceClient();
   const today = new Date().toISOString().split("T")[0];
@@ -119,7 +123,7 @@ export async function GET(req: Request) {
     const { data } = await supabase
       .from("facebook_activity_logs")
       .select("task_type")
-      .eq("agent_id", agentId ?? "")
+      .eq("agent_id", agentId)
       .gte("created_at", `${today}T00:00:00.000Z`)
       .lt("created_at",  `${today}T23:59:59.999Z`);
 
@@ -139,7 +143,7 @@ export async function GET(req: Request) {
     const { data: identity } = await supabase
       .from("agent_identities")
       .select("assigned_cities")
-      .eq("agent_id", agentId ?? "")
+      .eq("agent_id", agentId)
       .maybeSingle();
     assignedCities = identity?.assigned_cities ?? [];
   } catch {}
@@ -253,6 +257,11 @@ export async function POST(req: Request) {
     if (!agent_id || !task_type) {
       return NextResponse.json({ error: "agent_id and task_type required" }, { status: 400 });
     }
+    const agentScope = resolveAgentScope(guard.user, agent_id, {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const scopedAgentId = agentScope.agentId!;
 
     const supabase = createServiceClient();
 
@@ -271,7 +280,7 @@ export async function POST(req: Request) {
       const { error } = await supabase
         .from("facebook_activity_logs")
         .insert({
-          agent_id,
+          agent_id: scopedAgentId,
           task_type,
           city,
           category,
@@ -293,7 +302,7 @@ export async function POST(req: Request) {
     if (!inserted) {
       // Fallback: log to sales_events so activity is not lost
       await supabase.from("sales_events").insert({
-        agent_id,
+        agent_id: scopedAgentId,
         lead_id: lead_id ?? null,
         action_type: "facebook_sent",
         channel: "facebook",
@@ -306,7 +315,7 @@ export async function POST(req: Request) {
 
     // Also fire to sales_events for unified tracking
     await Promise.resolve(supabase.from("sales_events").insert({
-      agent_id,
+      agent_id: scopedAgentId,
       lead_id: lead_id ?? null,
       action_type: "facebook_sent",
       channel: "facebook",

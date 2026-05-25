@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
-import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -28,6 +28,7 @@ interface Lead {
   category: string | null;
   business_name: string | null;
   contact_name: string | null;
+  assigned_agent_id: string | null;
 }
 
 interface AgentIdentity {
@@ -290,12 +291,17 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    const agentScope = resolveAgentScope(guard.user, agent_id, {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const scopedAgentId = agentScope.agentId!;
 
     // ── Load lead ─────────────────────────────────────────────────────────────
     const { data: lead, error: leadError } = await supabase
       .from("sales_leads")
       .select(
-        "id, phone, email, city, category, business_name, contact_name"
+        "id, phone, email, city, category, business_name, contact_name, assigned_agent_id"
       )
       .eq("id", lead_id)
       .single();
@@ -310,6 +316,13 @@ export async function POST(request: Request) {
     }
 
     const typedLead = lead as Lead;
+    if (
+      agentScope.isSalesAgent &&
+      typedLead.assigned_agent_id &&
+      typedLead.assigned_agent_id !== scopedAgentId
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // ── Verify contact method exists ──────────────────────────────────────────
     if (channel === "sms" && !typedLead.phone) {
@@ -334,7 +347,7 @@ export async function POST(request: Request) {
     const { data: agentIdentity, error: agentError } = await supabase
       .from("agent_identities")
       .select("from_email, from_name, twilio_phone")
-      .eq("agent_id", agent_id)
+      .eq("agent_id", scopedAgentId)
       .eq("is_active", true)
       .single();
 
@@ -396,7 +409,7 @@ export async function POST(request: Request) {
 
     // ── Log to sales_events ───────────────────────────────────────────────────
     await supabase.from("sales_events").insert({
-      agent_id,
+      agent_id: scopedAgentId,
       lead_id,
       action_type: channel === "sms" ? "text_sent" : "email_sent",
       channel,

@@ -307,6 +307,8 @@ Files:
 
 Fix applied: added `requireAdmin`, `requireAdminOrSalesAgent`, or `requireAdminOrCron` at route entry based on caller intent. `/api/admin/operator/summary` now forwards the authenticated request cookie to protected internal dashboard subfetches.
 
+Additional scope hardening: added a tested shared agent-scope helper so authenticated sales agents cannot use explicit `agent_id` query/body values to read or act as another rep. Applied to sales funnel, leads, next-lead, replies, insights, Facebook scorecard, Facebook mission logging, Facebook alert routing, and close-deal sending. Admins retain explicit cross-agent scope where needed.
+
 Validation: follow-up service-role scan across `apps/web/app/api/admin` reports no unguarded service-client routes outside custom authorized political sync routes. Full unit suite, typecheck, web lint, and web build passed locally after this second sweep.
 
 Approval needed: no for access-control hardening; yes before live send/provider validation.

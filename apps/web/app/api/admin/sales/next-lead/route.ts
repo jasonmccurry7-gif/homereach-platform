@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
-import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/next-lead
 // Returns the highest-priority uncontacted lead
@@ -15,6 +15,8 @@ export async function GET(request: Request) {
   const city     = searchParams.get("city");
   const category = searchParams.get("category");
   const channel  = searchParams.get("channel"); // sms | email | facebook
+  const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"));
+  if (!agentScope.ok) return agentScope.response;
 
   let query = supabase
     .from("sales_leads")
@@ -51,6 +53,11 @@ export async function GET(request: Request) {
   if (channel === "facebook") { q = q.not("facebook_url", "is", null); q = q.not("facebook_url", "eq", ""); }
   if (city)     q = q.eq("city", city);
   if (category) q = q.eq("category", category);
+  if (agentScope.isSalesAgent && agentScope.agentId) {
+    q = q.or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agentScope.agentId}`);
+  } else if (agentScope.agentId) {
+    q = q.eq("assigned_agent_id", agentScope.agentId);
+  }
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

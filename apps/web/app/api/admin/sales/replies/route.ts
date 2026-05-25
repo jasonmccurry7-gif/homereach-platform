@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
-import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/sales/replies
@@ -29,17 +29,23 @@ export async function GET(request: Request) {
     if (!guard.ok) return guard.response;
 
     const supabase = createServiceClient();
+    const { searchParams } = new URL(request.url);
+    const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"));
+    if (!agentScope.ok) return agentScope.response;
 
     // Get timestamp for 24 hours ago
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     // Query events with action_type "reply_received" from the last 24 hours
-    const { data: replyEvents, error: replyError } = await supabase
+    let replyQuery = supabase
       .from("sales_events")
-      .select("lead_id, channel, message, created_at")
+      .select("lead_id, channel, message, created_at, agent_id")
       .eq("action_type", "reply_received")
       .gte("created_at", twentyFourHoursAgo)
       .order("created_at", { ascending: false });
+    if (agentScope.agentId) replyQuery = replyQuery.eq("agent_id", agentScope.agentId);
+
+    const { data: replyEvents, error: replyError } = await replyQuery;
 
     if (replyError) {
       return NextResponse.json({ error: replyError.message }, { status: 500 });

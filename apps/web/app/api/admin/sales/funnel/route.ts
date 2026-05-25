@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
-import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/funnel
 // Returns full conversion funnel: leads viewed → sent → replied → closed
@@ -12,7 +12,8 @@ export async function GET(request: Request) {
 
   const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
-  const agent_id = searchParams.get("agent_id");
+  const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"));
+  if (!agentScope.ok) return agentScope.response;
   const since    = searchParams.get("since") ?? new Date(Date.now() - 86400000 * 30).toISOString();
 
   let q = supabase
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
     .select("action_type, channel, city, category, revenue_cents, agent_id, lead_id")
     .gte("created_at", since);
 
-  if (agent_id) q = q.eq("agent_id", agent_id);
+  if (agentScope.agentId) q = q.eq("agent_id", agentScope.agentId);
   const { data: events, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

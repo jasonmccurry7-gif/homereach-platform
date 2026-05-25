@@ -42,6 +42,7 @@ Date: 2026-05-25
 - Expanded the admin service-role access sweep to sensitive admin reads and send-capable routes: sales lead/reply/funnel/leaderboard/insight APIs, close-deal sending, sales nudges, email warmup, internal alert logs, founding member data, intelligence pricing, operator summary, Facebook scorecards/leaderboards, and admin health now require admin/sales-agent or cron access as appropriate.
 - Hardened public property-intelligence checkout so founding memberships and slot counts are no longer activated before Stripe confirms payment; signed Stripe webhook handling now finalizes founding membership activation after `checkout.session.completed`.
 - Fixed a preview-discovered property-intelligence checkout validation edge case so malformed JSON returns `400 Invalid checkout payload` before Supabase or Stripe work can begin.
+- Hardened explicit sales `agent_id` scoping so sales-agent sessions cannot query or act as another rep on funnel, lead queue, next-lead, replies, insights, Facebook scorecard, Facebook mission, Facebook alert, or close-deal routes.
 
 ## Validation
 
@@ -58,6 +59,7 @@ Date: 2026-05-25
 - Local focused Stripe app URL resolver test: passed, 4 tests.
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
 - Local focused request secret helper test: passed, 4 tests.
+- Local focused agent scope helper test: passed, 4 tests.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.

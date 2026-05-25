@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
-import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/leads
 export async function GET(request: Request) {
@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   const status   = searchParams.get("status");
   const city     = searchParams.get("city");
   const category = searchParams.get("category");
+  const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"));
+  if (!agentScope.ok) return agentScope.response;
   const limit    = parseInt(searchParams.get("limit") ?? "50");
   const offset   = parseInt(searchParams.get("offset") ?? "0");
   const search   = searchParams.get("q");
@@ -27,6 +29,11 @@ export async function GET(request: Request) {
   if (status)   q = q.eq("status", status);
   if (city)     q = q.eq("city", city);
   if (category) q = q.eq("category", category);
+  if (agentScope.isSalesAgent && agentScope.agentId) {
+    q = q.or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agentScope.agentId}`);
+  } else if (agentScope.agentId) {
+    q = q.eq("assigned_agent_id", agentScope.agentId);
+  }
   if (search)   q = q.ilike("business_name", `%${search}%`);
 
   const { data, count, error } = await q;
