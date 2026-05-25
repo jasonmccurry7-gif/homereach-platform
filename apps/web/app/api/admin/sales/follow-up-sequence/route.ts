@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 interface FollowUpTask {
   lead_id: string;
@@ -41,14 +41,14 @@ function getDraftMessage(
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
-    const agentId = req.nextUrl.searchParams.get("agent_id");
-    if (!agentId) {
-      return NextResponse.json({ error: "agent_id required" }, { status: 400 });
-    }
+    const agentScope = resolveAgentScope(guard.user, req.nextUrl.searchParams.get("agent_id"), {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const agentId = agentScope.agentId!;
 
     const db = createServiceClient();
     const now = new Date();
@@ -206,9 +206,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
     const { agentId, leadId, sequenceDay, channel, message } = await req.json();
 
@@ -218,12 +217,35 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const agentScope = resolveAgentScope(guard.user, agentId, {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const scopedAgentId = agentScope.agentId!;
 
     const db = createServiceClient();
+    const { data: leadOwner, error: leadOwnerError } = await db
+      .from("sales_leads")
+      .select("assigned_agent_id")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (leadOwnerError) {
+      return NextResponse.json({ error: leadOwnerError.message }, { status: 500 });
+    }
+    if (!leadOwner) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+    if (
+      agentScope.isSalesAgent &&
+      leadOwner.assigned_agent_id &&
+      leadOwner.assigned_agent_id !== scopedAgentId
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Log the follow-up as a sales_event
     await db.from("sales_events").insert({
-      agent_id: agentId,
+      agent_id: scopedAgentId,
       lead_id: leadId,
       action_type: "follow_up_sent",
       channel: channel,

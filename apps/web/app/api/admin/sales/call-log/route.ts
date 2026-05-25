@@ -1,16 +1,12 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // POST /api/admin/sales/call-log
 export async function POST(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
     const supabase = createServiceClient();
     const body = await request.json();
@@ -39,12 +35,36 @@ export async function POST(request: Request) {
     if (!agent_id || !outcome) {
       return NextResponse.json({ error: "agent_id and outcome required" }, { status: 400 });
     }
+    const agentScope = resolveAgentScope(guard.user, agent_id, {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const scopedAgentId = agentScope.agentId!;
+
+    if (lead_id) {
+      const { data: leadOwner, error: leadOwnerError } = await supabase
+        .from("sales_leads")
+        .select("assigned_agent_id")
+        .eq("id", lead_id)
+        .maybeSingle();
+
+      if (leadOwnerError) {
+        return NextResponse.json({ error: leadOwnerError.message }, { status: 500 });
+      }
+      if (
+        agentScope.isSalesAgent &&
+        leadOwner?.assigned_agent_id &&
+        leadOwner.assigned_agent_id !== scopedAgentId
+      ) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
 
     // 1. Insert into call_logs
     const { data: callLog, error: logError } = await supabase
       .from("call_logs")
       .insert({
-        agent_id,
+        agent_id: scopedAgentId,
         lead_id,
         business_name,
         phone,
@@ -108,7 +128,7 @@ export async function POST(request: Request) {
     const { data: event } = await supabase
       .from("sales_events")
       .insert({
-        agent_id,
+        agent_id: scopedAgentId,
         lead_id,
         action_type: "phone_call",
         channel: "phone",
@@ -124,7 +144,7 @@ export async function POST(request: Request) {
       await supabase
         .from("sales_events")
         .insert({
-          agent_id,
+          agent_id: scopedAgentId,
           lead_id,
           action_type: "conversation_started",
           channel: "phone",
@@ -140,6 +160,7 @@ export async function POST(request: Request) {
         .from("daily_call_lists")
         .select("completed_ids")
         .eq("id", call_list_id)
+        .eq("agent_id", scopedAgentId)
         .maybeSingle();
 
       const completedIds = list?.completed_ids || [];
@@ -148,7 +169,8 @@ export async function POST(request: Request) {
         await supabase
           .from("daily_call_lists")
           .update({ completed_ids: completedIds })
-          .eq("id", call_list_id);
+          .eq("id", call_list_id)
+          .eq("agent_id", scopedAgentId);
       }
     }
 
@@ -166,10 +188,16 @@ export async function POST(request: Request) {
 
       let matches: Record<string, unknown>[] = [];
       if (searchCondition) {
-        const { data: foundLeads } = await supabase
+        let foundLeadsQuery = supabase
           .from("sales_leads")
           .select("id")
           .or(searchCondition);
+        if (agentScope.isSalesAgent) {
+          foundLeadsQuery = foundLeadsQuery.or(
+            `assigned_agent_id.is.null,assigned_agent_id.eq.${scopedAgentId}`
+          );
+        }
+        const { data: foundLeads } = await foundLeadsQuery;
 
         matches = foundLeads || [];
       }
@@ -223,21 +251,17 @@ export async function POST(request: Request) {
 // GET /api/admin/sales/call-log?agent_id=X&date=today
 export async function GET(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
     const supabase = createServiceClient();
     const { searchParams } = new URL(request.url);
-    const agent_id = searchParams.get("agent_id");
+    const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"), {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const agent_id = agentScope.agentId!;
     const dateParam = searchParams.get("date") || "today";
-
-    if (!agent_id) {
-      return NextResponse.json({ error: "agent_id required" }, { status: 400 });
-    }
 
     // Determine date range
     let startDate = "";

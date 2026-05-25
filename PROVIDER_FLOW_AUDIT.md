@@ -230,7 +230,7 @@ Access-control flow:
 5. Facebook mission GET/POST now requires authenticated admin or sales-agent session.
 6. Remaining unguarded service-role mutation scan results are expected public/provider surfaces: targeted checkout proof boundary, intelligence checkout, and Twilio status signature flow.
 7. Follow-up admin service-role scan now finds no unguarded `apps/web/app/api/admin` service-client routes outside custom authorized routes. This second sweep covered sensitive read routes and send-capable routes, not only POST/PUT mutation routes.
-8. Explicit sales `agent_id` scope now uses a shared helper: sales agents are limited to their own agent id, while admins can intentionally request another rep. This covers sales funnel, leads, next-lead, replies, insights, Facebook scorecard, Facebook mission, Facebook alert, and close-deal routes.
+8. Explicit sales `agent_id` scope now uses a shared helper: sales agents are limited to their own agent id, while admins can intentionally request another rep. This covers sales funnel, leads, next-lead, replies, insights, Facebook scorecard, Facebook mission, Facebook alert, close-deal, at-risk deals, priority actions, call lists, call logs, call stats, follow-up sequence logging, and power-mode checks.
 
 ## Findings
 
@@ -596,7 +596,7 @@ Fix applied:
 - Added `requireAdminOrSalesAgent` to sales-agent dashboard/read and close-deal surfaces.
 - Added `requireAdminOrCron` to cron/manual operational jobs and admin health.
 - Forwarded the authenticated cookie from `/api/admin/operator/summary` to guarded internal dashboard subfetches so the dashboard can still aggregate protected child endpoints for authenticated admins.
-- Added a tested `resolveAgentScope` helper and applied it to explicit `agent_id` sales/Facebook routes so sales agents cannot read or act as another rep by changing query/body values.
+- Added a tested `resolveAgentScope` helper and applied it to explicit `agent_id` sales/Facebook routes so sales agents cannot read or act as another rep by changing query/body values. The second scope pass covered at-risk deals, priority actions, call lists, call logs, call stats, follow-up sequence logging, and power-mode checks.
 
 Validation:
 
@@ -606,7 +606,7 @@ Validation:
 Residual risk:
 
 - Unauthenticated external monitors or undocumented callers must now use an admin session or cron secret, which is intentional for service-role admin data.
-- Broader sales dashboard visibility routes without explicit `agent_id` still need a separate UX-aware review before restricting team-wide views like leaderboards.
+- Team-wide sales and Facebook leaderboards intentionally remain visible to authenticated admin/sales-agent sessions in this pass and need product review before restricting visibility.
 - Public intelligence checkout no longer activates founding membership or slot data before confirmed payment; the remaining risk is schema drift because the referenced property-intelligence tables are not present in committed schema or migrations.
 
 ### MEDIUM: Stripe API Version Needs Scheduled Upgrade Review
@@ -664,7 +664,7 @@ Validation:
 - Inbound SMS reply webhook now returns retryable 503 for unmatched replies when the revenue messaging bridge fails or misses the event ledger.
 - Facebook webhook signature validation and production missing-secret/verify-token behavior are covered by focused helper tests.
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
-- Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
+- Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
 

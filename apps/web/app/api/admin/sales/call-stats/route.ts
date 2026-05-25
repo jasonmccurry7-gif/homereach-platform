@@ -1,25 +1,21 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/call-stats?agent_id=X&period=today|week|month
 export async function GET(request: Request) {
   try {
-    const authClient = await createClient();
-    const { data: { user } } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
     const supabase = createServiceClient();
     const { searchParams } = new URL(request.url);
-    const agent_id = searchParams.get("agent_id");
+    const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"), {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const agent_id = agentScope.agentId!;
     const period = searchParams.get("period") || "today";
-
-    if (!agent_id) {
-      return NextResponse.json({ error: "agent_id required" }, { status: 400 });
-    }
 
     // Build date range
     const now = new Date();
