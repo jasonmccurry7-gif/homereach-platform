@@ -25,6 +25,9 @@ import {
   stripeResourceId,
   toPositiveCents,
 } from "@/lib/intelligence/checkout";
+import {
+  checkPropertyIntelligenceFoundingSchemaReady,
+} from "@/lib/intelligence/schema-readiness";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/stripe
@@ -416,6 +419,11 @@ async function handlePropertyIntelligenceCheckoutCompleted(session: Stripe.Check
   }
 
   const supabase = createServiceClient();
+  const schemaReady = await checkPropertyIntelligenceFoundingSchemaReady(supabase);
+  if (!schemaReady.ok) {
+    throw new Error(schemaReady.diagnostics);
+  }
+
   const { data: existingMembership, error: existingError } = await supabase
     .from("founding_memberships")
     .select("id")

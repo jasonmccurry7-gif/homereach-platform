@@ -16,7 +16,9 @@ The live HomeReach Supabase project does contain the three property-intelligence
 
 That means the tables are real in production, but they are currently out-of-band from committed Drizzle/Supabase migration history in this repository.
 
-The critical drift is narrower and more urgent: live `founding_memberships` does not include `stripe_checkout_session_id`, but the current Stripe webhook code uses that column to detect whether a property-intelligence founding checkout has already created a membership and then inserts the same column for idempotency.
+The critical drift is narrower and more urgent: live `founding_memberships` does not include `stripe_checkout_session_id`, but the Stripe webhook code uses that column to detect whether a property-intelligence founding checkout has already created a membership and then inserts the same column for idempotency.
+
+Branch mitigation now in place: `/api/intelligence/checkout` performs a lightweight founding-schema readiness probe before creating a founding Stripe Checkout session. If `founding_memberships.stripe_checkout_session_id` is missing, the route returns `503` before creating a Stripe session. The Stripe webhook finalizer also runs the same probe before membership finalization so already-created sessions fail with a clear schema-drift error and continue retrying instead of producing unclear Supabase errors.
 
 ## Evidence
 
@@ -60,6 +62,7 @@ Business risk:
 - Founding slot usage could remain stale after payment.
 - Stripe webhook retries may keep failing until schema drift is repaired.
 - Admin founding dashboards may not reflect paid property-intelligence commitments.
+- New founding checkout creation should now fail closed before Stripe session creation when the idempotency column is missing, reducing the chance of collecting new payments into a known-unfinalizable path.
 
 ## Safe Fix Path
 
@@ -82,6 +85,15 @@ Local migration proposal:
 - This migration has not been applied to the live Supabase project.
 - `git diff --check` passed after creating the migration.
 - `supabase migration list --local` could not run because the local Supabase Postgres service is not running on `127.0.0.1:54322`. This is an environment limitation, not a remote validation attempt.
+
+Branch fail-closed mitigation:
+
+- Added `apps/web/lib/intelligence/schema-readiness.ts` to detect missing `founding_memberships.stripe_checkout_session_id` schema-cache/column errors.
+- `/api/intelligence/checkout` now checks the founding membership schema before creating founding Stripe Checkout sessions.
+- `/api/webhooks/stripe` now checks the same schema before finalizing property-intelligence founding memberships.
+- Focused schema-readiness, checkout-route, and checkout-helper tests passed with 11 tests.
+- Focused ESLint on the checkout route/test, Stripe webhook route, schema-readiness helper/test passed with 0 warnings/errors.
+- Focused `@homereach/web` typecheck passed.
 
 Approval gate:
 

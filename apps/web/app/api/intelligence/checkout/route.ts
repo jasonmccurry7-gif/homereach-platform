@@ -6,6 +6,10 @@ import {
   readIntelligenceCheckoutPayload,
   toPositiveCents,
 } from "@/lib/intelligence/checkout";
+import {
+  checkPropertyIntelligenceFoundingSchemaReady,
+  PROPERTY_INTELLIGENCE_FOUNDING_SCHEMA_UNAVAILABLE,
+} from "@/lib/intelligence/schema-readiness";
 import { NextResponse } from "next/server";
 import { getStripe } from "@homereach/services/stripe";
 import type Stripe from "stripe";
@@ -95,6 +99,17 @@ export async function POST(req: Request) {
 
     // Step 3: Create Stripe checkout session. Do not write active membership
     // or decrement founding inventory until the signed Stripe webhook confirms payment.
+    if (isFounding) {
+      const schemaReady = await checkPropertyIntelligenceFoundingSchemaReady(db);
+      if (!schemaReady.ok) {
+        console.error("[intelligence/checkout] founding schema unavailable:", schemaReady.diagnostics);
+        return NextResponse.json(
+          { error: PROPERTY_INTELLIGENCE_FOUNDING_SCHEMA_UNAVAILABLE },
+          { status: 503, headers }
+        );
+      }
+    }
+
     const isSubscription = checkout.tier === "t2" || checkout.tier === "t3";
     const mode: "payment" | "subscription" = isSubscription ? "subscription" : "payment";
     const appUrl = getPublicAppBaseUrl();

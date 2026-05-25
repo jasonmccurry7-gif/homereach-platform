@@ -186,12 +186,14 @@ Property intelligence checkout flow:
 2. Route now applies a basic checkout rate limit before payload parsing, Supabase service-role lookup, founding-slot reads, or Stripe session creation.
 3. Route parses and normalizes the payload before creating a Supabase service-role client; malformed JSON returns `400 Invalid checkout payload`.
 4. Route reads `property_intelligence_tiers` and `founding_slots` through the Supabase service-role client.
-5. Route creates a Stripe Checkout session with explicit `property_intelligence` metadata.
-6. Route no longer writes `founding_memberships` or updates `founding_slots` before payment confirmation.
-7. Signed Stripe webhook handling for `checkout.session.completed` now finalizes founding membership activation and recalculates slot usage from active memberships.
-8. Read-only Supabase metadata confirms `property_intelligence_tiers`, `founding_slots`, and `founding_memberships` exist in the live HomeReach project, but they remain out-of-band from committed migrations.
-9. Critical drift found: live `founding_memberships` does not have `stripe_checkout_session_id`, while the Stripe webhook queries and inserts that column during property-intelligence founding checkout finalization.
-10. A local additive migration proposal now captures the out-of-band tables and adds `founding_memberships.stripe_checkout_session_id` plus a unique partial index; it has not been applied to live Supabase.
+5. For founding slots, route now probes that `founding_memberships.stripe_checkout_session_id` is available before Stripe session creation.
+6. Route creates a Stripe Checkout session with explicit `property_intelligence` metadata only after the founding finalization schema is ready, or returns `503` before Stripe work when the schema is missing.
+7. Route no longer writes `founding_memberships` or updates `founding_slots` before payment confirmation.
+8. Signed Stripe webhook handling for `checkout.session.completed` now finalizes founding membership activation and recalculates slot usage from active memberships.
+9. The webhook finalizer now runs the same founding-schema readiness probe before querying/inserting `stripe_checkout_session_id`, making existing schema drift fail with a clear retryable handler error.
+10. Read-only Supabase metadata confirms `property_intelligence_tiers`, `founding_slots`, and `founding_memberships` exist in the live HomeReach project, but they remain out-of-band from committed migrations.
+11. Critical drift found: live `founding_memberships` does not have `stripe_checkout_session_id`, while the Stripe webhook needs that column during property-intelligence founding checkout finalization.
+12. A local additive migration proposal now captures the out-of-band tables and adds `founding_memberships.stripe_checkout_session_id` plus a unique partial index; it has not been applied to live Supabase.
 
 Stripe webhook flow:
 
@@ -812,7 +814,7 @@ Residual risk:
 
 - Unauthenticated external monitors or undocumented callers must now use an admin session or cron secret, which is intentional for service-role admin data.
 - Team-wide sales and Facebook leaderboards intentionally remain visible to authenticated admin/sales-agent sessions in this pass and need product review before restricting visibility.
-- Public intelligence checkout no longer activates founding membership or slot data before confirmed payment; the remaining risk is now concrete schema drift because live `founding_memberships` lacks the `stripe_checkout_session_id` column used by the Stripe webhook finalizer, and the property-intelligence tables are not present in committed schema or migrations.
+- Public intelligence checkout no longer activates founding membership or slot data before confirmed payment, and founding checkout creation now fails closed before Stripe session creation when the required idempotency column is missing. The remaining risk is still concrete schema drift: live `founding_memberships` lacks `stripe_checkout_session_id`, and the property-intelligence tables are not present in committed schema or migrations.
 
 ### MEDIUM: Stripe API Version Needs Scheduled Upgrade Review
 
@@ -878,6 +880,7 @@ Validation:
 - Public political candidate search, map-plan save, and candidate-agent chat routes now have basic in-process public rate limits, with 429 retry metadata on blocked requests.
 - Public nonprofit, waitlist, targeted lead/campaign, targeted intake, and shared intake POST routes now apply basic in-process rate limits before body parsing.
 - Active checkout creation routes now apply basic in-process rate limits before request parsing or service-role/Stripe work where applicable, with 429 retry metadata on blocked requests.
+- Property-intelligence founding checkout creation now fails closed before Stripe session creation when the required founding-membership idempotency column is missing.
 - Non-admin agent service-role APIs now require admin/sales-agent access before creating service-role clients and preserve sales-agent ownership scoping.
 - Authenticated agent proxy wrappers now require admin/sales-agent access before parsing log-action bodies or proxying to downstream admin APIs.
 - Public spot slug resolution, availability checks, and political route coverage checks now apply basic in-process rate limits before service-role-backed catalog, availability, or route coverage reads.
@@ -916,6 +919,7 @@ Latest validation for this follow-up guard sweep:
 - Focused close-deal route test passed with 1 test, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 198 tests across 29 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after routing close-deal email through central `sendEmail()`.
 - Focused shared SMS routing tests passed with 5 tests, services typecheck passed, full `pnpm test` passed with 203 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after preserving explicit SMS sender identity over env-derived messaging-service defaults.
 - Focused close-deal SMS provider tests passed with 7 tests across the close-deal route and shared SMS service, focused close-deal ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 204 tests across 30 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after routing close-deal SMS through central `sendSms()`.
+- Focused property-intelligence schema-readiness, checkout-route, and checkout-helper tests passed with 11 tests; focused checkout/webhook/schema ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed after adding the fail-closed founding schema readiness guard.
 
 ## Safe Validation Path
 
@@ -947,4 +951,4 @@ Latest validation for this follow-up guard sweep:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation through the latest provider-routing checkpoints. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, checkout creation rate limiting, non-admin agent API role gates, authenticated agent proxy gates, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, close-deal email/SMS provider routing, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, public spot resolution rate limiting, public spot availability rate limiting, public political route coverage rate limiting, and admin service-role access risks have branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema is not production-ready yet: live tables exist, but `founding_memberships` lacks the `stripe_checkout_session_id` column used by the Stripe webhook finalizer. A local migration proposal exists, but live Supabase DDL still requires a backup/snapshot, isolated validation, and approval before application.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation through the latest provider-routing checkpoints. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing and fail-closed schema readiness, checkout creation rate limiting, non-admin agent API role gates, authenticated agent proxy gates, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, close-deal email/SMS provider routing, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, public spot resolution rate limiting, public spot availability rate limiting, public political route coverage rate limiting, and admin service-role access risks have branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema is not production-ready yet: live tables exist, but `founding_memberships` lacks the `stripe_checkout_session_id` column used by the Stripe webhook finalizer. A local migration proposal exists, but live Supabase DDL still requires a backup/snapshot, isolated validation, and approval before application.

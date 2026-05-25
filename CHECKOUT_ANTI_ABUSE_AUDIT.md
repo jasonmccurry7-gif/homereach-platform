@@ -66,14 +66,15 @@ Observed flow:
 1. Normalizes tier, city, category, market size, business name, email, and phone.
 2. Uses service-role Supabase to read `property_intelligence_tiers` and `founding_slots`.
 3. Selects founding or standard pricing.
-4. Creates a Stripe payment or subscription Checkout session.
-5. Defers founding membership activation to signed Stripe webhook finalization.
+4. For founding slots, checks that the founding membership idempotency column exists before creating a Stripe session.
+5. Creates a Stripe payment or subscription Checkout session only after the founding finalization schema is ready, or returns `503` before Stripe work when the schema is missing.
+6. Defers founding membership activation to signed Stripe webhook finalization.
 
 Risk before this pass: malformed payloads were already stopped before service-role work, and founding activation was already moved behind the webhook, but repeated valid public requests could still create Stripe Checkout sessions without a first-layer throttle.
 
-Control added: `checkout:intelligence`, 12 attempts per 10 minutes per hashed client IP, checked before payload parsing, service-role lookup, founding-slot reads, or Stripe session creation.
+Controls added: `checkout:intelligence`, 12 attempts per 10 minutes per hashed client IP, checked before payload parsing, service-role lookup, founding-slot reads, or Stripe session creation. A follow-up founding-schema readiness guard now blocks new founding Stripe sessions if `founding_memberships.stripe_checkout_session_id` is missing.
 
-Residual risk: property-intelligence table definitions still appear out-of-band from committed Drizzle/Supabase migrations and need a controlled Supabase schema audit.
+Residual risk: property-intelligence table definitions still appear out-of-band from committed Drizzle/Supabase migrations. Live `founding_memberships` still needs the controlled additive `stripe_checkout_session_id` migration before founding checkout can be trusted end to end.
 
 ## Validation
 
@@ -82,6 +83,7 @@ Residual risk: property-intelligence table definitions still appear out-of-band 
 - Full `pnpm test` passed with 187 tests across 25 files.
 - Full `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
 - Full `pnpm --filter @homereach/web lint` passed with 495 existing warnings and 0 errors.
+- Follow-up schema-guard validation: focused schema-readiness, checkout-route, and checkout-helper tests passed with 11 tests; focused checkout/webhook/schema ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 248 routes.
 - `git diff --check` passed.
 
