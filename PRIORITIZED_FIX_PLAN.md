@@ -27,6 +27,26 @@ Validation: focused property-intelligence checkout helper tests, full unit suite
 
 Approval needed: no for local code hardening and documentation; yes before Stripe provider-live validation or production data reconciliation.
 
+### Critical: Property Intelligence Webhook References A Missing Live Column
+
+What is wrong: a read-only Supabase metadata check confirmed the live `HomeReach` project has `property_intelligence_tiers`, `founding_slots`, and `founding_memberships`, but those tables are not represented in committed migrations. More urgently, live `founding_memberships` does not have `stripe_checkout_session_id`, while `apps/web/app/api/webhooks/stripe/route.ts` queries and inserts that column when finalizing a paid property-intelligence founding checkout.
+
+Why it matters: a paid property-intelligence founding checkout can reach Stripe `checkout.session.completed`, then fail during webhook finalization because the idempotency lookup references a missing column. That can leave paid founding memberships uncreated, slot counts stale, admin dashboards inaccurate, and Stripe retries stuck until the schema drift is repaired.
+
+Files:
+
+- `apps/web/app/api/webhooks/stripe/route.ts`
+- `apps/web/app/api/intelligence/checkout/route.ts`
+- `apps/web/app/(funnel)/intelligence/page.tsx`
+- `apps/web/app/(admin)/admin/founding/page.tsx`
+- `PROPERTY_INTELLIGENCE_SCHEMA_AUDIT.md`
+
+Safest fix: take a controlled Supabase schema snapshot, create an additive migration for `founding_memberships.stripe_checkout_session_id text`, add a unique index for webhook idempotency, bring the three out-of-band property-intelligence tables under committed migration/schema control, validate on a Supabase branch or isolated test database, and only then apply to production.
+
+Risk of fix: low-to-medium if limited to an additive nullable column and index, but high operational sensitivity because it touches payment finalization. Production DDL requires backup/snapshot and an explicit rollback path.
+
+Approval needed: yes before applying live Supabase DDL or replaying Stripe webhooks. No for documentation or a migration proposal.
+
 ### Resolved: Stripe Webhook Could Drop Retried Events Stuck In Received
 
 What was wrong: the Stripe webhook inserted a new event as `received`, but duplicate retries for an existing fresh `received` event returned 200 as `processing_duplicate`.
