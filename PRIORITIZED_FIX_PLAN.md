@@ -4,15 +4,15 @@ Updated: 2026-05-24
 
 ## CRITICAL
 
-### GitHub Authentication Blocker
+### GitHub PR Creation Blocker
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.
 
-Why it matters: The validated branch cannot be pushed or opened as a PR from this environment.
+Why it matters: The validated branch has been pushed, but this shell cannot create the PR through `gh pr create`.
 
 Files: none.
 
-Safest fix: authenticate `gh` or ensure Git Credential Manager has push credentials, then push the current branch.
+Safest fix: authenticate `gh`, then open the PR; alternatively open the pushed branch through GitHub's compare URL.
 
 Risk of fix: low.
 
@@ -20,22 +20,23 @@ Approval needed: no production approval; account authentication required.
 
 ## HIGH
 
-### Lint Command Is Not CI-Safe
+### Lint Warning Debt
 
-What is wrong: `apps/web` uses `next lint`, which prompts interactively and exits.
+What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 506 warnings.
 
-Why it matters: lint cannot protect production changes or CI until migrated.
+Why it matters: warnings include unused variables, unescaped text, legacy `any` usage, direct anchor navigation, and hook dependency issues that can hide real defects over time.
 
 Files:
 
 - `apps/web/package.json`
-- new ESLint config file to be added
+- `apps/web/eslint.config.mjs`
+- many `apps/web/app/**` and `apps/web/lib/**` modules
 
-Safest fix: add a committed ESLint flat config and change the script to `eslint .`.
+Safest fix: reduce warnings in focused passes by module, starting with revenue-critical intake, dashboard, and webhook-adjacent code.
 
-Risk of fix: medium; lint may reveal many pre-existing findings.
+Risk of fix: low to medium depending on module touched.
 
-Approval needed: no, but findings should be triaged before enforcing in CI.
+Approval needed: no for isolated cleanup; yes before touching protected revenue logic behavior.
 
 ### Build Skips Type And Lint Validation
 

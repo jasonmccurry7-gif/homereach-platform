@@ -1,6 +1,6 @@
 # Current Main Stabilization Report
 
-Updated: 2026-05-24 21:45 ET
+Updated: 2026-05-24 21:46 ET
 
 ## Scope
 
@@ -30,18 +30,20 @@ Passing gates:
 
 - `pnpm install --frozen-lockfile`
 - `pnpm exec turbo type-check --ui=stream`
+- `pnpm --filter @homereach/web lint`
 - `pnpm --filter @homereach/web build` with placeholder, non-secret env values
 - Read-only dev smoke checks for primary revenue, intake, targeted, procurement, and political routes
 
-Known non-passing gate:
+Known advisory debt:
 
-- `pnpm --filter @homereach/web lint` still fails because `next lint` prompts interactively and is deprecated. This is a tooling issue, not a lint finding.
+- `pnpm --filter @homereach/web lint` now runs through ESLint CLI and exits successfully, but reports pre-existing warning debt.
 
 GitHub status:
 
 - GitHub CLI is installed.
 - `gh auth status` still reports no authenticated GitHub host in this shell.
-- Push/PR creation is blocked until authentication is available.
+- The branch has been pushed with Git credentials.
+- PR creation through `gh pr create` is blocked until GitHub CLI authentication is available.
 
 ## What Changed
 
@@ -57,6 +59,8 @@ The current-main stabilization work ports the previously validated repair set on
 - Fixed duplicate Drizzle enum export naming for spot assignment `spot_type`.
 - Fixed the pricing profile partial-index schema expression.
 - Ported validated TypeScript repairs across admin pages, Supabase route handlers, Facebook/Postgrest calls, Stripe API versions, engine types, legacy import types, and ad-engine export typing.
+- Replaced deprecated interactive `next lint` usage with a committed ESLint CLI config.
+- Renamed the DB factory mock selector helper so React hook linting no longer misclassifies it as a hook.
 - Hardened middleware protection for `/api/admin/*`:
   - unauthenticated admin API requests return `401`
   - non-admin disallowed API requests return `403`
@@ -97,7 +101,9 @@ Lint:
 pnpm --filter @homereach/web lint
 ```
 
-Result: failed. `next lint` prompts for ESLint setup and exits because the project has no committed ESLint flat config.
+Result: passed. ESLint reported 0 errors and 506 warnings.
+
+Important caveat: lint is now usable as a gate, but the warning backlog should be reduced in focused passes before tightening warning policy.
 
 ## Read-Only Smoke Results
 
@@ -155,18 +161,18 @@ Expected protected responses:
 
 ## Current Risks
 
-Risk level: HIGH until lint tooling and GitHub authentication are resolved.
+Risk level: MEDIUM until PR/CI validation and deeper workflow QA are complete.
 
-1. Lint is not a usable CI gate because `next lint` is interactive/deprecated.
+1. Lint is now usable, but warning debt remains across admin, AI, political, and content-intelligence modules.
 2. Build skips type and lint validation in Next config; explicit typecheck covers TypeScript, but the build gate itself is permissive.
 3. Current local env did not enable political by default, so political production rollout depends on a deliberate `ENABLE_POLITICAL=true` environment decision.
 4. The project still contains large newly added AI/political/procurement systems that have only been smoke-tested at route level, not deeply QA-tested.
-5. GitHub CLI is not authenticated, so the validated branch cannot yet be pushed or converted into a PR from this shell.
+5. GitHub CLI is not authenticated, so the pushed branch cannot yet be converted into a PR from this shell.
 
 ## Recommended Next Actions
 
-1. Fix lint tooling by migrating from `next lint` to a committed ESLint CLI config.
+1. Open a PR from `codex/current-main-audit-20260524` once GitHub CLI authentication is available, or use the GitHub compare URL.
 2. Run focused smoke/QA on the new AI workforce, procurement, political, and gov-contracts modules.
 3. Validate Vercel environment variables against `apps/web/lib/env.ts`, `apps/web/lib/political/env.ts`, and integration docs.
-4. Authenticate GitHub CLI or Git credentials, then push this branch and open a PR.
+4. Reduce lint warning debt in focused, low-risk passes.
 5. Do not deploy until the PR branch has passed CI-equivalent typecheck/build and a deployment environment variable audit.

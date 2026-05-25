@@ -7,6 +7,8 @@
 - Installed dependencies cleanly with the frozen lockfile.
 - Restored full workspace TypeScript health.
 - Verified production build with placeholder env.
+- Repaired the lint command by migrating web linting to ESLint CLI.
+- Pushed the current-main stabilization branch to GitHub.
 - Started local dev servers for read-only validation.
 - Smoke-tested primary public revenue routes, intake routes, admin protection, spot resolution, availability, and political feature-flag behavior.
 
@@ -16,11 +18,12 @@
 - Admin API routes are protected by middleware instead of being publicly reachable by default.
 - Stripe and DB clients no longer fail merely because a module is imported during build.
 - Type drift no longer blocks safe CI-style validation.
+- Lint is no longer blocked by deprecated interactive Next tooling.
 
 ## Current Risks
 
-- Lint command is broken/interactively prompting.
-- GitHub CLI is still unauthenticated in this shell.
+- Lint warning debt remains and should be reduced in focused passes.
+- GitHub CLI is still unauthenticated in this shell, so PR creation must be done through the compare URL or after `gh` auth.
 - Political and AI workforce systems are large and need deeper workflow QA beyond route smoke checks.
 - No provider-mutating checks have been run yet; Stripe/Twilio/email must remain dry-run/test-mode only.
 
@@ -32,13 +35,13 @@ Validated locally:
 
 - install
 - typecheck
+- lint
 - build
 - read-only route smoke
 
 Still required before production:
 
-- lint tooling repair
-- GitHub push/PR
+- GitHub PR
 - CI-equivalent validation
 - Vercel env audit
 - Supabase migration/RLS review
@@ -47,4 +50,4 @@ Still required before production:
 
 ## Recommended Priority
 
-Fix lint tooling next, then push the branch once GitHub auth is available.
+Open the PR, then run deeper workflow QA on AI workforce, procurement, political, Stripe test mode, Twilio/email dry-run, and deployment readiness.
