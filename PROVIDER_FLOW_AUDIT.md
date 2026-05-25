@@ -30,6 +30,7 @@ The most important remaining items to fix next are:
 16. Public political candidate search, map-plan saves, and candidate-agent chat now have basic in-process rate limits before service-role lookup, request-body processing, or AI provider work.
 17. Public lead-capture routes now apply basic in-process rate limits before body parsing on nonprofit, waitlist, targeted campaign, targeted lead, targeted intake, and tokenized shared-intake submissions.
 18. Active checkout creation routes now apply basic in-process rate limits before request-body parsing or service-role/Stripe work where applicable: spot subscriptions, targeted campaign checkout, and property-intelligence checkout.
+19. Non-admin `/api/agent/*` service-role routes now require admin or sales-agent sessions at the API boundary before sales dashboard/lead/reply data can be read.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -208,6 +209,26 @@ Observed posture:
 - Many admin/API modules depend on the service-role client.
 - `packages/services/src/auth/index.ts` fails loudly when service env is missing.
 - `apps/web/lib/supabase/service.ts` now also fails loudly when service env is missing.
+
+### Non-Admin Agent Service-Role APIs
+
+Primary files:
+
+- `apps/web/app/api/agent/dashboard/route.ts`
+- `apps/web/app/api/agent/leads/route.ts`
+- `apps/web/app/api/agent/leads/[leadId]/route.ts`
+- `apps/web/app/api/agent/actions/route.ts`
+- `apps/web/app/api/agent/replies/route.ts`
+- `apps/web/lib/auth/api-guards.ts`
+- `apps/web/lib/auth/agent-scope.ts`
+
+Observed flow:
+
+1. Agent pages already redirect non-admin/non-sales-agent users at the layout layer.
+2. The API routes now also require `requireAdminOrSalesAgent()` before creating a Supabase service-role client.
+3. Sales-agent sessions resolve to their own user id and cannot use `preview_agent_id` for another rep.
+4. Admin sessions can still preview a specific rep with `preview_agent_id`.
+5. Lead detail filters `sales_leads` by `assigned_agent_id` for sales-agent users before returning a row.
 
 ### Twilio
 
@@ -834,6 +855,7 @@ Validation:
 - Public political candidate search, map-plan save, and candidate-agent chat routes now have basic in-process public rate limits, with 429 retry metadata on blocked requests.
 - Public nonprofit, waitlist, targeted lead/campaign, targeted intake, and shared intake POST routes now apply basic in-process rate limits before body parsing.
 - Active checkout creation routes now apply basic in-process rate limits before request parsing or service-role/Stripe work where applicable, with 429 retry metadata on blocked requests.
+- Non-admin agent service-role APIs now require admin/sales-agent access before creating service-role clients and preserve sales-agent ownership scoping.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -858,6 +880,7 @@ Latest validation for this follow-up guard sweep:
 - Focused public rate-limit helper tests, focused ESLint on the touched public lead-capture routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after extending basic lead-capture rate limits.
 - Focused political candidate chat tests, focused ESLint on the chat route/helper/test, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after adding the chat rate limit.
 - Focused checkout/security helper tests passed with 18 tests; full `pnpm test` passed with 187 tests across 25 files; full workspace typecheck passed across 5 packages; full web lint passed with 495 existing warnings and 0 errors; placeholder-env web build generated 248 routes; and `git diff --check` passed after adding checkout rate limits. Focused checkout-route ESLint had 0 errors and one pre-existing `maxSpots` warning in `/api/spots/checkout`.
+- Focused agent-route ESLint passed with 0 warnings/errors, focused auth guard tests passed with 4 tests, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 187 tests across 25 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, and placeholder-env web build generated 248 routes after adding API-level role gates to `/api/agent/*` service-role routes.
 
 ## Safe Validation Path
 
@@ -879,11 +902,12 @@ Latest validation for this follow-up guard sweep:
 16. Probe lead-capture routes with invalid empty payloads and expect `400` plus rate-limit metadata, without valid submissions, sends, charges, or DB-success paths.
 17. Probe `/api/political/candidate-agent/chat` with invalid JSON and expect `400` plus rate-limit metadata, without invoking AI provider success paths.
 18. Probe checkout creation routes only with invalid payloads or unauthenticated requests and expect validation/auth failures plus rate-limit metadata, without creating Stripe sessions, records, sends, or charges.
-19. Add admin health checks for provider telemetry freshness, not just table readability.
-20. Only then perform provider-level test-mode checks.
+19. Probe `/api/agent/*` routes without credentials and with a non-agent client session; expect 401/403 before service-role data is returned.
+20. Add admin health checks for provider telemetry freshness, not just table readability.
+21. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, checkout creation rate limiting, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, checkout creation rate limiting, non-admin agent API role gates, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.

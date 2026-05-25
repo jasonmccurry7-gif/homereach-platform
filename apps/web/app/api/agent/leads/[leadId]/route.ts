@@ -1,7 +1,9 @@
 import { NextResponse }       from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies }            from "next/headers";
 import { createServiceClient } from "@/lib/supabase/service";
+import {
+  requireAdminOrSalesAgent,
+  resolveAgentScope,
+} from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/agent/leads/[leadId]
@@ -14,31 +16,28 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request, { params }: { params: Promise<{ leadId: string }> }) {
   const { leadId } = await params;
 
-  const cookieStore = await cookies();
-  const sessionClient = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
-  const { data: { user } } = await sessionClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user!;
 
-  const role     = user.app_metadata?.user_role as string;
+  const scope = resolveAgentScope(user);
+  if (!scope.ok) return scope.response;
+
   const supabase = createServiceClient();
 
   // Fetch lead
-  const { data: lead, error } = await supabase
+  let leadQuery = supabase
     .from("sales_leads")
     .select("*")
-    .eq("id", leadId)
-    .single();
+    .eq("id", leadId);
+
+  if (!scope.isAdmin) {
+    leadQuery = leadQuery.eq("assigned_agent_id", scope.agentId);
+  }
+
+  const { data: lead, error } = await leadQuery.single();
 
   if (error || !lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-
-  // Access control: agent can only see their own leads
-  if (role !== "admin" && lead.assigned_agent_id !== user.id) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  }
 
   // Conversation history from sales_events
   const { data: events } = await supabase

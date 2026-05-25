@@ -553,6 +553,29 @@ Risk of fix: low.
 
 Approval needed: no production approval; account authentication required.
 
+### Partially Resolved: Non-Admin Service-Role Routes Needed API-Level Role Gates
+
+What was wrong: `/api/agent/*` routes created the Supabase service-role client after checking only for an authenticated user. The agent UI layout blocks non-admin/non-sales-agent users, but direct API calls should not rely on page-level redirects.
+
+Why it matters: service-role routes bypass RLS and expose sales lead/reply/dashboard data. Even when queries are scoped by `assigned_agent_id`, authenticated client users should not be allowed to exercise agent service-role endpoints.
+
+Files:
+
+- `apps/web/app/api/agent/dashboard/route.ts`
+- `apps/web/app/api/agent/leads/route.ts`
+- `apps/web/app/api/agent/leads/[leadId]/route.ts`
+- `apps/web/app/api/agent/actions/route.ts`
+- `apps/web/app/api/agent/replies/route.ts`
+- `NON_ADMIN_SERVICE_ROLE_AUDIT.md`
+
+Fix applied: added `requireAdminOrSalesAgent()` before service-role access and used `resolveAgentScope()` to preserve admin preview while blocking sales agents from requesting another rep. Lead detail now filters by `assigned_agent_id` for sales-agent sessions before returning a row.
+
+Safest remaining fix: add first-layer public rate limiting to retained public service-role read routes such as `/api/spots/resolve`, and perform browser-level authenticated QA for the agent dashboard.
+
+Validation: focused agent-route ESLint passed with 0 warnings/errors, focused auth guard tests passed with 4 tests, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 187 tests across 25 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, and placeholder-env web build generated 248 routes.
+
+Approval needed: no for API boundary hardening; yes before changing agent assignment/business logic or live send behavior.
+
 ### Lint Warning Debt
 
 What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 495 warnings.
