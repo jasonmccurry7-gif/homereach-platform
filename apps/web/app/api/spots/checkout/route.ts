@@ -4,6 +4,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 import Stripe from "stripe";
 import { checkCanonicalAvailability } from "@/lib/spots/canonical-availability";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/spots/checkout
@@ -23,12 +27,27 @@ const SPOT_LABEL: Record<string, string> = {
   back:   "Back Feature Spot",
 };
 
+const SPOT_CHECKOUT_RATE_LIMIT = {
+  scope: "checkout:spots",
+  limit: 12,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: Request) {
+  const rateLimit = checkPublicRateLimit(req, SPOT_CHECKOUT_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many checkout attempts. Try again shortly." },
+      { status: 429, headers },
+    );
+  }
+
   try {
     const sessionClient = await createClient();
     const { data: { user } } = await sessionClient.auth.getUser();
     if (!user?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
     }
 
     const db = createServiceClient();
@@ -38,13 +57,13 @@ export async function POST(req: Request) {
             pricingType = "founding", lockedPrice } = body;
 
     if (!bundleId || !cityId || !categoryId || !businessName?.trim()) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400, headers });
     }
 
     // 1. Load bundle
     const { data: bundle } = await db.from("bundles").select("*")
       .eq("id", bundleId).eq("is_active", true).single();
-    if (!bundle) return NextResponse.json({ error: "Bundle not found" }, { status: 404 });
+    if (!bundle) return NextResponse.json({ error: "Bundle not found" }, { status: 404, headers });
 
     const meta       = (bundle.metadata ?? {}) as Record<string, unknown>;
     const spotType   = (meta.spotType as string) ?? "back";
@@ -54,7 +73,7 @@ export async function POST(req: Request) {
     // 2. Load city
     const { data: city } = await db.from("cities")
       .select("id, name, state, founding_eligible").eq("id", cityId).single();
-    if (!city) return NextResponse.json({ error: "City not found" }, { status: 404 });
+    if (!city) return NextResponse.json({ error: "City not found" }, { status: 404, headers });
 
     // 3. CANONICAL AVAILABILITY CHECK — fail-closed.
     //
@@ -83,7 +102,7 @@ export async function POST(req: Request) {
             "This spot is no longer available.",
           source: availability.source,
         },
-        { status: availability.source === "query_error" ? 503 : 409 },
+        { status: availability.source === "query_error" ? 503 : 409, headers },
       );
     }
 
@@ -104,7 +123,7 @@ export async function POST(req: Request) {
         .insert({ owner_id: user.id, name: businessName.trim(), phone: phone ?? null,
                   email: user.email, city_id: cityId, category_id: categoryId, status: "pending" })
         .select("id").single();
-      if (bizErr || !newBiz) return NextResponse.json({ error: "Failed to create business" }, { status: 500 });
+      if (bizErr || !newBiz) return NextResponse.json({ error: "Failed to create business" }, { status: 500, headers });
       businessId = newBiz.id;
     }
 
@@ -129,7 +148,7 @@ export async function POST(req: Request) {
         expires_at:   expiresAt,
       })
       .select("id").single();
-    if (assignErr || !assignment) return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500 });
+    if (assignErr || !assignment) return NextResponse.json({ error: "Failed to reserve spot" }, { status: 500, headers });
 
     // 6. Resolve or create Stripe customer
     const stripe = getStripe();
@@ -225,10 +244,13 @@ export async function POST(req: Request) {
       allow_promotion_codes: true,
     });
 
-    return NextResponse.json({ checkoutUrl: session.url, orderId: assignment.id });
+    return NextResponse.json({ checkoutUrl: session.url, orderId: assignment.id }, { headers });
 
   } catch (err) {
     console.error("[api/spots/checkout] error:", err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500, headers },
+    );
   }
 }

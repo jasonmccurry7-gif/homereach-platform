@@ -29,6 +29,7 @@ The most important remaining items to fix next are:
 15. Public political candidate search now strips direct campaign email/phone fields from autocomplete responses and clamps public query/state/limit inputs before service-role lookup.
 16. Public political candidate search, map-plan saves, and candidate-agent chat now have basic in-process rate limits before service-role lookup, request-body processing, or AI provider work.
 17. Public lead-capture routes now apply basic in-process rate limits before body parsing on nonprofit, waitlist, targeted campaign, targeted lead, targeted intake, and tokenized shared-intake submissions.
+18. Active checkout creation routes now apply basic in-process rate limits before request-body parsing or service-role/Stripe work where applicable: spot subscriptions, targeted campaign checkout, and property-intelligence checkout.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -155,22 +156,33 @@ Targeted route checkout flow:
 1. Intake creates a targeted campaign and returns a signed checkout token when `TARGETED_CHECKOUT_SIGNING_SECRET` is configured.
 2. Confirmation email links include the same signed token when the signing secret exists.
 3. Public caller posts `campaignId`, `checkoutToken` or matching `checkoutEmail`, and optional `addons` to `/api/stripe/targeted-checkout`.
-4. Route uses Supabase service role client to read `targeted_route_campaigns`.
-5. Route rejects checkout unless the signed token validates for the campaign/email or the submitted email matches the campaign email.
-6. Route filters add-ons to the known catalog before creating a Stripe Checkout session in `payment` mode.
-7. Route writes `stripe_checkout_session_id` back to the campaign row.
-8. User is redirected to Stripe via returned session URL.
-9. Add-on copy now describes recurring services as first-month charges with ongoing service activated separately after onboarding unless true subscription mode is implemented later.
+4. Route now applies a basic public rate limit before JSON parsing, Supabase service-role lookup, token/email verification work, or Stripe session creation.
+5. Route uses Supabase service role client to read `targeted_route_campaigns`.
+6. Route rejects checkout unless the signed token validates for the campaign/email or the submitted email matches the campaign email.
+7. Route filters add-ons to the known catalog before creating a Stripe Checkout session in `payment` mode.
+8. Route writes `stripe_checkout_session_id` back to the campaign row.
+9. User is redirected to Stripe via returned session URL.
+10. Add-on copy now describes recurring services as first-month charges with ongoing service activated separately after onboarding unless true subscription mode is implemented later.
+
+Active spot subscription checkout flow:
+
+1. Authenticated caller posts selected bundle, city, category, business, and add-on data to `/api/spots/checkout`.
+2. Route now applies a basic checkout rate limit before Supabase auth, request parsing, service-role reads, pending-order reservation work, or Stripe customer/session work.
+3. Route requires a Supabase-authenticated user.
+4. Route checks bundle/city records and canonical spot availability.
+5. Route creates or reuses a pending business, creates a pending order reservation, resolves or creates a Stripe customer, and creates a Stripe subscription-mode Checkout session.
+6. Redirect and post-payment links use shared public app URL resolver logic.
 
 Property intelligence checkout flow:
 
 1. Public caller posts tier, city, category, market size, business name, email, and phone to `/api/intelligence/checkout`.
-2. Route parses and normalizes the payload before creating a Supabase service-role client; malformed JSON returns `400 Invalid checkout payload`.
-3. Route reads `property_intelligence_tiers` and `founding_slots` through the Supabase service-role client.
-4. Route creates a Stripe Checkout session with explicit `property_intelligence` metadata.
-5. Route no longer writes `founding_memberships` or updates `founding_slots` before payment confirmation.
-6. Signed Stripe webhook handling for `checkout.session.completed` now finalizes founding membership activation and recalculates slot usage from active memberships.
-7. Repo search found references to `property_intelligence_tiers`, `founding_slots`, and `founding_memberships`, but did not find committed Drizzle schema or Supabase migration definitions for those tables. Treat production schema as out-of-band until verified through a controlled Supabase schema pull/audit.
+2. Route now applies a basic checkout rate limit before payload parsing, Supabase service-role lookup, founding-slot reads, or Stripe session creation.
+3. Route parses and normalizes the payload before creating a Supabase service-role client; malformed JSON returns `400 Invalid checkout payload`.
+4. Route reads `property_intelligence_tiers` and `founding_slots` through the Supabase service-role client.
+5. Route creates a Stripe Checkout session with explicit `property_intelligence` metadata.
+6. Route no longer writes `founding_memberships` or updates `founding_slots` before payment confirmation.
+7. Signed Stripe webhook handling for `checkout.session.completed` now finalizes founding membership activation and recalculates slot usage from active memberships.
+8. Repo search found references to `property_intelligence_tiers`, `founding_slots`, and `founding_memberships`, but did not find committed Drizzle schema or Supabase migration definitions for those tables. Treat production schema as out-of-band until verified through a controlled Supabase schema pull/audit.
 
 Stripe webhook flow:
 
@@ -821,6 +833,7 @@ Validation:
 - Public political candidate search now removes direct campaign email/phone fields from public responses and clamps query/state/limit inputs.
 - Public political candidate search, map-plan save, and candidate-agent chat routes now have basic in-process public rate limits, with 429 retry metadata on blocked requests.
 - Public nonprofit, waitlist, targeted lead/campaign, targeted intake, and shared intake POST routes now apply basic in-process rate limits before body parsing.
+- Active checkout creation routes now apply basic in-process rate limits before request parsing or service-role/Stripe work where applicable, with 429 retry metadata on blocked requests.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -844,6 +857,7 @@ Latest validation for this follow-up guard sweep:
 - Focused public rate-limit helper tests, focused ESLint on the helper plus touched political public routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after adding basic public endpoint rate limits.
 - Focused public rate-limit helper tests, focused ESLint on the touched public lead-capture routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after extending basic lead-capture rate limits.
 - Focused political candidate chat tests, focused ESLint on the chat route/helper/test, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after adding the chat rate limit.
+- Focused checkout/security helper tests passed with 18 tests; full `pnpm test` passed with 187 tests across 25 files; full workspace typecheck passed across 5 packages; full web lint passed with 495 existing warnings and 0 errors; placeholder-env web build generated 248 routes; and `git diff --check` passed after adding checkout rate limits. Focused checkout-route ESLint had 0 errors and one pre-existing `maxSpots` warning in `/api/spots/checkout`.
 
 ## Safe Validation Path
 
@@ -864,11 +878,12 @@ Latest validation for this follow-up guard sweep:
 15. In local/test only, exceed the political public endpoint rate limit and expect `429` with retry metadata; do not stress production previews.
 16. Probe lead-capture routes with invalid empty payloads and expect `400` plus rate-limit metadata, without valid submissions, sends, charges, or DB-success paths.
 17. Probe `/api/political/candidate-agent/chat` with invalid JSON and expect `400` plus rate-limit metadata, without invoking AI provider success paths.
-18. Add admin health checks for provider telemetry freshness, not just table readability.
-19. Only then perform provider-level test-mode checks.
+18. Probe checkout creation routes only with invalid payloads or unauthenticated requests and expect validation/auth failures plus rate-limit metadata, without creating Stripe sessions, records, sends, or charges.
+19. Add admin health checks for provider telemetry freshness, not just table readability.
+20. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, checkout creation rate limiting, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, public political candidate-search data minimization, public political/lead-capture endpoint rate limiting, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.

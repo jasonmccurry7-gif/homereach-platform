@@ -9,6 +9,10 @@ import {
 import { NextResponse } from "next/server";
 import { getStripe } from "@homereach/services/stripe";
 import type Stripe from "stripe";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/intelligence/checkout
@@ -20,11 +24,26 @@ import type Stripe from "stripe";
 // - Returns { checkoutUrl }
 // ─────────────────────────────────────────────────────────────────────────────
 
+const INTELLIGENCE_CHECKOUT_RATE_LIMIT = {
+  scope: "checkout:intelligence",
+  limit: 12,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: Request) {
+  const rateLimit = checkPublicRateLimit(req, INTELLIGENCE_CHECKOUT_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many checkout attempts. Try again shortly." },
+      { status: 429, headers },
+    );
+  }
+
   try {
     const normalized = await readIntelligenceCheckoutPayload(req);
     if (!normalized.ok) {
-      return NextResponse.json({ error: normalized.error }, { status: 400 });
+      return NextResponse.json({ error: normalized.error }, { status: 400, headers });
     }
 
     const checkout = normalized.value;
@@ -41,7 +60,7 @@ export async function POST(req: Request) {
     if (tierError || !tierData) {
       return NextResponse.json(
         { error: "Tier not found or inactive" },
-        { status: 404 }
+        { status: 404, headers }
       );
     }
 
@@ -49,7 +68,7 @@ export async function POST(req: Request) {
     if (standardPriceCents === null) {
       return NextResponse.json(
         { error: "Tier pricing is not configured" },
-        { status: 500 }
+        { status: 500, headers }
       );
     }
 
@@ -138,7 +157,7 @@ export async function POST(req: Request) {
     if (!session.url) {
       return NextResponse.json(
         { error: "Stripe did not return a checkout URL" },
-        { status: 502 }
+        { status: 502, headers }
       );
     }
 
@@ -147,12 +166,12 @@ export async function POST(req: Request) {
       isFounding,
       priceCents,
       stripeSessionId: session.id,
-    });
+    }, { headers });
   } catch (error) {
     console.error("Error creating intelligence checkout session:", error);
     return NextResponse.json(
       { error: "Failed to create checkout session" },
-      { status: 500 }
+      { status: 500, headers }
     );
   }
 }

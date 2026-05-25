@@ -6,6 +6,10 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
+import {
   normalizeTargetedCheckoutEmail,
   verifyTargetedCheckoutToken,
 } from "@homereach/services/targeted";
@@ -32,6 +36,12 @@ const TargetedCheckoutRequestSchema = z.object({
   addons: z.array(z.string()).optional().default([]),
 });
 
+const TARGETED_CHECKOUT_RATE_LIMIT = {
+  scope: "checkout:targeted",
+  limit: 12,
+  windowMs: 10 * 60_000,
+};
+
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is required");
@@ -39,19 +49,28 @@ function getStripe() {
 }
 
 export async function POST(req: Request) {
+  const rateLimit = checkPublicRateLimit(req, TARGETED_CHECKOUT_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many checkout attempts. Try again shortly." },
+      { status: 429, headers }
+    );
+  }
+
   try {
     let body: unknown;
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers });
     }
 
     const parsed = TargetedCheckoutRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400, headers }
       );
     }
 
@@ -59,7 +78,7 @@ export async function POST(req: Request) {
     const addons = normalizeAddons(parsed.data.addons);
 
     if (!campaignId) {
-      return NextResponse.json({ error: "campaignId required" }, { status: 400 });
+      return NextResponse.json({ error: "campaignId required" }, { status: 400, headers });
     }
 
     const db  = createServiceClient();
@@ -70,18 +89,18 @@ export async function POST(req: Request) {
       .single();
 
     if (error || !campaign) {
-      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404, headers });
     }
 
     if (["paid", "mailed", "complete"].includes(campaign.status)) {
-      return NextResponse.json({ error: "Campaign is already paid" }, { status: 400 });
+      return NextResponse.json({ error: "Campaign is already paid" }, { status: 400, headers });
     }
 
     const campaignEmail = typeof campaign.email === "string" ? campaign.email : "";
     if (!campaignEmail) {
       return NextResponse.json(
         { error: "Campaign email is missing; checkout cannot be verified" },
-        { status: 500 }
+        { status: 500, headers }
       );
     }
 
@@ -100,7 +119,7 @@ export async function POST(req: Request) {
           error:
             "Checkout link could not be verified. Confirm the email used for this campaign and try again.",
         },
-        { status: 403 }
+        { status: 403, headers }
       );
     }
 
@@ -173,11 +192,14 @@ export async function POST(req: Request) {
       .update({ stripe_checkout_session_id: session.id })
       .eq("id", campaignId);
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: session.url }, { headers });
 
   } catch (err) {
     console.error("[api/stripe/targeted-checkout] error:", err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500, headers }
+    );
   }
 }
 
