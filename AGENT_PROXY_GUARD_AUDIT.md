@@ -46,6 +46,10 @@ Behavior intentionally preserved:
 - Full `pnpm --filter @homereach/web lint` passed with 493 existing warnings and 0 errors.
 - Placeholder-env `pnpm --filter @homereach/web build` generated 247 static pages successfully.
 - `git diff --check` passed locally.
+- GitHub Actions `Validate` run #56 passed for commit `b5efc6c4baff8385b24b54ce373a0b2140b6d82e`.
+- Vercel deployment `dpl_7yeeUfDqkGMXsnZEpuLnRzGoCr5L` reached `READY` at `https://homereach-platform-6gcdfw1f7-jason-mccurrys-projects.vercel.app`.
+- Hosted unauthenticated `GET /api/agent/preferences` returned `401 {"error":"Unauthorized"}`.
+- Hosted unauthenticated invalid-body `POST /api/agent/log-action` returned `401 {"error":"Unauthorized"}`, confirming the role guard runs before JSON parsing on rejected requests.
 
 ## Remaining Risk
 

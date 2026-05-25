@@ -82,6 +82,7 @@ Follow-up completed: `/api/spots/resolve` now has a first-layer `spots:resolve` 
 - Full `pnpm --filter @homereach/web lint` passed with 494 existing warnings and 0 errors.
 - Placeholder-env `pnpm --filter @homereach/web build` generated 248 routes successfully.
 - Follow-up proxy guard tests passed with 4 tests, focused auth guard tests passed with 4 tests, focused proxy/auth ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 196 tests across 27 files, full workspace typecheck passed across 5 packages, full web lint passed with 493 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
+- GitHub Actions `Validate` run #56 passed, Vercel deployment `dpl_7yeeUfDqkGMXsnZEpuLnRzGoCr5L` reached `READY`, and hosted unauthenticated probes confirmed `/api/agent/preferences` and invalid-body `/api/agent/log-action` both return 401.
 
 ## Remaining Risk
 
