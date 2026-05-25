@@ -19,6 +19,7 @@ The most important remaining items to fix next are:
 5. Meta/Facebook webhook POST routes now fail closed in production when `FACEBOOK_APP_SECRET` is missing and reject unsigned/invalid signatures before service-role work.
 6. Facebook/APEX admin automation POST routes now require cron or authenticated operator access before service-role work can run.
 7. Additional admin service-role routes for agent scans, agent status/runner surfaces, scraper, internal alerts, pricing/founding updates, Facebook mission logging, sales lead/revenue reads, send-capable sales/email routes, operator summaries, and admin health now require admin/sales session or cron access before privileged work.
+8. The follow-up admin sweep now also covers CRM lead/detail/task/note/dedup/quarantine/reporting routes, automation sequence/enrollment controls, alert preferences, migration helpers, Facebook revenue-engine routes, and system-agent utility endpoints. Political candidate-intelligence sync/webhook routes were inspected and already have explicit secret gates.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -227,6 +228,28 @@ Primary files:
 - `apps/web/app/api/admin/sales/power-mode/end-of-day/route.ts`
 - `apps/web/app/api/admin/sales/alert/route.ts`
 - `apps/web/app/api/admin/sales/call-scripts/route.ts`
+- `apps/web/app/api/admin/alerts/preferences/route.ts`
+- `apps/web/app/api/admin/automation/enroll/route.ts`
+- `apps/web/app/api/admin/automation/sequences/route.ts`
+- `apps/web/app/api/admin/crm/companies/route.ts`
+- `apps/web/app/api/admin/crm/dedup/route.ts`
+- `apps/web/app/api/admin/crm/fb-audit/route.ts`
+- `apps/web/app/api/admin/crm/launch-readiness/route.ts`
+- `apps/web/app/api/admin/crm/lead/route.ts`
+- `apps/web/app/api/admin/crm/leaderboard/route.ts`
+- `apps/web/app/api/admin/crm/leads/route.ts`
+- `apps/web/app/api/admin/crm/metrics/route.ts`
+- `apps/web/app/api/admin/crm/notes/route.ts`
+- `apps/web/app/api/admin/crm/quarantine/route.ts`
+- `apps/web/app/api/admin/crm/tasks/route.ts`
+- `apps/web/app/api/admin/facebook/route.ts`
+- `apps/web/app/api/admin/migration/debug/route.ts`
+- `apps/web/app/api/admin/migration/route.ts`
+- `apps/web/app/api/admin/system/agents/kaizen/route.ts`
+- `apps/web/app/api/admin/system/agents/ledger/route.ts`
+- `apps/web/app/api/admin/system/agents/prospector/route.ts`
+- `apps/web/app/api/admin/system/agents/pulse/route.ts`
+- `apps/web/app/api/admin/system/agents/route.ts`
 
 Access-control flow:
 
@@ -239,6 +262,10 @@ Access-control flow:
 7. Follow-up admin service-role scan now finds no unguarded `apps/web/app/api/admin` service-client routes outside custom authorized routes. This second sweep covered sensitive read routes and send-capable routes, not only POST/PUT mutation routes.
 8. Explicit sales `agent_id` scope now uses a shared helper: sales agents are limited to their own agent id, while admins can intentionally request another rep. This covers sales funnel, leads, next-lead, replies, insights, Facebook scorecard, Facebook mission, Facebook alert, close-deal, at-risk deals, priority actions, call lists, call logs, call stats, follow-up sequence logging, and power-mode checks.
 9. Sales call-script writes are admin-only; call-script reads remain available to admin/sales-agent sessions. Sales alert logging now requires admin/sales-agent access and rejects sales-agent attempts to alert leads assigned to another rep.
+10. CRM lead/list/detail, note/task creation, Facebook audit/reporting reads, alert preferences, and Facebook revenue-engine routes now require authenticated admin or sales-agent access before returning or mutating operator data.
+11. Automation sequence/enrollment, CRM dedup/quarantine/company/migration, CRM metric-write, and system-agent identity routes now require admin access.
+12. System-agent execution routes for pulse, prospector, kaizen, and ledger now require admin or cron access before operational work begins.
+13. Political candidate-intelligence sync and webhook routes already require dedicated cron/webhook secrets and fail closed when secrets or feature flags are missing, so they were documented rather than changed.
 
 ## Findings
 
@@ -676,8 +703,18 @@ Validation:
 - Facebook webhook signature validation and production missing-secret/verify-token behavior are covered by focused helper tests.
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
+- CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
+
+Latest validation for this follow-up guard sweep:
+
+- Focused ESLint on touched admin CRM/automation/migration/Facebook/system-agent routes passed with only pre-existing warnings.
+- `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
+- `pnpm test` passed with 172 tests.
+- `pnpm --filter @homereach/web lint` passed with 495 warnings and 0 errors.
+- Placeholder-env `pnpm --filter @homereach/web build` passed and generated 248 routes.
+- `git diff --check` and the admin route guard scanner passed.
 
 ## Safe Validation Path
 

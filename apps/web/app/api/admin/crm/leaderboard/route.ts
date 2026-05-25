@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin, requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/crm/leaderboard?period=today|week|month|all_time
@@ -9,6 +10,9 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const period = req.nextUrl.searchParams.get("period") ?? "today";
   const today  = new Date().toISOString().slice(0, 10);
@@ -94,6 +98,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const { period = "today", date } = await req.json();
   const targetDate = date ?? new Date().toISOString().slice(0, 10);

@@ -1,10 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { requireAdmin, requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // GET /api/admin/crm/metrics?agent_id=&date=YYYY-MM-DD
 // Returns daily metrics rollup per agent
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const agentId = searchParams.get("agent_id");
@@ -28,6 +32,9 @@ export async function GET(request: Request) {
 // POST — upsert daily metrics for an agent
 export async function POST(request: Request) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const body = await request.json();
   const { agent_id, metric_date, ...fields } = body;

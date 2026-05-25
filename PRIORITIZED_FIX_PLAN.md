@@ -322,6 +322,43 @@ Validation: follow-up service-role scan across `apps/web/app/api/admin` reports 
 
 Approval needed: no for access-control hardening; yes before live send/provider validation.
 
+### Resolved: Remaining Admin CRM, Automation, Facebook, Migration, And Agent Utility Routes Needed Role Gates
+
+What was wrong: a follow-up scan found additional `/api/admin` routes that either used service-role access or session Supabase access without the shared admin/sales-agent/cron guard layer. These routes exposed or mutated CRM lead detail, notes, tasks, deduplication clusters, quarantine state, automation sequences/enrollments, Facebook revenue-engine opportunities, migrated-client records, alert preferences, and system-agent state.
+
+Why it mattered: these routes sit behind admin paths and can expose lead/customer revenue data, mutate pipeline activity, update migration records, or run system-agent/reporting work. Even when RLS might block some session-client calls, the API boundary should fail closed before privileged business logic begins.
+
+Files:
+
+- `apps/web/app/api/admin/alerts/preferences/route.ts`
+- `apps/web/app/api/admin/automation/enroll/route.ts`
+- `apps/web/app/api/admin/automation/sequences/route.ts`
+- `apps/web/app/api/admin/crm/companies/route.ts`
+- `apps/web/app/api/admin/crm/dedup/route.ts`
+- `apps/web/app/api/admin/crm/fb-audit/route.ts`
+- `apps/web/app/api/admin/crm/launch-readiness/route.ts`
+- `apps/web/app/api/admin/crm/lead/route.ts`
+- `apps/web/app/api/admin/crm/leaderboard/route.ts`
+- `apps/web/app/api/admin/crm/leads/route.ts`
+- `apps/web/app/api/admin/crm/metrics/route.ts`
+- `apps/web/app/api/admin/crm/notes/route.ts`
+- `apps/web/app/api/admin/crm/quarantine/route.ts`
+- `apps/web/app/api/admin/crm/tasks/route.ts`
+- `apps/web/app/api/admin/facebook/route.ts`
+- `apps/web/app/api/admin/migration/debug/route.ts`
+- `apps/web/app/api/admin/migration/route.ts`
+- `apps/web/app/api/admin/system/agents/kaizen/route.ts`
+- `apps/web/app/api/admin/system/agents/ledger/route.ts`
+- `apps/web/app/api/admin/system/agents/prospector/route.ts`
+- `apps/web/app/api/admin/system/agents/pulse/route.ts`
+- `apps/web/app/api/admin/system/agents/route.ts`
+
+Fix applied: added `requireAdmin`, `requireAdminOrSalesAgent`, or `requireAdminOrCron` at route entry based on the least-privilege caller model. Admin-only gates now protect automation configuration, dedup/quarantine/migration, company revenue records, CRM metric writes, system-agent identity management, and manual leaderboard refreshes. Admin/sales-agent gates now protect lead detail/list, notes/tasks, alert preferences, Facebook audit reads, CRM reporting reads, and Facebook revenue-engine work. Sales agents are scoped to their own Facebook opportunity pipeline while admins can intentionally inspect other agents. System-agent execution routes now require admin or cron access. Political candidate-intelligence sync/webhook routes were inspected and left unchanged because they already require explicit secrets and fail closed when not configured.
+
+Validation: focused ESLint on the touched admin CRM/automation/migration/Facebook/system-agent routes passed with only pre-existing warnings. Full workspace typecheck, full unit suite, web lint, placeholder-env web build, `git diff --check`, and a follow-up scanner over `apps/web/app/api/admin` passed; the scanner found no remaining routes matching the unguarded Supabase/admin access pattern outside known custom guards.
+
+Approval needed: no for access-control hardening; yes before any live send/provider or production-data mutation validation.
+
 ### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.
@@ -338,7 +375,7 @@ Approval needed: no production approval; account authentication required.
 
 ### Lint Warning Debt
 
-What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 499 warnings.
+What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 495 warnings.
 
 Why it matters: warnings include unused variables, unescaped text, legacy `any` usage, direct anchor navigation, and hook dependency issues that can hide real defects over time.
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 const VALID_BUSINESS_LINES = new Set([
   "targeted_mailing",
@@ -21,6 +22,9 @@ function normalizeBusinessLine(value: unknown) {
 
 export async function GET() {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -63,6 +67,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const body = await req.json();
 

@@ -1,10 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // GET /api/admin/crm/lead?id=UUID
 // Returns full lead detail with outreach history, notes, tasks, conversations
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
@@ -38,6 +42,11 @@ export async function GET(request: Request) {
 // PATCH /api/admin/crm/lead — update lead fields or pipeline stage
 export async function PATCH(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
+  const isSalesAgent = user?.app_metadata?.user_role === "sales_agent";
+
   const supabase = await createClient();
   const body = await request.json();
   const { id, updates, stage_change, agent_id, stage_reason } = body;
@@ -56,7 +65,7 @@ export async function PATCH(request: Request) {
     const { data: lead } = await supabase.from("sales_leads").select("pipeline_stage").eq("id", id).single();
     await supabase.from("crm_pipeline_history").insert({
       lead_id:    id,
-      agent_id:   agent_id ?? null,
+      agent_id:   isSalesAgent ? user?.id ?? null : agent_id ?? user?.id ?? null,
       from_stage: lead?.pipeline_stage ?? null,
       to_stage:   stage_change,
       reason:     stage_reason ?? null,

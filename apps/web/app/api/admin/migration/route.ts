@@ -10,8 +10,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 const MigrationSchema = z.object({
   businessName:    z.string().min(1),
@@ -35,12 +35,9 @@ const MigrationSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Get authenticated user's ID for ownerId
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+    const user = guard.user!;
 
     const body = await req.json();
     const data = MigrationSchema.parse(body);
@@ -107,6 +104,9 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   try {
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
     const db = createServiceClient();
 
     const { data: rows, error } = await db
@@ -189,9 +189,8 @@ const PatchSchema = z.object({
 
 export async function PATCH(req: NextRequest) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
 
     const id = req.nextUrl.searchParams.get("id");
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -282,12 +281,8 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    // Auth check
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
 
     const id = req.nextUrl.searchParams.get("id");
     if (!id) {
