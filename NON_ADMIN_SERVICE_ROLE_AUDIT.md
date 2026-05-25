@@ -10,7 +10,7 @@ Safety posture: this pass made local access-control hardening only. It did not c
 
 The highest-risk non-admin service-role gap found in this pass was the `/api/agent/*` route family. The agent UI layout already redirects non-admin/non-sales-agent users away from agent pages, but the API routes themselves accepted any authenticated Supabase user before creating a service-role client. That left a direct API path where authenticated client users could call agent endpoints, even though returned records were mostly scoped by `assigned_agent_id = user.id`.
 
-The patch moves the API boundary itself onto the shared admin/sales-agent guard layer and uses the existing agent-scope helper for admin preview behavior.
+The patch moves the API boundary itself onto the shared admin/sales-agent guard layer and uses the existing agent-scope helper for admin preview behavior. A follow-up proxy review also moved the authenticated `/api/agent/log-action` and `/api/agent/preferences` wrappers onto the same role gate before they parse request bodies or proxy into downstream admin APIs.
 
 ## Patched Routes
 
@@ -21,6 +21,8 @@ Files:
 - `apps/web/app/api/agent/leads/[leadId]/route.ts`
 - `apps/web/app/api/agent/actions/route.ts`
 - `apps/web/app/api/agent/replies/route.ts`
+- `apps/web/app/api/agent/log-action/route.ts`
+- `apps/web/app/api/agent/preferences/route.ts`
 
 Controls added:
 
@@ -29,11 +31,14 @@ Controls added:
 - Admin preview with `?preview_agent_id=` remains available.
 - Admins without preview keep the prior default behavior of using their own user id as the effective agent id.
 - Lead detail now filters `sales_leads` by `assigned_agent_id` for sales-agent users before fetching the row, rather than reading an arbitrary lead first and rejecting afterward.
+- Agent proxy wrappers now require `requireAdminOrSalesAgent()` before log-action body parsing or alert-preference proxy forwarding.
+- Downstream admin routes remain guarded and still receive the forwarded authenticated cookie.
 
 Behavior intentionally preserved:
 
 - Sales agents can still read their assigned dashboard, lead queue, action queue, replies, and lead details.
 - Admins can still preview a specific agent by passing `preview_agent_id`.
+- Sales agents can still log their own mobile actions and read their own alert preferences through the existing proxy routes.
 - No send, payment, lead-status, assignment, or campaign business logic was changed.
 
 ## Other Non-Admin Service-Role Buckets Reviewed
@@ -76,6 +81,7 @@ Follow-up completed: `/api/spots/resolve` now has a first-layer `spots:resolve` 
 - Full `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
 - Full `pnpm --filter @homereach/web lint` passed with 494 existing warnings and 0 errors.
 - Placeholder-env `pnpm --filter @homereach/web build` generated 248 routes successfully.
+- Follow-up proxy guard tests passed with 4 tests, focused auth guard tests passed with 4 tests, focused proxy/auth ESLint passed with 0 warnings/errors, focused web typecheck passed, full `pnpm test` passed with 196 tests across 27 files, full workspace typecheck passed across 5 packages, full web lint passed with 493 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
 
 ## Remaining Risk
 

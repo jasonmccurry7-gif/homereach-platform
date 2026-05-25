@@ -555,9 +555,9 @@ Approval needed: no production approval; account authentication required.
 
 ### Partially Resolved: Non-Admin Service-Role Routes Needed API-Level Role Gates
 
-What was wrong: `/api/agent/*` routes created the Supabase service-role client after checking only for an authenticated user. The agent UI layout blocks non-admin/non-sales-agent users, but direct API calls should not rely on page-level redirects.
+What was wrong: `/api/agent/*` service-role routes created the Supabase service-role client after checking only for an authenticated user. The agent UI layout blocks non-admin/non-sales-agent users, but direct API calls should not rely on page-level redirects. A later proxy-wrapper review also found `/api/agent/log-action` and `/api/agent/preferences` verified only a generic session before forwarding to downstream admin APIs; the downstream targets were guarded, but non-agent authenticated users could still reach proxy routing and, for log-action, body parsing before rejection.
 
-Why it matters: service-role routes bypass RLS and expose sales lead/reply/dashboard data. Even when queries are scoped by `assigned_agent_id`, authenticated client users should not be allowed to exercise agent service-role endpoints.
+Why it matters: service-role routes bypass RLS and expose sales lead/reply/dashboard data. Even when queries are scoped by `assigned_agent_id`, authenticated client users should not be allowed to exercise agent service-role endpoints. Proxy wrappers should also fail closed at their own API boundary instead of relying only on the downstream admin route to reject unauthorized sessions.
 
 Files:
 
@@ -566,13 +566,16 @@ Files:
 - `apps/web/app/api/agent/leads/[leadId]/route.ts`
 - `apps/web/app/api/agent/actions/route.ts`
 - `apps/web/app/api/agent/replies/route.ts`
+- `apps/web/app/api/agent/log-action/route.ts`
+- `apps/web/app/api/agent/preferences/route.ts`
 - `NON_ADMIN_SERVICE_ROLE_AUDIT.md`
+- `AGENT_PROXY_GUARD_AUDIT.md`
 
-Fix applied: added `requireAdminOrSalesAgent()` before service-role access and used `resolveAgentScope()` to preserve admin preview while blocking sales agents from requesting another rep. Lead detail now filters by `assigned_agent_id` for sales-agent sessions before returning a row.
+Fix applied: added `requireAdminOrSalesAgent()` before service-role access and used `resolveAgentScope()` to preserve admin preview while blocking sales agents from requesting another rep. Lead detail now filters by `assigned_agent_id` for sales-agent sessions before returning a row. Follow-up hardening also moved the authenticated agent proxy wrappers onto `requireAdminOrSalesAgent()` before body parsing or proxy forwarding while preserving downstream admin guards, authenticated-user `agent_id` enforcement, and cookie forwarding.
 
-Safest remaining fix: add first-layer public rate limiting to retained public service-role read routes such as `/api/spots/resolve`, and perform browser-level authenticated QA for the agent dashboard.
+Safest remaining fix: perform browser-level authenticated QA for the agent dashboard and mobile agent action/preference flows with test users. Public service-role read route rate limiting has been added for spot resolution, spot availability, and political route coverage, but should still move to a distributed edge/provider-backed layer before traffic scaling.
 
-Validation: focused agent-route ESLint passed with 0 warnings/errors, focused auth guard tests passed with 4 tests, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 187 tests across 25 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, and placeholder-env web build generated 248 routes.
+Validation: service-role agent route validation passed earlier with focused agent-route ESLint, focused auth guard tests, focused `@homereach/web` typecheck, full test suite, workspace typecheck, web lint, and placeholder-env build. The proxy-wrapper follow-up passed focused agent proxy guard tests with 4 tests, focused auth guard tests with 4 tests, focused agent proxy/auth ESLint with 0 warnings/errors, focused `@homereach/web` typecheck, full `pnpm test` with 196 tests across 27 files, full workspace typecheck across 5 packages, full web lint with 493 existing warnings and 0 errors, placeholder-env web build with 247 static pages, and `git diff --check`.
 
 Approval needed: no for API boundary hardening; yes before changing agent assignment/business logic or live send behavior.
 

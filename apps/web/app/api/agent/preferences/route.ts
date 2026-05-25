@@ -1,6 +1,5 @@
 import { NextResponse }       from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies }            from "next/headers";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/agent/preferences
@@ -13,13 +12,9 @@ import { cookies }            from "next/headers";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const cookieStore = await cookies();
-  const session = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
-  const { data: { user } } = await session.auth.getUser();
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { origin } = new URL(req.url);
