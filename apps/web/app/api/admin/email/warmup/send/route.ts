@@ -82,12 +82,6 @@ export async function POST(req: NextRequest) {
         const toEmail  = WARMUP_SEED_EMAILS[i % WARMUP_SEED_EMAILS.length]!;
         const template = getSeedTemplate(state.warmup_day, i);
 
-        // Temporarily set agent's from address
-        const savedFromEmail = process.env.MAILGUN_FROM_EMAIL;
-        const savedFromName  = process.env.MAILGUN_FROM_NAME;
-        process.env.MAILGUN_FROM_EMAIL = identity.from_email;
-        process.env.MAILGUN_FROM_NAME  = identity.from_name ?? "HomeReach";
-
         const result = await sendEmail({
           to:      toEmail,
           subject: template.subject,
@@ -95,10 +89,9 @@ export async function POST(req: NextRequest) {
             <p>${template.body}</p>
           </div>`,
           text:    template.body,
+          fromEmail: identity.from_email,
+          fromName:  identity.from_name ?? "HomeReach",
         });
-
-        process.env.MAILGUN_FROM_EMAIL = savedFromEmail;
-        process.env.MAILGUN_FROM_NAME  = savedFromName;
 
         await db.from("email_warmup_log").insert({
           state_id:   state.id,
@@ -143,13 +136,7 @@ export async function POST(req: NextRequest) {
 
         for (const prospect of prospects ?? []) {
           if (!prospect.email) continue;
-          const contactName = prospect.contact_name ?? prospect.business_name ?? "there";
           const template    = getSeedTemplate(state.warmup_day, realSent + seedsSent);
-
-          const savedFromEmail = process.env.MAILGUN_FROM_EMAIL;
-          const savedFromName  = process.env.MAILGUN_FROM_NAME;
-          process.env.MAILGUN_FROM_EMAIL = identity.from_email;
-          process.env.MAILGUN_FROM_NAME  = identity.from_name ?? "HomeReach";
 
           const result = await sendEmail({
             to:      prospect.email,
@@ -163,10 +150,9 @@ export async function POST(req: NextRequest) {
               </p>
             </div>`,
             text:    `${template.body}\n\nTo unsubscribe: ${appUrl}/unsubscribe?email=${encodeURIComponent(prospect.email)}`,
+            fromEmail: identity.from_email,
+            fromName:  identity.from_name ?? "HomeReach",
           });
-
-          process.env.MAILGUN_FROM_EMAIL = savedFromEmail;
-          process.env.MAILGUN_FROM_NAME  = savedFromName;
 
           await db.from("email_warmup_log").insert({
             state_id:   state.id,

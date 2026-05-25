@@ -192,6 +192,28 @@ Risk of fix: low for adding missing names; medium for changing runtime fallback 
 
 Approval needed: yes for Vercel env mutation; no for documentation-only audit.
 
+### Partially Resolved: Email Provider Routing Drift Can Break Send-Capable Sales Flows
+
+What is wrong: most outbound email paths use the central `sendEmail()` router, but `/api/admin/sales/close-deal` still sends email through a direct Mailgun helper. Separately, the email warmup job attempted to switch sender identity by mutating `process.env.MAILGUN_FROM_EMAIL` and `process.env.MAILGUN_FROM_NAME` during each send.
+
+Why it matters: if production is configured for `EMAIL_PROVIDER=resend` or `EMAIL_PROVIDER=postmark`, close-deal email can fail unless Mailgun credentials also exist. Warmup env mutation is risky in shared serverless execution and may not reliably set the intended sender because `DEFAULT_FROM_EMAIL` can take precedence over `MAILGUN_FROM_EMAIL`.
+
+Files:
+
+- `packages/services/src/outreach/index.ts`
+- `apps/web/app/api/admin/email/warmup/send/route.ts`
+- `apps/web/app/api/admin/email/warmup/__tests__/send-route.test.ts`
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `EMAIL_PROVIDER_ROUTING_AUDIT.md`
+
+Fix applied: the email warmup route now passes `fromEmail` and `fromName` directly to `sendEmail()` for seed and real-prospect sends and no longer mutates provider environment variables.
+
+Safest remaining fix: migrate `/api/admin/sales/close-deal` email sends to the central `sendEmail()` router in a dedicated patch, preserving existing message copy, sender identity, logging, and error behavior. Treat Twilio close-deal routing separately because moving it to `sendSms()` may intentionally introduce safety gates that block live sends unless configured.
+
+Risk of fix: low for the warmup identity fix; medium for close-deal provider migration because it is revenue-sensitive and send-capable.
+
+Approval needed: no for local branch code hardening and docs; yes before live email/SMS send validation or production automation runs.
+
 ### Resolved: Public Form Email Notifications Rendered Unsanitized HTML
 
 What was wrong: public nonprofit registration and shared-postcard intake submissions rendered user-controlled fields directly into HTML email bodies, and dynamic subject fragments were not cleaned for control characters.

@@ -33,6 +33,7 @@ The most important remaining items to fix next are:
 19. Non-admin `/api/agent/*` service-role routes now require admin or sales-agent sessions at the API boundary before sales dashboard/lead/reply data can be read.
 20. Authenticated agent proxy wrappers for log-action and alert preferences now also require admin or sales-agent roles before request parsing or downstream admin proxying.
 21. Public `/api/spots/resolve`, `/api/spots/availability`, and `/api/political/routes/coverage` service-role-backed read lookups now have first-layer in-process rate limits before catalog, availability, or political route coverage reads.
+22. The email warmup job now passes agent sender identity directly to the central email provider router instead of mutating `process.env.MAILGUN_FROM_EMAIL` / `process.env.MAILGUN_FROM_NAME` during each send.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -290,6 +291,10 @@ Primary files:
 - `packages/services/src/outreach/index.ts`
 - `packages/services/src/outreach/postmark.ts`
 - `apps/web/app/api/webhooks/postmark/route.ts`
+- `apps/web/app/api/admin/email/warmup/send/route.ts`
+- `apps/web/app/api/admin/email/warmup/__tests__/send-route.test.ts`
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `EMAIL_PROVIDER_ROUTING_AUDIT.md`
 
 Outbound email flow:
 
@@ -298,6 +303,8 @@ Outbound email flow:
 3. `OUTREACH_TEST_MODE`/safety config can return a fake success without sending.
 4. Supported providers are Resend, Mailgun, and Postmark.
 5. Prospecting identity rotation is handled in the outreach identity layer.
+6. Email warmup now supplies `fromEmail` and `fromName` explicitly from `agent_identities`, preserving provider routing while avoiding global env mutation.
+7. Remaining risk: `/api/admin/sales/close-deal` still sends email through a direct Mailgun helper instead of the central `sendEmail()` router, so it can fail when production uses Resend or Postmark without Mailgun credentials.
 
 Postmark inbound flow:
 
@@ -865,6 +872,7 @@ Validation:
 - Non-admin agent service-role APIs now require admin/sales-agent access before creating service-role clients and preserve sales-agent ownership scoping.
 - Authenticated agent proxy wrappers now require admin/sales-agent access before parsing log-action bodies or proxying to downstream admin APIs.
 - Public spot slug resolution, availability checks, and political route coverage checks now apply basic in-process rate limits before service-role-backed catalog, availability, or route coverage reads.
+- Email warmup now passes agent sender identity directly to `sendEmail()` and avoids request-time mutation of provider environment variables.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -892,6 +900,7 @@ Latest validation for this follow-up guard sweep:
 - Focused agent-route ESLint passed with 0 warnings/errors, focused auth guard tests passed with 4 tests, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 187 tests across 25 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, and placeholder-env web build generated 248 routes after adding API-level role gates to `/api/agent/*` service-role routes.
 - `/api/spots/resolve` validation is complete through focused tests/lint/typecheck, full local suite/typecheck/lint/build, GitHub Actions `Validate` run #50, and hosted Vercel probing. After adding `/api/spots/availability`, focused public-read/shared rate-limit tests passed with 5 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 190 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, GitHub Actions `Validate` run #52 passed, and hosted availability probes returned 400 for missing/invalid parameters with rate-limit metadata. After adding `/api/political/routes/coverage`, focused public-read/shared rate-limit tests passed with 7 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 192 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, `git diff --check` passed locally, GitHub Actions `Validate` run #54 passed, Vercel deployment `dpl_45dw7h9yCUfi9Mb9pokUkPzp25Pq` reached `READY`, and the hosted route coverage probe returned 200 read-only empty coverage plus rate-limit metadata.
 - Focused agent proxy guard tests passed with 4 tests, focused auth guard tests passed with 4 tests, focused agent proxy/auth ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 196 tests across 27 files, full workspace typecheck passed across 5 packages, full web lint passed with 493 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after adding direct role gates to `/api/agent/log-action` and `/api/agent/preferences`. GitHub Actions `Validate` run #56 passed, Vercel deployment `dpl_7yeeUfDqkGMXsnZEpuLnRzGoCr5L` reached `READY`, and hosted unauthenticated probes confirmed `/api/agent/preferences` and invalid-body `/api/agent/log-action` both return 401.
+- Focused email warmup route test passed with 1 test, focused warmup ESLint passed with 0 warnings/errors, full `pnpm test` passed with 197 tests across 28 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed after replacing warmup env mutation with explicit sender identity options.
 
 ## Safe Validation Path
 
