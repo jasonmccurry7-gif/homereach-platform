@@ -134,6 +134,8 @@ Observed posture:
 - Vercel deployment status is passing on the current PR head.
 - `next.config.ts` still ignores Next's internal build-time TypeScript/lint checks, so explicit CI gates remain mandatory.
 - GitHub CLI is installed but not authenticated in this shell; the GitHub connector remains the working PR/Actions path.
+- `/api/admin/outreach/health` now reports provider telemetry freshness and warnings when email/SMS sends exist without recent provider callbacks.
+- GitHub Actions build env includes a non-secret `TARGETED_CHECKOUT_SIGNING_SECRET` placeholder so the production env guard is exercised in CI.
 
 ## Findings
 
@@ -370,6 +372,7 @@ Validation:
 - Postmark webhook can be disabled with `ENABLE_POSTMARK_WEBHOOK=false`.
 - Postmark webhook fails closed in production if Basic Auth is not configured.
 - Twilio status webhook validates signatures and fails closed in production if `TWILIO_AUTH_TOKEN` is missing.
+- Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
 
 ## Safe Validation Path

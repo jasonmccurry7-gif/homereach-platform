@@ -15,6 +15,8 @@ Date: 2026-05-25
 - Added signed targeted checkout tokens, a legacy customer-email confirmation fallback, add-on allowlisting, and the production env requirement/template entries for `TARGETED_CHECKOUT_SIGNING_SECRET`.
 - Hardened Twilio status webhook persistence by switching the post-signature append-only insert to the Supabase service-role client.
 - Hardened Postmark webhook handling so email event insert failures return retryable 503 and delivery events cannot clear suppression states.
+- Added provider telemetry freshness warnings to the admin outreach health endpoint.
+- Added the targeted checkout signing secret placeholder to GitHub Actions build env so CI validates the production env gate intentionally.
 - Pushed provider audit documentation to the draft PR.
 
 ## Validation
@@ -22,7 +24,8 @@ Date: 2026-05-25
 - Local focused Stripe idempotency test: passed, 7 tests.
 - Local focused targeted checkout token test: passed, 7 tests.
 - Local focused Postmark webhook helper test: passed, 4 tests.
-- Local `pnpm test`: passed, 114 tests.
+- Local focused provider telemetry health test: passed, 5 tests.
+- Local `pnpm test`: passed, 119 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
@@ -40,12 +43,12 @@ Date: 2026-05-25
 
 Current status: stabilization branch is build/CI ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, Twilio status persistence, and Postmark callback durability now have tested branch fixes, but Stripe/Twilio/email test-mode validation still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, Twilio status persistence, Postmark callback durability, and provider telemetry freshness now have tested branch fixes, but Stripe/Twilio/email test-mode validation still needs completion.
 
 ## Recommended Next Actions
 
 1. Set `TARGETED_CHECKOUT_SIGNING_SECRET` in Vercel production/preview before promoting this branch.
 2. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
-3. Add provider telemetry freshness checks for webhook logging tables.
-4. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
-5. Validate Twilio and Postmark webhooks with signed/authenticated sample payloads and no live sends.
+3. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
+4. Validate Twilio and Postmark webhooks with signed/authenticated sample payloads and no live sends.
+5. Review monthly-billing intent before changing any Stripe mode or subscription behavior.

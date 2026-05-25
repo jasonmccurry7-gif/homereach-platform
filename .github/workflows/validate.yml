@@ -53,6 +53,7 @@ jobs:
           STRIPE_SECRET_KEY: sk_test_placeholder
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
           STRIPE_WEBHOOK_SECRET: whsec_test_placeholder
+          TARGETED_CHECKOUT_SIGNING_SECRET: targeted-checkout-placeholder-secret
           TWILIO_ACCOUNT_SID: AC00000000000000000000000000000000
           TWILIO_AUTH_TOKEN: twilio-placeholder
           OUTREACH_SMS_FROM_NUMBER: "+15555550100"

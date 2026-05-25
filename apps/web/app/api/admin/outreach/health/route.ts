@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/api-guards";
+import { buildProviderTelemetryFreshness } from "@/lib/outreach/telemetry-health";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
   getEmailRotationPool,
@@ -102,8 +103,9 @@ export async function GET() {
   const db = createServiceClient();
   const owner = getOwnerIdentity();
   const safety = getOutreachSafetyConfig();
-  const today = new Date().toISOString().slice(0, 10);
-  const sinceSevenDays = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const generatedAt = new Date();
+  const today = generatedAt.toISOString().slice(0, 10);
+  const sinceSevenDays = new Date(generatedAt.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const [
     controls,
@@ -168,9 +170,20 @@ export async function GET() {
   const twilioRows = arrayData(twilioEvents);
   const autoSendRows = arrayData(autoSendsToday);
   const salesRows = arrayData(salesEventsToday);
+  const telemetryFreshness = buildProviderTelemetryFreshness({
+    now: generatedAt,
+    emailEvents: emailRows,
+    twilioEvents: twilioRows,
+    autoSendsToday: autoSendRows,
+    salesEventsToday: salesRows,
+    sourceErrors: {
+      emailEvents: emailEvents.error,
+      twilioMessageStatus: twilioEvents.error,
+    },
+  });
 
   return NextResponse.json({
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt.toISOString(),
     identity: {
       owner,
       rotation_pool: getEmailRotationPool(owner),
@@ -210,6 +223,7 @@ export async function GET() {
           "undelivered",
         ]),
       },
+      telemetry_freshness: telemetryFreshness,
       twilio_a2p_status: twilioA2p.data ?? [],
     },
     owner_action_items: OWNER_ACTION_ITEMS,

@@ -209,6 +209,24 @@ Validation: focused Postmark helper tests and Turbo typecheck passed locally.
 
 Approval needed: no for the code change; yes before provider-live validation or email sending.
 
+### Resolved: Provider Telemetry Health Only Showed Counts, Not Freshness
+
+What was wrong: `/api/admin/outreach/health` showed email and SMS webhook event counts, but it did not flag cases where sends happened today and provider telemetry was missing or stale.
+
+Why it mattered: operators need an obvious warning when delivery callbacks stop arriving after outbound activity, especially before scaling email/SMS volume.
+
+Files:
+
+- `apps/web/app/api/admin/outreach/health/route.ts`
+- `apps/web/lib/outreach/telemetry-health.ts`
+- `apps/web/lib/outreach/__tests__/telemetry-health.test.ts`
+
+Fix applied: added a read-only `metrics.telemetry_freshness` block with latest callback timestamps, age, same-day send activity, stale flags, and source/freshness warnings.
+
+Validation: focused telemetry health tests, full test suite, Turbo typecheck, web lint, and web build passed locally.
+
+Approval needed: no; this is read-only admin observability.
+
 ### Political Launch Depends On Feature Flag
 
 What is wrong: `/political/*` intentionally returns `404` unless `ENABLE_POLITICAL=true`.
