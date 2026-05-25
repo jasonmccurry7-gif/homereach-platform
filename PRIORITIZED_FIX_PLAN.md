@@ -189,6 +189,24 @@ Validation: focused HTML escaping and email subject tests passed, focused ESLint
 
 Approval needed: no for the defensive rendering change; yes before sending live test emails or changing public form business behavior.
 
+### Resolved: Public Political Map Plans Could Persist Empty Selections
+
+What was wrong: `/api/political/map-plans` accepted public JSON payloads and the persistence helper could proceed to Supabase service-role work even when no carrier routes or political geographies were selected. The route also parsed public request bodies without a route-level size guard.
+
+Why it mattered: empty public saves could create low-value map session/plan rows and unnecessary service-role database activity. Oversized bodies increased public endpoint abuse risk before any business value was present.
+
+Files:
+
+- `apps/web/app/api/political/map-plans/route.ts`
+- `apps/web/lib/political/map-plans.ts`
+- `apps/web/lib/political/__tests__/map-plans.test.ts`
+
+Fix applied: the helper now computes normalized routes/geographies before Supabase credentials are checked and returns a local-only result when both selections are empty. The route now rejects map-plan request bodies over 750 KB before JSON parsing and persistence. Meaningful selections still continue to the existing persistence path when Supabase service credentials are configured.
+
+Validation: focused map-plan persistence tests passed, focused ESLint on the touched route/helper/test files passed, full `pnpm test` passed with 181 tests, full workspace typecheck passed across 5 packages, full web lint passed with 495 existing warnings and 0 errors, and placeholder-env web build generated 248 routes locally.
+
+Approval needed: no for the defensive public endpoint hardening; yes before changing political launch posture, live political workflows, or production database records.
+
 ### Email Provider Runtime Value Needs Explicit Confirmation
 
 What is wrong: Vercel has `EMAIL_PROVIDER`, Mailgun names, and Postmark names, but no `RESEND_API_KEY`. The Vercel CLI metadata audit intentionally did not reveal the hidden `EMAIL_PROVIDER` value.

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { isPoliticalEnabled } from "@/lib/political/env";
 import { savePublicMapPlan } from "@/lib/political/map-plans";
 
+const MAX_PUBLIC_MAP_PLAN_BODY_BYTES = 750_000;
+
 export async function POST(request: Request) {
   if (!isPoliticalEnabled()) {
     return NextResponse.json({ ok: false, error: "Political module disabled" }, { status: 404 });
@@ -9,7 +11,11 @@ export async function POST(request: Request) {
 
   let body: unknown;
   try {
-    body = await request.json();
+    const rawBody = await request.text();
+    if (rawBody.length > MAX_PUBLIC_MAP_PLAN_BODY_BYTES) {
+      return NextResponse.json({ ok: false, error: "Map plan payload is too large" }, { status: 413 });
+    }
+    body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }

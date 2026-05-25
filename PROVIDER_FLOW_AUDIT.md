@@ -25,6 +25,7 @@ The most important remaining items to fix next are:
 11. The public Facebook follow-up cron route now fails closed through the shared cron guard when `CRON_SECRET` is missing or invalid.
 12. The public political candidate chat helper now honors `DISABLE_POLITICAL_AI=true` and falls back to static operational replies instead of calling OpenAI.
 13. Public nonprofit and intake notification emails now HTML-escape user-controlled form values before rendering admin/applicant email bodies and clean dynamic subject fragments.
+14. Public political map-plan saves now reject empty route/geography selections before service-role persistence work and reject oversized request bodies before JSON parsing.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -46,6 +47,23 @@ Observed flow:
 3. The helper now checks `DISABLE_POLITICAL_AI=true` before creating an OpenAI client.
 4. When AI is disabled or `OPENAI_API_KEY` is absent, the route returns static fallback replies from the loaded campaign plan and compliance rules.
 5. Human approval remains required before political outreach, proposal, checkout, or production use.
+
+### Public Political Map Plan Persistence
+
+Primary files:
+
+- `apps/web/app/api/political/map-plans/route.ts`
+- `apps/web/lib/political/map-plans.ts`
+- `apps/web/lib/political/__tests__/map-plans.test.ts`
+
+Observed flow:
+
+1. `/api/political/map-plans` remains available only when `ENABLE_POLITICAL=true`.
+2. The route reads the raw body, rejects bodies over 750 KB, and then parses JSON.
+3. The persistence helper normalizes public map-plan inputs and requires at least one selected route or political geography before Supabase service-role work can begin.
+4. Empty selections return a local-only response and do not create map sessions or plan rows.
+5. Valid selections continue to the existing database-backed save path when Supabase service credentials are configured.
+6. Human approval remains required before using saved political plans for outreach, creative, proposal, or campaign execution.
 
 ### Public Form Notification Emails
 
@@ -756,6 +774,7 @@ Validation:
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
 - Facebook follow-up cron now fails closed when `CRON_SECRET` is missing.
 - Public nonprofit and intake notification emails now escape user-controlled HTML before rendering and clean dynamic subject fragments.
+- Public political map-plan persistence now rejects empty route/geography selections before service-role writes and rejects oversized request bodies before JSON parsing.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
 - Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
@@ -774,6 +793,7 @@ Latest validation for this follow-up guard sweep:
 - Focused inbound SMS signature helper tests, request-secret helper tests, agent-scope helper tests, focused ESLint on `/api/command` and `/api/facebook/followup`, full `pnpm test` with 174 tests, full workspace typecheck, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the APEX command/Facebook cron hardening patch.
 - Focused political candidate chat kill-switch tests, full `pnpm test` with 175 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the political AI kill-switch hardening patch.
 - Focused HTML escaping and email subject tests, focused ESLint on the helpers and touched public form routes, full `pnpm test` with 179 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after the public form email hardening patch.
+- Focused map-plan persistence tests, focused ESLint on the route/helper/test files, full `pnpm test` with 181 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, and placeholder-env web build with 248 routes passed after the public political map-plan hardening patch.
 
 ## Safe Validation Path
 
@@ -789,11 +809,12 @@ Latest validation for this follow-up guard sweep:
 10. Probe `/api/command` POST without `X-Twilio-Signature` and expect 403 before any internal self-call.
 11. Probe newly guarded admin service-role POST/PUT routes without credentials and expect 401/403 without mutations or SMS sends.
 12. Probe newly guarded admin read/send surfaces without credentials and expect 401/403 without exposing lead, alert, revenue, health, or warmup data.
-13. Add admin health checks for provider telemetry freshness, not just table readability.
-14. Only then perform provider-level test-mode checks.
+13. Probe `/api/political/map-plans` with an empty JSON payload and expect local-only rejection or module-disabled `404` with no database writes.
+14. Add admin health checks for provider telemetry freshness, not just table readability.
+15. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, public intelligence checkout activation timing, Twilio telemetry durability, inbound SMS reply capture, APEX SMS command signature validation, Facebook cron fail-closed behavior, Postmark callback durability, Meta webhook fail-closed, public form email rendering, public political map-plan persistence, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted. Property-intelligence schema remains a controlled-audit item because the referenced tables are not present in committed schema or migrations.
