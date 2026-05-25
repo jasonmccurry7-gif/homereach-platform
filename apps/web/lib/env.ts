@@ -79,6 +79,15 @@ const ENV_SPECS: EnvSpec[] = [
     productionOnly: true,
     dangerIfSet: "generate-a-long-random-secret",
   },
+  {
+    // Reversible safety guard for the old /api/stripe/checkout route.
+    // Leave false/absent unless the legacy one-time checkout path is deliberately
+    // revalidated against the current subscription business model.
+    key: "ENABLE_LEGACY_STRIPE_CHECKOUT",
+    required: false,
+    productionOnly: false,
+    validValues: ["true", "false"],
+  },
 
   // ── Twilio ──────────────────────────────────────────────────────────────────
   {

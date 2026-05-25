@@ -7,6 +7,7 @@ import { createOneTimeCheckoutSession } from "@homereach/services/stripe";
 import { snapshotPrice } from "@homereach/services/pricing";
 import type { ResolvePriceInput, DiscountContext } from "@homereach/types";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { isLegacyStripeCheckoutEnabled } from "@/lib/stripe/legacy-checkout";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/stripe/checkout
@@ -52,6 +53,16 @@ const CheckoutSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    if (!isLegacyStripeCheckoutEnabled()) {
+      return NextResponse.json(
+        {
+          error: "Legacy checkout route disabled",
+          message: "Use /api/spots/checkout for monthly spot subscriptions.",
+        },
+        { status: 410 }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },

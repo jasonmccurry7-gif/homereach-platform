@@ -34,6 +34,7 @@ Date: 2026-05-25
 - Expanded shared URL resolver coverage across SEO metadata, sitemap/robots, auth reset redirects, admin self-calls, intake/nonprofit notifications, political proposal handoffs, internal alert deep links, and generated outreach/Facebook links.
 - Added Vercel deployment URL fallbacks (`VERCEL_BRANCH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`, `VERCEL_URL`) to the shared app URL resolver so preview/prod links do not degrade to localhost or a stale production fallback when canonical app URL aliases drift.
 - Added a package-local Stripe app URL resolver with tests so future shared subscription Checkout sessions use canonical aliases and Vercel deployment fallbacks instead of reading only `NEXT_PUBLIC_APP_URL`.
+- Guarded the inactive legacy `/api/stripe/checkout` route behind `ENABLE_LEGACY_STRIPE_CHECKOUT`; it now returns `410` before auth, database writes, or Stripe session creation unless deliberately re-enabled.
 
 ## Validation
 
@@ -47,8 +48,9 @@ Date: 2026-05-25
 - Local focused provider telemetry health test: passed, 5 tests.
 - Local focused app URL helper test: passed, 5 tests.
 - Local focused Stripe app URL resolver test: passed, 4 tests.
-- Latest URL resolver sweep: focused app URL helper test, full unit suite, typecheck, web lint, and web build all passed locally.
-- Local `pnpm test`: passed, 139 tests.
+- Local focused legacy Stripe checkout guard test: passed, 2 tests.
+- Latest guard/resolver sweep: focused legacy checkout guard test, full unit suite, typecheck, web lint, and web build all passed locally.
+- Local `pnpm test`: passed, 141 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
@@ -68,7 +70,7 @@ Date: 2026-05-25
 ## Revenue And Reliability Risks
 
 - Medium: targeted checkout now avoids misleading recurring-billing copy, but a true targeted add-on subscription path still needs business approval and Stripe test-mode validation if wanted.
-- Medium: legacy `/api/stripe/checkout` still uses one-time payment mode for a monthly-priced path, but repo search found no active caller; active spot checkout uses `/api/spots/checkout` subscription mode.
+- Medium: legacy `/api/stripe/checkout` still contains the old one-time checkout implementation, but it is now default-disabled by `ENABLE_LEGACY_STRIPE_CHECKOUT`; active spot checkout uses `/api/spots/checkout` subscription mode.
 - Medium: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; runtime self-calls and generated public links now use shared resolvers with Vercel deployment URL fallbacks, but Vercel should still get the canonical name.
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
@@ -79,7 +81,7 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, Twilio status persistence, Postmark callback durability, and provider telemetry freshness now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark have local provider-shaped sample-payload coverage, but Stripe/Twilio/email test-mode validation against isolated provider tooling still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, Postmark callback durability, and provider telemetry freshness now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark have local provider-shaped sample-payload coverage, but Stripe/Twilio/email test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 

@@ -254,7 +254,7 @@ Risk of remaining fix: high if payment mode changes blindly; medium if feature-f
 
 Approval needed: yes before changing live billing behavior.
 
-### Clarified: Legacy Main Stripe Checkout Uses One-Time Payment For Monthly Pricing Path
+### Guarded: Legacy Main Stripe Checkout Uses One-Time Payment For Monthly Pricing Path
 
 What was unclear: `/api/stripe/checkout` resolves a monthly bundle price and calls the one-time Checkout session path, while a subscription helper exists but is not wired into that route.
 
@@ -267,13 +267,23 @@ Files:
 - `apps/web/app/(funnel)/get-started/[citySlug]/[categorySlug]/checkout/checkout-form.tsx`
 - `apps/web/app/api/spots/checkout/route.ts`
 - `apps/web/app/api/stripe/checkout/route.ts`
+- `apps/web/lib/stripe/legacy-checkout.ts`
+- `apps/web/lib/stripe/__tests__/legacy-checkout.test.ts`
+- `apps/web/lib/env.ts`
 - `packages/services/src/stripe/index.ts`
+- `.env.example`
+- `apps/web/.env.production.template`
+- `turbo.json`
 
-Safest fix: leave active `/api/spots/checkout` as the subscription path; either retire/guard the legacy `/api/stripe/checkout` route or clearly document it as inactive before any future reuse.
+Fix applied: left active `/api/spots/checkout` untouched as the subscription path and added a default-disabled `ENABLE_LEGACY_STRIPE_CHECKOUT` guard to `/api/stripe/checkout`. When the flag is absent or not exactly `true`, the route returns `410` before Supabase auth, Drizzle writes, or Stripe API calls.
 
-Risk of fix: medium if guarding/removing the legacy route; high if changing payment behavior without Stripe test-mode validation.
+Validation: focused legacy checkout guard test, full unit suite with 141 tests, typecheck, web lint, and web build with placeholder env passed locally.
 
-Approval needed: yes before live payment behavior changes; no for additional documentation or dead-route guards on the PR branch.
+Safest remaining fix: keep the flag unset/false in production. If the legacy route is ever needed again, revalidate the business model and Stripe mode in test mode before enabling it.
+
+Risk of fix: low for the default-disabled guard; high if changing payment behavior without Stripe test-mode validation.
+
+Approval needed: yes before live payment behavior changes or enabling the legacy flag; no for the default-disabled guard on the PR branch.
 
 ### Resolved: Postmark Webhook Could Lose Email Telemetry And Clear Suppressions
 

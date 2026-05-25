@@ -4,7 +4,7 @@ Updated: 2026-05-25
 
 Scope: Stripe, Supabase, Twilio, email providers, inbound webhooks, and deployment validation posture on the current `codex/current-main-audit-20260524` branch.
 
-Safety posture: this audit is read-only. No provider calls were made, no production data was mutated, no live SMS/email was sent, and no secrets were printed.
+Safety posture: this provider pass made local code and documentation changes only. No provider calls were made, no production data was mutated, no live SMS/email was sent, no Stripe sessions or charges were created, and no secrets were printed.
 
 ## Executive Summary
 
@@ -13,8 +13,9 @@ The branch is much healthier than the original laptop-migration state: install, 
 The most important remaining items to fix next are:
 
 1. Targeted checkout copy now avoids implying automatic recurring Stripe billing, but business intent still needs confirmation before any targeted add-on subscription-mode change.
-2. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
-3. Stripe now has synthetic SDK-signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload tests, but those are not substitutes for provider test-mode validation.
+2. Legacy `/api/stripe/checkout` is now default-disabled by `ENABLE_LEGACY_STRIPE_CHECKOUT`; active get-started checkout remains `/api/spots/checkout` in Stripe subscription mode.
+3. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
+4. Stripe now has synthetic SDK-signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload tests, but those are not substitutes for provider test-mode validation.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -25,6 +26,8 @@ Additional hardening completed after the first provider pass: generated public l
 Primary files:
 
 - `apps/web/app/api/stripe/checkout/route.ts`
+- `apps/web/lib/stripe/legacy-checkout.ts`
+- `apps/web/lib/stripe/__tests__/legacy-checkout.test.ts`
 - `apps/web/app/api/stripe/targeted-checkout/route.ts`
 - `apps/web/app/api/webhooks/stripe/route.ts`
 - `packages/services/src/stripe/app-url.ts`
@@ -32,15 +35,14 @@ Primary files:
 - `packages/services/src/stripe/__tests__/webhook-signature.test.ts`
 - `packages/services/src/stripe/index.ts`
 
-Primary checkout flow:
+Legacy main checkout flow:
 
-1. Authenticated user posts to `/api/stripe/checkout`.
-2. Route validates request with Zod.
-3. User is read from Supabase auth.
-4. City, bundle, business, price snapshot, and pending order are resolved through Drizzle.
-5. Stripe Checkout session is created through `createOneTimeCheckoutSession`.
-6. Webhook later activates/reconciles the order.
-7. Redirect and post-payment links now use the shared public app URL resolver.
+1. Caller posts to `/api/stripe/checkout`.
+2. Route first checks `ENABLE_LEGACY_STRIPE_CHECKOUT`.
+3. Default behavior is `410 Legacy checkout route disabled` before Supabase auth, Zod parsing, Drizzle writes, or Stripe API calls.
+4. If deliberately enabled, the legacy path still validates the request with Zod, reads the authenticated Supabase user, resolves city/bundle/business/order data through Drizzle, and creates a one-time Stripe Checkout session through `createOneTimeCheckoutSession`.
+5. Active get-started checkout should continue to use `/api/spots/checkout`, which creates subscription-mode Checkout sessions.
+6. Redirect and post-payment links use shared public app URL resolver logic.
 
 Targeted route checkout flow:
 
@@ -273,7 +275,7 @@ Residual risk:
 
 Risk of remaining fix: high if payment mode changes blindly; medium if feature-flagged and tested.
 
-### CLARIFIED: Legacy Main Stripe Checkout Still Uses One-Time Session For Monthly Bundle Path
+### GUARDED: Legacy Main Stripe Checkout Still Uses One-Time Session For Monthly Bundle Path
 
 Evidence:
 
@@ -284,18 +286,33 @@ Evidence:
 - `createSubscriptionCheckoutSession` now uses package-local app URL resolver logic for future success/cancel URLs, but the legacy route still does not call it.
 - Repo search found no current caller for `/api/stripe/checkout`.
 - The active get-started spot checkout posts to `/api/spots/checkout`, which uses `mode: "subscription"` and recurring monthly line items.
+- The route now returns `410` unless `ENABLE_LEGACY_STRIPE_CHECKOUT=true`.
 
 Why it matters:
 
 If the legacy route is reactivated or linked later, it can collect a one-time payment instead of establishing recurring revenue.
 
-Safest fix:
+Fix applied:
+
+- Added `apps/web/lib/stripe/legacy-checkout.ts` and focused tests for the exact flag behavior.
+- Added a fail-closed guard at the top of `/api/stripe/checkout`, before auth, database writes, or Stripe API calls.
+- Registered `ENABLE_LEGACY_STRIPE_CHECKOUT=false` in env validation, Turbo env tracking, `.env.example`, and the production env template.
+
+Validation:
+
+- `pnpm exec vitest run apps/web/lib/stripe/__tests__/legacy-checkout.test.ts` passed.
+- `pnpm test` passed with 141 tests.
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings only.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env and `ENABLE_LEGACY_STRIPE_CHECKOUT=false`.
+
+Safest remaining fix:
 
 - Keep active spot checkout on `/api/spots/checkout`.
-- Either retire/guard the legacy route or clearly document it as inactive before future reuse.
+- Keep `ENABLE_LEGACY_STRIPE_CHECKOUT` absent or false unless the legacy route is deliberately revalidated.
 - Test any future payment-mode change in Stripe test mode before any live switch.
 
-Risk of fix: high if changed blindly; medium if behind feature flag/test path.
+Risk of fix: low for the default-disabled guard; high if payment mode is changed blindly.
 
 ### RESOLVED: Twilio Status Webhook Used Session/Anon Supabase Client
 

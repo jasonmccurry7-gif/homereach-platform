@@ -13,6 +13,7 @@ Scope: local checkout plus Vercel project metadata for `homereach-platform-web`.
 - Vercel development has 40 environment variable names.
 - Static startup-required variables from `apps/web/lib/env.ts` are present by name in production, preview, and development.
 - `TARGETED_CHECKOUT_SIGNING_SECRET` is present as a sensitive variable in production and as a branch-scoped sensitive preview variable for `codex/current-main-audit-20260524`.
+- `ENABLE_LEGACY_STRIPE_CHECKOUT` is optional and should stay absent or `false`; it only exists to deliberately re-enable the old one-time `/api/stripe/checkout` route after Stripe test-mode validation.
 - Branch preview and GitHub Actions have already passed with the current env hardening branch, but provider-live validation remains pending.
 - Follow-up compatibility repair added after this audit: runtime admin/agent self-calls and APEX command agent routing now use the shared internal URL resolver before localhost; targeted/spot/intelligence checkout, Stripe post-payment links, the shared Stripe subscription Checkout helper, SEO metadata, sitemap/robots, auth reset redirects, internal alert links, political proposal links, admin notification links, and generated outreach/Facebook links now use shared URL resolver logic; the resolvers also accept Vercel deployment URL fallbacks (`VERCEL_BRANCH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`, `VERCEL_URL`) when canonical aliases are absent; Apex accepts both approved-sender env names; SerpAPI/Hunter readers accept the legacy Vercel aliases; and Twilio messaging-service validation accepts both naming conventions.
 
@@ -77,6 +78,7 @@ Development does not require production-only vars at startup, but local end-to-e
 | Postmark webhook enabled | `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD` | present in production/preview; not listed in development | Deployed webhook auth can start; local testing needs dev/test values. |
 | Twilio send without a messaging service | `TWILIO_PHONE_NUMBER` or `OUTREACH_SMS_FROM_NUMBER` | both production/preview have sender coverage; development has `TWILIO_PHONE_NUMBER` | Startup is covered by sender number. |
 | Twilio send with messaging service | `TWILIO_MESSAGING_SERVICE_SID` or `OUTREACH_TWILIO_MESSAGING_SERVICE_SID` | neither listed in Vercel | Not a blocker while using phone number, but A2P/messaging-service routing is not configured by name. |
+| Legacy Stripe checkout route enabled | `ENABLE_LEGACY_STRIPE_CHECKOUT=true` | optional; templates default to `false` | Payment-sensitive flag. Keep false/absent unless the old one-time route is intentionally revalidated. |
 
 ## Public Client Variables
 
@@ -98,7 +100,7 @@ Do not place secrets in any `NEXT_PUBLIC_` variable.
 Treat these as sensitive or operationally dangerous if wrong:
 
 - Database/Supabase: `DATABASE_URL`, `DATABASE_URL_POOLED`, `SUPABASE_SERVICE_ROLE_KEY`
-- Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TARGETED_CHECKOUT_SIGNING_SECRET`
+- Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TARGETED_CHECKOUT_SIGNING_SECRET`, `ENABLE_LEGACY_STRIPE_CHECKOUT`
 - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `OUTREACH_SMS_FROM_NUMBER`
 - Email: `EMAIL_PROVIDER`, `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `POSTMARK_API_TOKEN`, `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD`, `RESEND_API_KEY`
 - Admin/auth/cron: `ADMIN_SYSTEM_USER_ID`, `ADMIN_NOTIFICATION_EMAIL`, `ADMIN_DEV_BYPASS`, `CRON_SECRET`, `CONTENT_INTEL_CRON_SECRET`, `POLITICAL_CRON_SECRET`
@@ -110,7 +112,7 @@ Treat these as sensitive or operationally dangerous if wrong:
 | Integration | Key variables | Current posture |
 | --- | --- | --- |
 | Supabase DB/Auth/Storage | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `DATABASE_URL_POOLED` | Required names present in Vercel. Connection and RLS behavior still require test-mode validation. |
-| Stripe checkout/webhooks | `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `TARGETED_CHECKOUT_SIGNING_SECRET`, `NEXT_PUBLIC_APP_URL` | Required names present. Public URLs use shared resolver logic and can fall back to Vercel deployment URL names if canonical aliases drift. Stripe CLI is installed but unauthenticated; no provider test-mode events have been run yet. |
+| Stripe checkout/webhooks | `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `TARGETED_CHECKOUT_SIGNING_SECRET`, `ENABLE_LEGACY_STRIPE_CHECKOUT`, `NEXT_PUBLIC_APP_URL` | Required names present. Public URLs use shared resolver logic and can fall back to Vercel deployment URL names if canonical aliases drift. The legacy main checkout route is default-disabled unless `ENABLE_LEGACY_STRIPE_CHECKOUT=true`. Stripe CLI is installed but unauthenticated; no provider test-mode events have been run yet. |
 | Twilio SMS/webhooks | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `OUTREACH_SMS_FROM_NUMBER`, `ENABLE_TWILIO_STATUS_WEBHOOK` | Core names present. Messaging-service SID is not configured by name. No live SMS validation performed. |
 | Postmark | `EMAIL_PROVIDER`, `POSTMARK_API_TOKEN`, `POSTMARK_FROM_EMAIL`, `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD`, `ENABLE_POSTMARK_WEBHOOK` | Production/preview names present. Local development lacks Postmark names. |
 | Mailgun | `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM_EMAIL`, `MAILGUN_FROM_NAME` | Core Mailgun names present. `MAILGUN_FROM_NAME` is referenced/tracked but not in production Vercel. |
