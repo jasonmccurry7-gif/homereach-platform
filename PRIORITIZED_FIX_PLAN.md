@@ -578,7 +578,7 @@ Approval needed: no for API boundary hardening; yes before changing agent assign
 
 ### Partially Resolved: Public Service-Role Read Routes Needed First-Layer Rate Limiting
 
-What was wrong: `/api/spots/resolve` and `/api/spots/availability` are public routes that resolve city/category slug or availability state through service-role-backed reads without request-volume guards.
+What was wrong: `/api/spots/resolve`, `/api/spots/availability`, and `/api/political/routes/coverage` are public routes that resolve city/category slug, availability state, or political route coverage data through service-role-backed reads without request-volume guards.
 
 Why it matters: the route is read-only, but public unbounded service-role reads can create avoidable database load and catalog-enumeration pressure.
 
@@ -589,11 +589,11 @@ Files:
 - `apps/web/lib/security/__tests__/public-read-rate-limits.test.ts`
 - `PUBLIC_READ_ANTI_ABUSE_AUDIT.md`
 
-Fix applied: added `spots:resolve` and `spots:availability` public rate-limit scopes before service-role client creation or canonical availability work, returns 429 retry metadata after 120 lookups/checks per IP per minute per scope, and adds `RateLimit-*` metadata to normal responses. The routes remain read-only funnel helpers.
+Fix applied: added `spots:resolve`, `spots:availability`, and `political:routes-coverage` public rate-limit scopes before service-role client creation, canonical availability work, or political route coverage lookup work. The routes return 429 retry metadata after 120 lookups/checks per IP per minute per scope and add `RateLimit-*` metadata to normal responses. The routes remain read-only funnel/planning helpers.
 
 Safest remaining fix: move public read/mutation/checkout rate limiting to a distributed edge/provider-backed control before paid traffic scaling.
 
-Validation: `/api/spots/resolve` validation is complete through GitHub Actions `Validate` run #50 and hosted Vercel probing. After adding `/api/spots/availability`, focused public-read/shared rate-limit tests passed with 5 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 190 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, GitHub Actions `Validate` run #52 passed, and hosted availability probes returned 400 for missing/invalid parameters with rate-limit metadata.
+Validation: `/api/spots/resolve` validation is complete through GitHub Actions `Validate` run #50 and hosted Vercel probing. After adding `/api/spots/availability`, focused public-read/shared rate-limit tests passed with 5 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 190 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, GitHub Actions `Validate` run #52 passed, and hosted availability probes returned 400 for missing/invalid parameters with rate-limit metadata. After adding `/api/political/routes/coverage`, focused public-read/shared rate-limit tests passed with 7 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 192 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed locally.
 
 Approval needed: no for local anti-abuse guard; yes before changing funnel lookup behavior, availability behavior, or distributed production firewall policy.
 
