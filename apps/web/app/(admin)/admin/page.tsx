@@ -9,7 +9,7 @@ import {
   marketingCampaigns,
   outreachReplies,
 } from "@homereach/db";
-import { eq, count, sum, gte, isNull, desc, and } from "drizzle-orm";
+import { eq, count, sum, gte, lte, isNull, desc, and } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard — HomeReach Admin" };
@@ -93,7 +93,7 @@ export default async function AdminDashboardPage() {
       and(
         eq(orders.status, "paid"),
         gte(orders.paidAt, lastMonthStart),
-        gte(lastMonthEnd, orders.paidAt!)
+        lte(orders.paidAt, lastMonthEnd)
       )
     ), [{ total: "0" }]),
 

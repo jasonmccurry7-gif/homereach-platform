@@ -15,7 +15,7 @@
 
 import fs from "fs";
 import path from "path";
-import csv from "csv-parse/sync";
+import { parse } from "csv-parse/sync";
 import { createClient } from "@supabase/supabase-js";
 import { DedupeEngine } from "./dedupe-engine";
 import type { RawLead, RawOutreachEvent, RawCompany, RawRevenue, IngestionLog } from "./types";
@@ -48,7 +48,7 @@ const log: IngestionLog = {
 function readCsv<T>(filePath: string): T[] {
   try {
     const content = fs.readFileSync(filePath, "utf8");
-    return csv.parse(content, { columns: true, skip_empty_lines: true, relax_quotes: true }) as T[];
+    return parse(content, { columns: true, skip_empty_lines: true, relax_quotes: true }) as T[];
   } catch (e) {
     console.warn(`⚠️  Could not read ${filePath}: ${e}`);
     return [];
@@ -230,13 +230,15 @@ async function ingestOutreachEvents() {
     .not("external_id", "is", null);
 
   const leadMap = new Map<string, string>();
-  for (const l of leads ?? []) leadMap.set(l.external_id, l.id);
+  for (const l of leads ?? []) {
+    if (l.external_id) leadMap.set(l.external_id, l.id);
+  }
 
   const toInsert: Record<string, unknown>[] = [];
   let fbFlagged = 0, orphaned = 0;
 
   for (const r of rows) {
-    const leadId = leadMap.get(r.lead_id) ?? null;
+    const leadId = leadMap.get(r.lead_id ?? "") ?? null;
     if (!leadId) { orphaned++; continue; }
 
     // CRITICAL: Facebook messages were NEVER ACTUALLY SENT
@@ -299,11 +301,13 @@ async function ingestConversations() {
     .select("id, external_id")
     .not("external_id", "is", null);
   const leadMap = new Map<string, string>();
-  for (const l of leads ?? []) leadMap.set(l.external_id, l.id);
+  for (const l of leads ?? []) {
+    if (l.external_id) leadMap.set(l.external_id, l.id);
+  }
 
   const toInsert: Record<string, unknown>[] = [];
   for (const r of rows) {
-    const leadId = leadMap.get(r.lead_id) ?? null;
+    const leadId = leadMap.get(r.lead_id ?? "") ?? null;
     if (!leadId) continue;
 
     // Determine channels used

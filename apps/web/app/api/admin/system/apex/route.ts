@@ -182,16 +182,15 @@ export async function POST(req: NextRequest) {
   const report = reportLines.join("\n");
 
   // ── Log run to Supabase ────────────────────────────────────────────────────
-  await supabase
+  await Promise.resolve(supabase
     .from("apex_command_log" as never)
     .insert({
       command: "APEX_ORCHESTRATION",
       sender: "system",
       response: report.slice(0, 2000),
       executed_at: runDate,
-    })
-    .then(() => {})
-    .catch(err => console.warn("[APEX] Failed to log orchestration:", err));
+    }))
+    .catch((err: unknown) => console.warn("[APEX] Failed to log orchestration:", err));
 
   return NextResponse.json({
     run_id: runId,

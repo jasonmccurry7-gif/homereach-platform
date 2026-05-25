@@ -279,7 +279,7 @@ async function handleMessage(event: Record<string, unknown>) {
 
   // ── 7. Upsert to sales_leads for full CRM tracking ───────────────────────
   if (lead.fb_name || detectedCity) {
-    await db.from("sales_leads").upsert({
+    await Promise.resolve(db.from("sales_leads").upsert({
       business_name: lead.fb_name ?? `Facebook Lead ${sender.slice(-6)}`,
       city:          detectedCity ?? lead.city ?? "",
       category:      detectedCategory ?? lead.category ?? "",
@@ -287,9 +287,9 @@ async function handleMessage(event: Record<string, unknown>) {
       source:        "facebook",
       do_not_contact: false,
       sms_opt_out:   false,
-    }, { onConflict: "id", ignoreDuplicates: false }).then(({ data: sl }) => {
+    }, { onConflict: "id", ignoreDuplicates: false })).then(({ data: sl }) => {
       if (sl && !lead.sales_lead_id) {
-        db.from("facebook_leads").update({ sales_lead_id: (sl as any)[0]?.id }).eq("id", lead.id).then(() => {}).catch(() => {});
+        void Promise.resolve(db.from("facebook_leads").update({ sales_lead_id: (sl as any)[0]?.id }).eq("id", lead.id)).catch(() => {});
       }
     }).catch(() => {});
   }
@@ -321,14 +321,14 @@ async function handleComment(value: Record<string, unknown>) {
   );
 
   // Log as a lead from comment
-  await db.from("facebook_leads").upsert({
+  await Promise.resolve(db.from("facebook_leads").upsert({
     fb_psid:         senderId,
     fb_name:         profile.name ?? null,
     source:          "comment",
     comment_post_id: commentId,
     current_agent:   "echo",
     lead_status:     "warm",
-  }, { onConflict: "fb_psid" }).catch(() => {});
+  }, { onConflict: "fb_psid" })).catch(() => {});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

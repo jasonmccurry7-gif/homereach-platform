@@ -22,7 +22,7 @@ export const spotAssignmentStatusEnum = pgEnum("spot_assignment_status", [
   "cancelled",
 ]);
 
-export const spotTypeEnum = pgEnum("spot_type", [
+export const spotAssignmentSpotTypeEnum = pgEnum("spot_type", [
   "anchor",
   "front_feature",
   "back_feature",
@@ -62,7 +62,7 @@ export const spotAssignments = pgTable("spot_assignments", {
     .references(() => categories.id, { onDelete: "restrict" }),
 
   // What type of spot was purchased
-  spotType: spotTypeEnum("spot_type").notNull().default("anchor"),
+  spotType: spotAssignmentSpotTypeEnum("spot_type").notNull().default("anchor"),
 
   // Lifecycle status
   status: spotAssignmentStatusEnum("status").notNull().default("pending"),

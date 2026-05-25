@@ -5,8 +5,10 @@ import { desc } from "drizzle-orm";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Cities — HomeReach Admin" };
 
+type CityRow = typeof cities.$inferSelect;
+
 export default async function AdminCitiesPage() {
-  let rows: Awaited<ReturnType<typeof db.select>>  = [];
+  let rows: CityRow[] = [];
   try {
     rows = await db.select().from(cities).orderBy(desc(cities.createdAt));
   } catch {

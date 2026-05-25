@@ -136,11 +136,13 @@ export async function POST() {
       "GREEN";
 
     // Log to DB
-    await supabase.from("sales_events").insert({
-      event_type: "sentinel_scan",
-      notes: JSON.stringify({ passed: passed.length, warned: warned.length, failed: failed.length }),
-      created_at: runAt,
-    }).catch(() => {});
+    try {
+      await supabase.from("sales_events").insert({
+        event_type: "sentinel_scan",
+        notes: JSON.stringify({ passed: passed.length, warned: warned.length, failed: failed.length }),
+        created_at: runAt,
+      });
+    } catch {}
 
     return NextResponse.json({
       agent: "Sentinel",

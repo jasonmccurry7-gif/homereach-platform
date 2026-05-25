@@ -58,15 +58,17 @@ export async function POST() {
     }
 
     // ── Log beacon scan ───────────────────────────────────────────────────────
-    await supabase.from("sales_events").insert({
-      event_type: "beacon_scan",
-      notes: JSON.stringify({
-        new_orders: newOrders?.length ?? 0,
-        stuck_intakes: stuckIntakes?.length ?? 0,
-        thirty_day_milestone: thirtyDayMilestone?.length ?? 0,
-      }),
-      created_at: runAt,
-    }).catch(() => {});
+    try {
+      await supabase.from("sales_events").insert({
+        event_type: "beacon_scan",
+        notes: JSON.stringify({
+          new_orders: newOrders?.length ?? 0,
+          stuck_intakes: stuckIntakes?.length ?? 0,
+          thirty_day_milestone: thirtyDayMilestone?.length ?? 0,
+        }),
+        created_at: runAt,
+      });
+    } catch {}
 
     return NextResponse.json({
       agent: "Beacon",

@@ -40,17 +40,19 @@ export default async function AdminFoundingPage() {
   const db = createServiceClient();
 
   // Fetch all founding slots
-  const { data: slots = [] } = await db
+  const { data: slotsData } = await db
     .from("founding_slots")
     .select("*")
     .order("city", { ascending: true })
     .order("tier", { ascending: true });
+  const slots = slotsData ?? [];
 
   // Fetch all founding memberships
-  const { data: memberships = [] } = await db
+  const { data: membershipsData } = await db
     .from("founding_memberships")
     .select("*")
     .order("created_at", { ascending: false });
+  const memberships = membershipsData ?? [];
 
   // Calculate stats
   const totalMembers = memberships.length;

@@ -30,10 +30,10 @@ export function IntelligenceCheckoutClient({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const savings = standardPrice - foundingPrice;
-  const savingsPercentage = Math.round((savings / standardPrice) * 100);
   const standardPrice = standard_price_cents / 100;
   const foundingPrice = founding_price_cents / 100;
+  const savings = standardPrice - foundingPrice;
+  const savingsPercentage = Math.round((savings / standardPrice) * 100);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

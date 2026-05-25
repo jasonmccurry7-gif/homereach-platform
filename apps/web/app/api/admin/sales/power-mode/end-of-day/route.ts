@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       : `⚠️ You missed Power Mode today (${streak.today_sms_sent}/40 SMS, ${streak.today_email_sent}/40 Email). Streak reset. Tomorrow is a fresh start, ${name}.`;
 
     if (email) {
-      await db.from("sales_events").insert({
+      await Promise.resolve(db.from("sales_events").insert({
         agent_id:    streak.agent_id,
         action_type: streak.today_power_mode ? "power_mode_achieved" : "power_mode_missed",
         channel:     "system",
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
           power_mode:     streak.today_power_mode,
           streak_day:     streak.current_streak,
         },
-      }).then(() => {}).catch(() => {});
+      })).catch(() => {});
     }
 
     if (streak.today_power_mode) summary.power_mode_hit++;
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
   }
 
   // Reset daily counters via DB function
-  await db.rpc("reset_daily_power_mode").catch(() => {});
+  await Promise.resolve(db.rpc("reset_daily_power_mode")).catch(() => {});
 
   // ── Alert hook (fire-and-forget, never blocks, additive) ─────────────────
   // Fires quota_warning personal SMS alerts for agents who missed Power Mode today.

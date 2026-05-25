@@ -14,7 +14,7 @@ import {
   products,
   bundles,
   bundleProducts,
-} from "../schema/index.js";
+} from "../schema/index";
 
 const client = postgres(process.env.DATABASE_URL!, { max: 1 });
 const db = drizzle(client);

@@ -116,6 +116,10 @@ export async function GET(request: Request) {
       leadIds = existingList.lead_ids || [];
     }
 
+    if (!callList) {
+      return NextResponse.json({ error: "Failed to create call list" }, { status: 500 });
+    }
+
     // 4. Fetch full lead details
     const { data: leads, error: leadsError } = await supabase
       .from("sales_leads")

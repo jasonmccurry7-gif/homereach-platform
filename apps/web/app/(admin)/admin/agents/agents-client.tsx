@@ -34,7 +34,7 @@ function AgentCard({ agent, leads, followUps }: {
   const myLeads = leads.filter((l) => agent.assignedLeadIds.includes(l.id));
   const myFUs   = followUps.filter((f) => f.agentId === agent.id && !f.completed);
   const activeLeads  = myLeads.filter((l) => l.status === "interested");
-  const closedLeads  = myLeads.filter((l) => l.status === "sold" || l.status === "closed_won");
+  const closedLeads  = myLeads.filter((l) => l.status === "sold");
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">

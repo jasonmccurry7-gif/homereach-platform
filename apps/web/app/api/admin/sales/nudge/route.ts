@@ -54,7 +54,7 @@ async function shouldSendNudge(
   // Check if nudge was sent in last 3 hours
   const { count: recentNudges } = await db
     .from("sales_events")
-    .select("*", { count: "exact", head: 0 })
+    .select("*", { count: "exact", head: true })
     .eq("agent_id", agentId)
     .eq("channel", "sms")
     .eq("action_type", "message_sent")
@@ -72,10 +72,11 @@ export async function POST(req: NextRequest) {
     const todayEnd = `${today}T23:59:59Z`;
 
     // Fetch all agents
-    const { data: agents = [] } = await db
+    const { data: agentsData } = await db
       .from("profiles")
       .select("id, full_name, metadata")
       .eq("role", "sales_agent");
+    const agents = agentsData ?? [];
 
     const nudgesPending = [];
 
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
       // Count activity today
       const { count: textsSent = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "sms")
         .eq("action_type", "text_sent")
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
 
       const { count: emailsSent = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "email")
         .eq("action_type", "email_sent")
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
       const { count: callsMade = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "call")
         .gte("created_at", todayStart)
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
 
       const { count: anyActivity = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .gte("created_at", todayStart)
         .lte("created_at", todayEnd);

@@ -14,7 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default async function AdminBusinessesPage() {
   const db = createServiceClient();
 
-  const { data: rows = [] } = await db
+  const { data } = await db
     .from("businesses")
     .select(`
       id, name, website, status, is_nonprofit, created_at,
@@ -23,6 +23,7 @@ export default async function AdminBusinessesPage() {
       categories:category_id ( name, icon )
     `)
     .order("created_at", { ascending: false });
+  const rows = data ?? [];
 
   return (
     <div className="max-w-6xl">

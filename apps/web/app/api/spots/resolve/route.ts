@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, cities, categories } from "@homereach/db";
-import { eq } from "drizzle-orm";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/spots/resolve
@@ -16,43 +15,50 @@ import { eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
-  const { searchParams } = new URL(req.url);
-  const citySlug     = searchParams.get("citySlug");
-  const categorySlug = searchParams.get("categorySlug");
+    const { searchParams } = new URL(req.url);
+    const citySlug = searchParams.get("citySlug");
+    const categorySlug = searchParams.get("categorySlug");
 
-  if (!citySlug || !categorySlug) {
-    return NextResponse.json(
-      { error: "citySlug and categorySlug are required" },
-      { status: 400 }
-    );
-  }
+    if (!citySlug || !categorySlug) {
+      return NextResponse.json(
+        { error: "citySlug and categorySlug are required" },
+        { status: 400 },
+      );
+    }
 
-  const [city] = await db
-    .select({ id: cities.id, name: cities.name, isActive: cities.isActive })
-    .from(cities)
-    .where(eq(cities.slug, citySlug))
-    .limit(1);
+    const supabase = createServiceClient();
 
-  if (!city || !city.isActive) {
-    return NextResponse.json({ error: "City not found or not active" }, { status: 404 });
-  }
+    const [{ data: city, error: cityError }, { data: category, error: categoryError }] =
+      await Promise.all([
+        supabase
+          .from("cities")
+          .select("id, name, is_active")
+          .eq("slug", citySlug)
+          .maybeSingle(),
+        supabase
+          .from("categories")
+          .select("id, name")
+          .eq("slug", categorySlug)
+          .maybeSingle(),
+      ]);
 
-  const [category] = await db
-    .select({ id: categories.id, name: categories.name })
-    .from(categories)
-    .where(eq(categories.slug, categorySlug))
-    .limit(1);
+    if (cityError) throw cityError;
+    if (categoryError) throw categoryError;
 
-  if (!category) {
-    return NextResponse.json({ error: "Category not found" }, { status: 404 });
-  }
+    if (!city || !city.is_active) {
+      return NextResponse.json({ error: "City not found or not active" }, { status: 404 });
+    }
 
-  return NextResponse.json({
-    cityId:       city.id,
-    cityName:     city.name,
-    categoryId:   category.id,
-    categoryName: category.name,
-  });
+    if (!category) {
+      return NextResponse.json({ error: "Category not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      cityId:       city.id,
+      cityName:     city.name,
+      categoryId:   category.id,
+      categoryName: category.name,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[route] error:`, msg);

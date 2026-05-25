@@ -16,7 +16,7 @@ config({ path: ".env" });
 
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { marketingCampaigns, campaignMetrics } from "../schema/index.js";
+import { marketingCampaigns, campaignMetrics } from "../schema/index";
 import { eq, desc } from "drizzle-orm";
 
 const client = postgres(process.env.DATABASE_URL!, { max: 1 });

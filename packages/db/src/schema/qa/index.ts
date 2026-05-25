@@ -5,7 +5,7 @@
 // To make these tables visible to the rest of the app, add ONE line to
 // packages/db/src/schema/index.ts:
 //
-//     export * from "./qa";
+//     export * from "./qa/index";
 //
 // (This is the only existing file that needs to be touched.)
 // ─────────────────────────────────────────────────────────────────────────────

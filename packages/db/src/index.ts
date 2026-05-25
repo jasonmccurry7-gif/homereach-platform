@@ -35,13 +35,34 @@ export function createMigrationClient() {
 }
 
 // Application client — pooled, used for all runtime queries
-const queryClient = postgres(getDatabaseUrl(true), {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
+function createApplicationClient() {
+  const queryClient = postgres(getDatabaseUrl(true), {
+    max: 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
 
-export const db = drizzle(queryClient, { schema });
+  return drizzle(queryClient, { schema });
+}
+
+let cachedDb: ReturnType<typeof createApplicationClient> | null = null;
+
+export function getDb() {
+  cachedDb ??= createApplicationClient();
+  return cachedDb;
+}
+
+// Keep the existing `db` import contract while avoiding build-time env reads.
+export const db = new Proxy({} as ReturnType<typeof createApplicationClient>, {
+  get(_target, prop) {
+    const client = getDb();
+    const value = Reflect.get(client as object, prop, client as object);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+}) as ReturnType<typeof createApplicationClient>;
+
+export type DbClient = ReturnType<typeof createApplicationClient>;
+export type typeof_db = DbClient;
 
 // Re-export schema for convenience
 export * from "./schema/index";

@@ -8,6 +8,9 @@ export {
   evaluateSuppression, evaluateSuppressionBatch,
   outreachGuard, getDecisionMeta,
 }                                             from "./suppression";
+export type {
+  SuppressionDecision, SuppressionResult, SuppressionSummary,
+}                                             from "./suppression";
 export {
   normalizePhone, normalizeEmail, normalizeWebsite,
   normalizeStatus, normalizeChannel, normalizeDirection,
@@ -26,8 +29,6 @@ export type {
   NormalizedConversation, NormalizedMessage,
   // Dedupe
   DedupeConfidence, DedupeMatch, DedupeResult,
-  // Suppression
-  SuppressionDecision, SuppressionResult, SuppressionSummary,
   // Import
   ImportRecordStatus, ImportRecord, ImportReport,
   ImportPhase, ImportState,

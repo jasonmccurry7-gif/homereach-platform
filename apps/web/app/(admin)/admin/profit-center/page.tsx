@@ -18,6 +18,21 @@ import { ProfitClient } from "./profit-client";
 export const dynamic  = "force-dynamic";
 export const metadata: Metadata = { title: "Profit Center — HomeReach Admin" };
 
+type LiveCampaignRow = {
+  id: string;
+  businessName: string;
+  homesCount: number;
+  priceCents: number;
+  status: string;
+};
+
+type ActiveSpotRow = {
+  id: string;
+  businessId: string | null;
+  monthlyValueCents: number;
+  status: string;
+};
+
 export default async function ProfitCenterPage() {
   // ── Resolve live/cached/fallback pricing sources ────────────────────────────
   const [postageRate] = await Promise.all([
@@ -27,7 +42,7 @@ export default async function ProfitCenterPage() {
   const config = ProfitAwarePricingEngine.getConfig();
 
   // ── Build targeted-campaign profit rows (real DB) ───────────────────────────
-  const liveCampaigns = await db
+  const liveCampaigns: LiveCampaignRow[] = await db
     .select({
       id:          targetedRouteCampaigns.id,
       businessName: targetedRouteCampaigns.businessName,
@@ -42,7 +57,7 @@ export default async function ProfitCenterPage() {
         "design_ready", "approved", "mailed", "complete",
       ])
     )
-    .catch(() => [] as typeof liveCampaigns);
+    .catch((): LiveCampaignRow[] => []);
 
   const campaignRows: ProfitRow[] = await Promise.all(
     liveCampaigns.map(async (c) => {
@@ -75,7 +90,7 @@ export default async function ProfitCenterPage() {
   );
 
   // ── Build shared-postcard profit rows (real DB: active spot assignments) ─────
-  const activeSpots = await db
+  const activeSpots: ActiveSpotRow[] = await db
     .select({
       id:               spotAssignments.id,
       businessId:       spotAssignments.businessId,
@@ -84,7 +99,7 @@ export default async function ProfitCenterPage() {
     })
     .from(spotAssignments)
     .where(inArray(spotAssignments.status, ["active", "paused"]))
-    .catch(() => [] as typeof activeSpots);
+    .catch((): ActiveSpotRow[] => []);
 
   // Look up business names for display
   const bizIds = activeSpots

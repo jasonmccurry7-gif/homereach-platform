@@ -61,17 +61,17 @@ export async function POST(req: Request) {
       : `Hey ${name}! Wanted to follow up — are you still interested in reaching homeowners in ${loc}? We have exclusive spots available for ${cat} businesses. Takes 3 minutes to get started: home-reach.com/get-started`;
 
     await fbSend(lead.fb_psid, msg);
-    await db.from("facebook_leads").update({
+    await Promise.resolve(db.from("facebook_leads").update({
       follow_up_1_sent_at: now.toISOString(),
       messages_sent:       (lead.messages_sent ?? 0) + 1,
-    }).eq("id", lead.id).catch(() => {});
+    }).eq("id", lead.id)).catch(() => {});
 
-    await db.from("facebook_messages").insert({
+    await Promise.resolve(db.from("facebook_messages").insert({
       lead_id:   lead.id,
       direction: "outbound",
       message:   msg,
       agent:     "closer",
-    }).catch(() => {});
+    })).catch(() => {});
 
     summary.followup1_sent++;
   }
@@ -94,18 +94,18 @@ export async function POST(req: Request) {
       `If you're ever ready: home-reach.com/get-started 🏠\n\nWishing you continued success!`;
 
     await fbSend(lead.fb_psid, msg);
-    await db.from("facebook_leads").update({
+    await Promise.resolve(db.from("facebook_leads").update({
       follow_up_2_sent_at: now.toISOString(),
       lead_status:         "dead", // final follow-up sent
       messages_sent:       (lead.messages_sent ?? 0) + 1,
-    }).eq("id", lead.id).catch(() => {});
+    }).eq("id", lead.id)).catch(() => {});
 
-    await db.from("facebook_messages").insert({
+    await Promise.resolve(db.from("facebook_messages").insert({
       lead_id:   lead.id,
       direction: "outbound",
       message:   msg,
       agent:     "closer",
-    }).catch(() => {});
+    })).catch(() => {});
 
     summary.followup2_sent++;
   }

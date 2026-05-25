@@ -16,11 +16,12 @@ const TYPE_COLORS: Record<string, string> = {
 export default async function AdminProductsPage() {
   const db = createServiceClient();
 
-  const { data: rows = [] } = await db
+  const { data } = await db
     .from("products")
     .select("*")
     .order("type")
     .order("name");
+  const rows = data ?? [];
 
   const active = (rows as any[]).filter(r => r.is_active).length;
 

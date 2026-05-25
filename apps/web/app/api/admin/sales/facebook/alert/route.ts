@@ -116,13 +116,13 @@ export async function POST(req: Request) {
       });
     } catch {
       // Table may not exist yet — log to sales_events as fallback
-      await supabase.from("sales_events").insert({
+      await Promise.resolve(supabase.from("sales_events").insert({
         agent_id,
         action_type: "facebook_sent",
         channel: "facebook",
         message: `[FB ALERT] ${alert_type}: ${message ?? ""}`,
         metadata: { alert_type, priority: meta.priority, sms_sent: smsResult.ok },
-      }).then(() => {}).catch(() => {});
+      })).catch(() => {});
     }
 
     return NextResponse.json({

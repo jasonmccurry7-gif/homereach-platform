@@ -298,7 +298,7 @@ export async function POST(req: Request) {
     }
 
     // Also fire to sales_events for unified tracking
-    await supabase.from("sales_events").insert({
+    await Promise.resolve(supabase.from("sales_events").insert({
       agent_id,
       lead_id: lead_id ?? null,
       action_type: "facebook_sent",
@@ -307,7 +307,7 @@ export async function POST(req: Request) {
       category,
       message: `[FB:${task_type}] ${script_used?.slice(0, 100) ?? proof_text?.slice(0, 100) ?? ""}`,
       metadata: { task_type, quality_score: qualityScore, dm_converted, thread_depth },
-    }).then(() => {}).catch(() => {});
+    })).catch(() => {});
 
     return NextResponse.json({ ok: true, quality_score: qualityScore, inserted });
   } catch (err) {

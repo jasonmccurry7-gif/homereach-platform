@@ -221,7 +221,7 @@ export function GrowthClient({
       const totalDeals         = logs.reduce((s, l) => s + (l.dealsClosed ?? 0),          0);
       const activeDays         = logs.length;
 
-      const bm = benchmarks[ch] as Record<string, number>;
+      const bm = benchmarks[ch] as unknown as Record<string, number>;
       const responseRate = ch === "facebook_ads"
         ? null
         : totalVolume > 0 ? totalResponses / totalVolume : null;
@@ -307,7 +307,7 @@ export function GrowthClient({
 
     for (const ch of CHANNELS) {
       const f  = forms[ch];
-      const bm = benchmarks[ch] as Record<string, number>;
+      const bm = benchmarks[ch] as unknown as Record<string, number>;
       const meta = CHANNEL_META[ch];
       const vol  = ch === "facebook_ads" ? `$${f.adSpendDollars}` : String(f.volumeSent);
       const rate = (ch !== "facebook_ads" && f.volumeSent > 0)
@@ -344,14 +344,14 @@ export function GrowthClient({
     for (const s of channelSummary) {
       const meta = CHANNEL_META[s.channel];
       if (s.volumeVariance !== null && s.volumeVariance < -0.2) {
-        const bm = benchmarks[s.channel] as Record<string, number>;
+        const bm = benchmarks[s.channel] as unknown as Record<string, number>;
         const target = s.channel === "facebook_ads"
           ? `$${(bm.adSpendTargetCents ?? 5000) / 100}/day`
           : `${bm.volumeTarget}/day`;
         lines.push(`  → ${meta.label}: increase volume to ${target} (currently running below target)`);
         adjustmentCount++;
       }
-      if (s.responseRate !== null && (s.responseRate < (benchmarks[s.channel] as Record<string, number>).responseRateLow)) {
+      if (s.responseRate !== null && (s.responseRate < (benchmarks[s.channel] as unknown as Record<string, number>).responseRateLow)) {
         lines.push(`  → ${meta.label}: response rate below floor — review messaging/targeting`);
         adjustmentCount++;
       }
@@ -484,7 +484,7 @@ export function GrowthClient({
           if (ch !== activeChannel) return null;
           const f    = forms[ch];
           const meta = CHANNEL_META[ch];
-          const bm   = benchmarks[ch] as Record<string, number>;
+          const bm   = benchmarks[ch] as unknown as Record<string, number>;
           const ss   = saveStates[ch];
 
           return (
@@ -649,7 +649,7 @@ export function GrowthClient({
             <tbody className="divide-y divide-gray-800">
               {channelSummary.map((s) => {
                 const meta  = CHANNEL_META[s.channel];
-                const bm    = benchmarks[s.channel] as Record<string, number>;
+                const bm    = benchmarks[s.channel] as unknown as Record<string, number>;
                 const rateStr = s.responseRate !== null ? formatPct(s.responseRate) : "N/A";
                 const expStr  = s.responseRate !== null
                   ? `${formatPct(bm.responseRateLow)}–${formatPct(bm.responseRateHigh)}`

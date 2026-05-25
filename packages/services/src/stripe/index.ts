@@ -13,13 +13,29 @@ import type {
 // Single instance — import `stripe` anywhere in the services package.
 // ─────────────────────────────────────────────────────────────────────────────
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is required");
+export function createStripeClient(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new Error("STRIPE_SECRET_KEY is required");
+  }
+
+  return new Stripe(key, {
+    apiVersion: "2025-02-24.acacia",
+    typescript: true,
+  });
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2025-02-24.acacia",
-  typescript: true,
+let cachedStripe: Stripe | null = null;
+
+export function getStripe(): Stripe {
+  cachedStripe ??= createStripeClient();
+  return cachedStripe;
+}
+
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getStripe(), prop, receiver);
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

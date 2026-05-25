@@ -28,6 +28,91 @@ export const config = {
   api: { bodyParser: false },
 };
 
+type StripeEventClaim = "process" | "processed_duplicate" | "processing_duplicate";
+
+async function claimStripeEvent(event: Stripe.Event): Promise<StripeEventClaim> {
+  try {
+    const [inserted] = await db
+      .insert(stripeWebhookEvents)
+      .values({
+        id: event.id,
+        eventType: event.type,
+        payload: event as unknown as Record<string, unknown>,
+        status: "received",
+      })
+      .onConflictDoNothing()
+      .returning({ id: stripeWebhookEvents.id });
+
+    if (inserted) {
+      return "process";
+    }
+
+    const [existing] = await db
+      .select({ status: stripeWebhookEvents.status })
+      .from(stripeWebhookEvents)
+      .where(eq(stripeWebhookEvents.id, event.id))
+      .limit(1);
+
+    if (existing?.status === "processed" || existing?.status === "skipped") {
+      return "processed_duplicate";
+    }
+
+    if (existing?.status === "received") {
+      return "processing_duplicate";
+    }
+
+    if (existing?.status === "failed") {
+      await db
+        .update(stripeWebhookEvents)
+        .set({
+          eventType: event.type,
+          payload: event as unknown as Record<string, unknown>,
+          status: "received",
+          error: null,
+          receivedAt: new Date(),
+          processedAt: null,
+        })
+        .where(eq(stripeWebhookEvents.id, event.id));
+
+      return "process";
+    }
+
+    return "processing_duplicate";
+  } catch (err) {
+    // Do not drop paid-customer events if the ledger is temporarily unavailable.
+    console.warn(
+      "[stripe/webhook] idempotency layer error (proceeding):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return "process";
+  }
+}
+
+async function markStripeEventProcessed(eventId: string) {
+  try {
+    await db
+      .update(stripeWebhookEvents)
+      .set({ status: "processed", processedAt: new Date() })
+      .where(eq(stripeWebhookEvents.id, eventId));
+  } catch {
+    // Non-fatal: the migration may not be applied during a rolling deploy.
+  }
+}
+
+async function markStripeEventFailed(eventId: string, err: unknown) {
+  try {
+    await db
+      .update(stripeWebhookEvents)
+      .set({
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      })
+      .where(eq(stripeWebhookEvents.id, eventId));
+  } catch {
+    // Non-fatal.
+  }
+}
+
 // Stripe requires the raw request body for signature verification
 export async function POST(req: Request) {
   const rawBody = await req.text();
@@ -47,6 +132,17 @@ export async function POST(req: Request) {
       { error: "Webhook signature verification failed" },
       { status: 400 }
     );
+  }
+
+  const eventClaim = await claimStripeEvent(event);
+  if (eventClaim === "processed_duplicate") {
+    console.log(`[stripe/webhook] duplicate skip - event ${event.id} already processed`);
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  if (eventClaim === "processing_duplicate") {
+    console.log(`[stripe/webhook] duplicate skip - event ${event.id} already processing`);
+    return NextResponse.json({ received: true, processing: true });
   }
 
   // ── Idempotency check (Migration 075) ─────────────────────────────────────
@@ -151,9 +247,12 @@ export async function POST(req: Request) {
       // Non-fatal — table may not exist yet on first deploy after migration.
     }
 
+    await markStripeEventProcessed(event.id);
+
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error(`[stripe/webhook] error handling ${event.type}:`, err);
+    await markStripeEventFailed(event.id, err);
     // Mark failed in idempotency log (best-effort).
     try {
       await db

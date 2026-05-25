@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Bundles — HomeReach Admin" };
 export default async function AdminBundlesPage() {
   const db = createServiceClient();
 
-  const { data: rows = [] } = await db
+  const { data } = await db
     .from("bundles")
     .select(`
       id, name, slug, description, price, standard_price, founding_price,
@@ -15,6 +15,7 @@ export default async function AdminBundlesPage() {
       cities:city_id ( name, state )
     `)
     .order("created_at", { ascending: false });
+  const rows = data ?? [];
 
   const active = (rows as any[]).filter(r => r.is_active).length;
 

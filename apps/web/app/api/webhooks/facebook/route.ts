@@ -173,13 +173,13 @@ export async function POST(req: Request) {
         });
       } catch {
         // Fallback to sales_events
-        await supabase.from("sales_events").insert({
+        await Promise.resolve(supabase.from("sales_events").insert({
           agent_id:    targetAgentId,
           action_type: "facebook_webhook",
           channel:     "facebook",
           message:     `[FB Webhook] ${classification.label}`,
           metadata:    context,
-        }).then(() => {}).catch(() => {});
+        })).catch(() => {});
       }
 
       // ── Trigger SMS alert for high-priority events ─────────────────────
