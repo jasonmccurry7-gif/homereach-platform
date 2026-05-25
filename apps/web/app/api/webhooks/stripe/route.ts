@@ -15,6 +15,10 @@ import {
 } from "@homereach/services/targeted";
 import { createServiceClient } from "@homereach/services/auth";
 import { sendEmail } from "@homereach/services/outreach";
+import {
+  decideStripeEventClaimForExisting,
+  type StripeEventClaim,
+} from "@/lib/stripe/webhook-idempotency";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/stripe
@@ -27,8 +31,6 @@ import { sendEmail } from "@homereach/services/outreach";
 export const config = {
   api: { bodyParser: false },
 };
-
-type StripeEventClaim = "process" | "processed_duplicate" | "processing_duplicate";
 
 async function claimStripeEvent(event: Stripe.Event): Promise<StripeEventClaim> {
   try {
@@ -48,21 +50,21 @@ async function claimStripeEvent(event: Stripe.Event): Promise<StripeEventClaim> 
     }
 
     const [existing] = await db
-      .select({ status: stripeWebhookEvents.status })
+      .select({
+        status: stripeWebhookEvents.status,
+        receivedAt: stripeWebhookEvents.receivedAt,
+      })
       .from(stripeWebhookEvents)
       .where(eq(stripeWebhookEvents.id, event.id))
       .limit(1);
 
-    if (existing?.status === "processed" || existing?.status === "skipped") {
-      return "processed_duplicate";
+    const claim = decideStripeEventClaimForExisting(existing);
+    if (claim !== "process") {
+      return claim;
     }
 
-    if (existing?.status === "received") {
-      return "processing_duplicate";
-    }
-
-    if (existing?.status === "failed") {
-      await db
+    if (existing) {
+      const [reclaimed] = await db
         .update(stripeWebhookEvents)
         .set({
           eventType: event.type,
@@ -72,12 +74,17 @@ async function claimStripeEvent(event: Stripe.Event): Promise<StripeEventClaim> 
           receivedAt: new Date(),
           processedAt: null,
         })
-        .where(eq(stripeWebhookEvents.id, event.id));
+        .where(and(
+          eq(stripeWebhookEvents.id, event.id),
+          eq(stripeWebhookEvents.status, existing.status),
+          eq(stripeWebhookEvents.receivedAt, existing.receivedAt),
+        ))
+        .returning({ id: stripeWebhookEvents.id });
 
-      return "process";
+      return reclaimed ? "process" : "retry_later";
     }
 
-    return "processing_duplicate";
+    return "process";
   } catch (err) {
     // Do not drop paid-customer events if the ledger is temporarily unavailable.
     console.warn(
@@ -140,42 +147,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
-  if (eventClaim === "processing_duplicate") {
-    console.log(`[stripe/webhook] duplicate skip - event ${event.id} already processing`);
-    return NextResponse.json({ received: true, processing: true });
-  }
-
-  // ── Idempotency check (Migration 075) ─────────────────────────────────────
-  // Stripe retries on 5xx — same event.id arrives multiple times. Dedup at the door.
-  // Failure-tolerant: if the table is missing (migration not yet applied), log and proceed.
-  try {
-    const [existing] = await db
-      .select({ status: stripeWebhookEvents.status })
-      .from(stripeWebhookEvents)
-      .where(eq(stripeWebhookEvents.id, event.id))
-      .limit(1);
-    if (existing?.status === "processed") {
-      console.log(`[stripe/webhook] idempotent skip — event ${event.id} already processed`);
-      return NextResponse.json({ received: true, idempotent: true });
-    }
-    await db
-      .insert(stripeWebhookEvents)
-      .values({
-        id: event.id,
-        eventType: event.type,
-        payload: event as unknown as Record<string, unknown>,
-        status: "received",
-      })
-      .onConflictDoNothing();
-  } catch (err) {
-    // Don't block delivery if the idempotency layer is down — better a duplicate than a drop.
+  if (eventClaim === "retry_later") {
     console.warn(
-      `[stripe/webhook] idempotency layer error (proceeding):`,
-      err instanceof Error ? err.message : String(err),
+      `[stripe/webhook] event ${event.id} is already being processed; requesting Stripe retry`,
+    );
+    return NextResponse.json(
+      { received: false, retry: true },
+      { status: 409 },
     );
   }
-
-  console.log(`[stripe/webhook] processing event=${event.id} type=${event.type}`);
 
   // ── Event dispatch ─────────────────────────────────────────────────────────
 

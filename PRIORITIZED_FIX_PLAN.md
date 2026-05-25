@@ -4,22 +4,23 @@ Updated: 2026-05-24
 
 ## CRITICAL
 
-### Stripe Webhook Can Drop Retried Events Stuck In Received
+### Resolved: Stripe Webhook Could Drop Retried Events Stuck In Received
 
-What is wrong: the Stripe webhook inserts a new event as `received`, but duplicate retries for an existing `received` event return 200 as `processing_duplicate`.
+What was wrong: the Stripe webhook inserted a new event as `received`, but duplicate retries for an existing fresh `received` event returned 200 as `processing_duplicate`.
 
-Why it matters: if the first invocation crashes, times out, or is killed after inserting `received` but before marking the event `failed` or `processed`, Stripe retries can be acknowledged without processing. That can permanently lose a paid-customer activation, subscription update, or reconciliation event.
+Why it mattered: if the first invocation crashed, timed out, or was killed after inserting `received` but before marking the event `failed` or `processed`, Stripe retries could be acknowledged without processing.
 
 Files:
 
 - `apps/web/app/api/webhooks/stripe/route.ts`
-- `packages/db/src/schema/*` or the schema file containing `stripe_webhook_events`
+- `apps/web/lib/stripe/webhook-idempotency.ts`
+- `apps/web/lib/stripe/__tests__/webhook-idempotency.test.ts`
 
-Safest fix: replace the duplicate idempotency blocks with one tested claim/lease path that can reprocess stale `received`/`processing` events after a short timeout and only returns success when the event is safely processed, already processed, or intentionally skipped.
+Fix applied: added a tested five-minute stale lease decision helper, changed fresh in-flight `received` events to return retryable 409 instead of 200, allowed stale `received` and `failed` rows to be reclaimed, and removed the duplicate lookup/insert block.
 
-Risk of fix: high because this touches payment webhook behavior.
+Validation: focused Stripe idempotency test, full test suite, typecheck, web lint, and web build passed locally.
 
-Approval needed: yes before Stripe provider testing; local unit-test preparation can proceed safely.
+Approval needed: yes before Stripe provider testing; local branch code is repaired and awaiting remote gates/provider test mode.
 
 ### Provider-Backed Production Flow Validation Pending
 

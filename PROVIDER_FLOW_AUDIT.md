@@ -10,10 +10,10 @@ Safety posture: this audit is read-only. No provider calls were made, no product
 
 The branch is much healthier than the original laptop-migration state: install, tests, typecheck, lint gate, build, hosted Vercel validation, and GitHub Actions validation are all passing. The next production-readiness risk is provider durability, especially webhook behavior under retry/failure and public payment session creation.
 
-The two most important items to fix next are:
+The most important remaining items to fix next are:
 
-1. Stripe webhook idempotency can acknowledge a duplicate retry while the original event is stuck in `received`, creating a possible permanent event drop.
-2. Targeted route checkout is a public service-role-backed route that updates a campaign row when given only a campaign UUID.
+1. Targeted route checkout is a public service-role-backed route that updates a campaign row when given only a campaign UUID.
+2. Twilio status telemetry can be lost if RLS blocks anon inserts from provider webhooks.
 
 ## Provider Surface Map
 
@@ -134,7 +134,7 @@ Observed posture:
 
 ## Findings
 
-### CRITICAL: Stripe Webhook Can Drop A Retried Event Stuck In `received`
+### RESOLVED: Stripe Webhook Can Drop A Retried Event Stuck In `received`
 
 Evidence:
 
@@ -143,39 +143,45 @@ Evidence:
 - `apps/web/app/api/webhooks/stripe/route.ts:60` treats an existing `received` event as `processing_duplicate`.
 - `apps/web/app/api/webhooks/stripe/route.ts:143` returns 200 for `processing_duplicate`.
 
-Why it matters:
+Why it mattered:
 
 If the first invocation inserts `received` and then crashes, times out, or is killed before marking the event `failed` or `processed`, Stripe retries the same event. The retry sees `received`, returns 200, and Stripe stops retrying. That can permanently lose a paid-customer activation, subscription update, or billing reconciliation event.
 
-Safest fix:
+Fix applied:
 
-- Replace the current claim behavior with a single idempotency layer.
-- Use a `processing` or `received` lease with a timestamp.
-- Reprocess events stuck in `received` or `processing` after a short stale window.
-- Return non-2xx for duplicates that are still actively processing if the event cannot safely be claimed.
-- Add unit tests for `processed`, `failed`, fresh `received`, and stale `received` cases before testing against Stripe CLI/test mode.
+- Added `apps/web/lib/stripe/webhook-idempotency.ts` with a pure decision helper and a five-minute stale lease window.
+- Added unit coverage in `apps/web/lib/stripe/__tests__/webhook-idempotency.test.ts`.
+- Updated `/api/webhooks/stripe` so fresh in-flight `received` events return `409` and ask Stripe to retry instead of returning 200.
+- Stale `received` events and `failed` events can now be reclaimed for processing.
+- Removed the second insert/dedupe block from the webhook route.
 
-Risk of fix: high because this touches payment webhook behavior.
+Validation:
 
-Approval needed before live provider testing: yes. Code can be prepared locally with tests, but Stripe provider validation must stay in test mode.
+- `pnpm exec vitest run apps/web/lib/stripe/__tests__/webhook-idempotency.test.ts` passed.
+- `pnpm test` passed with 103 tests.
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings only.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
 
-### HIGH: Stripe Webhook Has Redundant Idempotency Blocks
+Live provider validation: still pending and must stay in Stripe test mode first.
+
+### RESOLVED: Stripe Webhook Has Redundant Idempotency Blocks
 
 Evidence:
 
 - `apps/web/app/api/webhooks/stripe/route.ts:137` calls `claimStripeEvent`.
 - `apps/web/app/api/webhooks/stripe/route.ts:151` performs another lookup/insert for the same event ID.
 
-Why it matters:
+Why it mattered:
 
 The second block is mostly harmless, but it makes webhook reasoning harder and increases the chance of contradictory behavior during a future fix.
 
-Safest fix:
+Fix applied:
 
-- Consolidate to one well-tested claim/update path.
-- Keep failure-tolerant behavior only where it does not convert a retryable failure into a false success.
+- Removed the duplicate lookup/insert block after `claimStripeEvent`.
+- Kept the existing best-effort processed/failed ledger updates.
 
-Risk of fix: medium.
+Validation: covered by the same local test/typecheck/lint/build pass listed above.
 
 ### HIGH: Targeted Checkout Is Public And Service-Role Backed
 
@@ -344,4 +350,4 @@ Validation:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes code validation and hosted smoke checks, but payment webhook retry behavior and public targeted checkout authorization need hardening before production-sensitive flows are trusted.
+Reason: the branch passes code validation and hosted smoke checks, and the Stripe retry-drop risk has a tested branch fix. Public targeted checkout authorization, Twilio telemetry durability, and provider test-mode validation still need completion before production-sensitive flows are trusted.

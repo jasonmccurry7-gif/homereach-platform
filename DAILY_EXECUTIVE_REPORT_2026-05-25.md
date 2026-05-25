@@ -9,11 +9,14 @@ Date: 2026-05-25
 - Created `PROVIDER_FLOW_AUDIT.md` covering Stripe, Supabase, Twilio, email providers, webhooks, and deployment validation posture.
 - Promoted provider risks into `PRIORITIZED_FIX_PLAN.md`.
 - Hardened `apps/web/lib/supabase/service.ts` so missing service env fails clearly before creating a Supabase service-role client.
+- Repaired Stripe webhook idempotency so fresh in-flight `received` duplicates return retryable 409 instead of false-success 200.
+- Added focused Stripe idempotency unit tests.
 - Pushed provider audit documentation to the draft PR.
 
 ## Validation
 
-- Local `pnpm test`: passed, 96 tests.
+- Local focused Stripe idempotency test: passed, 7 tests.
+- Local `pnpm test`: passed, 103 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
@@ -22,7 +25,6 @@ Date: 2026-05-25
 
 ## Revenue And Reliability Risks
 
-- Critical: Stripe webhook idempotency can acknowledge retries for events stuck in `received`, which can lose payment or activation events.
 - High: targeted route checkout is public and service-role backed, with only `campaignId` as the practical authorization boundary.
 - High: Twilio status webhook may lose delivery telemetry if anon/session Supabase insert is blocked by RLS.
 - Medium: targeted checkout billing copy references ongoing monthly billing while Stripe uses one-time `payment` mode.
@@ -33,12 +35,12 @@ Date: 2026-05-25
 
 Current status: stabilization branch is build/CI ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, and communication telemetry durability still need controlled hardening and test-mode validation.
+Reason: payment webhook retry behavior now has a tested branch fix, but targeted checkout authorization, communication telemetry durability, and Stripe/Twilio/email test-mode validation still need completion.
 
 ## Recommended Next Actions
 
-1. Implement and unit-test a single Stripe webhook event claim/lease path.
-2. Add signed-token protection for public targeted checkout links.
-3. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
-4. Harden Twilio status inserts after signature validation.
-5. Add provider telemetry health checks for webhook logging tables.
+1. Add signed-token protection for public targeted checkout links.
+2. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
+3. Harden Twilio status inserts after signature validation.
+4. Add provider telemetry health checks for webhook logging tables.
+5. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
