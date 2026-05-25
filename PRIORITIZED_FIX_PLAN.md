@@ -215,38 +215,45 @@ Approval needed: provider-mutating tests require explicit test-mode controls.
 
 ## MEDIUM
 
-### Targeted Checkout Billing Copy Does Not Match Stripe Payment Mode
+### Partially Resolved: Targeted Checkout Billing Copy Did Not Match Stripe Payment Mode
 
-What is wrong: targeted checkout describes multiple add-ons as monthly or billed going forward, but creates the Stripe Checkout session with `mode: "payment"`.
+What was wrong: targeted checkout described multiple add-ons as monthly or billed going forward, but creates the Stripe Checkout session with `mode: "payment"`.
 
-Why it matters: customers may expect recurring services while Stripe only collects a one-time payment, creating either missed recurring revenue or billing confusion.
+Why it mattered: customers could expect Stripe to start recurring billing while Stripe only collected a one-time first-month payment, creating missed recurring revenue or billing confusion.
 
 Files:
 
+- `apps/web/app/(funnel)/targeted/checkout/page.tsx`
 - `apps/web/app/api/stripe/targeted-checkout/route.ts`
 
-Safest fix: confirm the intended business model; either adjust the copy to first-month/one-time language or implement subscription line items in Stripe test mode.
+Fix applied: targeted checkout now labels recurring add-ons as ongoing services activated separately after onboarding, and Stripe line-item descriptions now describe the charge as the first month instead of implying automatic monthly billing. The route also uses the shared public app URL resolver.
 
-Risk of fix: medium.
+Safest remaining fix: confirm the intended business model. If these add-ons should create automatic recurring Stripe subscriptions, implement subscription line items in Stripe test mode with webhook/data-model validation before any live switch.
 
-Approval needed: yes before changing live billing behavior/copy.
+Risk of remaining fix: high if payment mode changes blindly; medium if feature-flagged and tested in Stripe test mode.
 
-### Main Bundle Checkout Still Uses One-Time Payment For Monthly Pricing Path
+Approval needed: yes before changing live billing behavior.
 
-What is wrong: `/api/stripe/checkout` resolves a monthly bundle price but currently calls the one-time Checkout session path. The subscription helper exists but is not yet wired into the main route.
+### Clarified: Legacy Main Stripe Checkout Uses One-Time Payment For Monthly Pricing Path
 
-Why it matters: if the live offer is meant to be recurring, the current path may collect a one-time payment instead of establishing subscription revenue.
+What was unclear: `/api/stripe/checkout` resolves a monthly bundle price and calls the one-time Checkout session path, while a subscription helper exists but is not wired into that route.
+
+Clarification: repo search found no current caller for `/api/stripe/checkout`. The active homepage/get-started spot checkout posts to `/api/spots/checkout`, which creates Stripe Checkout with `mode: "subscription"` and monthly recurring line items.
+
+Why it matters: the legacy route is still risky if reactivated or linked later because it can collect a one-time payment for a monthly-priced bundle.
 
 Files:
 
+- `apps/web/app/(funnel)/get-started/[citySlug]/[categorySlug]/checkout/checkout-form.tsx`
+- `apps/web/app/api/spots/checkout/route.ts`
 - `apps/web/app/api/stripe/checkout/route.ts`
 - `packages/services/src/stripe/index.ts`
 
-Safest fix: confirm product intent, then gate any subscription switch behind reservation/spot prerequisites and Stripe test-mode validation.
+Safest fix: leave active `/api/spots/checkout` as the subscription path; either retire/guard the legacy `/api/stripe/checkout` route or clearly document it as inactive before any future reuse.
 
-Risk of fix: high if changed blindly; medium if feature-flagged and tested.
+Risk of fix: medium if guarding/removing the legacy route; high if changing payment behavior without Stripe test-mode validation.
 
-Approval needed: yes before live payment behavior changes.
+Approval needed: yes before live payment behavior changes; no for additional documentation or dead-route guards on the PR branch.
 
 ### Resolved: Postmark Webhook Could Lose Email Telemetry And Clear Suppressions
 

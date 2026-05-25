@@ -26,12 +26,15 @@ Date: 2026-05-25
 - Created `ENVIRONMENT_VARIABLES_AUDIT.md` from local templates, code references, and Vercel name-only metadata without exposing secret values.
 - Confirmed Vercel production/preview/development contain all static startup-required env names from `apps/web/lib/env.ts`.
 - Added safe env-alias compatibility readers for internal agent base URLs, Apex approved senders, SerpAPI/Hunter provider names, and Twilio messaging-service naming.
+- Clarified targeted checkout billing copy so first-month add-on charges no longer imply Stripe starts automatic monthly billing.
+- Confirmed the active get-started spot checkout uses `/api/spots/checkout` with Stripe `subscription` mode; the older `/api/stripe/checkout` route has no current callers found in repo search.
 
 ## Validation
 
 - Local focused Stripe idempotency test: passed, 7 tests.
 - Local focused Stripe webhook signature test: passed, 3 tests.
 - Local focused targeted checkout token test: passed, 7 tests.
+- Local focused targeted checkout/app URL regression run: passed, 10 tests.
 - Local focused Postmark webhook helper test: passed, 7 tests.
 - Local focused Twilio status webhook helper test: passed, 5 tests.
 - Local focused provider telemetry health test: passed, 5 tests.
@@ -51,8 +54,8 @@ Date: 2026-05-25
 
 ## Revenue And Reliability Risks
 
-- Medium: targeted checkout billing copy references ongoing monthly billing while Stripe uses one-time `payment` mode.
-- Medium: main bundle checkout still routes monthly-priced bundle purchases through one-time payment mode.
+- Medium: targeted checkout now avoids misleading recurring-billing copy, but a true targeted add-on subscription path still needs business approval and Stripe test-mode validation if wanted.
+- Medium: legacy `/api/stripe/checkout` still uses one-time payment mode for a monthly-priced path, but repo search found no active caller; active spot checkout uses `/api/spots/checkout` subscription mode.
 - Medium: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; the worst localhost-only agent fallbacks now use `NEXT_PUBLIC_APP_URL`, but Vercel should still get the canonical name.
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
@@ -68,7 +71,7 @@ Reason: payment webhook retry behavior, targeted checkout authorization, Twilio 
 ## Recommended Next Actions
 
 1. Use `PROVIDER_TEST_MODE_RUNBOOK.md` to run Stripe/Twilio/Postmark validation against test/sandbox tooling and an isolated database.
-2. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
+2. Decide whether targeted checkout monthly add-ons should remain onboarding-activated services or become true Stripe subscriptions.
 3. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
 4. Validate Twilio and Postmark webhook endpoints with local tunnel or provider test tools, still with no mass sends and no production data mutation.
 5. Review monthly-billing intent before changing any Stripe mode or subscription behavior.

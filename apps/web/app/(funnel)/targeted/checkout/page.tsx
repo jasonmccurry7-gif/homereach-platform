@@ -213,9 +213,9 @@ function TargetedCheckoutInner() {
                 <span>${todayTotal}</span>
               </div>
               {monthlyAddons > 0 && (
-                <div className="flex justify-between text-gray-500 text-xs">
-                  <span>Monthly add-ons (billed next month)</span>
-                  <span>+${monthlyAddons}/mo</span>
+                <div className="flex justify-between gap-3 text-gray-500 text-xs">
+                  <span>Ongoing add-ons after onboarding</span>
+                  <span className="shrink-0">+${monthlyAddons}/mo</span>
                 </div>
               )}
             </div>

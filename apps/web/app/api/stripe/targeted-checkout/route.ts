@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import {
   normalizeTargetedCheckoutEmail,
   verifyTargetedCheckoutToken,
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
     }
 
     const stripe  = getStripe();
-    const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const appUrl = getPublicAppBaseUrl();
     const basePrice = campaign.price_cents ?? 40000;
 
     // ── Main campaign line item ───────────────────────────────────────────────
@@ -136,17 +137,17 @@ export async function POST(req: Request) {
     if (addons.includes("website_setup"))
       lineItems.push({ price_data: { currency: "usd", unit_amount: 49700, product_data: { name: "Website Design (One-Time Setup)", description: "Professional mobile-friendly website designed and built for your business" } }, quantity: 1 });
     if (addons.includes("website_maintenance"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, product_data: { name: "Website Hosting & Maintenance (first month)", description: "Hosting, updates, and support — $97/mo going forward" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, product_data: { name: "Website Hosting & Maintenance (first month)", description: "First month of hosting, updates, and support. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
     if (addons.includes("full_automation"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 7900, product_data: { name: "Full Automation Bundle (first month)", description: "SMS + Email automation — billed monthly going forward" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 7900, product_data: { name: "Full Automation Bundle (first month)", description: "First month of SMS and email automation. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
     else {
       if (addons.includes("sms_automation"))
-        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "SMS Automation (first month)", description: "SMS follow-up sequences — billed monthly going forward" } }, quantity: 1 });
+        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "SMS Automation (first month)", description: "First month of SMS follow-up sequences. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
       if (addons.includes("email_automation"))
-        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "Email Automation (first month)", description: "Email drip sequences — billed monthly going forward" } }, quantity: 1 });
+        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "Email Automation (first month)", description: "First month of email drip sequences. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
     }
     if (addons.includes("nonprofit"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 2500, product_data: { name: "Nonprofit Sponsorship (first month)", description: "Local nonprofit feature — billed monthly going forward" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 2500, product_data: { name: "Nonprofit Sponsorship (first month)", description: "First month of the local nonprofit feature. Ongoing sponsorship is activated separately after onboarding." } }, quantity: 1 });
 
     // ── Create Stripe session ─────────────────────────────────────────────────
     const session = await stripe.checkout.sessions.create({

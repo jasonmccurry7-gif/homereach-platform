@@ -12,7 +12,7 @@ The branch is much healthier than the original laptop-migration state: install, 
 
 The most important remaining items to fix next are:
 
-1. Billing intent still needs confirmation where monthly language is paired with one-time Stripe payment sessions.
+1. Targeted checkout copy now avoids implying automatic recurring Stripe billing, but business intent still needs confirmation before any targeted add-on subscription-mode change.
 2. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
 3. Stripe now has synthetic SDK-signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload tests, but those are not substitutes for provider test-mode validation.
 
@@ -47,6 +47,7 @@ Targeted route checkout flow:
 6. Route filters add-ons to the known catalog before creating a Stripe Checkout session in `payment` mode.
 7. Route writes `stripe_checkout_session_id` back to the campaign row.
 8. User is redirected to Stripe via returned session URL.
+9. Add-on copy now describes recurring services as first-month charges with ongoing service activated separately after onboarding unless true subscription mode is implemented later.
 
 Stripe webhook flow:
 
@@ -241,25 +242,31 @@ Residual risk:
 - Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`, but the latest failed deployment predated that repair; a fresh deployment still needs to pass before promotion.
 - Route-level rate limiting is still recommended as a separate hardening pass.
 
-### MEDIUM: Targeted Checkout Promises Monthly Billing But Uses One-Time Payment Mode
+### PARTIALLY RESOLVED: Targeted Checkout Billing Copy Did Not Match One-Time Payment Mode
 
-Evidence:
+Original evidence before copy fix:
 
-- `apps/web/app/api/stripe/targeted-checkout/route.ts:71` says maintenance is `$97/mo going forward`.
-- `apps/web/app/api/stripe/targeted-checkout/route.ts:73`, `:76`, `:78`, and `:81` describe add-ons as billed monthly.
-- `apps/web/app/api/stripe/targeted-checkout/route.ts:85` creates the Checkout session with `mode: "payment"`.
+- `apps/web/app/api/stripe/targeted-checkout/route.ts` described maintenance and automation add-ons as monthly or billed going forward.
+- `apps/web/app/(funnel)/targeted/checkout/page.tsx` showed selected recurring add-ons as monthly add-ons billed next month.
+- `apps/web/app/api/stripe/targeted-checkout/route.ts` creates the Checkout session with `mode: "payment"`.
 
-Why it matters:
+Why it mattered:
 
-Customer-facing billing language and Stripe billing behavior can diverge. That can create missed recurring revenue or customer trust issues.
+Customer-facing billing language and Stripe billing behavior could diverge. That can create missed recurring revenue or customer trust issues.
 
-Safest fix:
+Fix applied:
 
-- Either change copy to clearly describe a first-month one-time charge with separate follow-up subscription setup, or implement subscription line items in Stripe test mode.
+- Updated targeted checkout UI copy to say ongoing add-ons are activated after onboarding instead of billed next month by the current checkout.
+- Updated Stripe line-item descriptions to describe first-month add-on charges and separate ongoing activation.
+- Updated `/api/stripe/targeted-checkout` to use the shared public app URL resolver instead of reading only `NEXT_PUBLIC_APP_URL`.
 
-Risk of fix: medium.
+Residual risk:
 
-### MEDIUM: Main Checkout Still Uses One-Time Session For Monthly Bundle Path
+- If the business wants automatic recurring billing for targeted add-ons, the route still needs a future Stripe `subscription` mode implementation with webhook and data-model validation in test mode first.
+
+Risk of remaining fix: high if payment mode changes blindly; medium if feature-flagged and tested.
+
+### CLARIFIED: Legacy Main Stripe Checkout Still Uses One-Time Session For Monthly Bundle Path
 
 Evidence:
 
@@ -267,16 +274,18 @@ Evidence:
 - `apps/web/app/api/stripe/checkout/route.ts:185` confirms current checkout uses `mode:"payment"`.
 - `packages/services/src/stripe/index.ts:53` defines `createOneTimeCheckoutSession`.
 - `packages/services/src/stripe/index.ts:138` already defines `createSubscriptionCheckoutSession`, but the main route does not use it yet.
+- Repo search found no current caller for `/api/stripe/checkout`.
+- The active get-started spot checkout posts to `/api/spots/checkout`, which uses `mode: "subscription"` and recurring monthly line items.
 
 Why it matters:
 
-If current offers are meant to be recurring subscriptions, the active path can collect a one-time payment instead of establishing recurring revenue.
+If the legacy route is reactivated or linked later, it can collect a one-time payment instead of establishing recurring revenue.
 
 Safest fix:
 
-- Confirm business intent for each product type.
-- Use subscription checkout only after reservation/spot assignment prerequisites are validated.
-- Test in Stripe test mode before any live switch.
+- Keep active spot checkout on `/api/spots/checkout`.
+- Either retire/guard the legacy route or clearly document it as inactive before future reuse.
+- Test any future payment-mode change in Stripe test mode before any live switch.
 
 Risk of fix: high if changed blindly; medium if behind feature flag/test path.
 
