@@ -232,20 +232,20 @@ Approval needed: no.
 
 ## LOW
 
-### Supabase Service Client Could Fail More Clearly
+### Resolved: Supabase Service Client Env Validation
 
-What is wrong: `apps/web/lib/supabase/service.ts` uses non-null env assertions instead of explicit env validation.
+What was wrong: `apps/web/lib/supabase/service.ts` used non-null env assertions instead of explicit env validation.
 
-Why it matters: missing env values can produce less actionable runtime failures in routes that depend on the service-role client.
+Why it mattered: missing env values could produce less actionable runtime failures in routes that depend on the service-role client.
 
 Files:
 
 - `apps/web/lib/supabase/service.ts`
 - `packages/services/src/auth/index.ts`
 
-Safest fix: mirror the explicit fail-loud validation pattern already used in `packages/services/src/auth/index.ts`.
+Fix applied: mirrored the explicit fail-loud validation pattern already used in `packages/services/src/auth/index.ts`.
 
-Risk of fix: low.
+Validation: tests, typecheck, lint, and web build passed locally.
 
 Approval needed: no.
 

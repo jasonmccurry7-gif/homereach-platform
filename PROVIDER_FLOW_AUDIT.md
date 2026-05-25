@@ -66,7 +66,7 @@ Observed posture:
 - Service-role clients are server-side and disable session persistence.
 - Many admin/API modules depend on the service-role client.
 - `packages/services/src/auth/index.ts` fails loudly when service env is missing.
-- `apps/web/lib/supabase/service.ts` uses non-null assertions and may fail with less helpful errors.
+- `apps/web/lib/supabase/service.ts` now also fails loudly when service env is missing.
 
 ### Twilio
 
@@ -295,22 +295,27 @@ Safest fix:
 
 Risk of fix: medium.
 
-### LOW: Supabase Service Client Could Fail More Clearly
+### RESOLVED: Supabase Service Client Could Fail More Clearly
 
 Evidence:
 
-- `apps/web/lib/supabase/service.ts:11` and `:12` use non-null env assertions.
 - `packages/services/src/auth/index.ts:13` through `:20` already has clearer fail-loud behavior.
+- `apps/web/lib/supabase/service.ts` now mirrors the same explicit env validation pattern.
 
 Why it matters:
 
 Missing envs can produce less actionable runtime failures in app routes.
 
-Safest fix:
+Fix applied:
 
-- Mirror the explicit env validation pattern from `packages/services/src/auth/index.ts`.
+- Added a small `requireEnv` helper and required `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` before creating the service-role client.
 
-Risk of fix: low.
+Validation:
+
+- `pnpm test` passed.
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings only.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
 
 ## Positive Controls Already Present
 
