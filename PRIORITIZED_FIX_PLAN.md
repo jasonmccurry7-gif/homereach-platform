@@ -576,23 +576,24 @@ Validation: focused agent-route ESLint passed with 0 warnings/errors, focused au
 
 Approval needed: no for API boundary hardening; yes before changing agent assignment/business logic or live send behavior.
 
-### Partially Resolved: Public Service-Role Read Route Needed First-Layer Rate Limiting
+### Partially Resolved: Public Service-Role Read Routes Needed First-Layer Rate Limiting
 
-What was wrong: `/api/spots/resolve` is a public route that resolves city/category slugs through the Supabase service-role client without a request-volume guard.
+What was wrong: `/api/spots/resolve` and `/api/spots/availability` are public routes that resolve city/category slug or availability state through service-role-backed reads without request-volume guards.
 
 Why it matters: the route is read-only, but public unbounded service-role reads can create avoidable database load and catalog-enumeration pressure.
 
 Files:
 
 - `apps/web/app/api/spots/resolve/route.ts`
+- `apps/web/app/api/spots/availability/route.ts`
 - `apps/web/lib/security/__tests__/public-read-rate-limits.test.ts`
 - `PUBLIC_READ_ANTI_ABUSE_AUDIT.md`
 
-Fix applied: added a `spots:resolve` public rate-limit scope before service-role client creation, returns 429 retry metadata after 120 lookups per IP per minute, and adds `RateLimit-*` metadata to normal responses. The route remains a slug-to-ID resolver only.
+Fix applied: added `spots:resolve` and `spots:availability` public rate-limit scopes before service-role client creation or canonical availability work, returns 429 retry metadata after 120 lookups/checks per IP per minute per scope, and adds `RateLimit-*` metadata to normal responses. The routes remain read-only funnel helpers.
 
 Safest remaining fix: move public read/mutation/checkout rate limiting to a distributed edge/provider-backed control before paid traffic scaling.
 
-Validation: focused public-read and shared public rate-limit tests passed with 4 tests; focused route/helper/test ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed; full `pnpm test` passed with 189 tests across 26 files; full workspace typecheck passed across 5 packages; full web lint passed with 494 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; GitHub Actions `Validate` run #50 passed; and the hosted Vercel preview probe returned 400 for missing parameters with rate-limit metadata.
+Validation: `/api/spots/resolve` validation is complete through GitHub Actions `Validate` run #50 and hosted Vercel probing. After adding `/api/spots/availability`, focused public-read/shared rate-limit tests passed with 5 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 190 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, and placeholder-env web build generated 247 static pages. Hosted availability probing is pending until the next branch-preview deployment.
 
 Approval needed: no for local anti-abuse guard; yes before changing funnel lookup behavior, availability behavior, or distributed production firewall policy.
 

@@ -11,6 +11,12 @@ const spotResolveRateLimit = {
   windowMs: 60_000,
 };
 
+const spotAvailabilityRateLimit = {
+  scope: "spots:availability",
+  limit: 120,
+  windowMs: 60_000,
+};
+
 function resolveRequest(ip = "203.0.113.120") {
   return new Request("https://example.test/api/spots/resolve?citySlug=wooster-oh&categorySlug=hvac", {
     method: "GET",
@@ -36,6 +42,15 @@ describe("public read route rate limits", () => {
 
     expect(resolve).toMatchObject({ allowed: true, remaining: 119, limit: 120 });
     expect(checkout).toMatchObject({ allowed: true, remaining: 11, limit: 12 });
+  });
+
+  it("keeps spot availability checks isolated from slug resolution", () => {
+    const ip = "203.0.113.122";
+    const resolve = checkPublicRateLimit(resolveRequest(ip), spotResolveRateLimit);
+    const availability = checkPublicRateLimit(resolveRequest(ip), spotAvailabilityRateLimit);
+
+    expect(resolve).toMatchObject({ allowed: true, remaining: 119, limit: 120 });
+    expect(availability).toMatchObject({ allowed: true, remaining: 119, limit: 120 });
   });
 
   it("returns retry metadata after excessive spot resolution lookups", () => {
