@@ -6,14 +6,33 @@ import {
   normalizePublicCandidateSearchParams,
   toPublicCandidateSuggestion,
 } from "@/lib/political/candidate-suggestions-public";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 export const dynamic = "force-dynamic";
+
+const CANDIDATE_SEARCH_RATE_LIMIT = {
+  scope: "political:candidate-search",
+  limit: 120,
+  windowMs: 60_000,
+};
 
 export async function GET(req: NextRequest) {
   if (!isPoliticalEnabled()) {
     return NextResponse.json(
       { ok: false, candidates: [], error: "Political Command Center is disabled." },
       { status: 404 }
+    );
+  }
+
+  const rateLimit = checkPublicRateLimit(req, CANDIDATE_SEARCH_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { ok: false, candidates: [], error: "Too many candidate search requests." },
+      { status: 429, headers }
     );
   }
 
@@ -25,14 +44,14 @@ export async function GET(req: NextRequest) {
   });
 
   if (query.length < 2) {
-    return NextResponse.json({ ok: true, candidates: [] });
+    return NextResponse.json({ ok: true, candidates: [] }, { headers });
   }
 
   try {
     const supabase = createServiceClient();
     const candidates = await searchCandidateSuggestions(supabase, { query, state, limit });
     const publicCandidates = candidates.map(toPublicCandidateSuggestion);
-    return NextResponse.json({ ok: true, candidates: publicCandidates });
+    return NextResponse.json({ ok: true, candidates: publicCandidates }, { headers });
   } catch (err) {
     const message = err instanceof Error
       ? err.message
@@ -50,7 +69,7 @@ export async function GET(req: NextRequest) {
         error: message,
         migrationHint,
       },
-      { status: migrationHint ? 200 : 500 }
+      { status: migrationHint ? 200 : 500, headers }
     );
   }
 }

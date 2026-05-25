@@ -225,6 +225,27 @@ Validation: focused public candidate suggestion tests passed and focused ESLint 
 
 Approval needed: no for data minimization; yes before launching broader political traffic, changing candidate research/contact workflows, or using candidate contact details for outreach.
 
+### Partially Resolved: Public Political Endpoints Lacked Basic Anti-Abuse Controls
+
+What was wrong: public political candidate search and map-plan save endpoints had input-size/data-minimization controls, but no request-rate guard before service-role lookup or public request-body processing.
+
+Why it mattered: public endpoints that touch service-role-backed workflows can be abused for scraping, noisy database work, or expensive request processing even when business logic is otherwise guarded.
+
+Files:
+
+- `apps/web/app/api/political/candidates/search/route.ts`
+- `apps/web/app/api/political/map-plans/route.ts`
+- `apps/web/lib/security/public-rate-limit.ts`
+- `apps/web/lib/security/__tests__/public-rate-limit.test.ts`
+
+Fix applied: added a small in-process public rate-limit helper keyed by route scope and hashed client IP, then applied it to political candidate search and public map-plan saves. Candidate search allows a generous autocomplete budget; map-plan saves use a tighter save-oriented window. Rejected requests return `429` with rate-limit metadata.
+
+Safest remaining fix: promote this first-layer control into a distributed Vercel Firewall, Edge Config/Redis, or provider-backed limiter before broad public launch. The current helper is intentionally lightweight and per-process; it is not a global quota system across serverless instances.
+
+Validation: focused public rate-limit helper tests, focused ESLint on the helper plus touched political public routes, full unit suite, full workspace typecheck, full web lint, placeholder-env web build, and `git diff --check` passed locally.
+
+Approval needed: no for defensive route guards; yes before broader WAF/firewall configuration changes or public traffic launch decisions.
+
 ### Email Provider Runtime Value Needs Explicit Confirmation
 
 What is wrong: Vercel has `EMAIL_PROVIDER`, Mailgun names, and Postmark names, but no `RESEND_API_KEY`. The Vercel CLI metadata audit intentionally did not reveal the hidden `EMAIL_PROVIDER` value.
