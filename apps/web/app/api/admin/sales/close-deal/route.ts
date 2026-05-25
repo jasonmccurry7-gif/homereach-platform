@@ -2,6 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
+import { sendEmail } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -82,57 +83,6 @@ async function sendViaTwilio(
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown SMS error";
     console.error("[sales/close-deal/sms]", error);
-    return { success: false, error };
-  }
-}
-
-// ─── Mailgun Email Helper ─────────────────────────────────────────────────────
-
-async function sendViaMailgun(options: {
-  to: string;
-  subject: string;
-  html: string;
-  text: string;
-  fromEmail: string;
-  fromName: string;
-}): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const apiKey = process.env.MAILGUN_API_KEY;
-    const domain = process.env.MAILGUN_DOMAIN;
-
-    if (!apiKey || !domain) {
-      return {
-        success: false,
-        error: "Mailgun credentials not configured",
-      };
-    }
-
-    const form = new URLSearchParams();
-    form.set("from", `${options.fromName} <${options.fromEmail}>`);
-    form.set("to", options.to);
-    form.set("subject", options.subject);
-    form.set("html", options.html);
-    form.set("text", options.text);
-
-    const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form.toString(),
-    });
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Mailgun ${resp.status}: ${detail}`);
-    }
-
-    const data = (await resp.json()) as { id?: string };
-    return { success: true, externalId: data.id };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown email error";
-    console.error("[sales/close-deal/email]", error);
     return { success: false, error };
   }
 }
@@ -384,13 +334,14 @@ export async function POST(request: Request) {
         typedLead.city
       );
       closedMessage = emailData.text;
-      sendResult = await sendViaMailgun({
+      sendResult = await sendEmail({
         to: typedLead.email!,
         subject: emailData.subject,
         html: emailData.html,
         text: emailData.text,
         fromEmail: agent.from_email,
         fromName: agent.from_name,
+        replyTo: "",
       });
     }
 

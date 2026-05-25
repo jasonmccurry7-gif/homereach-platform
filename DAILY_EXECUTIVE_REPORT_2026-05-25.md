@@ -65,8 +65,9 @@ Date: 2026-05-25
 - Hardened authenticated agent proxy wrappers so `/api/agent/log-action` and `/api/agent/preferences` require admin or sales-agent roles before proxying to downstream admin APIs; created `AGENT_PROXY_GUARD_AUDIT.md`.
 - Completed a read-only Supabase metadata audit for property-intelligence founding tables. Live `property_intelligence_tiers`, `founding_slots`, and `founding_memberships` exist, but they are not represented in committed migrations, and live `founding_memberships` is missing the `stripe_checkout_session_id` column used by the Stripe webhook finalizer. Created `PROPERTY_INTELLIGENCE_SCHEMA_AUDIT.md` and a local unapplied migration proposal at `supabase/migrations/20260525175220_property_intelligence_schema_alignment.sql`.
 - Created `NEW_LAPTOP_HEALTH_CHECK.md` for the active `C:\Dev` workspace, including tool versions, Node/CI parity risk, Docker/Supabase-local blocker, cache state, git state, and OneDrive development risk.
-- Audited email provider routing and created `EMAIL_PROVIDER_ROUTING_AUDIT.md`; found that most send paths use the central Resend/Mailgun/Postmark router, while close-deal email still sends directly through Mailgun.
+- Audited email provider routing and created `EMAIL_PROVIDER_ROUTING_AUDIT.md`; found and documented warmup sender identity mutation plus close-deal Mailgun-only routing risk.
 - Hardened the email warmup sender identity path so it passes agent sender identity directly to `sendEmail()` instead of mutating `process.env.MAILGUN_FROM_EMAIL` / `process.env.MAILGUN_FROM_NAME` during each send.
+- Routed close-deal email sends through central `sendEmail()` with the assigned agent sender identity instead of the route-local Mailgun-only helper; left close-deal SMS unchanged for separate safety review.
 
 ## Validation
 
@@ -106,6 +107,7 @@ Date: 2026-05-25
 - New-laptop health check: Node `v24.15.0`, pnpm `9.15.0`, Git `2.54.0.windows.1`, and Supabase CLI `2.100.1` are available; Docker is not on PATH/running, so local Supabase DB validation remains blocked.
 - Latest email warmup identity hardening: focused route test passed with 1 test and confirmed provider env variables remain unchanged while agent `fromEmail` / `fromName` are passed directly to `sendEmail()`.
 - Latest email provider routing sweep: focused ESLint passed with 0 warnings/errors on touched warmup files, full `pnpm test` passed with 197 tests across 28 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
+- Latest close-deal email provider routing sweep: focused route test passed with 1 test and confirmed close-deal email calls central `sendEmail()` with agent sender identity without direct provider `fetch`; focused ESLint passed with 0 warnings/errors; full `pnpm test` passed with 198 tests across 29 files; full workspace typecheck passed across 5 packages; full web lint passed with 492 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; `git diff --check` passed.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.
@@ -135,7 +137,7 @@ Date: 2026-05-25
 - Medium: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; runtime self-calls and generated public links now use shared resolvers with Vercel deployment URL fallbacks, but Vercel should still get the canonical name.
 - Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
-- Medium: close-deal email still bypasses the central provider router and requires Mailgun credentials even if the active provider is Resend or Postmark; migrate this path carefully in a dedicated send-capable patch.
+- Medium: close-deal SMS still uses the existing direct Twilio helper; review separately before routing through shared SMS services because approval/test-mode gates may intentionally alter live send behavior.
 - Medium: send-capable AI workforce routes are now access-gated, but live-sending behavior still needs explicit approval/test-mode validation before automation expansion.
 - Medium: public nonprofit, waitlist, targeted lead/campaign, targeted intake, shared intake, political map-plan, political candidate-search, and political chat routes now have basic in-process rate limits, but traffic scaling still needs a distributed Vercel Firewall/Edge/Redis-grade strategy before broader public launch.
 - Medium: payment-adjacent checkout creation surfaces now have basic in-process rate limits, but traffic scaling still needs a distributed Vercel Firewall/Edge/Redis-grade control and Stripe test-mode success-path validation; no live sends or charges were tested in this pass.

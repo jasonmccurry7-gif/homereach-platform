@@ -192,11 +192,11 @@ Risk of fix: low for adding missing names; medium for changing runtime fallback 
 
 Approval needed: yes for Vercel env mutation; no for documentation-only audit.
 
-### Partially Resolved: Email Provider Routing Drift Can Break Send-Capable Sales Flows
+### Resolved: Email Provider Routing Drift Could Break Send-Capable Sales Flows
 
-What is wrong: most outbound email paths use the central `sendEmail()` router, but `/api/admin/sales/close-deal` still sends email through a direct Mailgun helper. Separately, the email warmup job attempted to switch sender identity by mutating `process.env.MAILGUN_FROM_EMAIL` and `process.env.MAILGUN_FROM_NAME` during each send.
+What was wrong: most outbound email paths used the central `sendEmail()` router, but `/api/admin/sales/close-deal` still sent email through a direct Mailgun helper. Separately, the email warmup job attempted to switch sender identity by mutating `process.env.MAILGUN_FROM_EMAIL` and `process.env.MAILGUN_FROM_NAME` during each send.
 
-Why it matters: if production is configured for `EMAIL_PROVIDER=resend` or `EMAIL_PROVIDER=postmark`, close-deal email can fail unless Mailgun credentials also exist. Warmup env mutation is risky in shared serverless execution and may not reliably set the intended sender because `DEFAULT_FROM_EMAIL` can take precedence over `MAILGUN_FROM_EMAIL`.
+Why it mattered: if production is configured for `EMAIL_PROVIDER=resend` or `EMAIL_PROVIDER=postmark`, close-deal email could fail unless Mailgun credentials also existed. Warmup env mutation was risky in shared serverless execution and could fail to set the intended sender because `DEFAULT_FROM_EMAIL` can take precedence over `MAILGUN_FROM_EMAIL`.
 
 Files:
 
@@ -204,13 +204,16 @@ Files:
 - `apps/web/app/api/admin/email/warmup/send/route.ts`
 - `apps/web/app/api/admin/email/warmup/__tests__/send-route.test.ts`
 - `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/admin/sales/__tests__/close-deal.test.ts`
 - `EMAIL_PROVIDER_ROUTING_AUDIT.md`
 
-Fix applied: the email warmup route now passes `fromEmail` and `fromName` directly to `sendEmail()` for seed and real-prospect sends and no longer mutates provider environment variables.
+Fix applied: the email warmup route now passes `fromEmail` and `fromName` directly to `sendEmail()` for seed and real-prospect sends and no longer mutates provider environment variables. The close-deal route now sends email through central `sendEmail()` with the agent sender identity instead of using a direct Mailgun helper.
 
-Safest remaining fix: migrate `/api/admin/sales/close-deal` email sends to the central `sendEmail()` router in a dedicated patch, preserving existing message copy, sender identity, logging, and error behavior. Treat Twilio close-deal routing separately because moving it to `sendSms()` may intentionally introduce safety gates that block live sends unless configured.
+Validation: focused close-deal route test passed with 1 test, focused close-deal ESLint passed with 0 warnings/errors, full `pnpm test` passed with 198 tests across 29 files, full workspace typecheck passed across 5 packages, full web lint passed with 492 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, and `git diff --check` passed.
 
-Risk of fix: low for the warmup identity fix; medium for close-deal provider migration because it is revenue-sensitive and send-capable.
+Safest remaining fix: treat Twilio close-deal routing separately because moving the existing SMS helper to `sendSms()` may intentionally introduce safety gates that block live sends unless configured.
+
+Risk of fix: low for the warmup identity fix; medium for close-deal provider migration because it is revenue-sensitive and send-capable. The implemented close-deal change was kept narrow and covered with focused tests.
 
 Approval needed: no for local branch code hardening and docs; yes before live email/SMS send validation or production automation runs.
 
