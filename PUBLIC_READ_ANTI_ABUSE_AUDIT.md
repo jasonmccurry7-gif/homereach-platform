@@ -49,7 +49,7 @@ Behavior intentionally preserved:
 - Full `pnpm --filter @homereach/web lint` passed with 494 existing warnings and 0 errors.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 247 static pages.
 - Hosted Vercel preview probe returned 400 for missing parameters with `RateLimit-Limit: 120`, `RateLimit-Remaining: 119`, and `RateLimit-Reset: 60`.
-- Hosted availability preview probing will run after the next branch-preview deployment.
+- Hosted availability preview probes returned 400 for missing/invalid parameters with `RateLimit-Limit: 120`, `RateLimit-Remaining` decrementing, and `RateLimit-Reset: 60`.
 
 ## Remaining Risk
 

@@ -593,7 +593,7 @@ Fix applied: added `spots:resolve` and `spots:availability` public rate-limit sc
 
 Safest remaining fix: move public read/mutation/checkout rate limiting to a distributed edge/provider-backed control before paid traffic scaling.
 
-Validation: `/api/spots/resolve` validation is complete through GitHub Actions `Validate` run #50 and hosted Vercel probing. After adding `/api/spots/availability`, focused public-read/shared rate-limit tests passed with 5 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 190 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, and placeholder-env web build generated 247 static pages. Hosted availability probing is pending until the next branch-preview deployment.
+Validation: `/api/spots/resolve` validation is complete through GitHub Actions `Validate` run #50 and hosted Vercel probing. After adding `/api/spots/availability`, focused public-read/shared rate-limit tests passed with 5 tests, focused route/helper/test ESLint passed with 0 warnings/errors, focused `@homereach/web` typecheck passed, full `pnpm test` passed with 190 tests across 26 files, full workspace typecheck passed across 5 packages, full web lint passed with 494 existing warnings and 0 errors, placeholder-env web build generated 247 static pages, GitHub Actions `Validate` run #52 passed, and hosted availability probes returned 400 for missing/invalid parameters with rate-limit metadata.
 
 Approval needed: no for local anti-abuse guard; yes before changing funnel lookup behavior, availability behavior, or distributed production firewall policy.
 
