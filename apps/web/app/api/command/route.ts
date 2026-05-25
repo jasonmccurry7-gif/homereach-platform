@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function executeCommand(cmd: string): Promise<string> {
-  const appUrl = "https://home-reach.com";
+  const appUrl = getInternalAppBaseUrl();
   const lower  = cmd.toLowerCase();
   const start  = Date.now();
 

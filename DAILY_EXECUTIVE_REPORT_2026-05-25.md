@@ -30,6 +30,7 @@ Date: 2026-05-25
 - Confirmed the active get-started spot checkout uses `/api/spots/checkout` with Stripe `subscription` mode; the older `/api/stripe/checkout` route has no current callers found in repo search.
 - Standardized public URL resolution for payment-adjacent checkout redirects and Stripe post-payment links so deployed aliases do not fall back to stale/hardcoded domains.
 - Removed remaining runtime `localhost` fallbacks from admin/agent self-calls; local-only `curl` examples remain documented separately.
+- Moved APEX command agent routing off the hardcoded production domain and onto the internal app URL resolver.
 
 ## Validation
 

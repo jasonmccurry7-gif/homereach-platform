@@ -104,7 +104,7 @@ Files:
 - `turbo.json`
 - `.env.example`
 
-Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from runtime admin/agent self-calls, moved payment-adjacent checkout redirects and Stripe post-payment links onto the public resolver, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
+Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from runtime admin/agent self-calls, moved APEX command agent routing off the hardcoded production domain, moved payment-adjacent checkout redirects and Stripe post-payment links onto the public resolver, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
 
 Validation: focused app URL helper test, full unit suite, typecheck, web lint gate, and web build with non-secret placeholder env all passed locally.
 
