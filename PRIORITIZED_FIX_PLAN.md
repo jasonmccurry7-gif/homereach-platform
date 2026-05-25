@@ -4,6 +4,23 @@ Updated: 2026-05-24
 
 ## CRITICAL
 
+### Stripe Webhook Can Drop Retried Events Stuck In Received
+
+What is wrong: the Stripe webhook inserts a new event as `received`, but duplicate retries for an existing `received` event return 200 as `processing_duplicate`.
+
+Why it matters: if the first invocation crashes, times out, or is killed after inserting `received` but before marking the event `failed` or `processed`, Stripe retries can be acknowledged without processing. That can permanently lose a paid-customer activation, subscription update, or reconciliation event.
+
+Files:
+
+- `apps/web/app/api/webhooks/stripe/route.ts`
+- `packages/db/src/schema/*` or the schema file containing `stripe_webhook_events`
+
+Safest fix: replace the duplicate idempotency blocks with one tested claim/lease path that can reprocess stale `received`/`processing` events after a short timeout and only returns success when the event is safely processed, already processed, or intentionally skipped.
+
+Risk of fix: high because this touches payment webhook behavior.
+
+Approval needed: yes before Stripe provider testing; local unit-test preparation can proceed safely.
+
 ### Provider-Backed Production Flow Validation Pending
 
 What is wrong: Stripe, Twilio, email, Supabase, and webhook flows have not been exercised against provider test/dry-run paths on this branch.
@@ -27,6 +44,38 @@ Risk of fix: medium to high if pointed at live providers or production data.
 Approval needed: yes for any provider-mutating or production-data test.
 
 ## HIGH
+
+### Targeted Route Checkout Is Public And Service-Role Backed
+
+What is wrong: `/api/stripe/targeted-checkout` accepts only `campaignId`/`addons`, uses the Supabase service-role client, creates a Stripe Checkout session, and writes `stripe_checkout_session_id` to the campaign row.
+
+Why it matters: anyone with a campaign UUID can attempt to create/update checkout sessions for that campaign. This may be intended for public quote-payment links, but it needs a signed token, ownership check, rate limit, or another explicit authorization boundary.
+
+Files:
+
+- `apps/web/app/api/stripe/targeted-checkout/route.ts`
+
+Safest fix: add signed checkout tokens for public payment links, validate campaign status/token expiry before creating a session, and rate-limit the route. Keep all validation in test mode before live use.
+
+Risk of fix: medium.
+
+Approval needed: yes before changing live payment-link behavior.
+
+### Twilio Status Webhook May Lose Delivery Telemetry Under RLS
+
+What is wrong: `/api/webhooks/twilio/status` validates Twilio signatures but inserts delivery status rows using the session/anon Supabase server client, then returns 200 even if the insert fails.
+
+Why it matters: Twilio requests do not have a Supabase user session. If RLS blocks anon inserts into `twilio_message_status`, delivery events will be lost while Twilio stops retrying.
+
+Files:
+
+- `apps/web/app/api/webhooks/twilio/status/route.ts`
+
+Safest fix: after signature validation, use a service-role client for the narrow append-only insert or verify a dedicated insert-only RLS policy; add a no-send signed sample validation.
+
+Risk of fix: medium.
+
+Approval needed: yes before live Twilio validation; code/test preparation can proceed safely.
 
 ### GitHub CLI Not Authenticated
 
@@ -98,6 +147,55 @@ Approval needed: provider-mutating tests require explicit test-mode controls.
 
 ## MEDIUM
 
+### Targeted Checkout Billing Copy Does Not Match Stripe Payment Mode
+
+What is wrong: targeted checkout describes multiple add-ons as monthly or billed going forward, but creates the Stripe Checkout session with `mode: "payment"`.
+
+Why it matters: customers may expect recurring services while Stripe only collects a one-time payment, creating either missed recurring revenue or billing confusion.
+
+Files:
+
+- `apps/web/app/api/stripe/targeted-checkout/route.ts`
+
+Safest fix: confirm the intended business model; either adjust the copy to first-month/one-time language or implement subscription line items in Stripe test mode.
+
+Risk of fix: medium.
+
+Approval needed: yes before changing live billing behavior/copy.
+
+### Main Bundle Checkout Still Uses One-Time Payment For Monthly Pricing Path
+
+What is wrong: `/api/stripe/checkout` resolves a monthly bundle price but currently calls the one-time Checkout session path. The subscription helper exists but is not yet wired into the main route.
+
+Why it matters: if the live offer is meant to be recurring, the current path may collect a one-time payment instead of establishing subscription revenue.
+
+Files:
+
+- `apps/web/app/api/stripe/checkout/route.ts`
+- `packages/services/src/stripe/index.ts`
+
+Safest fix: confirm product intent, then gate any subscription switch behind reservation/spot prerequisites and Stripe test-mode validation.
+
+Risk of fix: high if changed blindly; medium if feature-flagged and tested.
+
+Approval needed: yes before live payment behavior changes.
+
+### Postmark Webhook Needs Telemetry Alerting For DB Failures
+
+What is wrong: `/api/webhooks/postmark` intentionally returns 200 even if `email_events` insert or `sales_leads.email_status` update fails.
+
+Why it matters: this prevents provider retry storms, but it can also hide deliverability telemetry loss unless logs are drained and alerted.
+
+Files:
+
+- `apps/web/app/api/webhooks/postmark/route.ts`
+
+Safest fix: keep safe acknowledgement behavior, but add structured logging/alerting and admin health checks for webhook logging tables.
+
+Risk of fix: low to medium.
+
+Approval needed: no for local health-check code; yes before provider-live validation.
+
 ### Political Launch Depends On Feature Flag
 
 What is wrong: `/political/*` intentionally returns `404` unless `ENABLE_POLITICAL=true`.
@@ -133,6 +231,23 @@ Risk of fix: low.
 Approval needed: no.
 
 ## LOW
+
+### Supabase Service Client Could Fail More Clearly
+
+What is wrong: `apps/web/lib/supabase/service.ts` uses non-null env assertions instead of explicit env validation.
+
+Why it matters: missing env values can produce less actionable runtime failures in routes that depend on the service-role client.
+
+Files:
+
+- `apps/web/lib/supabase/service.ts`
+- `packages/services/src/auth/index.ts`
+
+Safest fix: mirror the explicit fail-loud validation pattern already used in `packages/services/src/auth/index.ts`.
+
+Risk of fix: low.
+
+Approval needed: no.
 
 ### Turbo Defaults To TUI
 
