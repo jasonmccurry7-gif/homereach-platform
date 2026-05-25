@@ -76,6 +76,48 @@ Approval needed: Vercel production and the branch preview now have `TARGETED_CHE
 
 ## HIGH
 
+### Environment Name Drift Can Break Provider And Agent Workflows
+
+What is wrong: Vercel has the static startup-required names, but several runtime paths use aliases that do not match deployed env names. The highest-risk examples are `NEXTAUTH_URL` missing while agent routes can fall back to `http://localhost:3000`, `SERP_API`/`HUNTER` existing while code expects `SERPAPI_KEY`/`HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` existing while code reads `APEX_APPROVED_SENDERS`.
+
+Why it matters: operators can believe a provider is configured while the live route treats it as missing, and production agent orchestration can call localhost instead of the deployed site.
+
+Files:
+
+- `ENVIRONMENT_VARIABLES_AUDIT.md`
+- `apps/web/app/api/admin/agents/run/route.ts`
+- `apps/web/app/api/admin/agents/scraper/route.ts`
+- `apps/web/app/api/command/route.ts`
+- `apps/web/lib/env.ts`
+- `turbo.json`
+- `.env.example`
+
+Safest fix: first add/verify missing canonical env names in Vercel where the feature is approved, then follow with compatibility readers for legacy aliases. Do not remove legacy Vercel names until history is confirmed.
+
+Risk of fix: low for adding missing names; medium for changing runtime fallback behavior.
+
+Approval needed: yes for Vercel env mutation; no for documentation-only audit.
+
+### Email Provider Runtime Value Needs Explicit Confirmation
+
+What is wrong: Vercel has `EMAIL_PROVIDER`, Mailgun names, and Postmark names, but no `RESEND_API_KEY`. The Vercel CLI metadata audit intentionally did not reveal the hidden `EMAIL_PROVIDER` value.
+
+Why it matters: if production `EMAIL_PROVIDER=resend`, startup validation requires `RESEND_API_KEY` and the app should fail fast. If the intended provider is Mailgun or Postmark, the runbook needs to say that clearly so future operators do not add the wrong provider key or misread stale examples.
+
+Files:
+
+- `ENVIRONMENT_VARIABLES_AUDIT.md`
+- `apps/web/lib/env.ts`
+- `packages/services/src/outreach/index.ts`
+- `packages/services/src/outreach/postmark.ts`
+- `.env.example`
+
+Safest fix: verify the provider value in Vercel without exposing it, then either add the matching missing key or update the docs/templates to mark the intended provider.
+
+Risk of fix: low for verification; medium if changing provider behavior.
+
+Approval needed: yes for Vercel env mutation or provider switching.
+
 ### Resolved: Twilio Status Webhook Could Lose Delivery Telemetry Under RLS
 
 What was wrong: `/api/webhooks/twilio/status` validated Twilio signatures but inserted delivery status rows using the session/anon Supabase server client, then returned 200 even if the insert failed.
