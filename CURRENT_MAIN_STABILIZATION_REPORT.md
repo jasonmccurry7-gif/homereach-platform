@@ -45,7 +45,7 @@ GitHub status:
 - `gh auth status` still reports no authenticated GitHub host in this shell.
 - The branch has been pushed with Git credentials.
 - Draft PR opened through the GitHub connector: https://github.com/jasonmccurry7-gif/homereach-platform/pull/7
-- GitHub Actions workflow `Validate` passed for head commit `9c4baf8`.
+- GitHub Actions workflow `Validate` has passed for this PR branch; check PR #7 for the latest run.
 
 ## What Changed
 
@@ -114,7 +114,7 @@ CI workflow:
 .github/workflows/validate.yml
 ```
 
-Result: passed on GitHub Actions run `26379286475`.
+Result: passed on GitHub Actions for the PR branch.
 
 Lint:
 
