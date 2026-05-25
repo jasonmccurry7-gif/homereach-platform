@@ -25,7 +25,7 @@ export default function FindRouteSourcePage() {
         </h1>
         <p className="max-w-3xl text-sm text-slate-600">
           HomeReach accepts carrier-route data from several approved sources.
-          You always download the file yourself from the source's own UI,
+          You always download the file yourself from the source&apos;s own UI,
           then upload it through{" "}
           <Link
             href="/admin/political/routes/import"
@@ -56,7 +56,7 @@ export default function FindRouteSourcePage() {
         notes={
           <p>
             The USPS EDDM tool is the canonical source. Its CSV columns map
-            cleanly to HomeReach's required fields with no manual editing.
+            cleanly to HomeReach&apos;s required fields with no manual editing.
           </p>
         }
       />
@@ -96,7 +96,7 @@ export default function FindRouteSourcePage() {
             <p>
               <strong>Hard rule:</strong> HomeReach will never log into 48HrPrint
               for you, scrape their checkout, or call private endpoints. If
-              the export option isn't visible in their UI, the data isn't
+              the export option isn&apos;t visible in their UI, the data isn&apos;t
               available to us — period.
             </p>
             <p>
@@ -140,7 +140,7 @@ export default function FindRouteSourcePage() {
         notes={
           <p>
             Use this only when no upstream tool export is available. The
-            import workflow rejects malformed rows row-by-row, so you'll see
+            import workflow rejects malformed rows row-by-row, so you&apos;ll see
             exactly which rows need fixing.
           </p>
         }
@@ -179,9 +179,9 @@ function DoDontBanner() {
         <h2 className="text-sm font-semibold text-emerald-900">DO</h2>
         <ul className="mt-2 ml-4 list-disc space-y-1 text-sm text-emerald-900">
           <li>Sign in to vendors yourself in your own browser.</li>
-          <li>Use the vendor's own Download / Export feature.</li>
+          <li>Use the vendor&apos;s own Download / Export feature.</li>
           <li>Save the resulting CSV to your local machine.</li>
-          <li>Upload it through HomeReach's importer.</li>
+          <li>Upload it through HomeReach&apos;s importer.</li>
           <li>Confirm the export is permitted under your account terms before uploading.</li>
         </ul>
       </div>
@@ -191,7 +191,7 @@ function DoDontBanner() {
           <li>Try to make HomeReach log in to a vendor on your behalf.</li>
           <li>Scrape vendor checkout pages or product detail pages.</li>
           <li>Bypass paywalls, captchas, or other access protections.</li>
-          <li>Upload paid datasets you don't have a license for.</li>
+          <li>Upload paid datasets you don&apos;t have a license for.</li>
           <li>Upload personal voter data (names, addresses, party registration).</li>
         </ul>
       </div>
