@@ -179,9 +179,9 @@ Files:
 - `apps/web/lib/outreach/inbound-sms-webhook.ts`
 - `apps/web/lib/outreach/__tests__/inbound-sms-webhook.test.ts`
 
-Fix applied: added a focused retry decision helper and changed unmatched replies to return retryable 503 when the bridge throws or reports `processed: true` without an event ID. Known legacy contacts still persist to `outreach_replies` and acknowledge Twilio, so the fix does not create duplicate retry pressure after legacy capture.
+Fix applied: added focused inbound SMS signature validation and retry decision helpers, then changed unmatched replies to return retryable 503 when the bridge throws or reports `processed: true` without an event ID. Known legacy contacts still persist to `outreach_replies` and acknowledge Twilio, so the fix does not create duplicate retry pressure after legacy capture.
 
-Validation: focused inbound SMS helper tests, full test suite, typecheck, web lint, and web build passed locally after the change.
+Validation: focused inbound SMS helper tests with valid/invalid signature and retry-decision coverage, full test suite, typecheck, web lint, and web build passed locally after the change.
 
 Approval needed: no for the code change; yes before live Twilio validation or any SMS send.
 

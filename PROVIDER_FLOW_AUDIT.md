@@ -15,7 +15,7 @@ The most important remaining items to fix next are:
 1. Targeted checkout copy now avoids implying automatic recurring Stripe billing, but business intent still needs confirmation before any targeted add-on subscription-mode change.
 2. Legacy `/api/stripe/checkout` is now default-disabled by `ENABLE_LEGACY_STRIPE_CHECKOUT`; active get-started checkout remains `/api/spots/checkout` in Stripe subscription mode.
 3. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
-4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS reply retry behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
+4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS signature/retry behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -371,7 +371,7 @@ Unknown or newly sourced SMS replies may only exist in the revenue messaging led
 
 Fix applied:
 
-- Added `apps/web/lib/outreach/inbound-sms-webhook.ts` with a pure retry decision helper for unmatched inbound replies.
+- Added `apps/web/lib/outreach/inbound-sms-webhook.ts` with pure inbound SMS signature validation and retry decision helpers.
 - Updated `/api/webhooks/outreach/sms` so unmatched replies return retryable 503 when the revenue bridge throws or reports `processed: true` without an event ID.
 - Preserved the legacy known-contact path: when a contact is found, the route still writes `outreach_replies` and returns 200, avoiding duplicate retry pressure after legacy capture.
 - Kept bridge-disabled behavior acknowledged, so deliberate `REVENUE_MESSAGING_BRIDGE_ENABLED=false` operation does not force retries.
@@ -472,6 +472,7 @@ Validation:
 - Postmark webhook fails closed in production if Basic Auth is not configured.
 - Twilio status webhook validates signatures and fails closed in production if `TWILIO_AUTH_TOKEN` is missing.
 - Twilio status webhook now returns retryable 503 for telemetry insert/handler failures after signature validation.
+- Inbound SMS reply webhook signature validation and unmatched-reply retry decisions are covered by focused helper tests.
 - Inbound SMS reply webhook now returns retryable 503 for unmatched replies when the revenue messaging bridge fails or misses the event ledger.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.

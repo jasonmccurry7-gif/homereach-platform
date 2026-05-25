@@ -29,7 +29,7 @@ Date: 2026-05-25
 - Clarified targeted checkout billing copy so first-month add-on charges no longer imply Stripe starts automatic monthly billing.
 - Confirmed the active get-started spot checkout uses `/api/spots/checkout` with Stripe `subscription` mode; the older `/api/stripe/checkout` route has no current callers found in repo search.
 - Standardized public URL resolution for payment-adjacent checkout redirects and Stripe post-payment links so deployed aliases do not fall back to stale/hardcoded domains.
-- Hardened inbound SMS reply handling so unmatched replies return retryable TwiML when the revenue messaging bridge fails or misses the event ledger, while known legacy contacts still write to `outreach_replies` without duplicate retry pressure.
+- Hardened inbound SMS reply handling so unmatched replies return retryable TwiML when the revenue messaging bridge fails or misses the event ledger, while known legacy contacts still write to `outreach_replies` without duplicate retry pressure; moved inbound SMS signature validation into the tested helper layer.
 - Removed remaining runtime `localhost` fallbacks from admin/agent self-calls; local-only `curl` examples remain documented separately.
 - Moved APEX command agent routing off the hardcoded production domain and onto the internal app URL resolver.
 - Expanded shared URL resolver coverage across SEO metadata, sitemap/robots, auth reset redirects, admin self-calls, intake/nonprofit notifications, political proposal handoffs, internal alert deep links, and generated outreach/Facebook links.
@@ -46,13 +46,13 @@ Date: 2026-05-25
 - Local focused payment URL resolver regression run: passed, 6 tests.
 - Local focused Postmark webhook helper test: passed, 7 tests.
 - Local focused Twilio status webhook helper test: passed, 6 tests.
-- Local focused inbound SMS webhook retry decision test: passed, 4 tests.
+- Local focused inbound SMS webhook signature/retry decision test: passed, 9 tests.
 - Local focused provider telemetry health test: passed, 5 tests.
 - Local focused app URL helper test: passed, 5 tests.
 - Local focused Stripe app URL resolver test: passed, 4 tests.
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
 - Latest provider durability sweep: focused inbound SMS retry helper test, full unit suite, typecheck, web lint, and web build all passed locally.
-- Local `pnpm test`: passed, 146 tests.
+- Local `pnpm test`: passed, 151 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
