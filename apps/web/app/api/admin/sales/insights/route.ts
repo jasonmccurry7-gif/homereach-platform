@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/insights
 // Identifies: best channel, best city, best category, lead quality, bottleneck stage
@@ -9,6 +10,9 @@ const SENT_ACTIONS = new Set(["text_sent", "sms_sent", "email_sent", "facebook_s
 
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const since = searchParams.get("since") ?? new Date(Date.now() - 86400000 * 7).toISOString(); // default 7 days

@@ -1,9 +1,13 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/leads
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const status   = searchParams.get("status");

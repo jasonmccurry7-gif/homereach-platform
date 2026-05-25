@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/sales/facebook/scorecard?agent_id=xxx
@@ -8,6 +9,9 @@ import { NextResponse } from "next/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get("agent_id");
 

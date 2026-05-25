@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -272,6 +273,9 @@ ${agentEmail}`;
 
 export async function POST(request: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+
     const supabase = createServiceClient();
     const body = (await request.json()) as CloseDealRequest;
 

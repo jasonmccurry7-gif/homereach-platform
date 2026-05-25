@@ -1,11 +1,15 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/funnel
 // Returns full conversion funnel: leads viewed → sent → replied → closed
 // Optionally scoped by agent_id or date range
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const agent_id = searchParams.get("agent_id");

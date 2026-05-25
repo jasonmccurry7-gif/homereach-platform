@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/power-mode/end-of-day
@@ -10,11 +11,8 @@ import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
 
   const db = createServiceClient();
 

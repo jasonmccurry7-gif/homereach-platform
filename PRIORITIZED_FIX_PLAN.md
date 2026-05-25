@@ -255,6 +255,39 @@ Validation: service-role route scan, full test suite, typecheck, web lint, and w
 
 Approval needed: no for access-control hardening; yes before any live alert-send validation or production automation send.
 
+### Resolved: Sensitive Admin Read And Send Routes Could Run Without Operator Access
+
+What was wrong: a broader set of admin service-role routes exposed lead, reply, funnel, leaderboard, insight, alert, warmup, health, founding-member, and operator-summary data without explicit API guards. Some send-capable routes also allowed public execution if `CRON_SECRET` was missing.
+
+Why it mattered: these routes expose customer/prospect data, revenue state, operator health, internal alert history, and sales performance data. Send-capable routes could trigger SMS/email workflows or mutate lead state without a verified operator, sales-agent, or cron caller.
+
+Files:
+
+- `apps/web/app/api/admin/sales/close-deal/route.ts`
+- `apps/web/app/api/admin/sales/nudge/route.ts`
+- `apps/web/app/api/admin/sales/power-mode/end-of-day/route.ts`
+- `apps/web/app/api/admin/email/warmup/send/route.ts`
+- `apps/web/app/api/admin/email/warmup/status/route.ts`
+- `apps/web/app/api/admin/alerts/log/route.ts`
+- `apps/web/app/api/admin/founding/members/route.ts`
+- `apps/web/app/api/admin/intelligence/pricing/route.ts`
+- `apps/web/app/api/admin/operator/summary/route.ts`
+- `apps/web/app/api/admin/health/route.ts`
+- `apps/web/app/api/admin/sales/leads/route.ts`
+- `apps/web/app/api/admin/sales/next-lead/route.ts`
+- `apps/web/app/api/admin/sales/replies/route.ts`
+- `apps/web/app/api/admin/sales/funnel/route.ts`
+- `apps/web/app/api/admin/sales/leaderboard/route.ts`
+- `apps/web/app/api/admin/sales/insights/route.ts`
+- `apps/web/app/api/admin/sales/facebook/scorecard/route.ts`
+- `apps/web/app/api/admin/sales/facebook/leaderboard/route.ts`
+
+Fix applied: added `requireAdmin`, `requireAdminOrSalesAgent`, or `requireAdminOrCron` at route entry based on caller intent. `/api/admin/operator/summary` now forwards the authenticated request cookie to protected internal dashboard subfetches.
+
+Validation: follow-up service-role scan across `apps/web/app/api/admin` reports no unguarded service-client routes outside custom authorized political sync routes. Full unit suite, typecheck, web lint, and web build passed locally after this second sweep.
+
+Approval needed: no for access-control hardening; yes before live send/provider validation.
+
 ### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.

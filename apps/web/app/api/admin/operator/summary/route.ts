@@ -1,5 +1,6 @@
 import { NextResponse }       from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/operator/summary
@@ -28,8 +29,13 @@ async function safeFetch(url: string, opts?: RequestInit): Promise<unknown> {
 }
 
 export async function GET(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const { origin } = new URL(req.url);
   const supabase   = createServiceClient();
+  const cookie = req.headers.get("cookie") ?? "";
+  const authFetchOptions: RequestInit = cookie ? { headers: { cookie } } : {};
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -56,22 +62,22 @@ export async function GET(req: Request) {
   ] = await Promise.all([
 
     // Revenue funnel (today)
-    safeFetch(`${origin}/api/admin/sales/funnel?since=today`),
+    safeFetch(`${origin}/api/admin/sales/funnel?since=today`, authFetchOptions),
 
     // Agent leaderboard (today)
-    safeFetch(`${origin}/api/admin/sales/leaderboard?since=today`),
+    safeFetch(`${origin}/api/admin/sales/leaderboard?since=today`, authFetchOptions),
 
     // System health
-    safeFetch(`${origin}/api/admin/health`),
+    safeFetch(`${origin}/api/admin/health`, authFetchOptions),
 
     // Priority actions
-    safeFetch(`${origin}/api/admin/sales/priority-actions`),
+    safeFetch(`${origin}/api/admin/sales/priority-actions`, authFetchOptions),
 
     // At-risk leads
-    safeFetch(`${origin}/api/admin/sales/at-risk`),
+    safeFetch(`${origin}/api/admin/sales/at-risk`, authFetchOptions),
 
     // Recent internal alerts (last 24h, for System Intelligence panel)
-    safeFetch(`${origin}/api/admin/alerts/log?since=${h24Ago}&limit=20`),
+    safeFetch(`${origin}/api/admin/alerts/log?since=${h24Ago}&limit=20`, authFetchOptions),
 
     // Hot leads: replied or interested in last 4h
     supabase

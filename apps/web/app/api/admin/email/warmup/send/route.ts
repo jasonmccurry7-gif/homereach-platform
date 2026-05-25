@@ -7,6 +7,7 @@ import {
   getSeedTemplate,
 } from "@/lib/sales-engine/email-warmup-config";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/email/warmup/send
@@ -24,12 +25,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  // ── Auth ────────────────────────────────────────────────────────────────────
-  const authHeader  = req.headers.get("authorization");
-  const cronSecret  = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
 
   const db = createServiceClient();
   const appUrl = getPublicAppBaseUrl();

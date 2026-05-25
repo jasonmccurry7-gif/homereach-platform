@@ -1,11 +1,15 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/next-lead
 // Returns the highest-priority uncontacted lead
 // Priority: HIGH buying_signal first → score DESC → created_at ASC
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const city     = searchParams.get("city");

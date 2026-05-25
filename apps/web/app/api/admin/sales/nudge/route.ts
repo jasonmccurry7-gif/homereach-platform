@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 interface AgentNudgeData {
   agentId: string;
@@ -66,6 +67,9 @@ async function shouldSendNudge(
 
 export async function POST(req: NextRequest) {
   try {
+    const guard = await requireAdminOrCron(req);
+    if (!guard.ok) return guard.response;
+
     const db = createServiceClient();
     const today = new Date().toISOString().split("T")[0];
     const todayStart = `${today}T00:00:00Z`;
