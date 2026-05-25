@@ -15,8 +15,9 @@ The most important remaining items to fix next are:
 1. Targeted checkout copy now avoids implying automatic recurring Stripe billing, but business intent still needs confirmation before any targeted add-on subscription-mode change.
 2. Legacy `/api/stripe/checkout` is now default-disabled by `ENABLE_LEGACY_STRIPE_CHECKOUT`; active get-started checkout remains `/api/spots/checkout` in Stripe subscription mode.
 3. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
-4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS signature/retry behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
-5. Facebook/APEX admin automation POST routes now require cron or authenticated operator access before service-role work can run.
+4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS/Facebook signature behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
+5. Meta/Facebook webhook POST routes now fail closed in production when `FACEBOOK_APP_SECRET` is missing and reject unsigned/invalid signatures before service-role work.
+6. Facebook/APEX admin automation POST routes now require cron or authenticated operator access before service-role work can run.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -153,17 +154,21 @@ Primary files:
 - `apps/web/app/api/admin/sales/facebook/alert/route.ts`
 - `apps/web/app/api/admin/sales/facebook/daily-score/route.ts`
 - `apps/web/app/api/admin/system/apex/route.ts`
+- `apps/web/lib/facebook/webhook-auth.ts`
+- `apps/web/lib/facebook/__tests__/webhook-auth.test.ts`
 - `apps/web/lib/auth/api-guards.ts`
 - `apps/web/lib/auth/request-secret.ts`
 - `apps/web/lib/auth/__tests__/request-secret.test.ts`
 
 Access-control flow:
 
-1. Meta webhooks validate Meta signatures when `FACEBOOK_APP_SECRET` is configured.
+1. Meta webhooks require a configured `FACEBOOK_APP_SECRET` in production, reject unsigned or invalid signatures, and fail closed before service-role work if the secret is missing.
 2. `/api/admin/sales/facebook/alert` now requires either `CRON_SECRET` via `x-cron-secret`/Bearer token or an authenticated admin/sales-agent session before any Twilio alert attempt.
 3. `/api/admin/sales/facebook/daily-score` now requires `CRON_SECRET` or authenticated admin before service-role scoring work.
 4. `/api/admin/system/apex` now requires `CRON_SECRET` or authenticated admin before the multi-agent orchestration sweep can run.
-5. Shared request-secret parsing is isolated in `apps/web/lib/auth/request-secret.ts` and covered by focused tests.
+5. Webhook verify-token handling requires `FACEBOOK_WEBHOOK_VERIFY_TOKEN`/legacy `FACEBOOK_VERIFY_TOKEN` in production and no longer uses a production default token.
+6. Shared Meta signature/verify-token parsing is isolated in `apps/web/lib/facebook/webhook-auth.ts` and covered by focused tests.
+7. Shared request-secret parsing is isolated in `apps/web/lib/auth/request-secret.ts` and covered by focused tests.
 
 ### Deployment And CI
 
@@ -473,7 +478,37 @@ Validation:
 
 Residual risk:
 
-- Meta webhook signature behavior still needs a dedicated hardening pass to fail closed in production when Meta app secrets are missing, even though Vercel currently lists the required Facebook env names.
+- No live Meta webhook was invoked. Provider validation should use signed sample payloads or Meta test tooling before any production Facebook automation is trusted.
+
+### RESOLVED: Meta Webhooks Could Process Unsigned Payloads When App Secret Was Missing
+
+Original evidence before fix:
+
+- `apps/web/app/api/webhooks/facebook/route.ts` skipped signature enforcement when `FACEBOOK_APP_SECRET` was absent and used a default verify token.
+- `apps/web/app/api/facebook/webhook/route.ts` skipped signature enforcement when `FACEBOOK_APP_SECRET` was absent and could process Messenger/comment payloads with service-role data access.
+
+Why it mattered:
+
+These are public provider webhook routes. In production, missing Meta secrets should disable trust rather than allowing unsigned payloads to create Facebook leads, messages, alerts, or internal automation attempts.
+
+Fix applied:
+
+- Added `apps/web/lib/facebook/webhook-auth.ts` for timing-safe Meta SHA-256 signature validation and verify-token resolution.
+- Added focused tests for valid signatures, invalid signatures, production missing-secret failure, development local allowance, verify-token precedence, and production missing-token failure.
+- Updated both Facebook webhook POST routes to reject unsigned/invalid payloads before service-role work.
+- Updated both Facebook webhook GET verification handlers to fail closed in production if no verify token is configured.
+
+Validation:
+
+- `pnpm exec vitest run apps/web/lib/facebook/__tests__/webhook-auth.test.ts` passed.
+- `pnpm test` passed.
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
+
+Residual risk:
+
+- No live Meta webhook was invoked. Validate only with signed provider/test payloads before trusting Facebook production automation.
 
 ### MEDIUM: Stripe API Version Needs Scheduled Upgrade Review
 
@@ -528,6 +563,7 @@ Validation:
 - Twilio status webhook now returns retryable 503 for telemetry insert/handler failures after signature validation.
 - Inbound SMS reply webhook signature validation and unmatched-reply retry decisions are covered by focused helper tests.
 - Inbound SMS reply webhook now returns retryable 503 for unmatched replies when the revenue messaging bridge fails or misses the event ledger.
+- Facebook webhook signature validation and production missing-secret/verify-token behavior are covered by focused helper tests.
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
@@ -541,12 +577,13 @@ Validation:
 5. Validate Twilio status insert with a signed sample request and no live SMS send.
 6. Validate inbound SMS reply handling with signed sample requests, including unmatched-number bridge failure behavior, and no live SMS send.
 7. Validate Postmark webhook with sample payloads and test Basic Auth.
-8. Probe Facebook/APEX admin automation POSTs without credentials and expect 401/403 without service-role mutations or SMS sends.
-9. Add admin health checks for provider telemetry freshness, not just table readability.
-10. Only then perform provider-level test-mode checks.
+8. Probe Facebook webhook POSTs without signatures and expect 401/503 without service-role mutations or Facebook sends.
+9. Probe Facebook/APEX admin automation POSTs without credentials and expect 401/403 without service-role mutations or SMS sends.
+10. Add admin health checks for provider telemetry freshness, not just table readability.
+11. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, inbound SMS reply capture, and Postmark callback durability risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, inbound SMS reply capture, Postmark callback durability, Meta webhook fail-closed, and admin automation access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.

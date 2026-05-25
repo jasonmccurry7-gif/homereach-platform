@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
-import crypto from "crypto";
+import {
+  resolveFacebookWebhookVerifyToken,
+  validateFacebookWebhookSignature,
+} from "@/lib/facebook/webhook-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +97,14 @@ export async function GET(req: Request) {
   const token  = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
 
-  const verifyToken = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN;
+  const verifyToken = resolveFacebookWebhookVerifyToken({
+    primary: process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN,
+    legacy: process.env.FACEBOOK_VERIFY_TOKEN,
+  });
+  if (!verifyToken) {
+    return new NextResponse("Facebook verify token not configured", { status: 503 });
+  }
+
   if (mode === "subscribe" && token === verifyToken && challenge) {
     return new NextResponse(challenge, { status: 200 });
   }
@@ -103,27 +113,24 @@ export async function GET(req: Request) {
 
 // ── Main webhook handler ──────────────────────────────────────────────────────
 export async function POST(req: Request) {
-  // Verify Meta signature
-  const appSecret = process.env.FACEBOOK_APP_SECRET;
-  if (appSecret) {
-    const signature = req.headers.get("x-hub-signature-256") ?? "";
-    const rawBody   = await req.text();
-    const expected  = "sha256=" + crypto
-      .createHmac("sha256", appSecret)
-      .update(rawBody)
-      .digest("hex");
-    if (signature !== expected) {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
-    // Re-parse since we consumed the body
-    try {
-      const payload = JSON.parse(rawBody);
-      await processWebhookPayload(payload);
-    } catch { /* ignore parse errors */ }
-  } else {
-    // No signature check in dev
-    const payload = await req.json().catch(() => null);
-    if (payload) await processWebhookPayload(payload);
+  const rawBody = await req.text();
+  const signatureValidation = validateFacebookWebhookSignature({
+    rawBody,
+    signature: req.headers.get("x-hub-signature-256"),
+    appSecret: process.env.FACEBOOK_APP_SECRET,
+  });
+
+  if (!signatureValidation.ok) {
+    return new NextResponse(signatureValidation.error, {
+      status: signatureValidation.status,
+    });
+  }
+
+  try {
+    const payload = JSON.parse(rawBody);
+    await processWebhookPayload(payload);
+  } catch {
+    return new NextResponse("Invalid JSON", { status: 400 });
   }
 
   return new NextResponse("EVENT_RECEIVED", { status: 200 });

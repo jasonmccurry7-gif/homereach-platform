@@ -206,6 +206,25 @@ Validation: focused request-secret tests, full test suite, typecheck, web lint, 
 
 Approval needed: no for access-control hardening; yes before any live automation send/provider validation.
 
+### Resolved: Meta/Facebook Webhooks Could Process Unsigned Payloads When Secret Was Missing
+
+What was wrong: public Facebook webhook POST routes skipped signature enforcement when `FACEBOOK_APP_SECRET` was missing; one route also used a default verify token fallback.
+
+Why it mattered: missing Meta secrets in production should stop trust at the edge. Otherwise unsigned payloads could reach service-role Facebook lead/message handling or internal alert paths.
+
+Files:
+
+- `apps/web/app/api/webhooks/facebook/route.ts`
+- `apps/web/app/api/facebook/webhook/route.ts`
+- `apps/web/lib/facebook/webhook-auth.ts`
+- `apps/web/lib/facebook/__tests__/webhook-auth.test.ts`
+
+Fix applied: added a shared timing-safe Meta webhook auth helper, required `FACEBOOK_APP_SECRET` in production before accepting POST payloads, rejected invalid/missing signatures before service-role work, and required a configured verify token in production for Meta subscription handshakes.
+
+Validation: focused Facebook webhook auth tests, full test suite, typecheck, web lint, and web build passed locally after the change.
+
+Approval needed: no for fail-closed hardening; yes before live Meta webhook validation or any Facebook send/reply automation.
+
 ### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.

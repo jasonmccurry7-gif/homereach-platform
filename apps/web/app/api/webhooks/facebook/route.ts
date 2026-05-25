@@ -1,7 +1,10 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
-import { createHmac } from "crypto";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import {
+  resolveFacebookWebhookVerifyToken,
+  validateFacebookWebhookSignature,
+} from "@/lib/facebook/webhook-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +15,11 @@ export const dynamic = "force-dynamic";
 // POST — Receives Facebook events (comments, messages, mentions, etc.)
 //
 // SETUP NOTES:
-//   1. Set FACEBOOK_VERIFY_TOKEN in your environment (any random string you pick)
+//   1. Set FACEBOOK_WEBHOOK_VERIFY_TOKEN in your environment (any random string you pick)
 //   2. Set FACEBOOK_APP_SECRET in your environment (from FB App Dashboard)
 //   3. Register this URL in Meta App Dashboard:
 //      Callback URL: https://home-reach.com/api/webhooks/facebook
-//      Verify Token: (matches FACEBOOK_VERIFY_TOKEN)
+//      Verify Token: (matches FACEBOOK_WEBHOOK_VERIFY_TOKEN)
 //   4. Subscribe to events: messages, comments, feed, mention
 //
 // Currently configured to:
@@ -30,21 +33,8 @@ export const dynamic = "force-dynamic";
 // Until then, events will only arrive from the app's test users.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN ?? process.env.FACEBOOK_VERIFY_TOKEN ?? "homereach-fb-verify";
-const APP_SECRET   = process.env.FACEBOOK_APP_SECRET ?? "";
 const BASE_URL     = getPublicAppBaseUrl();
 const CRON_SECRET  = process.env.CRON_SECRET ?? "";
-
-// ── Signature verification ─────────────────────────────────────────────────
-function verifySignature(rawBody: string, signature: string | null): boolean {
-  if (!APP_SECRET || !signature) return false;
-  const [algo, hash] = signature.split("=");
-  if (algo !== "sha256") return false;
-  const expected = createHmac("sha256", APP_SECRET)
-    .update(rawBody, "utf8")
-    .digest("hex");
-  return hash === expected;
-}
 
 // ── Classify incoming event for alert routing ──────────────────────────────
 function classifyEvent(entry: {
@@ -94,8 +84,19 @@ export async function GET(req: Request) {
   const mode      = searchParams.get("hub.mode");
   const token     = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
+  const verifyToken = resolveFacebookWebhookVerifyToken({
+    primary: process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN,
+    legacy: process.env.FACEBOOK_VERIFY_TOKEN,
+  });
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN && challenge) {
+  if (!verifyToken) {
+    return NextResponse.json(
+      { error: "Facebook verify token not configured" },
+      { status: 503 }
+    );
+  }
+
+  if (mode === "subscribe" && token === verifyToken && challenge) {
     console.log("[FB Webhook] Verified subscription");
     return new Response(challenge, { status: 200, headers: { "Content-Type": "text/plain" } });
   }
@@ -107,11 +108,18 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const rawBody  = await req.text();
   const signature = req.headers.get("x-hub-signature-256");
+  const signatureValidation = validateFacebookWebhookSignature({
+    rawBody,
+    signature,
+    appSecret: process.env.FACEBOOK_APP_SECRET,
+  });
 
-  // Verify signature in production (skip in dev if APP_SECRET not set)
-  if (APP_SECRET && !verifySignature(rawBody, signature)) {
-    console.warn("[FB Webhook] Invalid signature");
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  if (!signatureValidation.ok) {
+    console.warn("[FB Webhook]", signatureValidation.error);
+    return NextResponse.json(
+      { error: signatureValidation.error },
+      { status: signatureValidation.status }
+    );
   }
 
   let payload: {
