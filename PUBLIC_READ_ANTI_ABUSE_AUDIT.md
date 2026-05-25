@@ -54,7 +54,9 @@ Behavior intentionally preserved:
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 247 static pages.
 - Hosted Vercel preview probe returned 400 for spot-resolution missing parameters with `RateLimit-Limit: 120`, `RateLimit-Remaining: 119`, and `RateLimit-Reset: 60`.
 - Hosted availability preview probes returned 400 for missing/invalid parameters with `RateLimit-Limit: 120`, `RateLimit-Remaining` decrementing, and `RateLimit-Reset: 60`.
-- Hosted political route coverage validation is pending until the patch deploys.
+- GitHub Actions `Validate` run #54 passed after the political route coverage patch.
+- Vercel preview deployment `dpl_45dw7h9yCUfi9Mb9pokUkPzp25Pq` reached `READY` for commit `050017349539e51dc77b3ca6412d107aee80e7e0`.
+- Hosted political route coverage probe on `https://homereach-platform-r2au0s1kr-jason-mccurrys-projects.vercel.app/api/political/routes/coverage` returned 200 with empty read-only coverage, the expected "Enter a two-letter state code to load route coverage." note, and `RateLimit-Limit: 120`, `RateLimit-Remaining: 119`, and `RateLimit-Reset: 60`.
 
 ## Remaining Risk
 
