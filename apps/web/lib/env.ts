@@ -126,6 +126,11 @@ const ENV_SPECS: EnvSpec[] = [
     productionOnly: false,
   },
   {
+    key: "OUTREACH_TWILIO_MESSAGING_SERVICE_SID",
+    required: false,
+    productionOnly: false,
+  },
+  {
     key: "OWNER_PERSONAL_EMAIL",
     required: true,
     productionOnly: true,
@@ -316,9 +321,10 @@ export function validateEnv(): void {
   const hasTwilioSender =
     process.env.OUTREACH_SMS_FROM_NUMBER ||
     process.env.TWILIO_PHONE_NUMBER ||
+    process.env.OUTREACH_TWILIO_MESSAGING_SERVICE_SID ||
     process.env.TWILIO_MESSAGING_SERVICE_SID;
   if (process.env.TWILIO_ACCOUNT_SID && !hasTwilioSender) {
-    missing.push("OUTREACH_SMS_FROM_NUMBER, TWILIO_PHONE_NUMBER, or TWILIO_MESSAGING_SERVICE_SID (at least one required)");
+    missing.push("OUTREACH_SMS_FROM_NUMBER, TWILIO_PHONE_NUMBER, OUTREACH_TWILIO_MESSAGING_SERVICE_SID, or TWILIO_MESSAGING_SERVICE_SID (at least one required)");
   }
 
   const emailProvider = (process.env.EMAIL_PROVIDER ?? "resend").toLowerCase();

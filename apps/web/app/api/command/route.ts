@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getApprovedSenders(): Set<string> {
-  const extra = (process.env.APEX_APPROVED_SENDERS ?? "")
+  const extra = (process.env.APEX_APPROVED_SENDERS ?? process.env.APEX_APPROVED_SENDER ?? "")
     .split(",").map(s => s.trim()).filter(Boolean);
   return new Set([getOwnerIdentity().cellPhone, ...extra]); // owner personal cell only
 }

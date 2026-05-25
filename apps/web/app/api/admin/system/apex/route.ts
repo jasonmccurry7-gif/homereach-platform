@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes — orchestrator runs all agents
@@ -21,7 +22,7 @@ export const maxDuration = 300; // 5 minutes — orchestrator runs all agents
 //   9. Atlas/Sentinel/Sync (status reports only)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://home-reach.com";
+const BASE_URL = getPublicAppBaseUrl();
 
 type AgentResult = {
   agent: string;

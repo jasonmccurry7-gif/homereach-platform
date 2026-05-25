@@ -25,6 +25,7 @@ Date: 2026-05-25
 - Pushed provider audit documentation to the draft PR.
 - Created `ENVIRONMENT_VARIABLES_AUDIT.md` from local templates, code references, and Vercel name-only metadata without exposing secret values.
 - Confirmed Vercel production/preview/development contain all static startup-required env names from `apps/web/lib/env.ts`.
+- Added safe env-alias compatibility readers for internal agent base URLs, Apex approved senders, SerpAPI/Hunter provider names, and Twilio messaging-service naming.
 
 ## Validation
 
@@ -34,7 +35,8 @@ Date: 2026-05-25
 - Local focused Postmark webhook helper test: passed, 7 tests.
 - Local focused Twilio status webhook helper test: passed, 5 tests.
 - Local focused provider telemetry health test: passed, 5 tests.
-- Local `pnpm test`: passed, 130 tests.
+- Local focused app URL helper test: passed, 3 tests.
+- Local `pnpm test`: passed, 133 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
@@ -51,8 +53,8 @@ Date: 2026-05-25
 
 - Medium: targeted checkout billing copy references ongoing monthly billing while Stripe uses one-time `payment` mode.
 - Medium: main bundle checkout still routes monthly-priced bundle purchases through one-time payment mode.
-- High: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; at least one route can fall back to `http://localhost:3000`.
-- High: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`.
+- Medium: `NEXTAUTH_URL` is referenced by agent orchestration routes but is not listed in production Vercel; the worst localhost-only agent fallbacks now use `NEXT_PUBLIC_APP_URL`, but Vercel should still get the canonical name.
+- Medium: provider aliases drift in Vercel/code for `SERP_API` vs `SERPAPI_KEY`, `HUNTER` vs `HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` vs `APEX_APPROVED_SENDERS`; compatibility readers are now in place, but canonical Vercel names still need cleanup.
 - High conditional: `RESEND_API_KEY` is not listed in Vercel; safe only if the hidden `EMAIL_PROVIDER` value is not `resend`.
 - Tooling: Stripe CLI is installed, but Stripe provider-tool validation is still blocked on test/sandbox authentication and isolated env setup.
 - Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; the branch-preview build passed for current pushed head `26db14d`.

@@ -53,7 +53,7 @@ const CATEGORY_QUERIES: Record<string, string[]> = {
 
 // ── SerpAPI call ──────────────────────────────────────────────────────────────
 async function searchGoogleMaps(query: string, city: string): Promise<SerpResult[]> {
-  const apiKey = process.env.SERPAPI_KEY;
+  const apiKey = process.env.SERPAPI_KEY ?? process.env.SERP_API;
   if (!apiKey) return [];
 
   try {
@@ -76,7 +76,7 @@ async function searchGoogleMaps(query: string, city: string): Promise<SerpResult
 
 // ── Hunter.io email finder ─────────────────────────────────────────────────────
 async function findEmail(businessName: string, domain?: string): Promise<string | null> {
-  const apiKey = process.env.HUNTER_API_KEY;
+  const apiKey = process.env.HUNTER_API_KEY ?? process.env.HUNTER;
   if (!apiKey || !domain) return null;
 
   try {

@@ -14,6 +14,7 @@ Scope: local checkout plus Vercel project metadata for `homereach-platform-web`.
 - Static startup-required variables from `apps/web/lib/env.ts` are present by name in production, preview, and development.
 - `TARGETED_CHECKOUT_SIGNING_SECRET` is present as a sensitive variable in production and as a branch-scoped sensitive preview variable for `codex/current-main-audit-20260524`.
 - Branch preview and GitHub Actions have already passed with the current env hardening branch, but provider-live validation remains pending.
+- Follow-up compatibility repair added after this audit: internal agent calls now fall back through `NEXT_PUBLIC_APP_URL` before localhost, Apex accepts both approved-sender env names, SerpAPI/Hunter readers accept the legacy Vercel aliases, and Twilio messaging-service validation accepts both naming conventions.
 
 ## Sources Inspected
 
@@ -136,7 +137,9 @@ Safest fix: verify the provider value in the Vercel dashboard or with a value-sa
 
 Impact: production agent orchestration can call `localhost` inside a Vercel function instead of the deployed app URL.
 
-Safest fix: add `NEXTAUTH_URL` to Vercel production/preview with the canonical deployed origin, or change the fallback to `NEXT_PUBLIC_APP_URL` after a focused route audit.
+Repair status: code now uses `getInternalAppBaseUrl()` for the run/closer/anchor agent event calls that had the localhost-only fallback.
+
+Safest remaining fix: add `NEXTAUTH_URL` to Vercel production/preview with the canonical deployed origin so every route and future script has an explicit internal origin.
 
 ### HIGH: Prospecting API Aliases Are Split
 
@@ -144,7 +147,9 @@ Production Vercel has `SERP_API` and `HUNTER`, while code expects `SERPAPI_KEY` 
 
 Impact: prospecting/candidate search can appear configured in Vercel while runtime code treats the providers as missing.
 
-Safest fix: add canonical `SERPAPI_KEY` and `HUNTER_API_KEY` if those providers are approved for use, then leave legacy aliases in place until confirmed unused.
+Repair status: scraper and political candidate SerpAPI readers now accept `SERP_API` as a compatibility alias, and the scraper accepts `HUNTER` as a compatibility alias.
+
+Safest remaining fix: add canonical `SERPAPI_KEY` and `HUNTER_API_KEY` if those providers are approved for use, then leave legacy aliases in place until confirmed unused.
 
 ### MEDIUM: Twilio Messaging Service Alias Is Split
 
@@ -152,7 +157,9 @@ Safest fix: add canonical `SERPAPI_KEY` and `HUNTER_API_KEY` if those providers 
 
 Impact: not a current startup blocker because `TWILIO_PHONE_NUMBER` and `OUTREACH_SMS_FROM_NUMBER` are present, but messaging-service/A2P routing is not configured by name.
 
-Safest fix: choose one canonical name, keep the compatibility alias, and update `turbo.json`, templates, and docs together.
+Repair status: production env validation now accepts both `OUTREACH_TWILIO_MESSAGING_SERVICE_SID` and `TWILIO_MESSAGING_SERVICE_SID`.
+
+Safest remaining fix: choose one canonical name operationally, keep the compatibility alias, and only configure a real messaging-service SID after Twilio/A2P validation.
 
 ### MEDIUM: Apex Approved Sender Name Drift
 
@@ -160,7 +167,9 @@ Vercel/turbo list `APEX_APPROVED_SENDER`, while `apps/web/app/api/command/route.
 
 Impact: command sender allowlisting may not use the intended Vercel value.
 
-Safest fix: either add the plural env name or update the route to support both names.
+Repair status: `/api/command` now accepts both `APEX_APPROVED_SENDERS` and `APEX_APPROVED_SENDER`.
+
+Safest remaining fix: configure the plural canonical name in Vercel, then keep the singular name until history is confirmed.
 
 ### MEDIUM: URL Alias Drift
 

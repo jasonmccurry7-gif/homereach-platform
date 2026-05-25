@@ -45,8 +45,19 @@ function getAdminPhone(): string | null {
   return process.env.ADMIN_PHONE ?? getOwnerIdentity().cellPhone;
 }
 
+function normalizeBaseUrl(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\/+$/, "");
+}
+
 function getBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_BASE_URL ?? "https://homereach.com";
+  return (
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ??
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_BASE_URL) ??
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL) ??
+    "https://homereach.com"
+  );
 }
 
 function getFromName(): string {

@@ -168,7 +168,7 @@ export async function sendSms(
 
     if (!smsIdentity.messagingServiceSid && !smsIdentity.fromNumber) {
       throw new Error(
-        "TWILIO_MESSAGING_SERVICE_SID or TWILIO_PHONE_NUMBER is required"
+        "OUTREACH_TWILIO_MESSAGING_SERVICE_SID, TWILIO_MESSAGING_SERVICE_SID, or TWILIO_PHONE_NUMBER is required"
       );
     }
 

@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { createHmac } from "crypto";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export const dynamic = "force-dynamic";
 
 const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN ?? process.env.FACEBOOK_VERIFY_TOKEN ?? "homereach-fb-verify";
 const APP_SECRET   = process.env.FACEBOOK_APP_SECRET ?? "";
-const BASE_URL     = process.env.NEXT_PUBLIC_SITE_URL ?? "https://home-reach.com";
+const BASE_URL     = getPublicAppBaseUrl();
 const CRON_SECRET  = process.env.CRON_SECRET ?? "";
 
 // ── Signature verification ─────────────────────────────────────────────────

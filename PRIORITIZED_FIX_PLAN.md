@@ -76,9 +76,9 @@ Approval needed: Vercel production and the branch preview now have `TARGETED_CHE
 
 ## HIGH
 
-### Environment Name Drift Can Break Provider And Agent Workflows
+### Partially Resolved: Environment Name Drift Can Break Provider And Agent Workflows
 
-What is wrong: Vercel has the static startup-required names, but several runtime paths use aliases that do not match deployed env names. The highest-risk examples are `NEXTAUTH_URL` missing while agent routes can fall back to `http://localhost:3000`, `SERP_API`/`HUNTER` existing while code expects `SERPAPI_KEY`/`HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` existing while code reads `APEX_APPROVED_SENDERS`.
+What was wrong: Vercel has the static startup-required names, but several runtime paths used aliases that did not match deployed env names. The highest-risk examples were `NEXTAUTH_URL` missing while agent routes could fall back to `http://localhost:3000`, `SERP_API`/`HUNTER` existing while code expected `SERPAPI_KEY`/`HUNTER_API_KEY`, and `APEX_APPROVED_SENDER` existing while code read `APEX_APPROVED_SENDERS`.
 
 Why it matters: operators can believe a provider is configured while the live route treats it as missing, and production agent orchestration can call localhost instead of the deployed site.
 
@@ -86,13 +86,22 @@ Files:
 
 - `ENVIRONMENT_VARIABLES_AUDIT.md`
 - `apps/web/app/api/admin/agents/run/route.ts`
+- `apps/web/app/api/admin/agents/anchor/route.ts`
+- `apps/web/app/api/admin/agents/closer/route.ts`
 - `apps/web/app/api/admin/agents/scraper/route.ts`
 - `apps/web/app/api/command/route.ts`
+- `apps/web/lib/runtime/app-url.ts`
+- `apps/web/lib/political/candidate-intelligence/providers/serpapi.ts`
 - `apps/web/lib/env.ts`
+- `packages/services/src/targeted/index.ts`
 - `turbo.json`
 - `.env.example`
 
-Safest fix: first add/verify missing canonical env names in Vercel where the feature is approved, then follow with compatibility readers for legacy aliases. Do not remove legacy Vercel names until history is confirmed.
+Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from the run/closer/anchor agent event calls, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
+
+Validation: focused app URL helper test, full unit suite, typecheck, web lint gate, and web build with non-secret placeholder env all passed locally.
+
+Safest remaining fix: add/verify missing canonical env names in Vercel where the feature is approved. Do not remove legacy Vercel names until history is confirmed.
 
 Risk of fix: low for adding missing names; medium for changing runtime fallback behavior.
 

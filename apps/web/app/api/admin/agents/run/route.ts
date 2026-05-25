@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent Orchestrator — Run all agents in sequence
@@ -32,7 +33,7 @@ async function callAgent(
   duration_ms: number;
 }> {
   const startTime = Date.now();
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const baseUrl = getInternalAppBaseUrl();
 
   try {
     const response = await fetch(
@@ -140,7 +141,7 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const baseUrl = getInternalAppBaseUrl();
     const agents = ["echo", "closer", "anchor"];
     const statuses = await Promise.all(
       agents.map(async (agent) => {
