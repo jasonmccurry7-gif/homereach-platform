@@ -70,6 +70,15 @@ const ENV_SPECS: EnvSpec[] = [
     productionOnly: true,
     dangerIfSet: "whsec_placeholder", // fail loudly if placeholder is still set
   },
+  {
+    // Signs public targeted campaign payment links. Without it, legacy links can
+    // still be verified by customer email, but production links should not trust
+    // a campaign UUID alone.
+    key: "TARGETED_CHECKOUT_SIGNING_SECRET",
+    required: true,
+    productionOnly: true,
+    dangerIfSet: "generate-a-long-random-secret",
+  },
 
   // ── Twilio ──────────────────────────────────────────────────────────────────
   {

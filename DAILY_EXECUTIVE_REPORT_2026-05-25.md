@@ -11,35 +11,39 @@ Date: 2026-05-25
 - Hardened `apps/web/lib/supabase/service.ts` so missing service env fails clearly before creating a Supabase service-role client.
 - Repaired Stripe webhook idempotency so fresh in-flight `received` duplicates return retryable 409 instead of false-success 200.
 - Added focused Stripe idempotency unit tests.
+- Hardened targeted route checkout so public payment links no longer trust a bare campaign UUID.
+- Added signed targeted checkout tokens, a legacy customer-email confirmation fallback, add-on allowlisting, and the production env requirement/template entries for `TARGETED_CHECKOUT_SIGNING_SECRET`.
 - Pushed provider audit documentation to the draft PR.
 
 ## Validation
 
 - Local focused Stripe idempotency test: passed, 7 tests.
-- Local `pnpm test`: passed, 103 tests.
+- Local focused targeted checkout token test: passed, 7 tests.
+- Local `pnpm test`: passed, 110 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
+- Local browser smoke on targeted checkout: passed. No-token checkout links show email confirmation and disable Pay; token-bearing links skip the email prompt and enable Pay.
 - Remote Vercel status for commit `345d4c9`: passed.
 - Remote GitHub Actions `Validate` run #4 for commit `345d4c9`: passed.
 
 ## Revenue And Reliability Risks
 
-- High: targeted route checkout is public and service-role backed, with only `campaignId` as the practical authorization boundary.
 - High: Twilio status webhook may lose delivery telemetry if anon/session Supabase insert is blocked by RLS.
 - Medium: targeted checkout billing copy references ongoing monthly billing while Stripe uses one-time `payment` mode.
 - Medium: main bundle checkout still routes monthly-priced bundle purchases through one-time payment mode.
 - Medium: Postmark webhook intentionally acknowledges DB failures; this needs telemetry alerting.
+- Deployment gate: Vercel production must have `TARGETED_CHECKOUT_SIGNING_SECRET` set before this branch can promote safely.
 
 ## Production Readiness Status
 
 Current status: stabilization branch is build/CI ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior now has a tested branch fix, but targeted checkout authorization, communication telemetry durability, and Stripe/Twilio/email test-mode validation still need completion.
+Reason: payment webhook retry behavior and targeted checkout authorization now have tested branch fixes, but communication telemetry durability and Stripe/Twilio/email test-mode validation still need completion.
 
 ## Recommended Next Actions
 
-1. Add signed-token protection for public targeted checkout links.
+1. Set `TARGETED_CHECKOUT_SIGNING_SECRET` in Vercel production/preview before promoting this branch.
 2. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
 3. Harden Twilio status inserts after signature validation.
 4. Add provider telemetry health checks for webhook logging tables.

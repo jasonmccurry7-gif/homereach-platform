@@ -117,7 +117,11 @@ function IntakeFormInner() {
         return;
       }
 
-      router.push(`/targeted/checkout?campaign=${data.campaign.id}`);
+      const checkoutParams = new URLSearchParams({ campaign: data.campaign.id });
+      if (data.campaign.checkoutToken) {
+        checkoutParams.set("token", data.campaign.checkoutToken);
+      }
+      router.push(`/targeted/checkout?${checkoutParams.toString()}`);
     } catch {
       setError("Network error. Please check your connection and try again.");
       setLoading(false);

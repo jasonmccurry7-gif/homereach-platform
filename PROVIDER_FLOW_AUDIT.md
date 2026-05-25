@@ -12,8 +12,8 @@ The branch is much healthier than the original laptop-migration state: install, 
 
 The most important remaining items to fix next are:
 
-1. Targeted route checkout is a public service-role-backed route that updates a campaign row when given only a campaign UUID.
-2. Twilio status telemetry can be lost if RLS blocks anon inserts from provider webhooks.
+1. Twilio status telemetry can be lost if RLS blocks anon inserts from provider webhooks.
+2. Billing intent still needs confirmation where monthly language is paired with one-time Stripe payment sessions.
 
 ## Provider Surface Map
 
@@ -37,11 +37,14 @@ Primary checkout flow:
 
 Targeted route checkout flow:
 
-1. Public caller posts `campaignId` and optional `addons` to `/api/stripe/targeted-checkout`.
-2. Route uses Supabase service role client to read `targeted_route_campaigns`.
-3. Route creates a Stripe Checkout session in `payment` mode.
-4. Route writes `stripe_checkout_session_id` back to the campaign row.
-5. User is redirected to Stripe via returned session URL.
+1. Intake creates a targeted campaign and returns a signed checkout token when `TARGETED_CHECKOUT_SIGNING_SECRET` is configured.
+2. Confirmation email links include the same signed token when the signing secret exists.
+3. Public caller posts `campaignId`, `checkoutToken` or matching `checkoutEmail`, and optional `addons` to `/api/stripe/targeted-checkout`.
+4. Route uses Supabase service role client to read `targeted_route_campaigns`.
+5. Route rejects checkout unless the signed token validates for the campaign/email or the submitted email matches the campaign email.
+6. Route filters add-ons to the known catalog before creating a Stripe Checkout session in `payment` mode.
+7. Route writes `stripe_checkout_session_id` back to the campaign row.
+8. User is redirected to Stripe via returned session URL.
 
 Stripe webhook flow:
 
@@ -183,27 +186,44 @@ Fix applied:
 
 Validation: covered by the same local test/typecheck/lint/build pass listed above.
 
-### HIGH: Targeted Checkout Is Public And Service-Role Backed
+### RESOLVED: Targeted Checkout Trusted A Bare Campaign UUID
 
-Evidence:
+Original evidence before fix:
 
-- `apps/web/app/api/stripe/targeted-checkout/route.ts:15` exposes public `POST`.
-- `apps/web/app/api/stripe/targeted-checkout/route.ts:17` accepts only `campaignId` and `addons`.
-- `apps/web/app/api/stripe/targeted-checkout/route.ts:23` creates a Supabase service-role client.
-- `apps/web/app/api/stripe/targeted-checkout/route.ts:102` writes `stripe_checkout_session_id` to the campaign row.
+- `apps/web/app/api/stripe/targeted-checkout/route.ts` exposed public `POST`.
+- The route accepted only `campaignId` and `addons`.
+- The route created a Supabase service-role client.
+- The route wrote `stripe_checkout_session_id` to the campaign row.
 
 Why it matters:
 
 Anyone who obtains or guesses a campaign UUID can create checkout sessions and update that campaign's Stripe checkout session ID. This may be intended for quote-payment links, but it needs a signed token, ownership check, or another explicit authorization mechanism.
 
-Safest fix:
+Fix applied:
 
-- Introduce signed checkout tokens for public payment links.
-- Validate campaign status, token expiry, and token audience before creating a session.
-- Rate-limit the route.
-- Keep service-role access server-side, but only after token validation.
+- Added `packages/services/src/targeted/checkout-token.ts` with HMAC-signed, expiring targeted checkout tokens.
+- Added focused token unit tests in `packages/services/src/targeted/__tests__/checkout-token.test.ts`.
+- Updated targeted intake API and confirmation emails to include signed checkout tokens when `TARGETED_CHECKOUT_SIGNING_SECRET` exists.
+- Updated the checkout page so legacy/no-token links require the customer to confirm the campaign email before checkout can start.
+- Updated `/api/stripe/targeted-checkout` to require either a valid token or matching customer email before service-role-backed Stripe session creation.
+- Filtered posted add-ons to the known add-on catalog before creating Stripe metadata/line items.
+- Preserved valid tokens on Stripe cancel URLs.
+- Added `TARGETED_CHECKOUT_SIGNING_SECRET` to production env validation and Turbo global env tracking.
+- Added `TARGETED_CHECKOUT_SIGNING_SECRET` placeholders to the env example/template files.
 
-Risk of fix: medium.
+Validation:
+
+- `pnpm exec vitest run packages/services/src/targeted/__tests__/checkout-token.test.ts` passed.
+- `pnpm test` passed with 110 tests.
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings only.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env including `TARGETED_CHECKOUT_SIGNING_SECRET`.
+- Browser smoke against local `next start`: no-token checkout link showed email confirmation with Pay disabled; token-bearing link hid the email prompt and enabled Pay.
+
+Residual risk:
+
+- Production must set `TARGETED_CHECKOUT_SIGNING_SECRET` before deploying this branch.
+- Route-level rate limiting is still recommended as a separate hardening pass.
 
 ### MEDIUM: Targeted Checkout Promises Monthly Billing But Uses One-Time Payment Mode
 
@@ -350,4 +370,4 @@ Validation:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes code validation and hosted smoke checks, and the Stripe retry-drop risk has a tested branch fix. Public targeted checkout authorization, Twilio telemetry durability, and provider test-mode validation still need completion before production-sensitive flows are trusted.
+Reason: the branch passes code validation and hosted smoke checks, and the Stripe retry-drop plus public targeted checkout authorization risks have tested branch fixes. Twilio telemetry durability, provider test-mode validation, and the `TARGETED_CHECKOUT_SIGNING_SECRET` production env setup still need completion before production-sensitive flows are trusted.

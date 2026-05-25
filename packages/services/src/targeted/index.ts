@@ -12,6 +12,9 @@ import {
   sendEmail,
   sendSms,
 } from "../outreach/index";
+import { createTargetedCheckoutToken } from "./checkout-token";
+
+export * from "./checkout-token";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -239,7 +242,13 @@ export async function sendIntakeConfirmationToCustomer(campaign: {
 }) {
   const firstName = campaign.contactName?.split(" ")[0] ?? "there";
   const baseUrl = getBaseUrl();
-  const checkoutUrl = `${baseUrl}/targeted/checkout?campaign=${campaign.campaignId}`;
+  const checkoutParams = new URLSearchParams({ campaign: campaign.campaignId });
+  const checkoutToken = createTargetedCheckoutToken({
+    campaignId: campaign.campaignId,
+    email: campaign.email,
+  });
+  if (checkoutToken) checkoutParams.set("token", checkoutToken);
+  const checkoutUrl = `${baseUrl}/targeted/checkout?${checkoutParams.toString()}`;
 
   const subject = `We got your info — here's your checkout link`;
   const html = `

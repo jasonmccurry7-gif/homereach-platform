@@ -44,23 +44,33 @@ Risk of fix: medium to high if pointed at live providers or production data.
 
 Approval needed: yes for any provider-mutating or production-data test.
 
-## HIGH
+### Resolved: Targeted Route Checkout Trusted A Bare Campaign UUID
 
-### Targeted Route Checkout Is Public And Service-Role Backed
+What was wrong: `/api/stripe/targeted-checkout` accepted only `campaignId`/`addons`, used the Supabase service-role client, created a Stripe Checkout session, and wrote `stripe_checkout_session_id` to the campaign row.
 
-What is wrong: `/api/stripe/targeted-checkout` accepts only `campaignId`/`addons`, uses the Supabase service-role client, creates a Stripe Checkout session, and writes `stripe_checkout_session_id` to the campaign row.
-
-Why it matters: anyone with a campaign UUID can attempt to create/update checkout sessions for that campaign. This may be intended for public quote-payment links, but it needs a signed token, ownership check, rate limit, or another explicit authorization boundary.
+Why it mattered: anyone with a campaign UUID could attempt to create/update checkout sessions for that campaign. Public quote-payment links need an explicit proof boundary before service-role-backed payment work.
 
 Files:
 
+- `packages/services/src/targeted/checkout-token.ts`
+- `packages/services/src/targeted/__tests__/checkout-token.test.ts`
+- `packages/services/src/targeted/index.ts`
+- `apps/web/app/api/targeted/intake/route.ts`
+- `apps/web/app/(funnel)/targeted/intake/page.tsx`
+- `apps/web/app/(funnel)/targeted/checkout/page.tsx`
 - `apps/web/app/api/stripe/targeted-checkout/route.ts`
+- `apps/web/lib/env.ts`
+- `.env.example`
+- `apps/web/.env.production.template`
+- `turbo.json`
 
-Safest fix: add signed checkout tokens for public payment links, validate campaign status/token expiry before creating a session, and rate-limit the route. Keep all validation in test mode before live use.
+Fix applied: added HMAC-signed targeted checkout tokens, attached tokens to intake-created and email checkout links, added a customer-email fallback for legacy/no-token links, required token or matching email before Stripe session creation, filtered add-ons to the known catalog, and registered `TARGETED_CHECKOUT_SIGNING_SECRET` as a production env requirement in validation and templates.
 
-Risk of fix: medium.
+Validation: focused token tests, full test suite, typecheck, web lint, web build, and local browser smoke passed.
 
-Approval needed: yes before changing live payment-link behavior.
+Approval needed: production must set `TARGETED_CHECKOUT_SIGNING_SECRET` before deploying this branch; provider-live Stripe testing must remain in test mode first.
+
+## HIGH
 
 ### Twilio Status Webhook May Lose Delivery Telemetry Under RLS
 

@@ -4,7 +4,32 @@
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import {
+  normalizeTargetedCheckoutEmail,
+  verifyTargetedCheckoutToken,
+} from "@homereach/services/targeted";
 import Stripe from "stripe";
+import { z } from "zod";
+
+const ALLOWED_ADDONS = new Set([
+  "door_hangers",
+  "fliers",
+  "yard_signs",
+  "business_cards",
+  "website_setup",
+  "website_maintenance",
+  "sms_automation",
+  "email_automation",
+  "full_automation",
+  "nonprofit",
+]);
+
+const TargetedCheckoutRequestSchema = z.object({
+  campaignId: z.string().uuid(),
+  checkoutToken: z.string().trim().min(1).optional(),
+  checkoutEmail: z.string().trim().email().optional(),
+  addons: z.array(z.string()).optional().default([]),
+});
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -14,7 +39,23 @@ function getStripe() {
 
 export async function POST(req: Request) {
   try {
-    const { campaignId, addons = [] } = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const parsed = TargetedCheckoutRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid input", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { campaignId, checkoutToken, checkoutEmail } = parsed.data;
+    const addons = normalizeAddons(parsed.data.addons);
 
     if (!campaignId) {
       return NextResponse.json({ error: "campaignId required" }, { status: 400 });
@@ -33,6 +74,33 @@ export async function POST(req: Request) {
 
     if (["paid", "mailed", "complete"].includes(campaign.status)) {
       return NextResponse.json({ error: "Campaign is already paid" }, { status: 400 });
+    }
+
+    const campaignEmail = typeof campaign.email === "string" ? campaign.email : "";
+    if (!campaignEmail) {
+      return NextResponse.json(
+        { error: "Campaign email is missing; checkout cannot be verified" },
+        { status: 500 }
+      );
+    }
+
+    const tokenResult = verifyTargetedCheckoutToken(checkoutToken, {
+      campaignId: campaign.id,
+      email: campaignEmail,
+    });
+    const emailProofAccepted =
+      typeof checkoutEmail === "string" &&
+      normalizeTargetedCheckoutEmail(checkoutEmail) ===
+        normalizeTargetedCheckoutEmail(campaignEmail);
+
+    if (!tokenResult.ok && !emailProofAccepted) {
+      return NextResponse.json(
+        {
+          error:
+            "Checkout link could not be verified. Confirm the email used for this campaign and try again.",
+        },
+        { status: 403 }
+      );
     }
 
     const stripe  = getStripe();
@@ -95,7 +163,7 @@ export async function POST(req: Request) {
         addons:       addons.join(","),
       },
       success_url: `${appUrl}/targeted/confirmed?campaign=${campaign.id}`,
-      cancel_url:  `${appUrl}/targeted/checkout?campaign=${campaign.id}&cancelled=true`,
+      cancel_url:  `${appUrl}/targeted/checkout?${buildCancelQuery(campaign.id, tokenResult.ok ? checkoutToken : undefined)}`,
     });
 
     // Save session ID to campaign row
@@ -110,4 +178,27 @@ export async function POST(req: Request) {
     console.error("[api/stripe/targeted-checkout] error:", err);
     return NextResponse.json({ error: err instanceof Error ? err.message : "Server error" }, { status: 500 });
   }
+}
+
+function normalizeAddons(addons: string[]): string[] {
+  const normalized = Array.from(
+    new Set(addons.filter((addon) => ALLOWED_ADDONS.has(addon)))
+  );
+
+  if (normalized.includes("full_automation")) {
+    return normalized.filter(
+      (addon) => addon !== "sms_automation" && addon !== "email_automation"
+    );
+  }
+
+  return normalized;
+}
+
+function buildCancelQuery(campaignId: string, checkoutToken?: string): string {
+  const params = new URLSearchParams({
+    campaign: campaignId,
+    cancelled: "true",
+  });
+  if (checkoutToken) params.set("token", checkoutToken);
+  return params.toString();
 }

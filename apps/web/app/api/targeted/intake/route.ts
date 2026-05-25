@@ -7,6 +7,7 @@ import { db, leads, targetedRouteCampaigns } from "@homereach/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
+  createTargetedCheckoutToken,
   notifyAdminIntakeReceived,
   sendIntakeConfirmationToCustomer,
 } from "@homereach/services/targeted";
@@ -118,6 +119,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to create campaign" }, { status: 500 });
     }
 
+    const checkoutToken = createTargetedCheckoutToken({
+      campaignId: campaign.id,
+      email: campaign.email,
+    });
+
     // ── Update lead status ────────────────────────────────────────────────────
     if (leadId) {
       await db
@@ -153,8 +159,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       campaign: {
-        id:     campaign.id,
-        status: campaign.status,
+        id:            campaign.id,
+        status:        campaign.status,
+        checkoutToken: checkoutToken ?? undefined,
       },
     }, { status: 201 });
 
