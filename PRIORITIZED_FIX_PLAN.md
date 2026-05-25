@@ -26,7 +26,7 @@ Approval needed: yes before Stripe provider testing; local branch code is repair
 
 What is wrong: Stripe, Twilio, email, Supabase, and webhook flows have not been exercised against provider test/dry-run paths on this branch.
 
-Why it matters: these systems can affect payments, customer communication, auth activation, and revenue records.
+Why it matters: these systems can affect payments, customer communication, auth activation, and revenue records. Twilio and Postmark now have local provider-shaped sample-payload coverage, but live provider integrations still need isolated test-mode validation.
 
 Files:
 
@@ -35,6 +35,7 @@ Files:
 - `apps/web/app/api/webhooks/stripe/route.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 - `apps/web/app/api/webhooks/postmark/route.ts`
+- `apps/web/lib/outreach/twilio-status-webhook.ts`
 - `apps/web/lib/supabase/*`
 - `packages/services/src/outreach/*`
 
@@ -81,10 +82,12 @@ Why it mattered: Twilio requests do not have a Supabase user session. If RLS blo
 Files:
 
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
+- `apps/web/lib/outreach/twilio-status-webhook.ts`
+- `apps/web/lib/outreach/__tests__/twilio-status-webhook.test.ts`
 
-Fix applied: after signature validation, the route now uses the Supabase service-role client for the narrow append-only `twilio_message_status` insert and keeps the existing no-send mutation boundary.
+Fix applied: after signature validation, the route now uses the Supabase service-role client for the narrow append-only `twilio_message_status` insert and keeps the existing no-send mutation boundary. Twilio status payload parsing and insert-row mapping are isolated in a helper with provider-shaped sample tests.
 
-Validation: typecheck and web build passed locally after the change.
+Validation: focused Twilio helper tests, full test suite, typecheck, web lint, and web build passed locally after the change.
 
 Approval needed: no for the code change; yes before live Twilio validation or any SMS send.
 
@@ -203,9 +206,9 @@ Files:
 - `apps/web/lib/email/postmark-webhook.ts`
 - `apps/web/lib/email/__tests__/postmark-webhook.test.ts`
 
-Fix applied: event-log insert failures now return retryable 503; lead-status updates remain best-effort after the event is logged; `valid` and `bounced_temporary` updates are filtered so they cannot overwrite `bounced_permanent`, `complained`, or `unsubscribed`.
+Fix applied: event-log insert failures now return retryable 503; lead-status updates remain best-effort after the event is logged; `valid` and `bounced_temporary` updates are filtered so they cannot overwrite `bounced_permanent`, `complained`, or `unsubscribed`. Postmark Basic Auth and email event-row mapping now have local provider-shaped tests.
 
-Validation: focused Postmark helper tests and Turbo typecheck passed locally.
+Validation: focused Postmark helper tests, full test suite, typecheck, web lint, and web build passed locally.
 
 Approval needed: no for the code change; yes before provider-live validation or email sending.
 

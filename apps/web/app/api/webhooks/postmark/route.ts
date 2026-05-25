@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import {
+  buildPostmarkEmailEventInsert,
+  checkPostmarkWebhookAuth,
   classifyPostmarkEvent,
   getLeadEmailStatusWriteFilter,
   normalizePostmarkRecipient,
@@ -39,41 +41,13 @@ import { createServiceClient } from "@/lib/supabase/service";
 //   • Never updates outreach_messages or any send-side table.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PROVIDER = "postmark";
-
 function isAuthorized(req: Request): { ok: boolean; reason?: string } {
-  const expectedUser = process.env.POSTMARK_WEBHOOK_USER;
-  const expectedPass = process.env.POSTMARK_WEBHOOK_PASSWORD;
-  const isProduction = process.env.NODE_ENV === "production";
-
-  if (!expectedUser || !expectedPass) {
-    if (isProduction) {
-      return {
-        ok: false,
-        reason: "POSTMARK_WEBHOOK_USER/PASSWORD not configured in production",
-      };
-    }
-    return { ok: true }; // dev: allow without creds
-  }
-
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("basic ")) {
-    return { ok: false, reason: "missing Basic Auth header" };
-  }
-
-  try {
-    const decoded = Buffer.from(auth.slice(6), "base64").toString("utf8");
-    const sep = decoded.indexOf(":");
-    if (sep === -1) return { ok: false, reason: "malformed Basic Auth" };
-    const user = decoded.slice(0, sep);
-    const pass = decoded.slice(sep + 1);
-    if (user !== expectedUser || pass !== expectedPass) {
-      return { ok: false, reason: "Basic Auth mismatch" };
-    }
-    return { ok: true };
-  } catch {
-    return { ok: false, reason: "Basic Auth decode failed" };
-  }
+  return checkPostmarkWebhookAuth({
+    authorization: req.headers.get("authorization"),
+    expectedUser: process.env.POSTMARK_WEBHOOK_USER,
+    expectedPass: process.env.POSTMARK_WEBHOOK_PASSWORD,
+    isProduction: process.env.NODE_ENV === "production",
+  });
 }
 
 export async function POST(req: Request) {
@@ -103,24 +77,15 @@ export async function POST(req: Request) {
     const supabase = createServiceClient();
 
     // 1. Always log the event
-    const { error: logErr } = await supabase.from("email_events").insert({
-      provider: PROVIDER,
-      event_type: eventType,
-      message_id: payload.MessageID ?? null,
-      recipient,
-      subject: payload.Subject ?? null,
-      bounce_type: bounceType,
-      error_code: payload.TypeCode ? String(payload.TypeCode) : null,
-      error_message: payload.Description ?? payload.Details ?? null,
-      click_url: payload.OriginalLink ?? null,
-      ip: payload.ClientIP ?? payload.IP ?? null,
-      user_agent: payload.UserAgent ?? null,
-      geo_country: payload.Geo?.Country ?? null,
-      geo_region: payload.Geo?.Region ?? null,
-      geo_city: payload.Geo?.City ?? null,
-      tags: payload.Tag ? [payload.Tag] : null,
-      raw_payload: payload as unknown as Record<string, unknown>,
-    });
+    const { error: logErr } = await supabase
+      .from("email_events")
+      .insert(
+        buildPostmarkEmailEventInsert(
+          payload,
+          { eventType, bounceType, leadEmailStatus },
+          recipient,
+        ),
+      );
 
     if (logErr) {
       console.error("[postmark/webhook] insert email_events failed:", logErr.message);

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
+import {
+  buildTwilioMessageStatusInsert,
+  buildTwilioStatusCallbackUrl,
+  parseTwilioStatusForm,
+} from "@/lib/outreach/twilio-status-webhook";
 import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,17 +60,15 @@ export async function POST(req: Request) {
 
     // Read body once for both signature validation and parsing.
     const rawText = await req.text();
-    const params: Record<string, string> = {};
-    for (const [k, v] of new URLSearchParams(rawText)) {
-      params[k] = v;
-    }
+    const params = parseTwilioStatusForm(rawText);
 
     // ── Twilio signature validation ──────────────────────────────────────
     if (authToken) {
       const twilioSignature = req.headers.get("X-Twilio-Signature") ?? "";
-      const url = process.env.NEXT_PUBLIC_APP_URL
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/twilio/status`
-        : req.url;
+      const url = buildTwilioStatusCallbackUrl(
+        req.url,
+        process.env.NEXT_PUBLIC_APP_URL,
+      );
 
       const isValid = twilio.validateRequest(
         authToken,
@@ -94,30 +97,18 @@ export async function POST(req: Request) {
     }
 
     // ── Extract status fields ────────────────────────────────────────────
-    const messageSid = params["MessageSid"] ?? params["SmsSid"] ?? null;
-    const messageStatus =
-      params["MessageStatus"] ?? params["SmsStatus"] ?? null;
+    const statusRow = buildTwilioMessageStatusInsert(params);
 
-    if (!messageSid || !messageStatus) {
+    if (!statusRow) {
       // Not a status callback shape — ack with 200 so Twilio doesn't retry.
       return EMPTY_TWIML;
     }
 
     // ── Insert into twilio_message_status (additive — never updates sends) ──
     const supabase = createServiceClient();
-    const { error } = await supabase.from("twilio_message_status").insert({
-      message_sid:           messageSid,
-      message_status:        messageStatus,
-      error_code:            params["ErrorCode"] ?? null,
-      error_message:         params["ErrorMessage"] ?? null,
-      to_number:             params["To"] ?? null,
-      from_number:           params["From"] ?? null,
-      messaging_service_sid: params["MessagingServiceSid"] ?? null,
-      sms_sid:               params["SmsSid"] ?? null,
-      account_sid:           params["AccountSid"] ?? null,
-      api_version:           params["ApiVersion"] ?? null,
-      raw_payload:           params,
-    });
+    const { error } = await supabase
+      .from("twilio_message_status")
+      .insert(statusRow);
 
     if (error) {
       // Log but still 200 — Twilio retries don't help on a DB issue.

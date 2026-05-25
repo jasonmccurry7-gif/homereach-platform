@@ -8,12 +8,13 @@ Safety posture: this audit is read-only. No provider calls were made, no product
 
 ## Executive Summary
 
-The branch is much healthier than the original laptop-migration state: install, tests, typecheck, lint gate, build, and GitHub Actions validation are passing. The latest Vercel deployment for commit `7ab5d0c` failed before the missing `TARGETED_CHECKOUT_SIGNING_SECRET` project env was repaired, so a fresh deployment is required to verify hosted build readiness.
+The branch is much healthier than the original laptop-migration state: install, tests, typecheck, lint gate, build, GitHub Actions validation, and Vercel preview validation are passing. The Vercel project now has `TARGETED_CHECKOUT_SIGNING_SECRET` configured in production and branch preview scope, with no secret values printed.
 
 The most important remaining items to fix next are:
 
 1. Billing intent still needs confirmation where monthly language is paired with one-time Stripe payment sessions.
 2. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
+3. Twilio and Postmark now have local provider-shaped sample-payload tests, but that is not a substitute for test-mode provider validation.
 
 ## Provider Surface Map
 
@@ -78,6 +79,7 @@ Primary files:
 - `packages/services/src/outreach/index.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 - `apps/web/app/api/webhooks/outreach/sms/route.ts`
+- `apps/web/lib/outreach/twilio-status-webhook.ts`
 
 Outbound SMS flow:
 
@@ -131,9 +133,8 @@ Primary files:
 Observed posture:
 
 - GitHub Actions validation is passing on the current PR head.
-- The latest Vercel deployment for commit `7ab5d0c` failed because `TARGETED_CHECKOUT_SIGNING_SECRET` was missing at build time.
+- The Vercel deployment for commit `2d525aa` passed after the `TARGETED_CHECKOUT_SIGNING_SECRET` env repair.
 - `TARGETED_CHECKOUT_SIGNING_SECRET` is now present as a sensitive Vercel env var in production and in the `codex/current-main-audit-20260524` branch preview environment; values were not printed.
-- A fresh Vercel deployment is required to confirm the repaired project env.
 - `next.config.ts` still ignores Next's internal build-time TypeScript/lint checks, so explicit CI gates remain mandatory.
 - GitHub CLI is installed but not authenticated in this shell; the GitHub connector remains the working PR/Actions path.
 - `/api/admin/outreach/health` now reports provider telemetry freshness and warnings when email/SMS sends exist without recent provider callbacks.
@@ -285,10 +286,14 @@ Fix applied:
 - Switched the route to `createServiceClient()` only after Twilio signature validation.
 - Kept the mutation contract narrow: append-only insert into `twilio_message_status`; no send-side table updates.
 - Updated route comments to document why service-role is used here.
+- Added a pure Twilio status helper and provider-shaped tests for delivered, undelivered, malformed, and signed sample callbacks without sending SMS.
 
 Validation:
 
+- `pnpm exec vitest run apps/web/lib/outreach/__tests__/twilio-status-webhook.test.ts` passed.
+- `pnpm test` passed.
 - `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings.
 - `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
 
 Residual risk:
@@ -311,6 +316,7 @@ Fix applied:
 
 - Added `apps/web/lib/email/postmark-webhook.ts` to isolate Postmark classification, recipient normalization, and lead-status write filters.
 - Added unit tests for delivery, hard bounce, temporary bounce, complaint, unsubscribe, and recipient normalization behavior.
+- Added local tests for Postmark Basic Auth and email event-row mapping using provider-shaped sample data.
 - Updated `/api/webhooks/postmark` so `email_events` insert failures return retryable 503 instead of false-success 200.
 - Kept `sales_leads.email_status` updates best-effort after the event is logged.
 - Constrained `valid` and `bounced_temporary` updates so they cannot overwrite `bounced_permanent`, `complained`, or `unsubscribed`.
@@ -318,7 +324,10 @@ Fix applied:
 Validation:
 
 - `pnpm exec vitest run apps/web/lib/email/__tests__/postmark-webhook.test.ts` passed.
+- `pnpm test` passed.
 - `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
 
 Residual risk:
 
@@ -392,4 +401,4 @@ Validation:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation and GitHub Actions, and the Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. The `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but the hosted Vercel build must be retried and provider test-mode validation still needs completion before production-sensitive flows are trusted.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. The `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.
