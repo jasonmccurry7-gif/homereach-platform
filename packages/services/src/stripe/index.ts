@@ -7,6 +7,7 @@ import type {
   SubscriptionCheckoutPayload,
   PricingSnapshot,
 } from "@homereach/types";
+import { getStripePublicAppBaseUrl } from "./app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stripe Client
@@ -139,7 +140,7 @@ export async function createSubscriptionCheckoutSession(
   payload: SubscriptionCheckoutPayload,
   snapshot: PricingSnapshot
 ): Promise<Stripe.Checkout.Session> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+  const appUrl = getStripePublicAppBaseUrl();
 
   // ── 1. Resolve or create Stripe customer ──────────────────────────────────
   const [business] = await db

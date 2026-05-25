@@ -111,13 +111,15 @@ Files:
 - `apps/web/lib/seo/quality.ts`
 - `apps/web/lib/political/candidate-intelligence/providers/serpapi.ts`
 - `apps/web/lib/env.ts`
+- `packages/services/src/stripe/app-url.ts`
+- `packages/services/src/stripe/__tests__/app-url.test.ts`
 - `packages/services/src/targeted/index.ts`
 - `turbo.json`
 - `.env.example`
 
-Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from runtime admin/agent self-calls, moved APEX command agent routing off the hardcoded production domain, moved payment-adjacent checkout redirects and Stripe post-payment links onto the public resolver, moved SEO metadata/sitemap/robots/auth reset/admin notification/proposal/internal-alert/generated outreach links onto shared resolvers, added Vercel deployment URL fallbacks for missing canonical app URL aliases, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
+Fix applied: added shared internal/public app URL resolver logic, removed localhost-only fallback from runtime admin/agent self-calls, moved APEX command agent routing off the hardcoded production domain, moved payment-adjacent checkout redirects and Stripe post-payment links onto the public resolver, moved the shared Stripe subscription Checkout helper onto package-local resolver logic, moved SEO metadata/sitemap/robots/auth reset/admin notification/proposal/internal-alert/generated outreach links onto shared resolvers, added Vercel deployment URL fallbacks for missing canonical app URL aliases, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
 
-Validation: focused app URL helper test, full unit suite, typecheck, web lint gate, and web build with non-secret placeholder env all passed locally.
+Validation: focused app URL helper tests, focused Stripe app URL resolver test, full unit suite, typecheck, web lint gate, and web build with non-secret placeholder env all passed locally.
 
 Safest remaining fix: add/verify missing canonical env names in Vercel where the feature is approved. Do not remove legacy Vercel names until history is confirmed.
 

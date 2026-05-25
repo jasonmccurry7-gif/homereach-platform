@@ -16,7 +16,7 @@ The most important remaining items to fix next are:
 2. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
 3. Stripe now has synthetic SDK-signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload tests, but those are not substitutes for provider test-mode validation.
 
-Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through the shared app URL resolver instead of scattered hardcoded domains. The resolver also falls back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
+Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
 ## Provider Surface Map
 
@@ -27,6 +27,8 @@ Primary files:
 - `apps/web/app/api/stripe/checkout/route.ts`
 - `apps/web/app/api/stripe/targeted-checkout/route.ts`
 - `apps/web/app/api/webhooks/stripe/route.ts`
+- `packages/services/src/stripe/app-url.ts`
+- `packages/services/src/stripe/__tests__/app-url.test.ts`
 - `packages/services/src/stripe/__tests__/webhook-signature.test.ts`
 - `packages/services/src/stripe/index.ts`
 
@@ -263,6 +265,7 @@ Fix applied:
 - Updated Stripe line-item descriptions to describe first-month add-on charges and separate ongoing activation.
 - Updated `/api/stripe/targeted-checkout` to use the shared public app URL resolver instead of reading only `NEXT_PUBLIC_APP_URL`.
 - Updated active spot checkout, legacy Stripe checkout, intelligence checkout, and Stripe post-payment webhook links to use the same shared public app URL resolver.
+- Updated the shared `createSubscriptionCheckoutSession` helper to use package-local app URL resolver logic with canonical alias and Vercel deployment URL fallbacks.
 
 Residual risk:
 
@@ -278,6 +281,7 @@ Evidence:
 - `apps/web/app/api/stripe/checkout/route.ts:185` confirms current checkout uses `mode:"payment"`.
 - `packages/services/src/stripe/index.ts:53` defines `createOneTimeCheckoutSession`.
 - `packages/services/src/stripe/index.ts:138` already defines `createSubscriptionCheckoutSession`, but the main route does not use it yet.
+- `createSubscriptionCheckoutSession` now uses package-local app URL resolver logic for future success/cancel URLs, but the legacy route still does not call it.
 - Repo search found no current caller for `/api/stripe/checkout`.
 - The active get-started spot checkout posts to `/api/spots/checkout`, which uses `mode: "subscription"` and recurring monthly line items.
 
