@@ -227,7 +227,7 @@ Approval needed: no for data minimization; yes before launching broader politica
 
 ### Partially Resolved: Public Political Endpoints Lacked Basic Anti-Abuse Controls
 
-What was wrong: public political candidate search and map-plan save endpoints had input-size/data-minimization controls, but no request-rate guard before service-role lookup or public request-body processing.
+What was wrong: public political candidate search, map-plan save, and candidate-agent chat endpoints had input-size/data-minimization/kill-switch controls, but no request-rate guard before service-role lookup, public request-body processing, or AI provider work.
 
 Why it mattered: public endpoints that touch service-role-backed workflows can be abused for scraping, noisy database work, or expensive request processing even when business logic is otherwise guarded.
 
@@ -235,14 +235,15 @@ Files:
 
 - `apps/web/app/api/political/candidates/search/route.ts`
 - `apps/web/app/api/political/map-plans/route.ts`
+- `apps/web/app/api/political/candidate-agent/chat/route.ts`
 - `apps/web/lib/security/public-rate-limit.ts`
 - `apps/web/lib/security/__tests__/public-rate-limit.test.ts`
 
-Fix applied: added a small in-process public rate-limit helper keyed by route scope and hashed client IP, then applied it to political candidate search and public map-plan saves. Candidate search allows a generous autocomplete budget; map-plan saves use a tighter save-oriented window. Rejected requests return `429` with rate-limit metadata.
+Fix applied: added a small in-process public rate-limit helper keyed by route scope and hashed client IP, then applied it to political candidate search, public map-plan saves, and public candidate-agent chat. Candidate search allows a generous autocomplete budget; map-plan saves use a tighter save-oriented window; political chat is limited before request parsing or AI provider work. Rejected requests return `429` with rate-limit metadata.
 
 Safest remaining fix: promote this first-layer control into a distributed Vercel Firewall, Edge Config/Redis, or provider-backed limiter before broad public launch. The current helper is intentionally lightweight and per-process; it is not a global quota system across serverless instances.
 
-Validation: focused public rate-limit helper tests, focused ESLint on the helper plus touched political public routes, full unit suite, full workspace typecheck, full web lint, placeholder-env web build, and `git diff --check` passed locally.
+Validation: focused public rate-limit helper tests, focused political candidate chat tests, focused ESLint on the helper plus touched political public routes, full unit suite, full workspace typecheck, full web lint, placeholder-env web build, and `git diff --check` passed locally.
 
 Approval needed: no for defensive route guards; yes before broader WAF/firewall configuration changes or public traffic launch decisions.
 
@@ -263,7 +264,7 @@ Files:
 
 Fix applied: applied the shared public rate-limit helper before body parsing on nonprofit applications, waitlist submissions, targeted campaign leads, targeted lead creation, targeted intake, and tokenized shared-postcard intake. Limits are intentionally generous enough for normal conversion paths and tighter where a route can send internal alerts or customer confirmations.
 
-Safest remaining fix: move these first-layer per-process limits into a distributed traffic-control layer before scaling paid traffic. Continue the same review across payment-adjacent checkout creation and public political chat before broad launch.
+Safest remaining fix: move these first-layer per-process limits into a distributed traffic-control layer before scaling paid traffic. Continue the same review across payment-adjacent checkout creation before broad launch.
 
 Validation: focused public rate-limit helper tests, focused ESLint on the touched lead-capture route files, full unit suite, full workspace typecheck, full web lint, placeholder-env web build, and `git diff --check` passed locally.
 

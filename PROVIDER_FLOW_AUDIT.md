@@ -27,7 +27,7 @@ The most important remaining items to fix next are:
 13. Public nonprofit and intake notification emails now HTML-escape user-controlled form values before rendering admin/applicant email bodies and clean dynamic subject fragments.
 14. Public political map-plan saves now reject empty route/geography selections before service-role persistence work and reject oversized request bodies before JSON parsing.
 15. Public political candidate search now strips direct campaign email/phone fields from autocomplete responses and clamps public query/state/limit inputs before service-role lookup.
-16. Public political candidate search and map-plan saves now have basic in-process rate limits before service-role lookup or request-body processing.
+16. Public political candidate search, map-plan saves, and candidate-agent chat now have basic in-process rate limits before service-role lookup, request-body processing, or AI provider work.
 17. Public lead-capture routes now apply basic in-process rate limits before body parsing on nonprofit, waitlist, targeted campaign, targeted lead, targeted intake, and tokenized shared-intake submissions.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
@@ -46,10 +46,11 @@ Primary files:
 Observed flow:
 
 1. Public political chat is available only when `ENABLE_POLITICAL=true`.
-2. Chat payloads are bounded and resolved to a supported candidate context before any answer is generated.
-3. The helper now checks `DISABLE_POLITICAL_AI=true` before creating an OpenAI client.
-4. When AI is disabled or `OPENAI_API_KEY` is absent, the route returns static fallback replies from the loaded campaign plan and compliance rules.
-5. Human approval remains required before political outreach, proposal, checkout, or production use.
+2. The route now applies a basic public rate limit before request-body parsing.
+3. Chat payloads are bounded and resolved to a supported candidate context before any answer is generated.
+4. The helper now checks `DISABLE_POLITICAL_AI=true` before creating an OpenAI client.
+5. When AI is disabled or `OPENAI_API_KEY` is absent, the route returns static fallback replies from the loaded campaign plan and compliance rules.
+6. Human approval remains required before political outreach, proposal, checkout, or production use.
 
 ### Public Political Map Plan Persistence
 
@@ -818,7 +819,7 @@ Validation:
 - Public nonprofit and intake notification emails now escape user-controlled HTML before rendering and clean dynamic subject fragments.
 - Public political map-plan persistence now rejects empty route/geography selections before service-role writes and rejects oversized request bodies before JSON parsing.
 - Public political candidate search now removes direct campaign email/phone fields from public responses and clamps query/state/limit inputs.
-- Public political candidate search and map-plan save routes now have basic in-process public rate limits, with 429 retry metadata on blocked requests.
+- Public political candidate search, map-plan save, and candidate-agent chat routes now have basic in-process public rate limits, with 429 retry metadata on blocked requests.
 - Public nonprofit, waitlist, targeted lead/campaign, targeted intake, and shared intake POST routes now apply basic in-process rate limits before body parsing.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
@@ -842,6 +843,7 @@ Latest validation for this follow-up guard sweep:
 - Focused public candidate suggestion tests and focused ESLint on the route/helper/test files passed after the public political candidate-search minimization patch.
 - Focused public rate-limit helper tests, focused ESLint on the helper plus touched political public routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after adding basic public endpoint rate limits.
 - Focused public rate-limit helper tests, focused ESLint on the touched public lead-capture routes, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after extending basic lead-capture rate limits.
+- Focused political candidate chat tests, focused ESLint on the chat route/helper/test, full `pnpm test` with 185 tests, full workspace typecheck across 5 packages, full web lint with 495 existing warnings and 0 errors, placeholder-env web build with 248 routes, and `git diff --check` passed after adding the chat rate limit.
 
 ## Safe Validation Path
 
@@ -861,8 +863,9 @@ Latest validation for this follow-up guard sweep:
 14. Probe `/api/political/candidates/search` with a harmless short query and confirm public responses omit direct campaign email/phone fields.
 15. In local/test only, exceed the political public endpoint rate limit and expect `429` with retry metadata; do not stress production previews.
 16. Probe lead-capture routes with invalid empty payloads and expect `400` plus rate-limit metadata, without valid submissions, sends, charges, or DB-success paths.
-17. Add admin health checks for provider telemetry freshness, not just table readability.
-18. Only then perform provider-level test-mode checks.
+17. Probe `/api/political/candidate-agent/chat` with invalid JSON and expect `400` plus rate-limit metadata, without invoking AI provider success paths.
+18. Add admin health checks for provider telemetry freshness, not just table readability.
+19. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
