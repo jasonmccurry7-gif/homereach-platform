@@ -1,5 +1,6 @@
 import { NextResponse }       from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 import {
   AGENT_ALERT_PHONES,
   SYSTEM_ALERT_PHONE,
@@ -43,6 +44,9 @@ interface AlertRequest {
 }
 
 export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
   // ── Feature flag guard ─────────────────────────────────────────────────────
   // When ENABLE_INTERNAL_ALERTS is not "true", log and return without sending.
   // This allows the API route to exist and be testable even when flag is OFF.

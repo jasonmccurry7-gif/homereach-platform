@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,10 @@ export const dynamic = "force-dynamic";
 // flags cities approaching saturation, and surfaces new market candidates.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const runAt = new Date().toISOString();
 

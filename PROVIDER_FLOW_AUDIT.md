@@ -18,6 +18,7 @@ The most important remaining items to fix next are:
 4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS/Facebook signature behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
 5. Meta/Facebook webhook POST routes now fail closed in production when `FACEBOOK_APP_SECRET` is missing and reject unsigned/invalid signatures before service-role work.
 6. Facebook/APEX admin automation POST routes now require cron or authenticated operator access before service-role work can run.
+7. Additional admin service-role routes for agent scans, internal alerts, pricing/founding updates, and Facebook mission logging now require admin/sales session or cron access before privileged work.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -189,6 +190,35 @@ Observed posture:
 - GitHub CLI is installed but not authenticated in this shell; the GitHub connector remains the working PR/Actions path.
 - `/api/admin/outreach/health` now reports provider telemetry freshness and warnings when email/SMS sends exist without recent provider callbacks.
 - GitHub Actions build env includes a non-secret `TARGETED_CHECKOUT_SIGNING_SECRET` placeholder so the production env guard is exercised in CI.
+
+### Admin Service-Role Access Sweep
+
+Primary files:
+
+- `apps/web/app/api/admin/agents/atlas/route.ts`
+- `apps/web/app/api/admin/agents/beacon/route.ts`
+- `apps/web/app/api/admin/agents/horizon/route.ts`
+- `apps/web/app/api/admin/agents/scout/route.ts`
+- `apps/web/app/api/admin/agents/sentinel/route.ts`
+- `apps/web/app/api/admin/alerts/send/route.ts`
+- `apps/web/app/api/admin/founding/slots/route.ts`
+- `apps/web/app/api/admin/pricing/bundle/route.ts`
+- `apps/web/app/api/admin/pricing/city/route.ts`
+- `apps/web/app/api/admin/sales/facebook/mission/route.ts`
+- `apps/web/app/api/admin/system/agents/pulse/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
+- `apps/web/app/api/admin/agents/closer/route.ts`
+- `apps/web/app/api/admin/sales/nudge/route.ts`
+- `apps/web/app/api/admin/sales/power-mode/end-of-day/route.ts`
+
+Access-control flow:
+
+1. Agent scan POSTs (`atlas`, `beacon`, `horizon`, `scout`, `sentinel`) now require authenticated admin or `CRON_SECRET`.
+2. Internal alert send POST now requires authenticated admin or `CRON_SECRET` before resolving phones, inserting alert rows, or sending SMS.
+3. Internal alert callers now pass `x-cron-secret` for trusted automation calls.
+4. Founding slot GET/PUT and pricing mutation routes now require authenticated admin.
+5. Facebook mission GET/POST now requires authenticated admin or sales-agent session.
+6. Remaining unguarded service-role mutation scan results are expected public/provider surfaces: targeted checkout proof boundary, intelligence checkout, and Twilio status signature flow.
 
 ## Findings
 
@@ -510,6 +540,35 @@ Residual risk:
 
 - No live Meta webhook was invoked. Validate only with signed provider/test payloads before trusting Facebook production automation.
 
+### RESOLVED: Admin Service-Role Routes Could Run Without Operator Access
+
+Original evidence before fix:
+
+- Multiple `/api/admin/agents/*` POST routes created Supabase service-role clients and read/logged operational data without admin or cron checks.
+- `/api/admin/alerts/send` could resolve personal alert phones, insert internal alert rows, and potentially send SMS without an operator or cron gate.
+- `/api/admin/founding/slots`, `/api/admin/pricing/bundle`, and `/api/admin/pricing/city` could expose or mutate revenue/pricing configuration without an admin check.
+- `/api/admin/sales/facebook/mission` could read Facebook mission data and log mission completion rows without an operator check.
+
+Why it mattered:
+
+These are admin surfaces that use service-role access. Public invocation could leak operational data, change pricing/founding controls, create noisy sales events, or trigger internal alert workflows.
+
+Fix applied:
+
+- Added `requireAdminOrCron` to service-role agent scan POSTs and internal alert sending.
+- Added `requireAdmin` to founding slot and pricing configuration routes.
+- Added `requireAdminOrSalesAgent` to Facebook mission GET/POST.
+- Updated internal alert self-calls to pass `x-cron-secret` so trusted automation can still use the newly guarded alert route.
+
+Validation:
+
+- Service-role route scan now leaves only expected public/provider exceptions: targeted checkout, intelligence checkout, and Twilio status.
+- Full test suite, typecheck, web lint, and web build passed locally after the change.
+
+Residual risk:
+
+- Broader admin read-only GET endpoints still deserve a separate data-exposure review, especially dashboards that use service-role reads for convenience.
+
 ### MEDIUM: Stripe API Version Needs Scheduled Upgrade Review
 
 Evidence:
@@ -565,6 +624,7 @@ Validation:
 - Inbound SMS reply webhook now returns retryable 503 for unmatched replies when the revenue messaging bridge fails or misses the event ledger.
 - Facebook webhook signature validation and production missing-secret/verify-token behavior are covered by focused helper tests.
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
+- Admin service-role agent scans, internal alerts, founding/pricing updates, and Facebook mission logging now require operator or cron access.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
 
@@ -579,11 +639,12 @@ Validation:
 7. Validate Postmark webhook with sample payloads and test Basic Auth.
 8. Probe Facebook webhook POSTs without signatures and expect 401/503 without service-role mutations or Facebook sends.
 9. Probe Facebook/APEX admin automation POSTs without credentials and expect 401/403 without service-role mutations or SMS sends.
-10. Add admin health checks for provider telemetry freshness, not just table readability.
-11. Only then perform provider-level test-mode checks.
+10. Probe newly guarded admin service-role POST/PUT routes without credentials and expect 401/403 without mutations or SMS sends.
+11. Add admin health checks for provider telemetry freshness, not just table readability.
+12. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, inbound SMS reply capture, Postmark callback durability, Meta webhook fail-closed, and admin automation access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, inbound SMS reply capture, Postmark callback durability, Meta webhook fail-closed, and admin service-role access risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.

@@ -304,7 +304,10 @@ export async function POST() {
             alertPromises.push(
               fetch(`${baseUrl}/api/admin/alerts/send`, {
                 method:  "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-cron-secret": process.env.CRON_SECRET ?? "",
+                },
                 body: JSON.stringify({
                   agent_id:      lead.assigned_agent_id,
                   alert_type:    "payment_follow_up",
@@ -332,7 +335,10 @@ export async function POST() {
             alertPromises.push(
               fetch(`${baseUrl}/api/admin/alerts/send`, {
                 method:  "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-cron-secret": process.env.CRON_SECRET ?? "",
+                },
                 body: JSON.stringify({
                   agent_id:      lead.assigned_agent_id,
                   alert_type:    "hot_lead",

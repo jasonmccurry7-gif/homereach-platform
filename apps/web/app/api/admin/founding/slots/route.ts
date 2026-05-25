@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/founding/slots
@@ -7,6 +8,9 @@ import { NextResponse } from "next/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const db = createServiceClient();
 
   try {
@@ -37,6 +41,9 @@ export async function GET() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function PUT(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const db = createServiceClient();
 
   try {

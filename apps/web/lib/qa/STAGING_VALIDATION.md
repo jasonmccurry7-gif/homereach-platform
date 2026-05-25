@@ -12,7 +12,7 @@ The goal is to prove that the V1a merge, with the flag off, has zero effect on t
 
 - [ ] Deployed V1a branch to staging with `ENABLE_QA_SYSTEM=false` (or unset).
 - [ ] `GET https://staging.home-reach.com/api/admin/health` returns 200 with `status=GREEN` and `9 total / 9 passed`.
-- [ ] `POST https://staging.home-reach.com/api/admin/agents/sentinel` returns 200 (Sentinel `.catch()` fix has landed).
+- [ ] `POST https://staging.home-reach.com/api/admin/agents/sentinel` returns 200 with an admin session or `Authorization: Bearer <CRON_SECRET>` (Sentinel `.catch()` fix has landed); unauthenticated requests return 401.
 - [ ] `POST /api/admin/qa/questions` returns **HTTP 404** (proving the flag gate).
 - [ ] `GET /admin/qa` returns **HTTP 404** (proving the page gate).
 - [ ] `GET /agent/qa` returns **HTTP 404** (proving the agent page gate).

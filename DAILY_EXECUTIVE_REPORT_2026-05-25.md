@@ -38,6 +38,7 @@ Date: 2026-05-25
 - Guarded the inactive legacy `/api/stripe/checkout` route behind `ENABLE_LEGACY_STRIPE_CHECKOUT`; it now returns `410` before auth, database writes, or Stripe session creation unless deliberately re-enabled.
 - Hardened Facebook/APEX admin automation POST access so service-role alert sending, daily Facebook scoring, and the APEX orchestration sweep require a valid cron secret or an authenticated admin/sales session, depending on route.
 - Hardened Meta/Facebook webhook verification and POST signature handling so production webhooks fail closed when verify tokens or app secrets are missing, and unsigned payloads cannot reach service-role Facebook work.
+- Hardened the remaining high-risk admin service-role route cluster: AI agent scans, internal alert sending, founding slot updates, pricing updates, and Facebook mission logging now require admin/sales session or cron access before privileged work.
 
 ## Validation
 
@@ -55,7 +56,7 @@ Date: 2026-05-25
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
 - Local focused request secret helper test: passed, 4 tests.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
-- Latest provider/admin durability sweep: focused inbound SMS helper test, focused request secret helper test, focused Facebook webhook auth helper test, full unit suite, typecheck, web lint, and web build all passed locally.
+- Latest provider/admin durability sweep: focused inbound SMS helper test, focused request secret helper test, focused Facebook webhook auth helper test, admin service-role access sweep, full unit suite, typecheck, web lint, and web build all passed locally.
 - Local `pnpm test`: passed, 161 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
@@ -87,7 +88,7 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, and high-risk admin automation access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, provider telemetry freshness, Meta webhook fail-closed behavior, and high-risk admin/service-role access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark/Facebook have local provider-shaped or signature-helper coverage, but Stripe/Twilio/email/Facebook test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 

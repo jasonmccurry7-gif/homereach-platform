@@ -225,6 +225,36 @@ Validation: focused Facebook webhook auth tests, full test suite, typecheck, web
 
 Approval needed: no for fail-closed hardening; yes before live Meta webhook validation or any Facebook send/reply automation.
 
+### Resolved: Admin Service-Role Routes Could Run Without Operator Access
+
+What was wrong: several admin service-role routes could run without an authenticated admin/sales session or cron secret, including agent scans, internal alert sending, founding slot updates, pricing updates, and Facebook mission logging.
+
+Why it mattered: these routes can read privileged operational data, mutate pricing/founding configuration, log activity, or send internal SMS alerts. They are admin surfaces and should not be publicly invokable.
+
+Files:
+
+- `apps/web/app/api/admin/agents/atlas/route.ts`
+- `apps/web/app/api/admin/agents/beacon/route.ts`
+- `apps/web/app/api/admin/agents/horizon/route.ts`
+- `apps/web/app/api/admin/agents/scout/route.ts`
+- `apps/web/app/api/admin/agents/sentinel/route.ts`
+- `apps/web/app/api/admin/alerts/send/route.ts`
+- `apps/web/app/api/admin/founding/slots/route.ts`
+- `apps/web/app/api/admin/pricing/bundle/route.ts`
+- `apps/web/app/api/admin/pricing/city/route.ts`
+- `apps/web/app/api/admin/sales/facebook/mission/route.ts`
+- `apps/web/app/api/admin/system/agents/pulse/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
+- `apps/web/app/api/admin/agents/closer/route.ts`
+- `apps/web/app/api/admin/sales/nudge/route.ts`
+- `apps/web/app/api/admin/sales/power-mode/end-of-day/route.ts`
+
+Fix applied: added existing admin/cron/sales-agent guards before service-role work and updated internal alert self-calls to pass the cron secret for trusted automation calls.
+
+Validation: service-role route scan, full test suite, typecheck, web lint, and web build passed locally after the change.
+
+Approval needed: no for access-control hardening; yes before any live alert-send validation or production automation send.
+
 ### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.

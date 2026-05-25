@@ -119,7 +119,10 @@ export async function POST(req: NextRequest) {
       Promise.resolve().then(() =>
         fetch(`${baseUrl}/api/admin/alerts/send`, {
           method:  "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-cron-secret": process.env.CRON_SECRET ?? "",
+          },
           body: JSON.stringify({
             agent_id:     JASON_AGENT_ID,
             alert_type:   "system_failure",

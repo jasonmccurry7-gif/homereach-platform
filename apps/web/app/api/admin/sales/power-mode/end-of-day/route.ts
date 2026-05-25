@@ -83,7 +83,10 @@ export async function POST(req: Request) {
       Promise.resolve().then(() =>
         fetch(`${baseUrl}/api/admin/alerts/send`, {
           method:  "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-cron-secret": process.env.CRON_SECRET ?? "",
+          },
           body: JSON.stringify({
             agent_id:     streak.agent_id,
             alert_type:   "quota_warning",

@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/sales/facebook/mission?agent_id=xxx
@@ -103,6 +104,9 @@ const MISSION_TASKS = [
 // GET — fetch today's mission state
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get("agent_id");
 
@@ -236,6 +240,9 @@ export async function GET(req: Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+
     const body = await req.json();
     const {
       agent_id, task_type, city, category, proof_text, proof_url,

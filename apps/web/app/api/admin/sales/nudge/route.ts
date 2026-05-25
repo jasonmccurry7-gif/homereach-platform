@@ -234,7 +234,10 @@ export async function POST(req: NextRequest) {
               alertPromises.push(
                 fetch(`${origin}/api/admin/alerts/send`, {
                   method:  "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-cron-secret": process.env.CRON_SECRET ?? "",
+                  },
                   body: JSON.stringify({
                     agent_id:      lead.assigned_agent_id,
                     alert_type:    "reply_waiting",
@@ -253,7 +256,10 @@ export async function POST(req: NextRequest) {
               alertPromises.push(
                 fetch(`${origin}/api/admin/alerts/send`, {
                   method:  "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-cron-secret": process.env.CRON_SECRET ?? "",
+                  },
                   body: JSON.stringify({
                     agent_id:      lead.assigned_agent_id,
                     alert_type:    "hot_lead",

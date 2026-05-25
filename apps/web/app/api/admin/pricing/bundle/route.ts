@@ -1,10 +1,14 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 // PUT /api/admin/pricing/bundle
 // Body: { bundleId, standardPrice, foundingPrice } — in DOLLARS (convert to cents)
 
 export async function PUT(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const db = createServiceClient();
   const { bundleId, standardPrice, foundingPrice } = await req.json();
 

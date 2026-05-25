@@ -582,7 +582,10 @@ export async function POST(req: Request) {
           const alertPromises = (agents ?? []).map(agent =>
             fetch(`${baseUrl}/api/admin/alerts/send`, {
               method:  "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "x-cron-secret": process.env.CRON_SECRET ?? "",
+              },
               body: JSON.stringify({
                 agent_id:     agent.id,
                 alert_type:   "start_of_day",
