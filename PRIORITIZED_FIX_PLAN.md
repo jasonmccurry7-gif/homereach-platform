@@ -576,9 +576,29 @@ Validation: focused agent-route ESLint passed with 0 warnings/errors, focused au
 
 Approval needed: no for API boundary hardening; yes before changing agent assignment/business logic or live send behavior.
 
+### Partially Resolved: Public Service-Role Read Route Needed First-Layer Rate Limiting
+
+What was wrong: `/api/spots/resolve` is a public route that resolves city/category slugs through the Supabase service-role client without a request-volume guard.
+
+Why it matters: the route is read-only, but public unbounded service-role reads can create avoidable database load and catalog-enumeration pressure.
+
+Files:
+
+- `apps/web/app/api/spots/resolve/route.ts`
+- `apps/web/lib/security/__tests__/public-read-rate-limits.test.ts`
+- `PUBLIC_READ_ANTI_ABUSE_AUDIT.md`
+
+Fix applied: added a `spots:resolve` public rate-limit scope before service-role client creation, returns 429 retry metadata after 120 lookups per IP per minute, and adds `RateLimit-*` metadata to normal responses. The route remains a slug-to-ID resolver only.
+
+Safest remaining fix: move public read/mutation/checkout rate limiting to a distributed edge/provider-backed control before paid traffic scaling.
+
+Validation: focused public-read and shared public rate-limit tests passed with 4 tests; focused route/helper/test ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed; full `pnpm test` passed with 189 tests across 26 files; full workspace typecheck passed across 5 packages; full web lint passed with 494 existing warnings and 0 errors; and placeholder-env web build generated 247 static pages. Preview probes are pending until deployment.
+
+Approval needed: no for local anti-abuse guard; yes before changing funnel lookup behavior, availability behavior, or distributed production firewall policy.
+
 ### Lint Warning Debt
 
-What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 495 warnings.
+What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 494 warnings.
 
 Why it matters: warnings include unused variables, unescaped text, legacy `any` usage, direct anchor navigation, and hook dependency issues that can hide real defects over time.
 

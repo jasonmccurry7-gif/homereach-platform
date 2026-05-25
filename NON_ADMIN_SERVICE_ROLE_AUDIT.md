@@ -63,7 +63,9 @@ Public/read-oriented routes and render paths:
 - `apps/web/app/sitemap.ts`
 - `apps/web/app/(funnel)/intelligence/page.tsx`
 
-Status: retained for now. These are read-oriented service-role users. `/api/spots/resolve` should receive the same first-layer public rate-limit treatment in a later public-read anti-abuse pass.
+Status: retained. These are read-oriented service-role users.
+
+Follow-up completed: `/api/spots/resolve` now has a first-layer `spots:resolve` public rate limit before service-role client creation. See `PUBLIC_READ_ANTI_ABUSE_AUDIT.md`.
 
 ## Validation
 
@@ -78,5 +80,5 @@ Status: retained for now. These are read-oriented service-role users. `/api/spot
 ## Remaining Risk
 
 - Service-role usage still exists outside `/api/admin` by design for provider webhooks, checkout creation, public page data reads, and public slug resolution.
-- `/api/spots/resolve` is a public service-role read and should get a lightweight rate limit before traffic scaling.
+- `/api/spots/resolve` now has a lightweight in-process rate limit, but this should become a distributed edge/provider-backed control before traffic scaling.
 - This pass did not validate authenticated browser agent workflows end to end; it validates compile-time and guard-helper behavior only.
