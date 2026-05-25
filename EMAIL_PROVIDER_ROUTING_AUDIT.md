@@ -109,9 +109,10 @@ Validation:
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 247 static pages.
 - `git diff --check` passed.
 
-Remaining caution:
+Follow-up provider cleanup:
 
-- SMS close-deal sends still use the existing direct Twilio helper. That should be reviewed separately because moving it to `sendSms()` may intentionally introduce approval or test-mode gates that can block live sends unless configured.
+- Close-deal SMS now routes through central `sendSms()`.
+- Sales-event and Echo agent routes no longer carry unused route-local direct Mailgun helper code; active email sends use central `sendEmail()`.
 
 Approval needed:
 

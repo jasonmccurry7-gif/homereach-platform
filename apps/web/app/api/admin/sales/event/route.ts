@@ -33,97 +33,6 @@ type OutreachSystemControls = {
   sms_prospecting_live_enabled?: boolean;
 };
 
-// ─── Direct Twilio SMS (supports per-agent from number) ───────────────────────
-async function sendViaTwilio(
-  to: string,
-  from: string,
-  body: string
-): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken  = process.env.TWILIO_AUTH_TOKEN;
-    if (!accountSid || !authToken)
-      return { success: false, error: "Twilio credentials not configured" };
-
-    const form = new URLSearchParams();
-    form.append("To",   to);
-    form.append("From", from);
-    form.append("Body", body);
-
-    const resp = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method:  "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Twilio ${resp.status}: ${detail}`);
-    }
-    const data = await resp.json() as { sid?: string };
-    return { success: true, externalId: data.sid };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown SMS error";
-    console.error("[sales/event/sms]", error);
-    return { success: false, error };
-  }
-}
-
-// ─── Direct Mailgun Email (supports per-agent from email) ─────────────────────
-async function sendViaMailgun(options: {
-  to: string;
-  subject: string;
-  html: string;
-  text: string;
-  fromEmail: string;
-  fromName: string;
-  replyTo?: string;
-}): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const apiKey = process.env.MAILGUN_API_KEY;
-    const domain = process.env.MAILGUN_DOMAIN;
-    if (!apiKey || !domain)
-      return { success: false, error: "Mailgun credentials not configured" };
-
-    const form = new URLSearchParams();
-    form.set("from",    `${options.fromName} <${options.fromEmail}>`);
-    form.set("to",      options.to);
-    form.set("subject", options.subject);
-    form.set("html",    options.html);
-    form.set("text",    options.text);
-    if (options.replyTo) form.set("h:Reply-To", options.replyTo);
-
-    const resp = await fetch(
-      `https://api.mailgun.net/v3/${domain}/messages`,
-      {
-        method:  "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Mailgun ${resp.status}: ${detail}`);
-    }
-    const data = await resp.json() as { id?: string };
-    return { success: true, externalId: data.id };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown email error";
-    console.error("[sales/event/email]", error);
-    return { success: false, error };
-  }
-}
-
 // ─── Main Handler ──────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
@@ -136,11 +45,12 @@ export async function POST(request: Request) {
     const supabase = createServiceClient();
     const body = await request.json();
 
-    let {
-      agent_id, lead_id, action_type, channel, city, category,
-      message, revenue_cents, metadata,
+    const {
+      lead_id, action_type, channel, city, category,
+      revenue_cents, metadata,
       to_address, subject,
     } = body;
+    let { agent_id, message } = body;
 
     if (isSalesAgent) {
       agent_id = user.id;

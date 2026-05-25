@@ -293,6 +293,28 @@ Risk of fix: low to medium. The send policy and message content are unchanged, b
 
 Approval needed: no for additive telemetry metadata; yes before live Twilio validation or provider-side callback configuration changes.
 
+### Resolved: Stale Direct Provider Helpers Remained In Sales Automation Routes
+
+What was wrong: after the active sales-event and Echo paths moved onto central `sendSms()` / `sendEmail()`, both routes still contained unused direct Twilio and Mailgun helper implementations.
+
+Why it mattered: the helpers were not executed, but keeping bypass code beside send-capable sales routes made provider-routing reviews harder and preserved an attractive future footgun for SMS/email reputation controls.
+
+Files:
+
+- `apps/web/app/api/admin/sales/event/route.ts`
+- `apps/web/app/api/admin/agents/echo/route.ts`
+- `EMAIL_PROVIDER_ROUTING_AUDIT.md`
+- `SMS_PROVIDER_ROUTING_AUDIT.md`
+- `PROVIDER_FLOW_AUDIT.md`
+
+Fix applied: removed the unused route-local direct Twilio/Mailgun helpers, updated the Echo route header to describe central provider services, and made the sales-event destructure reflect its actual mutation points.
+
+Validation: focused ESLint on sales-event and Echo agent routes passed with 0 warnings/errors; full `pnpm test` passed with 209 tests across 33 files; full workspace typecheck passed across 5 packages; full web lint passed with 478 existing warnings and 0 errors; placeholder-env web build generated 247 static pages; `git diff --check` passed. No SMS/email was sent and no provider API call was made.
+
+Risk of fix: low. Active send logic already used central provider services; this removes unused code and stale comments only.
+
+Approval needed: no for stale-code cleanup; yes before live email/SMS provider validation or automation sends.
+
 ### Resolved: Public Form Email Notifications Rendered Unsanitized HTML
 
 What was wrong: public nonprofit registration and shared-postcard intake submissions rendered user-controlled fields directly into HTML email bodies, and dynamic subject fragments were not cleaned for control characters.

@@ -155,15 +155,17 @@ Fix applied:
 
 - Added `getTwilioStatusCallbackUrl()` as the shared web-app callback helper.
 - Passed the helper into sales-event sends, scheduled automation sends, Echo agent sends, close-deal sends, and `AutomationEngine.sendSms()`.
+- Removed stale unused direct Twilio helper code from sales-event and Echo agent routes; active SMS sends now go through central `sendSms()`.
 - Internal/operator alert SMS paths were left unchanged; they already log their own alert records and are not customer outreach sequences.
 
 Validation:
 
 - `pnpm exec vitest run apps/web/lib/outreach/__tests__/twilio-status-callback.test.ts apps/web/app/api/admin/sales/__tests__/close-deal.test.ts packages/services/src/outreach/__tests__/sms.test.ts` passed with 8 tests.
 - Focused ESLint on the touched helper/routes passed with 0 errors and 14 pre-existing warnings in `apps/web/app/api/admin/agents/echo/route.ts` and `apps/web/app/api/admin/sales/event/route.ts`.
+- Follow-up focused ESLint on `apps/web/app/api/admin/agents/echo/route.ts` and `apps/web/app/api/admin/sales/event/route.ts` passed with 0 warnings/errors after stale helper cleanup.
 - `pnpm test` passed with 209 tests across 33 files.
 - `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
-- `pnpm --filter @homereach/web lint` passed with 492 existing warnings and 0 errors.
+- `pnpm --filter @homereach/web lint` passed with 478 existing warnings and 0 errors after stale helper cleanup.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 247 static pages.
 - `git diff --check` passed with Windows line-ending warnings only.
 

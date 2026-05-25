@@ -18,8 +18,8 @@ import {
 // POST /api/admin/agents/echo
 //
 // Routes leads to agents based on territory assignment, determines channel
-// (SMS or Email), builds personalized messages, and sends directly via
-// Twilio SMS and Mailgun Email APIs without internal HTTP calls.
+// (SMS or Email), builds personalized messages, and sends through the
+// centralized outreach provider services.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const dynamic = "force-dynamic";
@@ -207,7 +207,7 @@ async function resolveAgentIdentity(
           phone: data.twilio_phone || DEFAULT_AGENT.phone,
         };
       }
-    } catch (err) {
+    } catch {
       console.log("[echo] agent_identities lookup failed, using territory map");
     }
   }
@@ -218,117 +218,6 @@ async function resolveAgentIdentity(
   }
 
   return DEFAULT_AGENT;
-}
-
-// ─── Helper: Send SMS via Twilio REST API ─────────────────────────────────
-
-async function sendViaTwilio(
-  toPhone: string,
-  fromPhone: string,
-  body: string
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-    if (!accountSid || !authToken) {
-      return {
-        success: false,
-        error: "TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not configured",
-      };
-    }
-
-    const form = new URLSearchParams();
-    form.append("To", toPhone);
-    form.append("From", fromPhone);
-    form.append("Body", body);
-
-    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-    const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
-
-    const response = await fetch(twilioUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form.toString(),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `Twilio error ${response.status}: ${errorText}`,
-      };
-    }
-
-    const data = (await response.json()) as { sid?: string };
-    return { success: true, messageId: data.sid };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    return { success: false, error };
-  }
-}
-
-// ─── Helper: Send Email via Mailgun REST API ──────────────────────────────
-
-async function sendViaMailgun(
-  toEmail: string,
-  fromEmail: string,
-  fromName: string,
-  subject: string,
-  text: string,
-  html?: string
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  try {
-    const apiKey = process.env.MAILGUN_API_KEY;
-    const domain = process.env.MAILGUN_DOMAIN;
-
-    if (!apiKey || !domain) {
-      return {
-        success: false,
-        error: "MAILGUN_API_KEY or MAILGUN_DOMAIN not configured",
-      };
-    }
-
-    const form = new URLSearchParams();
-    form.append("from", `${fromName} <${fromEmail}>`);
-    form.append("to", toEmail);
-    form.append("subject", subject);
-    form.append("text", text);
-    if (html) {
-      form.append("html", html);
-    }
-
-    const auth = Buffer.from(`api:${apiKey}`).toString("base64");
-
-    const response = await fetch(
-      `https://api.mailgun.net/v3/${domain}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${auth}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `Mailgun error ${response.status}: ${errorText}`,
-      };
-    }
-
-    const data = (await response.json()) as { id?: string };
-    return { success: true, messageId: data.id };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    return { success: false, error };
-  }
 }
 
 // ─── Main Handler ─────────────────────────────────────────────────────────────
