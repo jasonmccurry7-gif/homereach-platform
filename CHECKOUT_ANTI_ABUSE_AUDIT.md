@@ -2,7 +2,7 @@
 
 Updated: 2026-05-25
 
-Scope: active checkout creation endpoints that can reach Supabase service-role work, reservation/order updates, or Stripe Checkout session creation.
+Scope: active checkout creation endpoints that can reach Supabase service-role work, reservation/order updates, or Stripe Checkout session creation, plus the default-disabled legacy Stripe checkout route if it is ever deliberately re-enabled.
 
 Safety posture: this pass added first-layer request throttles only. It did not change pricing, billing mode, checkout metadata, auth requirements, inventory rules, token verification, webhook behavior, or customer-facing payment copy. No Stripe sessions, charges, sends, or production data mutations were created during validation.
 
@@ -76,6 +76,27 @@ Controls added: `checkout:intelligence`, 12 attempts per 10 minutes per hashed c
 
 Residual risk: property-intelligence table definitions still appear out-of-band from committed Drizzle/Supabase migrations. Live `founding_memberships` still needs the controlled additive `stripe_checkout_session_id` migration before founding checkout can be trusted end to end.
 
+### `/api/stripe/checkout`
+
+Files:
+
+- `apps/web/app/api/stripe/checkout/route.ts`
+- guard helper: `apps/web/lib/stripe/legacy-checkout.ts`
+
+Observed flow:
+
+1. Returns `410` unless `ENABLE_LEGACY_STRIPE_CHECKOUT` is exactly `true`.
+2. If re-enabled, requires a Supabase-authenticated user.
+3. Validates bundle, city, category, and business data.
+4. Creates or reuses pending business/order records through Drizzle.
+5. Creates a Stripe one-time Checkout session.
+
+Risk before this pass: the route is safely default-disabled, but if the legacy flag were turned on for recovery or testing, it could reach order creation and Stripe session work without the same first-layer checkout throttle now present on active checkout routes.
+
+Control added: `checkout:legacy-stripe`, 12 attempts per 10 minutes per hashed client IP, checked only after the feature flag is enabled but before Supabase auth, request parsing, database writes, or Stripe work. Disabled behavior remains `410` before any rate-limit state is consumed.
+
+Residual risk: this remains a legacy one-time checkout implementation for monthly-priced bundle logic. Keep `ENABLE_LEGACY_STRIPE_CHECKOUT` unset/false in production unless the business model and Stripe mode are revalidated in test mode first.
+
 ## Validation
 
 - Focused checkout/security helper regression tests passed: 18 tests across checkout rate-limit, public rate-limit, property-intelligence checkout helper, and targeted checkout token files.
@@ -84,6 +105,8 @@ Residual risk: property-intelligence table definitions still appear out-of-band 
 - Full `pnpm exec turbo type-check --ui=stream` passed across 5 packages.
 - Full `pnpm --filter @homereach/web lint` passed with 495 existing warnings and 0 errors.
 - Follow-up schema-guard validation: focused schema-readiness, checkout-route, and checkout-helper tests passed with 11 tests; focused checkout/webhook/schema ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed.
+- Follow-up legacy checkout limiter validation: focused checkout-rate-limit and legacy-checkout guard tests passed with 4 tests; focused ESLint on `apps/web/app/api/stripe/checkout/route.ts` and `apps/web/lib/security/__tests__/checkout-rate-limits.test.ts` passed with 0 warnings/errors.
+- Current follow-up full validation after the legacy limiter: full `pnpm test` passed with 208 tests across 32 files; full `pnpm exec turbo type-check --ui=stream` passed across 5 packages; full `pnpm --filter @homereach/web lint` passed with 492 existing warnings and 0 errors; placeholder-env `pnpm --filter @homereach/web build` generated 247 static pages.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 248 routes.
 - `git diff --check` passed.
 

@@ -34,11 +34,17 @@ describe("checkout route rate limits", () => {
       checkoutRequest("/api/intelligence/checkout"),
       { ...checkoutRateLimit, scope: "checkout:intelligence" }
     );
+    const legacy = checkPublicRateLimit(
+      checkoutRequest("/api/stripe/checkout"),
+      { ...checkoutRateLimit, scope: "checkout:legacy-stripe" }
+    );
 
     expect(targeted.allowed).toBe(true);
     expect(targeted.remaining).toBe(11);
     expect(intelligence.allowed).toBe(true);
     expect(intelligence.remaining).toBe(11);
+    expect(legacy.allowed).toBe(true);
+    expect(legacy.remaining).toBe(11);
   });
 
   it("returns retry metadata after repeated checkout attempts", () => {

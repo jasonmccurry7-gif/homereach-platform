@@ -8,6 +8,10 @@ import { snapshotPrice } from "@homereach/services/pricing";
 import type { ResolvePriceInput, DiscountContext } from "@homereach/types";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import { isLegacyStripeCheckoutEnabled } from "@/lib/stripe/legacy-checkout";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/stripe/checkout
@@ -51,7 +55,15 @@ const CheckoutSchema = z.object({
   // Accepting these from the client would allow discount spoofing.
 });
 
+const LEGACY_CHECKOUT_RATE_LIMIT = {
+  scope: "checkout:legacy-stripe",
+  limit: 12,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: Request) {
+  let headers: Record<string, string> = {};
+
   try {
     if (!isLegacyStripeCheckoutEnabled()) {
       return NextResponse.json(
@@ -63,13 +75,22 @@ export async function POST(req: Request) {
       );
     }
 
+    const rateLimit = checkPublicRateLimit(req, LEGACY_CHECKOUT_RATE_LIMIT);
+    headers = publicRateLimitHeaders(rateLimit);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many checkout attempts. Try again shortly." },
+        { status: 429, headers }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
     }
 
     const body = await req.json();
@@ -78,7 +99,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid request", details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400, headers }
       );
     }
 
@@ -109,7 +130,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (!cityRecord) {
-      return NextResponse.json({ error: "City not found" }, { status: 404 });
+      return NextResponse.json({ error: "City not found" }, { status: 404, headers });
     }
 
     const isFounding = cityRecord.foundingEligible;
@@ -122,7 +143,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (!bundle || !bundle.isActive) {
-      return NextResponse.json({ error: "Bundle not found" }, { status: 404 });
+      return NextResponse.json({ error: "Bundle not found" }, { status: 404, headers });
     }
 
     // ── Resolve or create business — IDEMPOTENT ──────────────────────────────
@@ -135,7 +156,7 @@ export async function POST(req: Request) {
       if (!businessName) {
         return NextResponse.json(
           { error: "businessName required when creating a new business" },
-          { status: 400 }
+          { status: 400, headers }
         );
       }
 
@@ -317,12 +338,12 @@ export async function POST(req: Request) {
       .set({ stripeCheckoutSessionId: session.id })
       .where(eq(orders.id, orderId));
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: session.url }, { headers });
   } catch (err) {
     console.error("[/api/stripe/checkout]", err);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500, headers }
     );
   }
 }

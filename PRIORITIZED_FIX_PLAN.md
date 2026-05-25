@@ -369,23 +369,24 @@ Approval needed: no for defensive route guards; yes before Vercel Firewall chang
 
 ### Partially Resolved: Payment-Adjacent Checkout Creation Needed First-Layer Abuse Controls
 
-What was wrong: active checkout creation routes could reach Supabase service-role reads/writes, pending order or campaign updates, and Stripe Checkout session creation without a first-layer request-rate guard. Existing auth/token/payment controls still mattered, but they did not reduce repeated request pressure before expensive or provider-adjacent work.
+What was wrong: active checkout creation routes could reach Supabase service-role reads/writes, pending order or campaign updates, and Stripe Checkout session creation without a first-layer request-rate guard. Existing auth/token/payment controls still mattered, but they did not reduce repeated request pressure before expensive or provider-adjacent work. The default-disabled legacy `/api/stripe/checkout` route had the same gap if someone deliberately re-enabled it with `ENABLE_LEGACY_STRIPE_CHECKOUT=true`.
 
 Why it mattered: checkout endpoints are revenue-critical. Abuse or repeated retries can create noisy pending reservations, consume Stripe/session capacity, write checkout session ids, and increase operational confusion before a customer has paid.
 
 Files:
 
 - `apps/web/app/api/spots/checkout/route.ts`
+- `apps/web/app/api/stripe/checkout/route.ts`
 - `apps/web/app/api/stripe/targeted-checkout/route.ts`
 - `apps/web/app/api/intelligence/checkout/route.ts`
 - `apps/web/lib/security/__tests__/checkout-rate-limits.test.ts`
 - `CHECKOUT_ANTI_ABUSE_AUDIT.md`
 
-Fix applied: applied the shared in-process public rate-limit helper to the active spot subscription checkout, targeted campaign checkout, and property-intelligence checkout routes. The guard runs before body parsing or service-role/Stripe work where applicable, returns `429` with retry metadata when exceeded, and adds `RateLimit-*` metadata to normal validation/error/success responses. Pricing, auth, token verification, inventory checks, billing mode, Stripe metadata, and webhook behavior were not changed.
+Fix applied: applied the shared in-process public rate-limit helper to the active spot subscription checkout, targeted campaign checkout, property-intelligence checkout, and the re-enableable legacy Stripe checkout route. The guard runs before body parsing or service-role/Stripe work where applicable, returns `429` with retry metadata when exceeded, and adds `RateLimit-*` metadata to normal validation/error/success responses. The legacy route still returns `410` before rate-limit state is consumed unless `ENABLE_LEGACY_STRIPE_CHECKOUT` is exactly `true`. Pricing, auth, token verification, inventory checks, billing mode, Stripe metadata, and webhook behavior were not changed.
 
 Safest remaining fix: move checkout rate limiting to a distributed Vercel Firewall/Edge/Redis/provider-backed control before paid traffic scaling, then run Stripe test-mode success-path validation against isolated data.
 
-Validation: focused checkout/security helper tests passed with 18 tests; full `pnpm test` passed with 187 tests across 25 files; full workspace typecheck passed across 5 packages; full web lint passed with 495 existing warnings and 0 errors; placeholder-env web build generated 248 routes; and `git diff --check` passed. Focused checkout-route ESLint had 0 errors and one pre-existing `maxSpots` warning in `/api/spots/checkout`.
+Validation: focused checkout/security helper tests passed with 18 tests; full `pnpm test` passed with 187 tests across 25 files; full workspace typecheck passed across 5 packages; full web lint passed with 495 existing warnings and 0 errors; placeholder-env web build generated 248 routes; and `git diff --check` passed. Focused checkout-route ESLint had 0 errors and one pre-existing `maxSpots` warning in `/api/spots/checkout`. Follow-up legacy limiter validation passed focused checkout-rate-limit and legacy-checkout guard tests with 4 tests, focused ESLint on the touched legacy checkout route/test files with 0 warnings/errors, focused web typecheck, full `pnpm test` with 208 tests across 32 files, full workspace typecheck across 5 packages, full web lint with 492 existing warnings and 0 errors, and placeholder-env web build with 247 static pages.
 
 Approval needed: no for this defensive first-layer route guard; yes before Stripe provider testing, payment behavior changes, production traffic-control configuration, or live promotion.
 
