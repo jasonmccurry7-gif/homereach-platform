@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  classifyPostmarkEvent,
+  getLeadEmailStatusWriteFilter,
+  normalizePostmarkRecipient,
+  type PostmarkPayload,
+} from "@/lib/email/postmark-webhook";
 import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,7 +35,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 // Mutation contract
 //   • INSERT into public.email_events  (always)
 //   • UPDATE public.sales_leads SET email_status = ... WHERE email = ...
-//     (only on terminal events: HardBounce, SpamComplaint, Unsubscribe)
+//     (only deliverability state; delivery events cannot clear suppression)
 //   • Never updates outreach_messages or any send-side table.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,74 +76,6 @@ function isAuthorized(req: Request): { ok: boolean; reason?: string } {
   }
 }
 
-interface PostmarkPayload {
-  RecordType?: string;
-  MessageID?: string;
-  Recipient?: string;
-  Email?: string;
-  Subject?: string;
-  Type?: string;            // Bounce: HardBounce / SoftBounce / Transient / etc.
-  TypeCode?: number;
-  Description?: string;
-  Details?: string;
-  Tag?: string;
-  ReceivedAt?: string;
-  BouncedAt?: string;
-  DeliveredAt?: string;
-  ClickedAt?: string;
-  Origin?: string;
-  IP?: string;
-  ClientIP?: string;
-  UserAgent?: string;
-  OriginalLink?: string;
-  Geo?: { Country?: string; Region?: string; City?: string };
-  ChangeType?: string;       // SubscriptionChange: Unsubscribed / Subscribed
-  SuppressionReason?: string;
-  Metadata?: Record<string, string>;
-}
-
-function classifyEvent(p: PostmarkPayload): {
-  eventType: string;
-  bounceType: string | null;
-  terminalLeadStatus: string | null;
-} {
-  const r = (p.RecordType ?? "").toLowerCase();
-
-  if (r === "delivery") {
-    return { eventType: "delivered", bounceType: null, terminalLeadStatus: "valid" };
-  }
-  if (r === "bounce") {
-    const isHard =
-      p.Type === "HardBounce" ||
-      p.Type === "SpamNotification" ||
-      p.Type === "BadEmailAddress" ||
-      p.Type === "ManuallyDeactivated";
-    return {
-      eventType: "bounce",
-      bounceType: isHard ? "permanent" : "transient",
-      terminalLeadStatus: isHard ? "bounced_permanent" : null, // soft bounce: don't mark
-    };
-  }
-  if (r === "spamcomplaint") {
-    return { eventType: "spam_complaint", bounceType: null, terminalLeadStatus: "complained" };
-  }
-  if (r === "open") {
-    return { eventType: "open", bounceType: null, terminalLeadStatus: null };
-  }
-  if (r === "click") {
-    return { eventType: "click", bounceType: null, terminalLeadStatus: null };
-  }
-  if (r === "subscriptionchange") {
-    const unsubscribed = p.ChangeType === "Unsubscribed";
-    return {
-      eventType: "subscription_change",
-      bounceType: null,
-      terminalLeadStatus: unsubscribed ? "unsubscribed" : null,
-    };
-  }
-  return { eventType: r || "unknown", bounceType: null, terminalLeadStatus: null };
-}
-
 export async function POST(req: Request) {
   // Feature flag — not strictly necessary, but consistent with twilio webhook
   if (process.env.ENABLE_POSTMARK_WEBHOOK === "false") {
@@ -158,8 +96,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid JSON" }, { status: 400 });
   }
 
-  const { eventType, bounceType, terminalLeadStatus } = classifyEvent(payload);
-  const recipient = (payload.Recipient ?? payload.Email ?? "").toLowerCase() || null;
+  const { eventType, bounceType, leadEmailStatus } = classifyPostmarkEvent(payload);
+  const recipient = normalizePostmarkRecipient(payload);
 
   try {
     const supabase = createServiceClient();
@@ -186,15 +124,25 @@ export async function POST(req: Request) {
 
     if (logErr) {
       console.error("[postmark/webhook] insert email_events failed:", logErr.message);
-      // still 200 — we don't want Postmark retrying on our DB issue
+      return NextResponse.json(
+        { ok: false, error: "email event persistence failed" },
+        { status: 503 },
+      );
     }
 
-    // 2. On terminal events, update sales_leads.email_status (additive write)
-    if (terminalLeadStatus && recipient) {
-      const { error: updErr } = await supabase
+    // 2. Update sales_leads.email_status without letting provider noise clear suppressions.
+    if (leadEmailStatus && recipient) {
+      let update = supabase
         .from("sales_leads")
-        .update({ email_status: terminalLeadStatus })
+        .update({ email_status: leadEmailStatus })
         .eq("email", recipient);
+
+      const writeFilter = getLeadEmailStatusWriteFilter(leadEmailStatus);
+      if (writeFilter) {
+        update = update.or(writeFilter);
+      }
+
+      const { error: updErr } = await update;
       if (updErr) {
         console.warn(
           "[postmark/webhook] sales_leads update failed:",
@@ -207,8 +155,10 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[postmark/webhook] handler error:", msg);
-    // 200 anyway — Postmark retries don't help here
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      { ok: false, error: "postmark webhook processing failed" },
+      { status: 503 },
+    );
   }
 }
 

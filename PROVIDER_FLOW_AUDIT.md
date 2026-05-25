@@ -117,8 +117,8 @@ Postmark inbound flow:
 2. Route uses Basic Auth credentials from env.
 3. Production fails closed when credentials are missing.
 4. Route logs into `email_events`.
-5. Terminal events can update `sales_leads.email_status`.
-6. Route returns 200 even when DB logging/update fails.
+5. Deliverability events can update `sales_leads.email_status`, but delivery/temporary-bounce updates cannot clear suppression states.
+6. Route returns retryable 503 if the append-only `email_events` insert fails; lead-status update failures are logged without blocking the provider callback.
 
 ### Deployment And CI
 
@@ -291,25 +291,34 @@ Residual risk:
 
 - No live Twilio webhook was invoked. Provider validation should use a signed sample payload first and avoid sending live SMS.
 
-### MEDIUM: Postmark Webhook Acknowledges DB Failures
+### RESOLVED: Postmark Webhook Acknowledged Email Event DB Failures
 
-Evidence:
+Original evidence before fix:
 
-- `apps/web/app/api/webhooks/postmark/route.ts:187` logs `email_events` insert failure and continues.
-- `apps/web/app/api/webhooks/postmark/route.ts:198` logs sales lead update failure and continues.
-- `apps/web/app/api/webhooks/postmark/route.ts:207` catches handler errors and returns 200.
+- `apps/web/app/api/webhooks/postmark/route.ts` logged `email_events` insert failure and continued.
+- The same route caught handler errors and returned 200.
+- Delivery events could mark `sales_leads.email_status` as `valid` without guarding against already-suppressed lead states.
 
-Why it matters:
+Why it mattered:
 
-This avoids retry storms, which is reasonable, but it can also hide deliverability telemetry loss unless logs are drained and alerted.
+Email provider callbacks are the durable source for bounce, complaint, unsubscribe, and delivery telemetry. Acknowledging an event that was not logged can hide deliverability risk, and allowing a delivery event to clear a suppression state can reopen unsafe outreach.
 
-Safest fix:
+Fix applied:
 
-- Keep 200 behavior if retry storms are a concern.
-- Add structured logging/alerting for insert failure rate.
-- Add an admin health route check for webhook logging tables.
+- Added `apps/web/lib/email/postmark-webhook.ts` to isolate Postmark classification, recipient normalization, and lead-status write filters.
+- Added unit tests for delivery, hard bounce, temporary bounce, complaint, unsubscribe, and recipient normalization behavior.
+- Updated `/api/webhooks/postmark` so `email_events` insert failures return retryable 503 instead of false-success 200.
+- Kept `sales_leads.email_status` updates best-effort after the event is logged.
+- Constrained `valid` and `bounced_temporary` updates so they cannot overwrite `bounced_permanent`, `complained`, or `unsubscribed`.
 
-Risk of fix: low to medium.
+Validation:
+
+- `pnpm exec vitest run apps/web/lib/email/__tests__/postmark-webhook.test.ts` passed.
+- `pnpm exec turbo type-check --ui=stream` passed.
+
+Residual risk:
+
+- No live Postmark webhook was invoked. Provider validation should use sample payloads and test Basic Auth before any live email volume.
 
 ### MEDIUM: Stripe API Version Needs Scheduled Upgrade Review
 
@@ -371,11 +380,11 @@ Validation:
 4. Validate targeted checkout with signed test campaigns before enabling public links.
 5. Validate Twilio status insert with a signed sample request and no live SMS send.
 6. Validate Postmark webhook with sample payloads and test Basic Auth.
-7. Add admin health checks for provider telemetry tables.
+7. Add admin health checks for provider telemetry freshness, not just table readability.
 8. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes code validation and hosted smoke checks, and the Stripe retry-drop plus public targeted checkout authorization risks have tested branch fixes. Twilio telemetry durability, provider test-mode validation, and the `TARGETED_CHECKOUT_SIGNING_SECRET` production env setup still need completion before production-sensitive flows are trusted.
+Reason: the branch passes code validation and hosted smoke checks, and the Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. Provider test-mode validation and the `TARGETED_CHECKOUT_SIGNING_SECRET` production env setup still need completion before production-sensitive flows are trusted.

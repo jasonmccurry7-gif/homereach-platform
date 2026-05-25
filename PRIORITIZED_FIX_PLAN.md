@@ -191,21 +191,23 @@ Risk of fix: high if changed blindly; medium if feature-flagged and tested.
 
 Approval needed: yes before live payment behavior changes.
 
-### Postmark Webhook Needs Telemetry Alerting For DB Failures
+### Resolved: Postmark Webhook Could Lose Email Telemetry And Clear Suppressions
 
-What is wrong: `/api/webhooks/postmark` intentionally returns 200 even if `email_events` insert or `sales_leads.email_status` update fails.
+What was wrong: `/api/webhooks/postmark` returned 200 even if the append-only `email_events` insert failed, and delivery events could mark a lead `valid` without guarding against existing suppression states.
 
-Why it matters: this prevents provider retry storms, but it can also hide deliverability telemetry loss unless logs are drained and alerted.
+Why it mattered: email webhook data protects sender reputation. Lost bounce/complaint/unsubscribe telemetry can hide deliverability risk, and clearing a suppression state can reopen unsafe outreach.
 
 Files:
 
 - `apps/web/app/api/webhooks/postmark/route.ts`
+- `apps/web/lib/email/postmark-webhook.ts`
+- `apps/web/lib/email/__tests__/postmark-webhook.test.ts`
 
-Safest fix: keep safe acknowledgement behavior, but add structured logging/alerting and admin health checks for webhook logging tables.
+Fix applied: event-log insert failures now return retryable 503; lead-status updates remain best-effort after the event is logged; `valid` and `bounced_temporary` updates are filtered so they cannot overwrite `bounced_permanent`, `complained`, or `unsubscribed`.
 
-Risk of fix: low to medium.
+Validation: focused Postmark helper tests and Turbo typecheck passed locally.
 
-Approval needed: no for local health-check code; yes before provider-live validation.
+Approval needed: no for the code change; yes before provider-live validation or email sending.
 
 ### Political Launch Depends On Feature Flag
 
