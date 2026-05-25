@@ -29,6 +29,7 @@ Date: 2026-05-25
 - Clarified targeted checkout billing copy so first-month add-on charges no longer imply Stripe starts automatic monthly billing.
 - Confirmed the active get-started spot checkout uses `/api/spots/checkout` with Stripe `subscription` mode; the older `/api/stripe/checkout` route has no current callers found in repo search.
 - Standardized public URL resolution for payment-adjacent checkout redirects and Stripe post-payment links so deployed aliases do not fall back to stale/hardcoded domains.
+- Hardened inbound SMS reply handling so unmatched replies return retryable TwiML when the revenue messaging bridge fails or misses the event ledger, while known legacy contacts still write to `outreach_replies` without duplicate retry pressure.
 - Removed remaining runtime `localhost` fallbacks from admin/agent self-calls; local-only `curl` examples remain documented separately.
 - Moved APEX command agent routing off the hardcoded production domain and onto the internal app URL resolver.
 - Expanded shared URL resolver coverage across SEO metadata, sitemap/robots, auth reset redirects, admin self-calls, intake/nonprofit notifications, political proposal handoffs, internal alert deep links, and generated outreach/Facebook links.
@@ -45,12 +46,13 @@ Date: 2026-05-25
 - Local focused payment URL resolver regression run: passed, 6 tests.
 - Local focused Postmark webhook helper test: passed, 7 tests.
 - Local focused Twilio status webhook helper test: passed, 6 tests.
+- Local focused inbound SMS webhook retry decision test: passed, 4 tests.
 - Local focused provider telemetry health test: passed, 5 tests.
 - Local focused app URL helper test: passed, 5 tests.
 - Local focused Stripe app URL resolver test: passed, 4 tests.
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
-- Latest provider durability sweep: focused Twilio status helper test, full unit suite, typecheck, web lint, and web build all passed locally.
-- Local `pnpm test`: passed, 142 tests.
+- Latest provider durability sweep: focused inbound SMS retry helper test, full unit suite, typecheck, web lint, and web build all passed locally.
+- Local `pnpm test`: passed, 146 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
@@ -81,13 +83,13 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, Postmark callback durability, and provider telemetry freshness now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark have local provider-shaped sample-payload coverage, but Stripe/Twilio/email test-mode validation against isolated provider tooling still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, and provider telemetry freshness now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark have local provider-shaped sample-payload coverage, but Stripe/Twilio/email test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 
 1. Use `PROVIDER_TEST_MODE_RUNBOOK.md` to run Stripe/Twilio/Postmark validation against test/sandbox tooling and an isolated database.
 2. Decide whether targeted checkout monthly add-ons should remain onboarding-activated services or become true Stripe subscriptions.
 3. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
-4. Validate Twilio and Postmark webhook endpoints with local tunnel or provider test tools, still with no mass sends and no production data mutation.
+4. Validate Twilio status, inbound SMS, and Postmark webhook endpoints with local tunnel or provider test tools, still with no mass sends and no production data mutation.
 5. Review monthly-billing intent before changing any Stripe mode or subscription behavior.
 6. Resolve env-name drift by adding/verifying canonical Vercel names first, then adding compatibility readers only after a focused route audit.

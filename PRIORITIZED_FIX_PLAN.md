@@ -35,8 +35,10 @@ Files:
 - `apps/web/app/api/webhooks/stripe/route.ts`
 - `packages/services/src/stripe/__tests__/webhook-signature.test.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
+- `apps/web/app/api/webhooks/outreach/sms/route.ts`
 - `apps/web/app/api/webhooks/postmark/route.ts`
 - `apps/web/lib/outreach/twilio-status-webhook.ts`
+- `apps/web/lib/outreach/inbound-sms-webhook.ts`
 - `apps/web/lib/supabase/*`
 - `packages/services/src/outreach/*`
 
@@ -165,6 +167,24 @@ Validation: focused Twilio helper tests, full test suite, typecheck, web lint, a
 
 Approval needed: no for the code change; yes before live Twilio validation or any SMS send.
 
+### Resolved: Inbound SMS Reply Webhook Could Acknowledge Uncaptured Replies
+
+What was wrong: `/api/webhooks/outreach/sms` caught revenue messaging bridge failures and still returned empty TwiML for unknown phone numbers that did not match legacy `outreach_contacts`.
+
+Why it mattered: for unmatched/new leads, the revenue messaging ledger may be the only durable capture path. Returning 200 after a bridge failure can make Twilio stop retrying and silently lose an inbound reply.
+
+Files:
+
+- `apps/web/app/api/webhooks/outreach/sms/route.ts`
+- `apps/web/lib/outreach/inbound-sms-webhook.ts`
+- `apps/web/lib/outreach/__tests__/inbound-sms-webhook.test.ts`
+
+Fix applied: added a focused retry decision helper and changed unmatched replies to return retryable 503 when the bridge throws or reports `processed: true` without an event ID. Known legacy contacts still persist to `outreach_replies` and acknowledge Twilio, so the fix does not create duplicate retry pressure after legacy capture.
+
+Validation: focused inbound SMS helper tests, full test suite, typecheck, web lint, and web build passed locally after the change.
+
+Approval needed: no for the code change; yes before live Twilio validation or any SMS send.
+
 ### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.
@@ -181,7 +201,7 @@ Approval needed: no production approval; account authentication required.
 
 ### Lint Warning Debt
 
-What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 506 warnings.
+What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 503 warnings.
 
 Why it matters: warnings include unused variables, unescaped text, legacy `any` usage, direct anchor navigation, and hook dependency issues that can hide real defects over time.
 

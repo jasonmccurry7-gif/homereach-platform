@@ -3,6 +3,10 @@ import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { createServiceClient } from "@/lib/supabase/service";
 import { processInboundRevenueMessage } from "@/lib/revenue-messaging/inbound";
+import {
+  type InboundSmsBridgeResult,
+  shouldRetryUnmatchedInboundSmsReply,
+} from "@/lib/outreach/inbound-sms-webhook";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/outreach/sms
@@ -18,6 +22,13 @@ const OPT_IN_KEYWORDS = ["START", "YES", "UNSTOP"];
 const EMPTY_TWIML = new Response("<Response/>", {
   headers: { "Content-Type": "text/xml" },
 });
+
+function retryableTwimlResponse() {
+  return new Response("<Response/>", {
+    status: 503,
+    headers: { "Content-Type": "text/xml" },
+  });
+}
 
 function timingSafeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a);
@@ -98,8 +109,11 @@ export async function POST(req: Request) {
   }
 
   // ── Store reply ────────────────────────────────────────────────────────────
+  let revenueBridgeResult: InboundSmsBridgeResult | null = null;
+  let revenueBridgeFailed = false;
+
   try {
-    await processInboundRevenueMessage({
+    revenueBridgeResult = await processInboundRevenueMessage({
       channel: "sms",
       from,
       to: formData.get("To"),
@@ -109,6 +123,7 @@ export async function POST(req: Request) {
       rawPayload: Object.fromEntries(formData.entries()),
     });
   } catch (err) {
+    revenueBridgeFailed = true;
     console.error("[sms/webhook] revenue messaging bridge failed:", err);
   }
 
@@ -120,6 +135,15 @@ export async function POST(req: Request) {
     .limit(1);
 
   if (!contact) {
+    if (
+      shouldRetryUnmatchedInboundSmsReply({
+        bridgeFailed: revenueBridgeFailed,
+        bridgeResult: revenueBridgeResult,
+      })
+    ) {
+      return retryableTwimlResponse();
+    }
+
     // Unknown number — log and ignore
     console.log(`[sms/webhook] reply from unknown number: ${from}`);
     return EMPTY_TWIML;

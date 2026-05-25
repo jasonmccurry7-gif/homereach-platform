@@ -15,7 +15,7 @@ The most important remaining items to fix next are:
 1. Targeted checkout copy now avoids implying automatic recurring Stripe billing, but business intent still needs confirmation before any targeted add-on subscription-mode change.
 2. Legacy `/api/stripe/checkout` is now default-disabled by `ENABLE_LEGACY_STRIPE_CHECKOUT`; active get-started checkout remains `/api/spots/checkout` in Stripe subscription mode.
 3. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
-4. Stripe now has synthetic SDK-signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload tests, but those are not substitutes for provider test-mode validation.
+4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS reply retry behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -89,6 +89,8 @@ Primary files:
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 - `apps/web/app/api/webhooks/outreach/sms/route.ts`
 - `apps/web/lib/outreach/twilio-status-webhook.ts`
+- `apps/web/lib/outreach/inbound-sms-webhook.ts`
+- `apps/web/lib/outreach/__tests__/inbound-sms-webhook.test.ts`
 
 Outbound SMS flow:
 
@@ -105,6 +107,16 @@ Inbound status flow:
 3. Production fails closed when `TWILIO_AUTH_TOKEN` is missing.
 4. Route inserts an append-only row into `twilio_message_status`.
 5. Route returns retryable 503 if the append-only telemetry insert or handler fails.
+
+Inbound SMS reply flow:
+
+1. Twilio posts form data to `/api/webhooks/outreach/sms`.
+2. Route validates `X-Twilio-Signature` when `TWILIO_AUTH_TOKEN` exists.
+3. Production fails closed when `TWILIO_AUTH_TOKEN` is missing.
+4. STOP/START keywords update opt-out state and return empty TwiML without sending an auto-reply.
+5. Normal replies first pass through `processInboundRevenueMessage` for the revenue messaging ledger and approval queue.
+6. Known legacy `outreach_contacts` also persist to `outreach_replies`.
+7. Unknown or unmatched replies are acknowledged only when the revenue bridge captured the event or was deliberately disabled; bridge failures or missing event-ledger IDs return retryable 503 so Twilio can retry.
 
 ### Email Providers
 
@@ -346,6 +358,36 @@ Residual risk:
 
 - No live Twilio webhook was invoked. Provider validation should use a signed sample payload first and avoid sending live SMS.
 
+### RESOLVED: Inbound SMS Replies Could Be Acknowledged After Bridge Capture Failure
+
+Original evidence before fix:
+
+- `apps/web/app/api/webhooks/outreach/sms/route.ts` caught `processInboundRevenueMessage` failures and continued.
+- If the incoming phone number did not match legacy `outreach_contacts`, the route returned empty TwiML even after the revenue messaging bridge failed or returned no event ID.
+
+Why it mattered:
+
+Unknown or newly sourced SMS replies may only exist in the revenue messaging ledger. Acknowledging Twilio before the bridge captures the reply can hide a lead response, customer issue, political reply, or opt-in conversation that should enter the approval queue.
+
+Fix applied:
+
+- Added `apps/web/lib/outreach/inbound-sms-webhook.ts` with a pure retry decision helper for unmatched inbound replies.
+- Updated `/api/webhooks/outreach/sms` so unmatched replies return retryable 503 when the revenue bridge throws or reports `processed: true` without an event ID.
+- Preserved the legacy known-contact path: when a contact is found, the route still writes `outreach_replies` and returns 200, avoiding duplicate retry pressure after legacy capture.
+- Kept bridge-disabled behavior acknowledged, so deliberate `REVENUE_MESSAGING_BRIDGE_ENABLED=false` operation does not force retries.
+
+Validation:
+
+- `pnpm exec vitest run apps/web/lib/outreach/__tests__/inbound-sms-webhook.test.ts` passed.
+- `pnpm test` passed.
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
+
+Residual risk:
+
+- No live inbound SMS was invoked. Provider validation should use a signed sample payload and no live sends first.
+
 ### RESOLVED: Postmark Webhook Acknowledged Email Event DB Failures
 
 Original evidence before fix:
@@ -430,6 +472,7 @@ Validation:
 - Postmark webhook fails closed in production if Basic Auth is not configured.
 - Twilio status webhook validates signatures and fails closed in production if `TWILIO_AUTH_TOKEN` is missing.
 - Twilio status webhook now returns retryable 503 for telemetry insert/handler failures after signature validation.
+- Inbound SMS reply webhook now returns retryable 503 for unmatched replies when the revenue messaging bridge fails or misses the event ledger.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
 
@@ -440,12 +483,13 @@ Validation:
 3. Run Stripe CLI/test-mode webhook replay only against a test database or isolated local test schema.
 4. Validate targeted checkout with signed test campaigns before enabling public links.
 5. Validate Twilio status insert with a signed sample request and no live SMS send.
-6. Validate Postmark webhook with sample payloads and test Basic Auth.
-7. Add admin health checks for provider telemetry freshness, not just table readability.
-8. Only then perform provider-level test-mode checks.
+6. Validate inbound SMS reply handling with signed sample requests, including unmatched-number bridge failure behavior, and no live SMS send.
+7. Validate Postmark webhook with sample payloads and test Basic Auth.
+8. Add admin health checks for provider telemetry freshness, not just table readability.
+9. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, inbound SMS reply capture, and Postmark callback durability risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.
