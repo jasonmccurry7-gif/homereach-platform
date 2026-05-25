@@ -4,6 +4,7 @@ import {
   buildTwilioMessageStatusInsert,
   buildTwilioStatusCallbackUrl,
   parseTwilioStatusForm,
+  shouldRetryTwilioStatusInsert,
 } from "@/lib/outreach/twilio-status-webhook";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -47,6 +48,13 @@ import { createServiceClient } from "@/lib/supabase/service";
 const EMPTY_TWIML = new Response("<Response/>", {
   headers: { "Content-Type": "text/xml" },
 });
+
+function retryableTwimlResponse() {
+  return new Response("<Response/>", {
+    status: 503,
+    headers: { "Content-Type": "text/xml" },
+  });
+}
 
 export async function POST(req: Request) {
   // ── Feature flag — allow disabling without removing the route ─────────────
@@ -110,17 +118,16 @@ export async function POST(req: Request) {
       .from("twilio_message_status")
       .insert(statusRow);
 
-    if (error) {
-      // Log but still 200 — Twilio retries don't help on a DB issue.
+    if (shouldRetryTwilioStatusInsert(error)) {
       console.error("[twilio/status] insert failed:", error.message);
+      return retryableTwimlResponse();
     }
 
     return EMPTY_TWIML;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[twilio/status] handler error:", msg);
-    // Return 200 anyway — Twilio retries are not helpful here.
-    return EMPTY_TWIML;
+    return retryableTwimlResponse();
   }
 }
 

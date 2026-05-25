@@ -13,7 +13,7 @@ Date: 2026-05-25
 - Added focused Stripe idempotency unit tests.
 - Hardened targeted route checkout so public payment links no longer trust a bare campaign UUID.
 - Added signed targeted checkout tokens, a legacy customer-email confirmation fallback, add-on allowlisting, and the production env requirement/template entries for `TARGETED_CHECKOUT_SIGNING_SECRET`.
-- Hardened Twilio status webhook persistence by switching the post-signature append-only insert to the Supabase service-role client.
+- Hardened Twilio status webhook persistence by switching the post-signature append-only insert to the Supabase service-role client and returning retryable 503 on telemetry insert or handler failure.
 - Hardened Postmark webhook handling so email event insert failures return retryable 503 and delivery events cannot clear suppression states.
 - Added provider telemetry freshness warnings to the admin outreach health endpoint.
 - Added the targeted checkout signing secret placeholder to GitHub Actions build env so CI validates the production env gate intentionally.
@@ -44,13 +44,13 @@ Date: 2026-05-25
 - Local focused targeted checkout/app URL regression run: passed, 10 tests.
 - Local focused payment URL resolver regression run: passed, 6 tests.
 - Local focused Postmark webhook helper test: passed, 7 tests.
-- Local focused Twilio status webhook helper test: passed, 5 tests.
+- Local focused Twilio status webhook helper test: passed, 6 tests.
 - Local focused provider telemetry health test: passed, 5 tests.
 - Local focused app URL helper test: passed, 5 tests.
 - Local focused Stripe app URL resolver test: passed, 4 tests.
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
-- Latest guard/resolver sweep: focused legacy checkout guard test, full unit suite, typecheck, web lint, and web build all passed locally.
-- Local `pnpm test`: passed, 141 tests.
+- Latest provider durability sweep: focused Twilio status helper test, full unit suite, typecheck, web lint, and web build all passed locally.
+- Local `pnpm test`: passed, 142 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.

@@ -4,6 +4,7 @@ import {
   buildTwilioMessageStatusInsert,
   buildTwilioStatusCallbackUrl,
   parseTwilioStatusForm,
+  shouldRetryTwilioStatusInsert,
 } from "../twilio-status-webhook";
 
 describe("Twilio status webhook helpers", () => {
@@ -79,5 +80,11 @@ describe("Twilio status webhook helpers", () => {
     const signature = twilio.getExpectedTwilioSignature(authToken, url, params);
 
     expect(twilio.validateRequest(authToken, signature, url, params)).toBe(true);
+  });
+
+  it("marks insert failures as retryable provider callbacks", () => {
+    expect(shouldRetryTwilioStatusInsert(null)).toBe(false);
+    expect(shouldRetryTwilioStatusInsert(undefined)).toBe(false);
+    expect(shouldRetryTwilioStatusInsert({ message: "database unavailable" })).toBe(true);
   });
 });

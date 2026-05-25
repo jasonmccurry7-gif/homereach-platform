@@ -104,7 +104,7 @@ Inbound status flow:
 2. Route validates `X-Twilio-Signature` when `TWILIO_AUTH_TOKEN` exists.
 3. Production fails closed when `TWILIO_AUTH_TOKEN` is missing.
 4. Route inserts an append-only row into `twilio_message_status`.
-5. Route returns TwiML 200 even if insert fails.
+5. Route returns retryable 503 if the append-only telemetry insert or handler fails.
 
 ### Email Providers
 
@@ -331,7 +331,8 @@ Fix applied:
 - Switched the route to `createServiceClient()` only after Twilio signature validation.
 - Kept the mutation contract narrow: append-only insert into `twilio_message_status`; no send-side table updates.
 - Updated route comments to document why service-role is used here.
-- Added a pure Twilio status helper and provider-shaped tests for delivered, undelivered, malformed, and signed sample callbacks without sending SMS.
+- Added retryable 503 behavior for insert failures and unexpected handler errors, so Twilio can retry telemetry callbacks instead of receiving false-success 200.
+- Added a pure Twilio status helper and provider-shaped tests for delivered, undelivered, malformed, signed sample callbacks, and retry-decision behavior without sending SMS.
 
 Validation:
 
@@ -428,6 +429,7 @@ Validation:
 - Postmark webhook can be disabled with `ENABLE_POSTMARK_WEBHOOK=false`.
 - Postmark webhook fails closed in production if Basic Auth is not configured.
 - Twilio status webhook validates signatures and fails closed in production if `TWILIO_AUTH_TOKEN` is missing.
+- Twilio status webhook now returns retryable 503 for telemetry insert/handler failures after signature validation.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
 

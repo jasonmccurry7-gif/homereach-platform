@@ -159,7 +159,7 @@ Files:
 - `apps/web/lib/outreach/twilio-status-webhook.ts`
 - `apps/web/lib/outreach/__tests__/twilio-status-webhook.test.ts`
 
-Fix applied: after signature validation, the route now uses the Supabase service-role client for the narrow append-only `twilio_message_status` insert and keeps the existing no-send mutation boundary. Twilio status payload parsing and insert-row mapping are isolated in a helper with provider-shaped sample tests.
+Fix applied: after signature validation, the route now uses the Supabase service-role client for the narrow append-only `twilio_message_status` insert and keeps the existing no-send mutation boundary. Insert failures and unexpected handler errors now return retryable 503 instead of false-success 200. Twilio status payload parsing, insert-row mapping, signature URL calculation, and retry-decision behavior are isolated in a helper with provider-shaped sample tests.
 
 Validation: focused Twilio helper tests, full test suite, typecheck, web lint, and web build passed locally after the change.
 

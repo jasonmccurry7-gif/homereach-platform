@@ -14,6 +14,10 @@ export type TwilioMessageStatusInsert = {
   raw_payload: TwilioStatusParams;
 };
 
+export type TwilioStatusInsertError = {
+  message?: string;
+} | null | undefined;
+
 export function parseTwilioStatusForm(rawText: string): TwilioStatusParams {
   const params: TwilioStatusParams = {};
   for (const [key, value] of new URLSearchParams(rawText)) {
@@ -52,4 +56,10 @@ export function buildTwilioMessageStatusInsert(
     api_version: params["ApiVersion"] ?? null,
     raw_payload: params,
   };
+}
+
+export function shouldRetryTwilioStatusInsert(
+  error: TwilioStatusInsertError,
+): error is { message?: string } {
+  return Boolean(error);
 }
