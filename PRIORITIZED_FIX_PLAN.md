@@ -748,7 +748,7 @@ Approval needed: no for local anti-abuse guard; yes before changing funnel looku
 
 ### Lint Warning Debt
 
-What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 474 warnings.
+What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 468 warnings.
 
 Why it matters: warnings include unused variables, unescaped text, legacy `any` usage, direct anchor navigation, and hook dependency issues that can hide real defects over time.
 
@@ -760,7 +760,7 @@ Files:
 
 Safest fix: reduce warnings in focused passes by module, starting with revenue-critical intake, dashboard, and webhook-adjacent code.
 
-Current status: latest cleanup removed unused no-op declarations/lookups from `apps/web/app/api/admin/agents/anchor/route.ts`. Focused Anchor ESLint is now clean, and full web lint is down to 474 warnings with 0 errors.
+Current status: latest cleanups removed unused no-op declarations/lookups from `apps/web/app/api/admin/agents/anchor/route.ts` and escaped JSX quote marks in `apps/web/app/privacy/page.tsx`. Focused ESLint is clean for both touched files, and full web lint is down to 468 warnings with 0 errors.
 
 Risk of fix: low to medium depending on module touched.
 
