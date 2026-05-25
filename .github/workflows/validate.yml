@@ -1,0 +1,71 @@
+name: Validate
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Install, test, lint, typecheck, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Typecheck
+        run: pnpm exec turbo type-check --ui=stream
+
+      - name: Lint web app
+        run: pnpm --filter @homereach/web lint
+
+      - name: Build web app
+        run: pnpm --filter @homereach/web build
+        env:
+          DATABASE_URL: postgres://user:pass@localhost:5432/homereach
+          DATABASE_URL_POOLED: postgres://user:pass@localhost:5432/homereach
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-placeholder
+          SUPABASE_SERVICE_ROLE_KEY: service-role-placeholder
+          STRIPE_SECRET_KEY: sk_test_placeholder
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_test_placeholder
+          TWILIO_ACCOUNT_SID: AC00000000000000000000000000000000
+          TWILIO_AUTH_TOKEN: twilio-placeholder
+          OUTREACH_SMS_FROM_NUMBER: "+15555550100"
+          OWNER_NAME: HomeReach Operator
+          OWNER_CELL_PHONE: "+15555550100"
+          OWNER_PERSONAL_EMAIL: owner@example.com
+          OWNER_SECONDARY_EMAIL: owner-secondary@example.com
+          OWNER_DOMAIN_EMAIL: owner@homereach.example
+          DEFAULT_FROM_EMAIL: hello@homereach.example
+          DEFAULT_REPLY_TO_EMAIL: reply@homereach.example
+          EMAIL_PROVIDER: resend
+          RESEND_API_KEY: re_placeholder
+          ENABLE_POSTMARK_WEBHOOK: "false"
+          ADMIN_NOTIFICATION_EMAIL: admin@homereach.example
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+          USE_MOCK_DB: "false"

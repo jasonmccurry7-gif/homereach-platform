@@ -4,21 +4,39 @@ Updated: 2026-05-24
 
 ## CRITICAL
 
-### GitHub PR Creation Blocker
+### First GitHub-Hosted CI Run Needs Observation
+
+What is wrong: `.github/workflows/validate.yml` has been added, but the first hosted run has not yet been observed.
+
+Why it matters: local Windows validation is strong, but GitHub's Linux runner may expose path, cache, package-manager, or env differences.
+
+Files:
+
+- `.github/workflows/validate.yml`
+- `package.json`
+- `pnpm-lock.yaml`
+
+Safest fix: push the workflow commit, observe PR #7 Actions, and patch only runner-specific issues if they appear.
+
+Risk of fix: low to medium.
+
+Approval needed: no production approval.
+
+## HIGH
+
+### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.
 
-Why it matters: The validated branch has been pushed, but this shell cannot create the PR through `gh pr create`.
+Why it matters: connector-backed PR creation works, but `gh` cannot inspect or rerun Actions from this shell.
 
 Files: none.
 
-Safest fix: authenticate `gh`, then open the PR; alternatively open the pushed branch through GitHub's compare URL.
+Safest fix: authenticate `gh` when interactive account setup is convenient.
 
 Risk of fix: low.
 
 Approval needed: no production approval; account authentication required.
-
-## HIGH
 
 ### Lint Warning Debt
 

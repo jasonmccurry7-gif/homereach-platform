@@ -8,7 +8,10 @@
 - Restored full workspace TypeScript health.
 - Verified production build with placeholder env.
 - Repaired the lint command by migrating web linting to ESLint CLI.
+- Added a root Vitest test gate and got all existing unit tests passing.
+- Added a GitHub Actions validation workflow.
 - Pushed the current-main stabilization branch to GitHub.
+- Opened draft PR #7.
 - Started local dev servers for read-only validation.
 - Smoke-tested primary public revenue routes, intake routes, admin protection, spot resolution, availability, and political feature-flag behavior.
 
@@ -19,11 +22,13 @@
 - Stripe and DB clients no longer fail merely because a module is imported during build.
 - Type drift no longer blocks safe CI-style validation.
 - Lint is no longer blocked by deprecated interactive Next tooling.
+- Existing pricing and political unit tests now run as a real gate: 96 tests passing.
 
 ## Current Risks
 
 - Lint warning debt remains and should be reduced in focused passes.
 - GitHub CLI is still unauthenticated in this shell, so PR creation must be done through the compare URL or after `gh` auth.
+- First GitHub-hosted CI run needs to be observed after the workflow commit is pushed.
 - Political and AI workforce systems are large and need deeper workflow QA beyond route smoke checks.
 - No provider-mutating checks have been run yet; Stripe/Twilio/email must remain dry-run/test-mode only.
 
@@ -34,6 +39,7 @@ Not ready for production deployment yet.
 Validated locally:
 
 - install
+- test
 - typecheck
 - lint
 - build
@@ -41,8 +47,7 @@ Validated locally:
 
 Still required before production:
 
-- GitHub PR
-- CI-equivalent validation
+- first GitHub-hosted CI pass
 - Vercel env audit
 - Supabase migration/RLS review
 - Stripe test-mode webhook validation

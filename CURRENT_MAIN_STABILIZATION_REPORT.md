@@ -1,6 +1,6 @@
 # Current Main Stabilization Report
 
-Updated: 2026-05-24 21:46 ET
+Updated: 2026-05-24 21:55 ET
 
 ## Scope
 
@@ -29,6 +29,7 @@ Current `origin/main` has been brought back to a validated local candidate state
 Passing gates:
 
 - `pnpm install --frozen-lockfile`
+- `pnpm test`
 - `pnpm exec turbo type-check --ui=stream`
 - `pnpm --filter @homereach/web lint`
 - `pnpm --filter @homereach/web build` with placeholder, non-secret env values
@@ -43,7 +44,7 @@ GitHub status:
 - GitHub CLI is installed.
 - `gh auth status` still reports no authenticated GitHub host in this shell.
 - The branch has been pushed with Git credentials.
-- PR creation through `gh pr create` is blocked until GitHub CLI authentication is available.
+- Draft PR opened through the GitHub connector: https://github.com/jasonmccurry7-gif/homereach-platform/pull/7
 
 ## What Changed
 
@@ -61,6 +62,9 @@ The current-main stabilization work ports the previously validated repair set on
 - Ported validated TypeScript repairs across admin pages, Supabase route handlers, Facebook/Postgrest calls, Stripe API versions, engine types, legacy import types, and ad-engine export typing.
 - Replaced deprecated interactive `next lint` usage with a committed ESLint CLI config.
 - Renamed the DB factory mock selector helper so React hook linting no longer misclassifies it as a hook.
+- Added a root Vitest unit-test gate and wired the existing pricing/political test suites into `pnpm test`.
+- Fixed the pricing unit-test harness so it mocks `@homereach/db/schema` instead of loading the live Drizzle schema graph.
+- Added `.github/workflows/validate.yml` so PRs run the same install, test, typecheck, lint, and build gates in GitHub Actions.
 - Hardened middleware protection for `/api/admin/*`:
   - unauthenticated admin API requests return `401`
   - non-admin disallowed API requests return `403`
@@ -76,6 +80,14 @@ pnpm install --frozen-lockfile
 ```
 
 Result: passed.
+
+Unit tests:
+
+```powershell
+pnpm test
+```
+
+Result: passed, 4 test files and 96 tests successful.
 
 Typecheck:
 
@@ -94,6 +106,14 @@ pnpm --filter @homereach/web build
 Result: passed with placeholder env injected into the process. Next.js generated 248 routes.
 
 Important caveat: `apps/web/next.config.ts` still skips type validation and lint during build. Type safety is therefore enforced by the explicit Turbo typecheck gate above.
+
+CI workflow:
+
+```text
+.github/workflows/validate.yml
+```
+
+Result: committed. First GitHub-hosted run must be observed after push.
 
 Lint:
 
@@ -167,11 +187,12 @@ Risk level: MEDIUM until PR/CI validation and deeper workflow QA are complete.
 2. Build skips type and lint validation in Next config; explicit typecheck covers TypeScript, but the build gate itself is permissive.
 3. Current local env did not enable political by default, so political production rollout depends on a deliberate `ENABLE_POLITICAL=true` environment decision.
 4. The project still contains large newly added AI/political/procurement systems that have only been smoke-tested at route level, not deeply QA-tested.
-5. GitHub CLI is not authenticated, so the pushed branch cannot yet be converted into a PR from this shell.
+5. First GitHub-hosted CI run for the new workflow must be observed and fixed if GitHub runner behavior differs from local Windows validation.
+6. GitHub CLI is not authenticated, but the GitHub connector can create/manage PRs.
 
 ## Recommended Next Actions
 
-1. Open a PR from `codex/current-main-audit-20260524` once GitHub CLI authentication is available, or use the GitHub compare URL.
+1. Observe the first GitHub Actions run for PR #7 and repair any runner-only issues.
 2. Run focused smoke/QA on the new AI workforce, procurement, political, and gov-contracts modules.
 3. Validate Vercel environment variables against `apps/web/lib/env.ts`, `apps/web/lib/political/env.ts`, and integration docs.
 4. Reduce lint warning debt in focused, low-risk passes.

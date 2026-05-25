@@ -35,6 +35,33 @@ vi.mock("@homereach/db", () => ({
   businesses: {},
 }));
 
+vi.mock("@homereach/db/schema", () => ({
+  pricingProfiles: {
+    id: "pricing_profiles.id",
+    name: "pricing_profiles.name",
+    productType: "pricing_profiles.product_type",
+    spotType: "pricing_profiles.spot_type",
+    billingInterval: "pricing_profiles.billing_interval",
+    basePriceCents: "pricing_profiles.base_price_cents",
+    foundingPriceCents: "pricing_profiles.founding_price_cents",
+    compareAtPriceCents: "pricing_profiles.compare_at_price_cents",
+    isActive: "pricing_profiles.is_active",
+    effectiveFrom: "pricing_profiles.effective_from",
+    effectiveUntil: "pricing_profiles.effective_until",
+    perUnitPriceCentsMin: "pricing_profiles.per_unit_price_cents_min",
+    perUnitPriceCentsMax: "pricing_profiles.per_unit_price_cents_max",
+    minQuantity: "pricing_profiles.min_quantity",
+  },
+  discountRules: {
+    isActive: "discount_rules.is_active",
+    priority: "discount_rules.priority",
+  },
+  bundles: {
+    id: "bundles.id",
+    pricingProfileId: "bundles.pricing_profile_id",
+  },
+}));
+
 vi.mock("drizzle-orm", () => ({
   and:    vi.fn((...args) => args),
   eq:     vi.fn((a, b) => ({ field: a, value: b })),
