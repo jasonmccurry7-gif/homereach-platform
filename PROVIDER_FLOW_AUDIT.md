@@ -8,7 +8,7 @@ Safety posture: this audit is read-only. No provider calls were made, no product
 
 ## Executive Summary
 
-The branch is much healthier than the original laptop-migration state: install, tests, typecheck, lint gate, build, hosted Vercel validation, and GitHub Actions validation are all passing. The next production-readiness risk is provider durability, especially webhook behavior under retry/failure and public payment session creation.
+The branch is much healthier than the original laptop-migration state: install, tests, typecheck, lint gate, build, and GitHub Actions validation are passing. The latest Vercel deployment for commit `7ab5d0c` failed before the missing `TARGETED_CHECKOUT_SIGNING_SECRET` project env was repaired, so a fresh deployment is required to verify hosted build readiness.
 
 The most important remaining items to fix next are:
 
@@ -131,7 +131,9 @@ Primary files:
 Observed posture:
 
 - GitHub Actions validation is passing on the current PR head.
-- Vercel deployment status is passing on the current PR head.
+- The latest Vercel deployment for commit `7ab5d0c` failed because `TARGETED_CHECKOUT_SIGNING_SECRET` was missing at build time.
+- `TARGETED_CHECKOUT_SIGNING_SECRET` is now present as a sensitive Vercel env var in production and in the `codex/current-main-audit-20260524` branch preview environment; values were not printed.
+- A fresh Vercel deployment is required to confirm the repaired project env.
 - `next.config.ts` still ignores Next's internal build-time TypeScript/lint checks, so explicit CI gates remain mandatory.
 - GitHub CLI is installed but not authenticated in this shell; the GitHub connector remains the working PR/Actions path.
 - `/api/admin/outreach/health` now reports provider telemetry freshness and warnings when email/SMS sends exist without recent provider callbacks.
@@ -224,7 +226,7 @@ Validation:
 
 Residual risk:
 
-- Production must set `TARGETED_CHECKOUT_SIGNING_SECRET` before deploying this branch.
+- Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`, but the latest failed deployment predated that repair; a fresh deployment still needs to pass before promotion.
 - Route-level rate limiting is still recommended as a separate hardening pass.
 
 ### MEDIUM: Targeted Checkout Promises Monthly Billing But Uses One-Time Payment Mode
@@ -390,4 +392,4 @@ Validation:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes code validation and hosted smoke checks, and the Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. Provider test-mode validation and the `TARGETED_CHECKOUT_SIGNING_SECRET` production env setup still need completion before production-sensitive flows are trusted.
+Reason: the branch passes local code validation and GitHub Actions, and the Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. The `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but the hosted Vercel build must be retried and provider test-mode validation still needs completion before production-sensitive flows are trusted.

@@ -17,6 +17,7 @@ Date: 2026-05-25
 - Hardened Postmark webhook handling so email event insert failures return retryable 503 and delivery events cannot clear suppression states.
 - Added provider telemetry freshness warnings to the admin outreach health endpoint.
 - Added the targeted checkout signing secret placeholder to GitHub Actions build env so CI validates the production env gate intentionally.
+- Confirmed `TARGETED_CHECKOUT_SIGNING_SECRET` is now configured in Vercel production and in the branch preview environment for `codex/current-main-audit-20260524`; values were not printed.
 - Pushed provider audit documentation to the draft PR.
 
 ## Validation
@@ -30,24 +31,24 @@ Date: 2026-05-25
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
 - Local browser smoke on targeted checkout: passed. No-token checkout links show email confirmation and disable Pay; token-bearing links skip the email prompt and enable Pay.
-- Remote Vercel status for commit `345d4c9`: passed.
-- Remote GitHub Actions `Validate` run #4 for commit `345d4c9`: passed.
+- Remote GitHub Actions `Validate` run #10 for commit `7ab5d0c`: passed.
+- Remote Vercel deployment for commit `7ab5d0c`: failed before the Vercel project env repair because `TARGETED_CHECKOUT_SIGNING_SECRET` was missing at build time. A fresh deployment is needed after the env repair.
 
 ## Revenue And Reliability Risks
 
 - Medium: targeted checkout billing copy references ongoing monthly billing while Stripe uses one-time `payment` mode.
 - Medium: main bundle checkout still routes monthly-priced bundle purchases through one-time payment mode.
-- Deployment gate: Vercel production must have `TARGETED_CHECKOUT_SIGNING_SECRET` set before this branch can promote safely.
+- Deployment gate: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; a new Vercel build must confirm the repaired env is available during deployment.
 
 ## Production Readiness Status
 
-Current status: stabilization branch is build/CI ready, but provider-live promotion is not ready.
+Current status: stabilization branch is local-build and GitHub-Actions ready, but provider-live promotion is not ready and the latest Vercel deployment must be retried after the env repair.
 
 Reason: payment webhook retry behavior, targeted checkout authorization, Twilio status persistence, Postmark callback durability, and provider telemetry freshness now have tested branch fixes, but Stripe/Twilio/email test-mode validation still needs completion.
 
 ## Recommended Next Actions
 
-1. Set `TARGETED_CHECKOUT_SIGNING_SECRET` in Vercel production/preview before promoting this branch.
+1. Trigger a fresh Vercel deployment now that `TARGETED_CHECKOUT_SIGNING_SECRET` exists in the project environments.
 2. Decide whether targeted checkout monthly add-ons should be copy-only, first-month setup, or true subscriptions.
 3. Validate Stripe webhook behavior with Stripe CLI/test-mode against isolated data.
 4. Validate Twilio and Postmark webhooks with signed/authenticated sample payloads and no live sends.

@@ -1,6 +1,6 @@
 # Prioritized Fix Plan
 
-Updated: 2026-05-24
+Updated: 2026-05-25
 
 ## CRITICAL
 
@@ -68,7 +68,7 @@ Fix applied: added HMAC-signed targeted checkout tokens, attached tokens to inta
 
 Validation: focused token tests, full test suite, typecheck, web lint, web build, and local browser smoke passed.
 
-Approval needed: production must set `TARGETED_CHECKOUT_SIGNING_SECRET` before deploying this branch; provider-live Stripe testing must remain in test mode first.
+Approval needed: Vercel production and the branch preview now have `TARGETED_CHECKOUT_SIGNING_SECRET`; a fresh deployment must pass before promotion, and provider-live Stripe testing must remain in test mode first.
 
 ## HIGH
 
