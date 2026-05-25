@@ -14,7 +14,7 @@ The most important remaining items to fix next are:
 
 1. Billing intent still needs confirmation where monthly language is paired with one-time Stripe payment sessions.
 2. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
-3. Twilio and Postmark now have local provider-shaped sample-payload tests, but that is not a substitute for test-mode provider validation.
+3. Stripe now has synthetic SDK-signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload tests, but those are not substitutes for provider test-mode validation.
 
 ## Provider Surface Map
 
@@ -25,6 +25,7 @@ Primary files:
 - `apps/web/app/api/stripe/checkout/route.ts`
 - `apps/web/app/api/stripe/targeted-checkout/route.ts`
 - `apps/web/app/api/webhooks/stripe/route.ts`
+- `packages/services/src/stripe/__tests__/webhook-signature.test.ts`
 - `packages/services/src/stripe/index.ts`
 
 Primary checkout flow:
@@ -166,12 +167,20 @@ Fix applied:
 Validation:
 
 - `pnpm exec vitest run apps/web/lib/stripe/__tests__/webhook-idempotency.test.ts` passed.
+- `pnpm exec vitest run packages/services/src/stripe/__tests__/webhook-signature.test.ts` passed.
 - `pnpm test` passed with 103 tests.
 - `pnpm exec turbo type-check --ui=stream` passed.
 - `pnpm --filter @homereach/web lint` passed with existing warnings only.
 - `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
 
 Live provider validation: still pending and must stay in Stripe test mode first.
+
+Synthetic signature validation:
+
+- A signed SDK-generated `checkout.session.completed` payload constructs a Stripe event successfully.
+- A payload signed with the wrong webhook secret is rejected.
+- Missing `STRIPE_WEBHOOK_SECRET` fails closed before any payload is trusted.
+- Stripe CLI is not installed on this laptop, so provider-tool forwarding validation remains pending.
 
 ### RESOLVED: Stripe Webhook Has Redundant Idempotency Blocks
 
@@ -401,4 +410,4 @@ Validation:
 
 Current status: not ready for provider-live promotion yet.
 
-Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. The `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.
+Reason: the branch passes local code validation, GitHub Actions, and Vercel preview validation. The Stripe retry-drop, public targeted checkout authorization, Twilio telemetry durability, and Postmark callback durability risks have tested branch fixes. Stripe now has synthetic signature verification coverage and the `TARGETED_CHECKOUT_SIGNING_SECRET` Vercel env repair is complete, but provider test-mode validation still needs completion before production-sensitive flows are trusted.

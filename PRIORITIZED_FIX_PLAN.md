@@ -26,13 +26,14 @@ Approval needed: yes before Stripe provider testing; local branch code is repair
 
 What is wrong: Stripe, Twilio, email, Supabase, and webhook flows have not been exercised against provider test/dry-run paths on this branch.
 
-Why it matters: these systems can affect payments, customer communication, auth activation, and revenue records. Twilio and Postmark now have local provider-shaped sample-payload coverage, but live provider integrations still need isolated test-mode validation.
+Why it matters: these systems can affect payments, customer communication, auth activation, and revenue records. Stripe now has synthetic signature coverage, and Twilio/Postmark now have local provider-shaped sample-payload coverage, but live provider integrations still need isolated test-mode validation.
 
 Files:
 
 - `apps/web/app/api/stripe/checkout/route.ts`
 - `apps/web/app/api/stripe/targeted-checkout/route.ts`
 - `apps/web/app/api/webhooks/stripe/route.ts`
+- `packages/services/src/stripe/__tests__/webhook-signature.test.ts`
 - `apps/web/app/api/webhooks/twilio/status/route.ts`
 - `apps/web/app/api/webhooks/postmark/route.ts`
 - `apps/web/lib/outreach/twilio-status-webhook.ts`
