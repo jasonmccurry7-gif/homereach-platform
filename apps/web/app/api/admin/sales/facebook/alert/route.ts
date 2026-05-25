@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminSalesAgentOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/facebook/alert
@@ -62,6 +63,9 @@ async function sendTwilioSms(to: string, from: string, body: string): Promise<{ 
 
 export async function POST(req: Request) {
   try {
+    const access = await requireAdminSalesAgentOrCron(req);
+    if (!access.ok) return access.response;
+
     const body = await req.json();
     const { agent_id, alert_type, message, context } = body;
 

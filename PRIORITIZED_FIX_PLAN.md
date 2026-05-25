@@ -185,6 +185,27 @@ Validation: focused inbound SMS helper tests with valid/invalid signature and re
 
 Approval needed: no for the code change; yes before live Twilio validation or any SMS send.
 
+### Resolved: Facebook/APEX Admin Automation POSTs Could Run Without Auth
+
+What was wrong: Facebook alert sending, Facebook daily scoring, and APEX orchestration POST routes could run with service-role access even when a request did not provide a valid cron secret or authenticated operator session.
+
+Why it mattered: these routes can send internal SMS alerts, recompute operator metrics, and trigger multi-agent workflows. Public invocation is an operational and reputation risk even if customer-facing sends remain guarded elsewhere.
+
+Files:
+
+- `apps/web/app/api/admin/sales/facebook/alert/route.ts`
+- `apps/web/app/api/admin/sales/facebook/daily-score/route.ts`
+- `apps/web/app/api/admin/system/apex/route.ts`
+- `apps/web/lib/auth/api-guards.ts`
+- `apps/web/lib/auth/request-secret.ts`
+- `apps/web/lib/auth/__tests__/request-secret.test.ts`
+
+Fix applied: added a shared `requireAdminSalesAgentOrCron` guard, moved request-secret parsing into a pure helper with tests, required admin/sales-agent-or-cron for Facebook alerts, and required admin-or-cron for Facebook daily scoring and APEX orchestration.
+
+Validation: focused request-secret tests, full test suite, typecheck, web lint, and web build passed locally after the change.
+
+Approval needed: no for access-control hardening; yes before any live automation send/provider validation.
+
 ### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.

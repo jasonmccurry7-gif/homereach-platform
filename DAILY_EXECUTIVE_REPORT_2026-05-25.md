@@ -36,6 +36,7 @@ Date: 2026-05-25
 - Added Vercel deployment URL fallbacks (`VERCEL_BRANCH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`, `VERCEL_URL`) to the shared app URL resolver so preview/prod links do not degrade to localhost or a stale production fallback when canonical app URL aliases drift.
 - Added a package-local Stripe app URL resolver with tests so future shared subscription Checkout sessions use canonical aliases and Vercel deployment fallbacks instead of reading only `NEXT_PUBLIC_APP_URL`.
 - Guarded the inactive legacy `/api/stripe/checkout` route behind `ENABLE_LEGACY_STRIPE_CHECKOUT`; it now returns `410` before auth, database writes, or Stripe session creation unless deliberately re-enabled.
+- Hardened Facebook/APEX admin automation POST access so service-role alert sending, daily Facebook scoring, and the APEX orchestration sweep require a valid cron secret or an authenticated admin/sales session, depending on route.
 
 ## Validation
 
@@ -51,8 +52,9 @@ Date: 2026-05-25
 - Local focused app URL helper test: passed, 5 tests.
 - Local focused Stripe app URL resolver test: passed, 4 tests.
 - Local focused legacy Stripe checkout guard test: passed, 2 tests.
-- Latest provider durability sweep: focused inbound SMS retry helper test, full unit suite, typecheck, web lint, and web build all passed locally.
-- Local `pnpm test`: passed, 151 tests.
+- Local focused request secret helper test: passed, 4 tests.
+- Latest provider/admin durability sweep: focused inbound SMS helper test, focused request secret helper test, full unit suite, typecheck, web lint, and web build all passed locally.
+- Local `pnpm test`: passed, 155 tests.
 - Local `pnpm exec turbo type-check --ui=stream`: passed, 5 packages.
 - Local `pnpm --filter @homereach/web lint`: passed with existing warning debt.
 - Local `pnpm --filter @homereach/web build`: passed with non-secret placeholder env.
@@ -83,7 +85,7 @@ Date: 2026-05-25
 
 Current status: stabilization branch is local-build, GitHub-Actions, and Vercel-preview ready, but provider-live promotion is not ready.
 
-Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, and provider telemetry freshness now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark have local provider-shaped sample-payload coverage, but Stripe/Twilio/email test-mode validation against isolated provider tooling still needs completion.
+Reason: payment webhook retry behavior, targeted checkout authorization, legacy checkout fail-closed behavior, Twilio status persistence, inbound SMS reply capture, Postmark callback durability, provider telemetry freshness, and high-risk admin automation access gates now have tested branch fixes. Stripe has synthetic signature coverage, and Twilio/Postmark have local provider-shaped sample-payload coverage, but Stripe/Twilio/email test-mode validation against isolated provider tooling still needs completion.
 
 ## Recommended Next Actions
 

@@ -16,6 +16,7 @@ The most important remaining items to fix next are:
 2. Legacy `/api/stripe/checkout` is now default-disabled by `ENABLE_LEGACY_STRIPE_CHECKOUT`; active get-started checkout remains `/api/spots/checkout` in Stripe subscription mode.
 3. Provider test-mode validation still needs to exercise Stripe, Twilio, and email webhooks against isolated data.
 4. Stripe now has synthetic SDK-signature coverage, Twilio status/Postmark now have local provider-shaped sample-payload tests, and inbound SMS signature/retry behavior has focused unit coverage, but those are not substitutes for provider test-mode validation.
+5. Facebook/APEX admin automation POST routes now require cron or authenticated operator access before service-role work can run.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -142,6 +143,27 @@ Postmark inbound flow:
 4. Route logs into `email_events`.
 5. Deliverability events can update `sales_leads.email_status`, but delivery/temporary-bounce updates cannot clear suppression states.
 6. Route returns retryable 503 if the append-only `email_events` insert fails; lead-status update failures are logged without blocking the provider callback.
+
+### Facebook And Admin Automation
+
+Primary files:
+
+- `apps/web/app/api/webhooks/facebook/route.ts`
+- `apps/web/app/api/facebook/webhook/route.ts`
+- `apps/web/app/api/admin/sales/facebook/alert/route.ts`
+- `apps/web/app/api/admin/sales/facebook/daily-score/route.ts`
+- `apps/web/app/api/admin/system/apex/route.ts`
+- `apps/web/lib/auth/api-guards.ts`
+- `apps/web/lib/auth/request-secret.ts`
+- `apps/web/lib/auth/__tests__/request-secret.test.ts`
+
+Access-control flow:
+
+1. Meta webhooks validate Meta signatures when `FACEBOOK_APP_SECRET` is configured.
+2. `/api/admin/sales/facebook/alert` now requires either `CRON_SECRET` via `x-cron-secret`/Bearer token or an authenticated admin/sales-agent session before any Twilio alert attempt.
+3. `/api/admin/sales/facebook/daily-score` now requires `CRON_SECRET` or authenticated admin before service-role scoring work.
+4. `/api/admin/system/apex` now requires `CRON_SECRET` or authenticated admin before the multi-agent orchestration sweep can run.
+5. Shared request-secret parsing is isolated in `apps/web/lib/auth/request-secret.ts` and covered by focused tests.
 
 ### Deployment And CI
 
@@ -421,6 +443,38 @@ Residual risk:
 
 - No live Postmark webhook was invoked. Provider validation should use sample payloads and test Basic Auth before any live email volume.
 
+### RESOLVED: Facebook/APEX Admin Automation POSTs Could Run Without Auth
+
+Original evidence before fix:
+
+- `apps/web/app/api/admin/sales/facebook/alert/route.ts` accepted public POSTs, used the Supabase service-role client, and could attempt Twilio alerts.
+- `apps/web/app/api/admin/sales/facebook/daily-score/route.ts` only warned when `x-cron-secret` was missing or wrong, then computed scores with the service-role client.
+- `apps/web/app/api/admin/system/apex/route.ts` only warned when `x-cron-secret` was missing or wrong, then ran the orchestration sweep.
+
+Why it mattered:
+
+These routes are not customer-facing provider webhooks; they are operator automation surfaces. Public invocation could trigger internal SMS alerts, score recomputation, or multi-agent workflows using privileged service-role access.
+
+Fix applied:
+
+- Added `requireAdminSalesAgentOrCron` for routes that can be used by authenticated sales/admin UI or trusted internal callers.
+- Moved request-secret extraction into `apps/web/lib/auth/request-secret.ts`.
+- Added focused tests for `x-cron-secret` and Bearer-token parsing.
+- Required `requireAdminSalesAgentOrCron` on Facebook alert POST.
+- Required `requireAdminOrCron` on Facebook daily score and APEX orchestration POST.
+
+Validation:
+
+- `pnpm exec vitest run apps/web/lib/auth/__tests__/request-secret.test.ts` passed.
+- `pnpm test` passed.
+- `pnpm exec turbo type-check --ui=stream` passed.
+- `pnpm --filter @homereach/web lint` passed with existing warnings.
+- `pnpm --filter @homereach/web build` passed with non-secret placeholder env.
+
+Residual risk:
+
+- Meta webhook signature behavior still needs a dedicated hardening pass to fail closed in production when Meta app secrets are missing, even though Vercel currently lists the required Facebook env names.
+
 ### MEDIUM: Stripe API Version Needs Scheduled Upgrade Review
 
 Evidence:
@@ -474,6 +528,7 @@ Validation:
 - Twilio status webhook now returns retryable 503 for telemetry insert/handler failures after signature validation.
 - Inbound SMS reply webhook signature validation and unmatched-reply retry decisions are covered by focused helper tests.
 - Inbound SMS reply webhook now returns retryable 503 for unmatched replies when the revenue messaging bridge fails or misses the event ledger.
+- Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
 
@@ -486,8 +541,9 @@ Validation:
 5. Validate Twilio status insert with a signed sample request and no live SMS send.
 6. Validate inbound SMS reply handling with signed sample requests, including unmatched-number bridge failure behavior, and no live SMS send.
 7. Validate Postmark webhook with sample payloads and test Basic Auth.
-8. Add admin health checks for provider telemetry freshness, not just table readability.
-9. Only then perform provider-level test-mode checks.
+8. Probe Facebook/APEX admin automation POSTs without credentials and expect 401/403 without service-role mutations or SMS sends.
+9. Add admin health checks for provider telemetry freshness, not just table readability.
+10. Only then perform provider-level test-mode checks.
 
 ## Production Readiness Gate
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes — orchestrator runs all agents
@@ -100,17 +101,13 @@ function extractSummary(agent: string, data: Record<string, unknown>): string {
 }
 
 export async function POST(req: NextRequest) {
+  const access = await requireAdminOrCron(req);
+  if (!access.ok) return access.response;
+
   const supabase = createServiceClient();
   const startTime = Date.now();
   const runId = crypto.randomUUID();
   const runDate = new Date().toISOString();
-
-  // Security: require cron secret or admin session
-  const cronSecret = req.headers.get("x-cron-secret");
-  if (cronSecret !== process.env.CRON_SECRET && cronSecret !== "internal") {
-    // Allow unauthenticated for now in dev — lock down in prod
-    console.warn("[APEX] Running without cron secret — ensure CRON_SECRET is set");
-  }
 
   const results: AgentResult[] = [];
 

@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,11 +17,8 @@ export const maxDuration = 60;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
-  // Allow cron secret or internal calls
-  const cronSecret = req.headers.get("x-cron-secret");
-  if (cronSecret !== process.env.CRON_SECRET && cronSecret !== "internal") {
-    console.warn("[FB-DAILY-SCORE] Running without cron secret");
-  }
+  const access = await requireAdminOrCron(req);
+  if (!access.ok) return access.response;
 
   const supabase   = createServiceClient();
   const today      = new Date().toISOString().split("T")[0];
