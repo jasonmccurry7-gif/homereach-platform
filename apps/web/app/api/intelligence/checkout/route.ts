@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
@@ -83,6 +84,7 @@ export async function POST(req: Request) {
     // Step 3: Create Stripe checkout session
     const isSubscription = tier === "t2" || tier === "t3";
     const mode: "payment" | "subscription" = isSubscription ? "subscription" : "payment";
+    const appUrl = getPublicAppBaseUrl();
 
     const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = isSubscription
       ? {
@@ -119,8 +121,8 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode,
       line_items: [lineItem],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://homereach.app"}/intelligence?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://homereach.app"}/intelligence?cancelled=true`,
+      success_url: `${appUrl}/intelligence?success=true`,
+      cancel_url: `${appUrl}/intelligence?cancelled=true`,
       customer_email: email,
       metadata: {
         city,

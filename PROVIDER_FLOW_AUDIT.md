@@ -36,6 +36,7 @@ Primary checkout flow:
 4. City, bundle, business, price snapshot, and pending order are resolved through Drizzle.
 5. Stripe Checkout session is created through `createOneTimeCheckoutSession`.
 6. Webhook later activates/reconciles the order.
+7. Redirect and post-payment links now use the shared public app URL resolver.
 
 Targeted route checkout flow:
 
@@ -259,6 +260,7 @@ Fix applied:
 - Updated targeted checkout UI copy to say ongoing add-ons are activated after onboarding instead of billed next month by the current checkout.
 - Updated Stripe line-item descriptions to describe first-month add-on charges and separate ongoing activation.
 - Updated `/api/stripe/targeted-checkout` to use the shared public app URL resolver instead of reading only `NEXT_PUBLIC_APP_URL`.
+- Updated active spot checkout, legacy Stripe checkout, intelligence checkout, and Stripe post-payment webhook links to use the same shared public app URL resolver.
 
 Residual risk:
 

@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { createOneTimeCheckoutSession } from "@homereach/services/stripe";
 import { snapshotPrice } from "@homereach/services/pricing";
 import type { ResolvePriceInput, DiscountContext } from "@homereach/types";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/stripe/checkout
@@ -283,8 +284,7 @@ export async function POST(req: Request) {
     }
 
     // ── Create Stripe Checkout session ────────────────────────────────────────
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const appUrl = getPublicAppBaseUrl();
 
     const session = await createOneTimeCheckoutSession({
       orderId,

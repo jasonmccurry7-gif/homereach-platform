@@ -28,6 +28,7 @@ Date: 2026-05-25
 - Added safe env-alias compatibility readers for internal agent base URLs, Apex approved senders, SerpAPI/Hunter provider names, and Twilio messaging-service naming.
 - Clarified targeted checkout billing copy so first-month add-on charges no longer imply Stripe starts automatic monthly billing.
 - Confirmed the active get-started spot checkout uses `/api/spots/checkout` with Stripe `subscription` mode; the older `/api/stripe/checkout` route has no current callers found in repo search.
+- Standardized public URL resolution for payment-adjacent checkout redirects and Stripe post-payment links so deployed aliases do not fall back to stale/hardcoded domains.
 
 ## Validation
 
@@ -35,6 +36,7 @@ Date: 2026-05-25
 - Local focused Stripe webhook signature test: passed, 3 tests.
 - Local focused targeted checkout token test: passed, 7 tests.
 - Local focused targeted checkout/app URL regression run: passed, 10 tests.
+- Local focused payment URL resolver regression run: passed, 6 tests.
 - Local focused Postmark webhook helper test: passed, 7 tests.
 - Local focused Twilio status webhook helper test: passed, 5 tests.
 - Local focused provider telemetry health test: passed, 5 tests.

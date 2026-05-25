@@ -19,6 +19,7 @@ import {
   decideStripeEventClaimForExisting,
   type StripeEventClaim,
 } from "@/lib/stripe/webhook-idempotency";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/stripe
@@ -586,7 +587,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   // Post-hotfix: redirectTo points at /intake/${token} → single click → intake.
   if (businessEmail && resolvedBusinessId) {
     try {
-      const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+      const appUrl = getPublicAppBaseUrl();
       const supaAdmin = createServiceClient();
       const redirectTo = intakeToken
         ? `${appUrl}/intake/${intakeToken}`
@@ -617,7 +618,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
 
   // ── 6. Send intake invitation email — defense in depth ────────────────────
   if (businessEmail && intakeToken) {
-    const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const appUrl = getPublicAppBaseUrl();
     const intakeUrl = `${appUrl}/intake/${intakeToken}`;
 
     await sendEmail({
@@ -759,7 +760,7 @@ async function handleInvoicePaymentFailed(inv: Stripe.Invoice) {
       .limit(1);
 
     if (biz?.email) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+      const appUrl = getPublicAppBaseUrl();
 
       await sendEmail({
         to:      biz.email,

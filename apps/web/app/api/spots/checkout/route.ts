@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import Stripe from "stripe";
 import { checkCanonicalAvailability } from "@/lib/spots/canonical-availability";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/spots/checkout
@@ -143,7 +144,7 @@ export async function POST(req: Request) {
     }
 
     // 7. Build line items
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const appUrl = getPublicAppBaseUrl();
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         price_data: {

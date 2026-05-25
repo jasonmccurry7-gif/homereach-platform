@@ -90,6 +90,10 @@ Files:
 - `apps/web/app/api/admin/agents/closer/route.ts`
 - `apps/web/app/api/admin/agents/scraper/route.ts`
 - `apps/web/app/api/command/route.ts`
+- `apps/web/app/api/intelligence/checkout/route.ts`
+- `apps/web/app/api/spots/checkout/route.ts`
+- `apps/web/app/api/stripe/checkout/route.ts`
+- `apps/web/app/api/webhooks/stripe/route.ts`
 - `apps/web/lib/runtime/app-url.ts`
 - `apps/web/lib/political/candidate-intelligence/providers/serpapi.ts`
 - `apps/web/lib/env.ts`
@@ -97,7 +101,7 @@ Files:
 - `turbo.json`
 - `.env.example`
 
-Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from the run/closer/anchor agent event calls, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
+Fix applied: added a shared internal/public app URL resolver, removed localhost-only fallback from the run/closer/anchor agent event calls, moved payment-adjacent checkout redirects and Stripe post-payment links onto the public resolver, accepted `SERP_API`/`HUNTER` aliases in the relevant provider readers, accepted both Apex approved-sender names, and aligned Twilio messaging-service env validation/templates with both names.
 
 Validation: focused app URL helper test, full unit suite, typecheck, web lint gate, and web build with non-secret placeholder env all passed locally.
 
