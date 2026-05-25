@@ -359,6 +359,28 @@ Validation: focused ESLint on the touched admin CRM/automation/migration/Faceboo
 
 Approval needed: no for access-control hardening; yes before any live send/provider or production-data mutation validation.
 
+### Resolved: Admin Inbox And Targeted Admin Routes Were Not Explicitly Admin-Gated
+
+What was wrong: `/api/conversations` and `/api/conversations/[id]/*` are used by the admin inbox and could read conversation data, mark messages read, persist outbound replies, and optionally send SMS without an admin guard. `/api/targeted/admin/*` routes were admin-named and could update campaign/lead state or send intake/mailed/review communications after only a generic logged-in-user check. `/api/admin/growth/log` trusted route placement/middleware comments but did not enforce an API-level admin guard before growth activity reads/writes.
+
+Why it mattered: conversation replies and targeted campaign lifecycle actions are revenue and reputation sensitive. Public or non-admin execution could expose prospect conversations, mutate campaign state, or trigger outbound communication.
+
+Files:
+
+- `apps/web/app/api/conversations/route.ts`
+- `apps/web/app/api/conversations/[id]/read/route.ts`
+- `apps/web/app/api/conversations/[id]/reply/route.ts`
+- `apps/web/app/api/targeted/admin/update-status/route.ts`
+- `apps/web/app/api/targeted/admin/send-intake/route.ts`
+- `apps/web/app/api/targeted/admin/mark-mailed/route.ts`
+- `apps/web/app/api/admin/growth/log/route.ts`
+
+Fix applied: added `requireAdmin()` before any service-role reads, conversation repository writes, optional Twilio send path, targeted Drizzle updates, growth log reads/writes, or targeted communication sends.
+
+Validation: focused ESLint on the seven touched routes passed with only pre-existing `status as any` warnings in the targeted status route. Full workspace typecheck, full unit suite, full web lint, placeholder-env web build, admin-like route scanner, and `git diff --check` passed locally.
+
+Approval needed: no for access-control hardening; yes before live communication send validation.
+
 ### GitHub CLI Not Authenticated
 
 What is wrong: GitHub CLI is installed but not authenticated in this shell.

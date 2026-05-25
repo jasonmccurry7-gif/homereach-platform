@@ -46,6 +46,7 @@ Date: 2026-05-25
 - Completed the second sales dashboard ownership pass for at-risk deals, priority actions, call lists, call logs, call stats, follow-up sequence logging, and power-mode checks; sales-agent sessions now resolve to their own agent id, and admin sessions must intentionally scope rep-specific call/power routes.
 - Hardened AI workforce/admin agent surfaces so agent runner, agent status endpoints, scraper, anchor, closer, echo, scout, atlas, beacon, horizon, sentinel, sales call-script writes, and sales lead alert logging require admin, sales-agent, or cron access before service-role reads or mutations.
 - Hardened the remaining scanned admin CRM, automation, Facebook, migration, alert-preference, and system-agent surfaces so lead lists/details, CRM notes/tasks/dedup/quarantine/metrics/leaderboards, automation sequence/enrollment controls, Facebook revenue engine updates, migration helpers, alert preferences, and system-agent endpoints require admin, sales-agent, or cron access before privileged reads or mutations. Political candidate-intelligence sync/webhook routes were inspected and left unchanged because they already fail closed behind explicit secrets.
+- Hardened admin-adjacent routes outside `/api/admin`: admin inbox conversation reads/read-marking/replies now require admin access before service-role reads, reply persistence, or optional SMS sending; targeted campaign admin status, intake-link send, mark-mailed/review-request actions, and growth activity logs now require admin access before Drizzle updates or communication sends.
 
 ## Validation
 
@@ -67,6 +68,8 @@ Date: 2026-05-25
 - Local focused admin agent/access route TypeScript check: passed.
 - Local focused admin agent/access route ESLint: passed with only pre-existing warnings in touched route files.
 - Local focused CRM/automation/migration/Facebook/admin guard ESLint: passed with only pre-existing warnings in touched route files.
+- Local focused admin-adjacent route ESLint: passed with only pre-existing `status as any` warnings in `apps/web/app/api/targeted/admin/update-status/route.ts`.
+- Latest admin-adjacent guard patch: full workspace typecheck, full unit suite, full web lint, placeholder-env web build, admin-like route scanner, and `git diff --check` passed locally.
 - Local focused Facebook webhook auth helper test: passed, 6 tests.
 - Local focused property-intelligence checkout helper test: passed, 7 tests.
 - Local workspace typecheck after property-intelligence checkout hardening: passed, 5 packages.

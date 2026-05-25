@@ -20,6 +20,7 @@ The most important remaining items to fix next are:
 6. Facebook/APEX admin automation POST routes now require cron or authenticated operator access before service-role work can run.
 7. Additional admin service-role routes for agent scans, agent status/runner surfaces, scraper, internal alerts, pricing/founding updates, Facebook mission logging, sales lead/revenue reads, send-capable sales/email routes, operator summaries, and admin health now require admin/sales session or cron access before privileged work.
 8. The follow-up admin sweep now also covers CRM lead/detail/task/note/dedup/quarantine/reporting routes, automation sequence/enrollment controls, alert preferences, migration helpers, Facebook revenue-engine routes, and system-agent utility endpoints. Political candidate-intelligence sync/webhook routes were inspected and already have explicit secret gates.
+9. Admin-adjacent non-`/api/admin` routes now also fail closed: admin inbox conversation reads/replies, growth activity logs, and targeted campaign admin status/send/mailed actions require admin access before service-role reads, Drizzle updates, or outbound communication helpers.
 
 Additional hardening completed after the first provider pass: generated public links for checkout-adjacent flows, SEO metadata, sitemap/robots, auth reset redirects, admin notifications, political proposal handoffs, internal alert deep links, and outreach/Facebook templates now route through shared app URL resolver logic instead of scattered hardcoded domains. The shared Stripe subscription Checkout helper also uses package-local resolver logic. The resolvers fall back to Vercel deployment URL names before localhost or static production defaults when canonical app URL aliases are absent.
 
@@ -704,6 +705,7 @@ Validation:
 - Facebook alert, Facebook daily score, and APEX orchestration POSTs now require cron or authenticated operator access before service-role work.
 - Admin service-role agent scans, internal alerts, founding/pricing updates, Facebook mission logging, sensitive sales/admin reads, sales-agent ownership-scoped dashboard routes, send-capable sales/email jobs, operator summaries, and admin health now require operator, sales-agent, or cron access as appropriate.
 - CRM, automation, migration, alert-preference, Facebook revenue-engine, and system-agent utility admin routes now require shared role/cron guards before privileged reads or mutations.
+- Admin inbox conversation routes and targeted campaign admin routes now require `requireAdmin()` before privileged reads, writes, or communication sends.
 - Admin outreach health now flags stale or missing provider telemetry after same-day email/SMS send activity.
 - Communication provider code is centralized enough to support reputation controls.
 
@@ -715,6 +717,7 @@ Latest validation for this follow-up guard sweep:
 - `pnpm --filter @homereach/web lint` passed with 495 warnings and 0 errors.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 248 routes.
 - `git diff --check` and the admin route guard scanner passed.
+- Focused ESLint on admin-adjacent conversation and targeted admin routes passed with only pre-existing warnings.
 
 ## Safe Validation Path
 
