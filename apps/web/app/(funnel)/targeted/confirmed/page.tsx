@@ -11,7 +11,7 @@ export default function TargetedConfirmedPage() {
       <div className="w-full max-w-md text-center">
         <div className="text-6xl mb-4">🎉</div>
         <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
-          You're all set!
+          You&apos;re all set!
         </h1>
         <p className="mt-3 text-gray-500">
           Your payment is confirmed and your campaign is officially in the queue.

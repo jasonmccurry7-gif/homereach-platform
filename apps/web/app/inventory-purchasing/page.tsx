@@ -59,7 +59,7 @@ export default function InventoryPurchasingPage() {
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300">
                 Track supplies, compare supplier pricing, find savings opportunities, and connect purchasing
-                decisions to an operational dashboard built for HomeReach's broader platform ecosystem.
+                decisions to an operational dashboard built for HomeReach&apos;s broader platform ecosystem.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <CtaButton href={startHref} variant="green">
