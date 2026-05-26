@@ -4,6 +4,27 @@ Updated: 2026-05-25
 
 ## CRITICAL
 
+### Resolved: Stripe Subscription Webhook Activated Before Subscription Was Provisionable
+
+What was wrong: `customer.subscription.created` activated `spot_assignments`, marked businesses active, created intake records, invited users, and sent onboarding email without checking `sub.status`. Generic and targeted `checkout.session.completed` handlers also mutated paid/customer state without first requiring a satisfied Checkout `payment_status`.
+
+Why it mattered: Stripe subscriptions can be created as `incomplete` when the first invoice still requires payment or customer action. Activating inventory and onboarding on that event could grant a spot before payment was actually complete.
+
+Files:
+
+- `apps/web/app/api/webhooks/stripe/route.ts`
+- `apps/web/lib/stripe/subscription-activation.ts`
+- `apps/web/lib/stripe/__tests__/subscription-activation.test.ts`
+- `apps/web/app/api/webhooks/stripe/__tests__/route.test.ts`
+
+Fix applied: subscription provisioning now only runs for Stripe subscription statuses `active` or `trialing`. `customer.subscription.updated` reuses the same activation path so an initially incomplete subscription can recover once Stripe moves it to a provisionable status. Existing linked subscriptions are idempotently confirmed active without resending onboarding unless a new intake token is created. Generic and targeted Checkout completion handlers now skip state mutation unless `payment_status` is `paid` or `no_payment_required`.
+
+Validation: focused Stripe subscription activation helper tests and webhook route regression tests passed with 7 tests; focused ESLint on the helper, tests, and webhook route passed; focused `@homereach/web` typecheck passed; full `pnpm test` passed with 217 tests across 36 files; full workspace typecheck passed across 5 packages; full web lint passed with 454 existing warnings and 0 errors; placeholder-env web build generated 247 static pages.
+
+Risk of fix: medium-low. The change is fail-closed and follows Stripe subscription status semantics, but it touches the payment webhook activation chain and still needs Stripe test-mode webhook replay against isolated data before production promotion.
+
+Approval needed: no for branch hardening and documentation; yes before live/provider webhook replay, production data repair, or adding async payment-method support.
+
 ### Resolved: Spot Checkout Trusted Browser-Supplied Locked Price
 
 What was wrong: `/api/spots/checkout` accepted `lockedPrice` and `pricingType` from the browser and used those values for pending order totals, `orders.locked_price`, `orders.pricing_type`, Stripe subscription `unit_amount`, and Stripe metadata.

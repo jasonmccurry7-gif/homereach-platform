@@ -28,6 +28,11 @@ import {
 import {
   checkPropertyIntelligenceFoundingSchemaReady,
 } from "@/lib/intelligence/schema-readiness";
+import {
+  isCheckoutSessionPaymentSatisfied,
+  isStripeSubscriptionProvisionableStatus,
+  mapStripeSubscriptionStatusToSpotStatus,
+} from "@/lib/stripe/subscription-activation";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/stripe
@@ -269,6 +274,14 @@ export async function POST(req: Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  if (!isCheckoutSessionPaymentSatisfied(session.payment_status)) {
+    console.warn(
+      `[stripe/webhook] checkout.session.completed skipped — session=${session.id}` +
+      ` payment_status=${session.payment_status ?? "(missing)"}`,
+    );
+    return;
+  }
+
   const orderId = session.metadata?.orderId;
   if (!orderId) {
     console.error("[stripe/webhook] no orderId in session metadata");
@@ -292,6 +305,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     .set({
       status: "paid",
       stripePaymentIntentId: session.payment_intent as string | null,
+      stripeSubscriptionId: stripeResourceId(session.subscription),
       // orders.stripeCustomerId is deprecated — authoritative copy is on businesses.stripeCustomerId
       // We still set it here for backward compatibility with any admin queries reading orders directly
       stripeCustomerId: session.customer as string | null,
@@ -547,12 +561,29 @@ async function syncPropertyIntelligenceFoundingSlotCount(
  *   - Each step logs progress; failure of one step does not abort the chain.
  */
 async function handleSubscriptionCreated(sub: Stripe.Subscription) {
+  if (!isStripeSubscriptionProvisionableStatus(sub.status)) {
+    console.warn(
+      `[stripe/webhook] subscription.created skipped — sub=${sub.id}` +
+      ` status=${sub.status ?? "(missing)"}`,
+    );
+    return;
+  }
+
+  await activateSpotSubscription(sub, "created");
+}
+
+async function activateSpotSubscription(
+  sub: Stripe.Subscription,
+  eventSource: "created" | "updated",
+) {
   const reservationId  = sub.metadata?.reservationId ?? null;
   const orderIdMeta    = sub.metadata?.orderId       ?? null;
   const businessIdMeta = sub.metadata?.businessId    ?? null;
+  const eventLabel = `subscription.${eventSource}`;
 
   console.log(
-    `[stripe/webhook] subscription.created — sub=${sub.id}` +
+    `[stripe/webhook] ${eventLabel} activation — sub=${sub.id}` +
+    ` status=${sub.status}` +
     ` order=${orderIdMeta ?? "(none)"}` +
     ` reservation=${reservationId ?? "(none)"}` +
     ` business=${businessIdMeta ?? "(none)"}`,
@@ -565,7 +596,34 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   const activatedAt      = new Date();
   const commitmentEndsAt = new Date(activatedAt.getTime() + 90 * 24 * 60 * 60 * 1000); // +90 days
 
-  if (reservationId) {
+  const [linkedSpot] = await db
+    .select({
+      id: spotAssignments.id,
+      businessId: spotAssignments.businessId,
+    })
+    .from(spotAssignments)
+    .where(eq(spotAssignments.stripeSubscriptionId, sub.id))
+    .limit(1);
+
+  if (linkedSpot) {
+    resolvedSpotId = linkedSpot.id;
+    resolvedBusinessId = resolvedBusinessId ?? linkedSpot.businessId;
+
+    await db
+      .update(spotAssignments)
+      .set({
+        status: "active",
+        stripeCustomerId: sub.customer as string,
+        updatedAt: new Date(),
+      })
+      .where(eq(spotAssignments.id, linkedSpot.id));
+
+    console.log(
+      `[stripe/webhook] ${eventLabel} confirmed existing spot ${resolvedSpotId} active`,
+    );
+  }
+
+  if (!resolvedSpotId && reservationId) {
     const [updated] = await db
       .update(spotAssignments)
       .set({
@@ -728,13 +786,11 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   // ── 5. Invite user to Supabase — redirect lands on intake URL ─────────────
   // Pre-hotfix: redirectTo hardcoded to /dashboard → user lost mid-flow.
   // Post-hotfix: redirectTo points at /intake/${token} → single click → intake.
-  if (businessEmail && resolvedBusinessId) {
+  if (businessEmail && resolvedBusinessId && intakeToken) {
     try {
       const appUrl = getPublicAppBaseUrl();
       const supaAdmin = createServiceClient();
-      const redirectTo = intakeToken
-        ? `${appUrl}/intake/${intakeToken}`
-        : `${appUrl}/dashboard`;
+      const redirectTo = `${appUrl}/intake/${intakeToken}`;
 
       const { data: inviteData, error: inviteError } = await supaAdmin.auth.admin.inviteUserByEmail(
         businessEmail,
@@ -793,7 +849,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   }
 
   console.log(
-    `[stripe/webhook] subscription.created COMPLETE — sub=${sub.id}` +
+    `[stripe/webhook] ${eventLabel} activation COMPLETE — sub=${sub.id}` +
     ` spot=${resolvedSpotId ?? "(none)"}` +
     ` business=${resolvedBusinessId ?? "(none)"}` +
     ` intake=${intakeToken ? "created" : "missing"}`,
@@ -809,13 +865,12 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
 
   const stripeStatus = sub.status;
 
-  // Map Stripe subscription statuses to our spot assignment statuses
-  let newStatus: "active" | "paused" | null = null;
-  if (stripeStatus === "active") {
-    newStatus = "active";
-  } else if (stripeStatus === "past_due" || stripeStatus === "unpaid") {
-    newStatus = "paused";
+  if (isStripeSubscriptionProvisionableStatus(stripeStatus)) {
+    await activateSpotSubscription(sub, "updated");
+    return;
   }
+
+  const newStatus = mapStripeSubscriptionStatusToSpotStatus(stripeStatus);
 
   if (newStatus) {
     await db
@@ -938,6 +993,14 @@ async function handleInvoicePaymentFailed(inv: Stripe.Invoice) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handleTargetedCheckoutCompleted(session: Stripe.Checkout.Session) {
+  if (!isCheckoutSessionPaymentSatisfied(session.payment_status)) {
+    console.warn(
+      `[stripe/webhook] targeted checkout skipped — session=${session.id}` +
+      ` payment_status=${session.payment_status ?? "(missing)"}`,
+    );
+    return;
+  }
+
   const campaignId = session.metadata?.campaignId;
   if (!campaignId) {
     console.error("[stripe/webhook] targeted checkout — no campaignId in metadata");

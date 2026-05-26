@@ -34,6 +34,8 @@ Pricing authority follow-up: the route no longer uses browser-supplied `lockedPr
 
 Live schema note: a read-only Supabase metadata check confirmed the live `HomeReach` project has `bundles.standard_price`, `bundles.founding_price`, and `bundles.pricing_profile_id`. Active live bundles currently use the bundle price columns and are not linked to pricing profiles.
 
+Webhook activation follow-up: Stripe subscription activation now fails closed unless `customer.subscription.created` / `customer.subscription.updated` reports `active` or `trialing`. The same activation path is reused for later `subscription.updated` recovery, and onboarding invite/email side effects only run when a new intake token is created. Generic and targeted `checkout.session.completed` handlers now require `payment_status` of `paid` or `no_payment_required` before marking orders/campaigns paid.
+
 Residual risk: the limiter is in-process and per server instance. It is useful as a local guard but is not a distributed quota system. This route still needs Stripe test-mode success-path validation before production promotion, especially because it is the active subscription checkout path.
 
 ### `/api/stripe/targeted-checkout`
@@ -112,6 +114,7 @@ Residual risk: this remains a legacy one-time checkout implementation for monthl
 - Follow-up legacy checkout limiter validation: focused checkout-rate-limit and legacy-checkout guard tests passed with 4 tests; focused ESLint on `apps/web/app/api/stripe/checkout/route.ts` and `apps/web/lib/security/__tests__/checkout-rate-limits.test.ts` passed with 0 warnings/errors.
 - Current follow-up full validation after the legacy limiter: full `pnpm test` passed with 208 tests across 32 files; full `pnpm exec turbo type-check --ui=stream` passed across 5 packages; full `pnpm --filter @homereach/web lint` passed with 492 existing warnings and 0 errors; placeholder-env `pnpm --filter @homereach/web build` generated 247 static pages.
 - Follow-up spot checkout pricing-authority validation: focused spoof-pricing route test passed; focused ESLint on `apps/web/app/api/spots/checkout/route.ts` and `apps/web/app/api/spots/checkout/__tests__/route.test.ts` passed with 0 warnings/errors; full `pnpm test` passed with 210 tests across 34 files; full workspace typecheck passed across 5 packages; full web lint passed with 454 warnings and 0 errors; placeholder-env web build generated 247 static pages.
+- Follow-up Stripe webhook activation validation: focused subscription activation helper and webhook route tests passed with 7 tests; focused ESLint on the helper, tests, and webhook route passed with 0 warnings/errors; focused `@homereach/web` typecheck passed; full `pnpm test` passed with 217 tests across 36 files; full workspace typecheck passed across 5 packages; full web lint passed with 454 existing warnings and 0 errors; placeholder-env web build generated 247 static pages.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 248 routes.
 - `git diff --check` passed.
 
@@ -119,6 +122,6 @@ Residual risk: this remains a legacy one-time checkout implementation for monthl
 
 1. Promote first-layer checkout throttles to a distributed control before paid traffic scaling: Vercel Firewall/WAF, edge middleware, Redis, or another centralized rate-limit store.
 2. Add provider test-mode checkout success-path validation for spot subscriptions, targeted campaign payments, and property-intelligence checkout.
-3. Keep payment-flow probes limited to invalid payloads or Stripe test mode until isolated database and webhook replay validation are ready.
+3. Keep payment-flow probes limited to invalid payloads or Stripe test mode until isolated database and webhook replay validation are ready, including `incomplete` to `active` subscription recovery.
 4. Review idempotency on `/api/spots/checkout` pending order creation; current business flow inserts a pending order after availability passes, so duplicate/retry semantics need Stripe test-mode QA before any logic change.
 5. Bring live bundle price columns and pricing-profile linkage fully under committed schema/migration control before changing admin pricing behavior.
