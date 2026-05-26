@@ -4,6 +4,28 @@ Updated: 2026-05-25
 
 ## CRITICAL
 
+### Resolved: Spot Checkout Trusted Browser-Supplied Locked Price
+
+What was wrong: `/api/spots/checkout` accepted `lockedPrice` and `pricingType` from the browser and used those values for pending order totals, `orders.locked_price`, `orders.pricing_type`, Stripe subscription `unit_amount`, and Stripe metadata.
+
+Why it mattered: a manipulated checkout request could understate the monthly subscription amount or mislabel founding/standard pricing before Stripe session creation. This is a direct revenue-integrity risk on the active spot subscription flow.
+
+Files:
+
+- `apps/web/app/api/spots/checkout/route.ts`
+- `apps/web/app/api/spots/checkout/__tests__/route.test.ts`
+- `CHECKOUT_ANTI_ABUSE_AUDIT.md`
+
+Fix applied: active spot checkout now derives pricing on the server from `bundles.pricing_profile_id` and active `pricing_profiles` when linked, with a live-schema fallback to server-owned `bundles.standard_price`, `bundles.founding_price`, then display `bundles.price`. `pricingType` is derived from `cities.founding_eligible`. Browser `lockedPrice` / `pricingType` values are ignored for billing and only mismatch-logged without exposing customer data.
+
+Live schema note: a read-only Supabase metadata check confirmed production `bundles` currently has `standard_price`, `founding_price`, and `pricing_profile_id`; active live bundles use the bundle price columns and are not currently linked to pricing profiles.
+
+Validation: focused spot checkout spoof-pricing route test passed; focused ESLint on the route/test passed with 0 warnings/errors; `pnpm --filter @homereach/web type-check` passed; full `pnpm test` passed with 210 tests across 34 files; `pnpm exec turbo type-check --ui=stream` passed across 5 packages; full web lint passed with 454 warnings and 0 errors; placeholder-env web build generated 247 static pages.
+
+Risk of fix: medium-low. The change is intentionally narrow and keeps live bundle-column pricing compatible, but it touches the active Stripe subscription checkout path and still requires Stripe test-mode success-path validation.
+
+Approval needed: no for the defensive branch hardening; yes before live Stripe/provider validation, production promotion, or any pricing-table migration.
+
 ### Resolved: Public Intelligence Checkout Activated Founding Membership Before Payment
 
 What was wrong: `/api/intelligence/checkout` created a Stripe Checkout session, then immediately inserted an `active` `founding_memberships` row and decremented `founding_slots` before Stripe confirmed payment.
@@ -748,7 +770,7 @@ Approval needed: no for local anti-abuse guard; yes before changing funnel looku
 
 ### Lint Warning Debt
 
-What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 455 warnings.
+What is wrong: `apps/web` linting now runs through ESLint CLI, but it reports 454 warnings.
 
 Why it matters: warnings include unused variables, unescaped text, legacy `any` usage, direct anchor navigation, and hook dependency issues that can hide real defects over time.
 
@@ -760,7 +782,7 @@ Files:
 
 Safest fix: reduce warnings in focused passes by module, starting with revenue-critical intake, dashboard, and webhook-adjacent code.
 
-Current status: latest cleanups removed unused no-op declarations/lookups from `apps/web/app/api/admin/agents/anchor/route.ts`, escaped JSX quote marks in `apps/web/app/privacy/page.tsx`, escaped JSX apostrophes in `apps/web/app/(admin)/admin/political/routes/find-source/page.tsx`, and cleaned static rendered-copy warnings in targeted start/confirmed, nonprofit, and inventory-purchasing pages. Focused ESLint is clean for all touched files, and full web lint is down to 455 warnings with 0 errors.
+Current status: latest cleanups removed unused no-op declarations/lookups from `apps/web/app/api/admin/agents/anchor/route.ts`, escaped JSX quote marks in `apps/web/app/privacy/page.tsx`, escaped JSX apostrophes in `apps/web/app/(admin)/admin/political/routes/find-source/page.tsx`, cleaned static rendered-copy warnings in targeted start/confirmed, nonprofit, and inventory-purchasing pages, and removed the stale checkout-route `maxSpots` local during server-authoritative pricing hardening. Focused ESLint is clean for all touched files, and full web lint is down to 454 warnings with 0 errors.
 
 Risk of fix: low to medium depending on module touched.
 

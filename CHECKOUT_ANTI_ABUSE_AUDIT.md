@@ -19,7 +19,7 @@ Observed flow:
 
 1. Requires a Supabase-authenticated user.
 2. Parses selected bundle/city/category/business/add-on data.
-3. Uses the service-role client to read bundle/city data.
+3. Uses the service-role client to read bundle/city data and resolve pricing from server-owned records.
 4. Checks canonical city/category spot availability.
 5. Creates or reuses a pending business.
 6. Creates a pending order reservation.
@@ -30,7 +30,11 @@ Risk before this pass: repeated authenticated attempts from the same client coul
 
 Control added: `checkout:spots`, 12 attempts per 10 minutes per hashed client IP, checked before Supabase auth, request-body parsing, service-role work, order reservation, or Stripe work. Responses include `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset`; blocked requests return `429` and `Retry-After`.
 
-Residual risk: the limiter is in-process and per server instance. It is useful as a local guard but is not a distributed quota system. This route still needs Stripe test-mode success-path validation before production promotion.
+Pricing authority follow-up: the route no longer uses browser-supplied `lockedPrice` or `pricingType` for billing. It derives `pricingType` from `cities.founding_eligible` and resolves cents from `bundles.pricing_profile_id` plus active `pricing_profiles` when linked, with a live-schema fallback to server-owned `bundles.standard_price`, `bundles.founding_price`, then display `bundles.price`.
+
+Live schema note: a read-only Supabase metadata check confirmed the live `HomeReach` project has `bundles.standard_price`, `bundles.founding_price`, and `bundles.pricing_profile_id`. Active live bundles currently use the bundle price columns and are not linked to pricing profiles.
+
+Residual risk: the limiter is in-process and per server instance. It is useful as a local guard but is not a distributed quota system. This route still needs Stripe test-mode success-path validation before production promotion, especially because it is the active subscription checkout path.
 
 ### `/api/stripe/targeted-checkout`
 
@@ -107,6 +111,7 @@ Residual risk: this remains a legacy one-time checkout implementation for monthl
 - Follow-up schema-guard validation: focused schema-readiness, checkout-route, and checkout-helper tests passed with 11 tests; focused checkout/webhook/schema ESLint passed with 0 warnings/errors; focused `@homereach/web` typecheck passed.
 - Follow-up legacy checkout limiter validation: focused checkout-rate-limit and legacy-checkout guard tests passed with 4 tests; focused ESLint on `apps/web/app/api/stripe/checkout/route.ts` and `apps/web/lib/security/__tests__/checkout-rate-limits.test.ts` passed with 0 warnings/errors.
 - Current follow-up full validation after the legacy limiter: full `pnpm test` passed with 208 tests across 32 files; full `pnpm exec turbo type-check --ui=stream` passed across 5 packages; full `pnpm --filter @homereach/web lint` passed with 492 existing warnings and 0 errors; placeholder-env `pnpm --filter @homereach/web build` generated 247 static pages.
+- Follow-up spot checkout pricing-authority validation: focused spoof-pricing route test passed; focused ESLint on `apps/web/app/api/spots/checkout/route.ts` and `apps/web/app/api/spots/checkout/__tests__/route.test.ts` passed with 0 warnings/errors; full `pnpm test` passed with 210 tests across 34 files; full workspace typecheck passed across 5 packages; full web lint passed with 454 warnings and 0 errors; placeholder-env web build generated 247 static pages.
 - Placeholder-env `pnpm --filter @homereach/web build` passed and generated 248 routes.
 - `git diff --check` passed.
 
@@ -116,3 +121,4 @@ Residual risk: this remains a legacy one-time checkout implementation for monthl
 2. Add provider test-mode checkout success-path validation for spot subscriptions, targeted campaign payments, and property-intelligence checkout.
 3. Keep payment-flow probes limited to invalid payloads or Stripe test mode until isolated database and webhook replay validation are ready.
 4. Review idempotency on `/api/spots/checkout` pending order creation; current business flow inserts a pending order after availability passes, so duplicate/retry semantics need Stripe test-mode QA before any logic change.
+5. Bring live bundle price columns and pricing-profile linkage fully under committed schema/migration control before changing admin pricing behavior.

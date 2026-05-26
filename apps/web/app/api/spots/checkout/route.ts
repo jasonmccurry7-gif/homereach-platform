@@ -33,6 +33,88 @@ const SPOT_CHECKOUT_RATE_LIMIT = {
   windowMs: 10 * 60_000,
 };
 
+type ServiceClient = ReturnType<typeof createServiceClient>;
+
+type CheckoutPricingType = "founding" | "standard";
+
+type CheckoutPricing = {
+  lockedPriceCents: number;
+  pricingType: CheckoutPricingType;
+  pricingProfileId: string | null;
+  source: "pricing_profile" | "bundle_price_columns";
+};
+
+type BundleRow = {
+  price?: unknown;
+  standard_price?: unknown;
+  founding_price?: unknown;
+  pricing_profile_id?: string | null;
+};
+
+function toPositiveCents(value: unknown): number | null {
+  const cents = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(cents) && cents > 0 ? cents : null;
+}
+
+function dollarsToPositiveCents(value: unknown): number | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return Math.round(amount * 100);
+}
+
+async function resolveCheckoutPricing(
+  db: ServiceClient,
+  bundle: BundleRow,
+  isFoundingEligible: boolean,
+): Promise<CheckoutPricing | null> {
+  const pricingType: CheckoutPricingType = isFoundingEligible ? "founding" : "standard";
+
+  if (bundle.pricing_profile_id) {
+    const { data: profile, error } = await db
+      .from("pricing_profiles")
+      .select("id, base_price_cents, founding_price_cents, is_active")
+      .eq("id", bundle.pricing_profile_id)
+      .eq("is_active", true)
+      .single();
+
+    if (error || !profile) {
+      console.error("[api/spots/checkout] pricing profile unavailable", {
+        pricingProfileId: bundle.pricing_profile_id,
+      });
+      return null;
+    }
+
+    const standardPriceCents = toPositiveCents(profile.base_price_cents);
+    const foundingPriceCents = toPositiveCents(profile.founding_price_cents);
+    const lockedPriceCents = isFoundingEligible
+      ? (foundingPriceCents ?? standardPriceCents)
+      : standardPriceCents;
+
+    if (!lockedPriceCents) return null;
+
+    return {
+      lockedPriceCents,
+      pricingType,
+      pricingProfileId: profile.id,
+      source: "pricing_profile",
+    };
+  }
+
+  const displayPriceCents = dollarsToPositiveCents(bundle.price);
+  const standardPriceCents = toPositiveCents(bundle.standard_price) ?? displayPriceCents;
+  const foundingPriceCents = toPositiveCents(bundle.founding_price) ?? displayPriceCents ?? standardPriceCents;
+  const lockedPriceCents = isFoundingEligible ? foundingPriceCents : standardPriceCents;
+
+  if (!lockedPriceCents) return null;
+
+  return {
+    lockedPriceCents,
+    pricingType,
+    pricingProfileId: null,
+    source: "bundle_price_columns",
+  };
+}
+
 export async function POST(req: Request) {
   const rateLimit = checkPublicRateLimit(req, SPOT_CHECKOUT_RATE_LIMIT);
   const headers = publicRateLimitHeaders(rateLimit);
@@ -54,7 +136,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { bundleId, cityId, categoryId, businessName, phone,
             addons = [], nonprofitId = null, citySlug = "", categorySlug = "",
-            pricingType = "founding", lockedPrice } = body;
+            pricingType: clientPricingType, lockedPrice: clientLockedPrice } = body;
 
     if (!bundleId || !cityId || !categoryId || !businessName?.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400, headers });
@@ -67,13 +149,38 @@ export async function POST(req: Request) {
 
     const meta       = (bundle.metadata ?? {}) as Record<string, unknown>;
     const spotType   = (meta.spotType as string) ?? "back";
-    const maxSpots   = (meta.maxSpots as number) ?? 1;
-    const bundlePrice = Math.round(Number(bundle.price) * 100);
 
     // 2. Load city
     const { data: city } = await db.from("cities")
       .select("id, name, state, founding_eligible").eq("id", cityId).single();
     if (!city) return NextResponse.json({ error: "City not found" }, { status: 404, headers });
+
+    const serverPricing = await resolveCheckoutPricing(db, bundle, city.founding_eligible === true);
+    if (!serverPricing) {
+      console.error("[api/spots/checkout] no server-authoritative price", {
+        bundleId,
+        cityId,
+      });
+      return NextResponse.json(
+        { error: "Checkout pricing is temporarily unavailable" },
+        { status: 503, headers },
+      );
+    }
+
+    const clientLockedPriceCents = clientLockedPrice === undefined
+      ? null
+      : toPositiveCents(clientLockedPrice);
+    if (
+      (clientLockedPrice !== undefined && clientLockedPriceCents !== serverPricing.lockedPriceCents) ||
+      (clientPricingType !== undefined && clientPricingType !== serverPricing.pricingType)
+    ) {
+      console.warn("[api/spots/checkout] ignored client-supplied pricing", {
+        bundleId,
+        cityId,
+        expectedPricingType: serverPricing.pricingType,
+        source: serverPricing.source,
+      });
+    }
 
     // 3. CANONICAL AVAILABILITY CHECK — fail-closed.
     //
@@ -128,7 +235,7 @@ export async function POST(req: Request) {
     }
 
     // 5. Create pending order (reserves the spot)
-    const finalPrice = lockedPrice ?? bundlePrice;
+    const finalPrice = serverPricing.lockedPriceCents;
     // Hotfix (Migration 075): explicit 30-min expires_at so abandoned checkouts
     // don't permanently lock the spot. SQL default also covers this; explicit
     // value documents the timeout intent at the call site.
@@ -144,7 +251,7 @@ export async function POST(req: Request) {
         subtotal:     (finalPrice / 100).toFixed(2),
         total:        (finalPrice / 100).toFixed(2),
         locked_price: finalPrice,
-        pricing_type: pricingType ?? "founding",
+        pricing_type: serverPricing.pricingType,
         expires_at:   expiresAt,
       })
       .select("id").single();
@@ -167,7 +274,7 @@ export async function POST(req: Request) {
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         price_data: {
-          currency: "usd", unit_amount: lockedPrice ?? bundlePrice,
+          currency: "usd", unit_amount: finalPrice,
           recurring: { interval: "month" },
           product_data: {
             name: `HomeReach ${SPOT_LABEL[spotType] ?? "Ad Spot"} — ${city.name}`,
@@ -234,9 +341,20 @@ export async function POST(req: Request) {
       line_items: lineItems,
       metadata: { businessId, cityId, categoryId, bundleId,
                   orderId: assignment.id, addons: addons.join(","),
-                  nonprofitId: nonprofitId ?? "", pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
+                  nonprofitId: nonprofitId ?? "",
+                  pricingType: serverPricing.pricingType,
+                  lockedPrice: finalPrice.toString(),
+                  pricingProfileId: serverPricing.pricingProfileId ?? "",
+                  pricingSource: serverPricing.source },
       subscription_data: {
-        metadata: { orderId: assignment.id, businessId, cityId, bundleId, pricingType, lockedPrice: (lockedPrice ?? bundlePrice).toString() },
+        metadata: { orderId: assignment.id,
+                    businessId,
+                    cityId,
+                    bundleId,
+                    pricingType: serverPricing.pricingType,
+                    lockedPrice: finalPrice.toString(),
+                    pricingProfileId: serverPricing.pricingProfileId ?? "",
+                    pricingSource: serverPricing.source },
       },
       success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/get-started/${citySlug}/${categorySlug}?bundle=${bundleId}`,
