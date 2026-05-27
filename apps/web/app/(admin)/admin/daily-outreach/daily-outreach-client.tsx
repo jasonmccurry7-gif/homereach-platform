@@ -125,6 +125,7 @@ export function DailyOutreachClient() {
   const [followUpDates, setFollowUpDates] = useState<Record<string, string>>({});
   const [postNotes, setPostNotes] = useState<Record<string, string>>({});
   const [importPreview, setImportPreview] = useState<string | null>(null);
+  const [importRows, setImportRows] = useState<Array<Record<string, string>>>([]);
 
   const today = payload.date || new Date().toISOString().slice(0, 10);
 
@@ -255,12 +256,36 @@ export function DailyOutreachClient() {
 
   async function previewImport(file: File) {
     const text = await file.text();
-    const rows = text.split(/\r?\n/).filter(Boolean);
-    const headers = rows[0]?.split(",").map((item) => item.trim().toLowerCase()) ?? [];
+    const parsedRows = parseCsv(text);
+    const headers = Object.keys(parsedRows[0] ?? {});
     const duplicateHint = payload.tasks.filter((task) => text.includes(task.email ?? "") || text.includes(task.business_name ?? "")).length;
+    setImportRows(parsedRows);
     setImportPreview(
-      `Preview only: ${Math.max(0, rows.length - 1)} rows detected. Columns: ${headers.join(", ") || "unknown"}. Possible duplicate matches: ${duplicateHint}.`
+      `Preview ready: ${parsedRows.length} rows detected. Columns: ${headers.join(", ") || "unknown"}. Possible duplicate matches: ${duplicateHint}.`
     );
+  }
+
+  async function importPlan() {
+    if (importRows.length === 0) return;
+    setBusy("import");
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/daily-outreach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import_plan", date: today, rows: importRows }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Unable to import outreach plan");
+      setPayload(data.payload);
+      setNotice(`Imported ${data.import.inserted} tasks. Skipped ${data.import.duplicates} duplicates.`);
+      setImportRows([]);
+      setImportPreview(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to import outreach plan");
+    } finally {
+      setBusy(null);
+    }
   }
 
   const filteredActivity = useMemo(() => {
@@ -558,19 +583,74 @@ export function DailyOutreachClient() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-base font-bold text-gray-950">Import Outreach Plan</h2>
-            <p className="text-sm text-gray-500">Preview-only CSV import support. Nothing is written until a reviewed import route is added.</p>
+            <p className="text-sm text-gray-500">CSV import uses preview first, skips duplicates, then writes tasks only after you click import.</p>
           </div>
-          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
-            <FileUp className="h-4 w-4" />
-            Import Preview
-            <input className="sr-only" type="file" accept=".csv,.txt" onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void previewImport(file);
-            }} />
-          </label>
+          <div className="flex flex-wrap gap-2">
+            <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+              <FileUp className="h-4 w-4" />
+              Import Preview
+              <input className="sr-only" type="file" accept=".csv,.txt" onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void previewImport(file);
+              }} />
+            </label>
+            <Button onClick={() => void importPlan()} disabled={importRows.length === 0 || busy === "import"} variant="primary">
+              Import Reviewed Rows
+            </Button>
+          </div>
         </div>
         {importPreview && <p className="mt-3 rounded-md bg-blue-50 p-3 text-sm text-blue-700">{importPreview}</p>}
       </section>
     </div>
   );
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === "," && !inQuotes) {
+      row.push(current.trim());
+      current = "";
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(current.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  row.push(current.trim());
+  if (row.some(Boolean)) rows.push(row);
+
+  const headers = rows.shift()?.map((header) => normalizeHeader(header)) ?? [];
+  return rows.map((values) => {
+    const record: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      if (header) record[header] = values[index] ?? "";
+    });
+    return record;
+  });
+}
+
+function normalizeHeader(header: string) {
+  return header
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }

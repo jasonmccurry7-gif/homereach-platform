@@ -78,6 +78,42 @@ type GovContractRow = {
   created_at?: string | null;
 };
 
+export type OutreachImportRow = {
+  outreach_date?: string | null;
+  category?: string | null;
+  business_name?: string | null;
+  campaign_name?: string | null;
+  contact_name?: string | null;
+  industry?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  facebook_url?: string | null;
+  messenger_url?: string | null;
+  action_type?: string | null;
+  priority?: string | null;
+  status?: string | null;
+  email_subject?: string | null;
+  email_body?: string | null;
+  sms_body?: string | null;
+  dm_body?: string | null;
+  notes?: string | null;
+  follow_up_date?: string | null;
+};
+
+function normalizeCategory(value?: string | null): OutreachCategory {
+  const clean = (value ?? "").trim().toLowerCase();
+  if (clean.includes("procurement") || clean.includes("supplify")) return "Procurement / Supplify";
+  if (clean.includes("political")) return "Political Outreach";
+  if (clean.includes("government") || clean.includes("contract") || clean.includes("sam")) return "Government Contracting";
+  return "Targeted Campaign";
+}
+
+function normalizeImportText(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function todayKey(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
@@ -608,7 +644,120 @@ export async function logSocialAction(
   return post as DailySocialPost;
 }
 
-function escapeHtml(value: unknown) {
+export async function importDailyOutreachRows(
+  rows: OutreachImportRow[],
+  fallbackDate = todayKey(),
+  actorId?: string | null
+) {
+  const db = createServiceClient();
+  const limitedRows = rows.slice(0, 250);
+  const normalizedRows = limitedRows
+    .map((row) => {
+      const category = normalizeCategory(row.category);
+      const businessName = normalizeImportText(row.business_name);
+      const campaignName = normalizeImportText(row.campaign_name);
+      const contactName = normalizeImportText(row.contact_name);
+      const industry = normalizeImportText(row.industry);
+      const date = normalizeImportText(row.outreach_date) ?? fallbackDate;
+      const drafts = buildOutreachDrafts({
+        category,
+        businessName,
+        campaignName,
+        contactName,
+        industry,
+      });
+
+      return {
+        outreach_date: date,
+        category,
+        business_name: businessName,
+        campaign_name: campaignName,
+        contact_name: contactName,
+        industry,
+        phone: normalizeImportText(row.phone),
+        email: normalizeImportText(row.email),
+        website: normalizeImportText(row.website),
+        facebook_url: normalizeImportText(row.facebook_url),
+        messenger_url: normalizeImportText(row.messenger_url),
+        action_type:
+          normalizeImportText(row.action_type) ??
+          suggestedActionType(category, Boolean(row.email), Boolean(row.phone)),
+        priority: normalizePriority(row.priority),
+        status: normalizeImportText(row.status) ?? "pending",
+        email_subject: normalizeImportText(row.email_subject) ?? drafts.emailSubject,
+        email_body: normalizeImportText(row.email_body) ?? drafts.emailBody,
+        sms_body: normalizeImportText(row.sms_body) ?? drafts.smsBody,
+        dm_body: normalizeImportText(row.dm_body) ?? drafts.dmBody,
+        notes: normalizeImportText(row.notes),
+        follow_up_date: normalizeImportText(row.follow_up_date),
+      };
+    })
+    .filter((row) => row.business_name || row.campaign_name || row.email || row.phone);
+
+  const dates = Array.from(new Set(normalizedRows.map((row) => row.outreach_date)));
+  const { data: existing } = dates.length
+    ? await db
+        .from("daily_outreach_tasks")
+        .select("outreach_date,business_name,campaign_name,email,phone")
+        .in("outreach_date", dates)
+    : { data: [] };
+
+  const existingKeys = new Set(
+    ((existing ?? []) as Array<{
+      outreach_date: string;
+      business_name?: string | null;
+      campaign_name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+    }>).map((row) =>
+      [
+        row.outreach_date,
+        (row.email || "").toLowerCase(),
+        (row.phone || "").replace(/\D/g, ""),
+        (row.business_name || row.campaign_name || "").toLowerCase(),
+      ].join("|")
+    )
+  );
+
+  const dedupedRows = normalizedRows.filter((row) => {
+    const key = [
+      row.outreach_date,
+      (row.email || "").toLowerCase(),
+      (row.phone || "").replace(/\D/g, ""),
+      (row.business_name || row.campaign_name || "").toLowerCase(),
+    ].join("|");
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+
+  if (dedupedRows.length > 0) {
+    const { error } = await db.from("daily_outreach_tasks").insert(dedupedRows);
+    if (error) throw error;
+  }
+
+  await logOutreachActivity(db, {
+    actorId,
+    outreachDate: fallbackDate,
+    activityType: "outreach_plan_imported",
+    summary: `Imported ${dedupedRows.length} outreach tasks; skipped ${normalizedRows.length - dedupedRows.length} duplicates.`,
+    metadata: {
+      received_rows: rows.length,
+      valid_rows: normalizedRows.length,
+      inserted_rows: dedupedRows.length,
+      duplicate_rows: normalizedRows.length - dedupedRows.length,
+    },
+  });
+
+  return {
+    received: rows.length,
+    valid: normalizedRows.length,
+    inserted: dedupedRows.length,
+    duplicates: normalizedRows.length - dedupedRows.length,
+  };
+}
+
+function escapeXml(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -616,12 +765,13 @@ function escapeHtml(value: unknown) {
     .replace(/"/g, "&quot;");
 }
 
-function tableHtml(title: string, headers: string[], rows: unknown[][]) {
-  const head = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+function worksheetXml(title: string, headers: string[], rows: unknown[][]) {
+  const safeTitle = escapeXml(title).slice(0, 31);
+  const head = headers.map((header) => `<Cell><Data ss:Type="String">${escapeXml(header)}</Data></Cell>`).join("");
   const body = rows
-    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+    .map((row) => `<Row>${row.map((cell) => `<Cell><Data ss:Type="String">${escapeXml(cell)}</Data></Cell>`).join("")}</Row>`)
     .join("");
-  return `<h2>${escapeHtml(title)}</h2><table border="1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  return `<Worksheet ss:Name="${safeTitle}"><Table><Row>${head}</Row>${body}</Table></Worksheet>`;
 }
 
 export async function buildExcelExport(rangeKey: string, actorId?: string | null) {
@@ -663,11 +813,13 @@ export async function buildExcelExport(rangeKey: string, actorId?: string | null
     export_format: "xls",
   });
 
-  const workbook = `<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>HomeReach Daily Outreach Export</title></head>
-<body>
-${tableHtml("Completed Tasks", ["Date", "Category", "Name", "Action", "Priority", "Completed At", "Notes"], taskRows.filter((task) => task.completed).map((task) => [
+  const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+${worksheetXml("Completed Tasks", ["Date", "Category", "Name", "Action", "Priority", "Completed At", "Notes"], taskRows.filter((task) => task.completed).map((task) => [
     task.outreach_date,
     task.category,
     task.business_name || task.campaign_name,
@@ -676,7 +828,7 @@ ${tableHtml("Completed Tasks", ["Date", "Category", "Name", "Action", "Priority"
     task.completed_at,
     task.notes,
   ]))}
-${tableHtml("Incomplete Tasks", ["Date", "Category", "Name", "Action", "Priority", "Status", "Follow Up", "Notes"], taskRows.filter((task) => !task.completed).map((task) => [
+${worksheetXml("Incomplete Tasks", ["Date", "Category", "Name", "Action", "Priority", "Status", "Follow Up", "Notes"], taskRows.filter((task) => !task.completed).map((task) => [
     task.outreach_date,
     task.category,
     task.business_name || task.campaign_name,
@@ -686,7 +838,7 @@ ${tableHtml("Incomplete Tasks", ["Date", "Category", "Name", "Action", "Priority
     task.follow_up_date,
     task.notes,
   ]))}
-${tableHtml("Activity History", ["Date", "Type", "Channel", "Category", "Summary", "Created At"], activityRows.map((item) => [
+${worksheetXml("Activity History", ["Date", "Type", "Channel", "Category", "Summary", "Created At"], activityRows.map((item) => [
     item.outreach_date,
     item.activity_type,
     item.channel,
@@ -694,7 +846,7 @@ ${tableHtml("Activity History", ["Date", "Type", "Channel", "Category", "Summary
     item.summary,
     item.created_at,
   ]))}
-${tableHtml("Social Posts", ["Date", "Category", "Post Type", "Audience", "Status", "Posted", "Notes"], postRows.map((post) => [
+${worksheetXml("Social Posts", ["Date", "Category", "Post Type", "Audience", "Status", "Posted", "Notes"], postRows.map((post) => [
     post.outreach_date,
     post.category,
     post.post_type,
@@ -703,7 +855,7 @@ ${tableHtml("Social Posts", ["Date", "Category", "Post Type", "Audience", "Statu
     post.posted ? "yes" : "no",
     post.notes,
   ]))}
-${tableHtml("Follow Ups", ["Date", "Category", "Name", "Follow Up Date", "Status", "Notes"], taskRows.filter((task) => task.follow_up_date).map((task) => [
+${worksheetXml("Follow Ups", ["Date", "Category", "Name", "Follow Up Date", "Status", "Notes"], taskRows.filter((task) => task.follow_up_date).map((task) => [
     task.outreach_date,
     task.category,
     task.business_name || task.campaign_name,
@@ -711,15 +863,14 @@ ${tableHtml("Follow Ups", ["Date", "Category", "Name", "Follow Up Date", "Status
     task.status,
     task.notes,
   ]))}
-${tableHtml("Responses Received", ["Date", "Category", "Name", "Status", "Notes"], taskRows.filter((task) => task.response_received).map((task) => [
+${worksheetXml("Responses Received", ["Date", "Category", "Name", "Status", "Notes"], taskRows.filter((task) => task.response_received).map((task) => [
     task.outreach_date,
     task.category,
     task.business_name || task.campaign_name,
     task.status,
     task.notes,
   ]))}
-</body>
-</html>`;
+</Workbook>`;
 
   return { workbook, range };
 }

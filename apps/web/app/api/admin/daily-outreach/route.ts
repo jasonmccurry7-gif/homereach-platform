@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/api-guards";
-import { fetchDailyOutreach, generateDailyOutreach, logTaskAction, todayKey } from "@/lib/daily-outreach/server";
+import {
+  fetchDailyOutreach,
+  generateDailyOutreach,
+  importDailyOutreachRows,
+  logTaskAction,
+  todayKey,
+} from "@/lib/daily-outreach/server";
 
 export async function GET(request: Request) {
   const guard = await requireAdmin();
@@ -43,6 +49,16 @@ export async function POST(request: Request) {
       );
       if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
       return NextResponse.json({ ok: true, task });
+    }
+
+    if (action === "import_plan" && Array.isArray(body.rows)) {
+      const result = await importDailyOutreachRows(
+        body.rows,
+        typeof body.date === "string" ? body.date : date,
+        guard.user?.id ?? null
+      );
+      const payload = await fetchDailyOutreach(date);
+      return NextResponse.json({ ok: true, import: result, payload });
     }
 
     return NextResponse.json({ error: "Unsupported daily outreach action" }, { status: 400 });
