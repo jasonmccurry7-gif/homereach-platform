@@ -245,6 +245,12 @@ export default async function AdminDashboardPage() {
           >
             🎯 View Leads
           </Link>
+          <Link
+            href="/admin/daily-outreach"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100 transition-colors"
+          >
+            Daily Outreach
+          </Link>
         </div>
       </div>
 

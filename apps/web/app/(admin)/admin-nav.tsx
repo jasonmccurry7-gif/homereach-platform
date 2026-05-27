@@ -39,6 +39,7 @@ const NAV_GROUPS = [
   {
     label: "Sales Execution",
     items: [
+      { label: "Daily Outreach",   href: "/admin/daily-outreach",  emoji: "DO", badge: "NEW" },
       { label: "Agent Dialer",      href: "/admin/agent-view",       emoji: "⚡", badge: "LIVE" },
       { label: "Facebook Engine",   href: "/admin/facebook",         emoji: "💙", badge: "LIVE" },
       { label: "Sales Intelligence",href: "/admin/sales-dashboard",  emoji: "📊", badge: "LIVE" },

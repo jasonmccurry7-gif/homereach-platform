@@ -12,6 +12,11 @@ import {
   sendEmail,
   sendSms,
 } from "@homereach/services/outreach";
+import {
+  assertLeadCanReceiveSalesSend,
+  resolveSalesOutboundChannel,
+  resolveStoredLeadDestination,
+} from "@/lib/sales/outbound-send-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/event
@@ -101,12 +106,11 @@ export async function POST(request: Request) {
       if (sysCtrl?.all_paused) {
         return NextResponse.json({ error: "System is paused. Cannot send." }, { status: 403 });
       }
-      const outboundChannel =
-        channel === "sms" || action_type === "text_sent" || action_type === "sms_sent"
-          ? "sms"
-          : channel === "facebook" || action_type === "facebook_sent" || action_type === "fb_message_sent"
-            ? "facebook"
-            : "email";
+      const channelResult = resolveSalesOutboundChannel(action_type, channel);
+      if (!channelResult.ok) {
+        return NextResponse.json({ error: channelResult.error }, { status: channelResult.status });
+      }
+      const outboundChannel = channelResult.value;
 
       if (outboundChannel === "sms" && sysCtrl?.sms_paused) {
         return NextResponse.json({ error: "SMS outreach is paused." }, { status: 403 });
@@ -137,17 +141,15 @@ export async function POST(request: Request) {
       if (isSalesAgent && lead?.assigned_agent_id && lead.assigned_agent_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      if (lead?.do_not_contact)
-        return NextResponse.json({ error: "Lead is DNC. Cannot send." }, { status: 403 });
-      if (lead?.is_quarantined)
-        return NextResponse.json({ error: "Lead is quarantined. Cannot send." }, { status: 403 });
-      if (channel === "sms" && lead?.sms_opt_out)
-        return NextResponse.json({ error: "Lead has opted out of SMS." }, { status: 403 });
-      if (
-        channel === "email" &&
-        ["bounced_permanent", "complained", "unsubscribed"].includes(String(lead?.email_status ?? ""))
-      ) {
-        return NextResponse.json({ error: "Lead email is suppressed." }, { status: 403 });
+      const leadGuard = assertLeadCanReceiveSalesSend({
+        channel: outboundChannel,
+        doNotContact: lead?.do_not_contact,
+        smsOptOut: lead?.sms_opt_out,
+        isQuarantined: lead?.is_quarantined,
+        emailStatus: lead?.email_status,
+      });
+      if (!leadGuard.ok) {
+        return NextResponse.json({ error: leadGuard.error }, { status: leadGuard.status });
       }
 
       // Resolve agent identity (from DB, fallback to env vars)
@@ -199,13 +201,19 @@ export async function POST(request: Request) {
         // Note: dedup hash is inserted AFTER successful send (see below)
       }
 
-      // Resolve destination address
-      const dest = to_address ?? (outboundChannel === "sms" ? lead?.phone : lead?.email);
-      if (!dest) {
-        return NextResponse.json({
-          error: `No ${outboundChannel} contact info for this lead.`,
-        }, { status: 400 });
+      const destinationResult = resolveStoredLeadDestination({
+        channel: outboundChannel,
+        leadPhone: lead?.phone,
+        leadEmail: lead?.email,
+        requestedToAddress: typeof to_address === "string" ? to_address : null,
+      });
+      if (!destinationResult.ok) {
+        return NextResponse.json(
+          { error: destinationResult.error },
+          { status: destinationResult.status },
+        );
       }
+      const dest = destinationResult.value;
 
       // Send
       const isSms = outboundChannel === "sms";
