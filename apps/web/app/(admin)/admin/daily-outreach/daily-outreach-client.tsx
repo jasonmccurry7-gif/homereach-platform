@@ -113,7 +113,7 @@ function Button({
   );
 }
 
-export function DailyOutreachClient() {
+export function DailyOutreachClient({ embedded = false }: { embedded?: boolean } = {}) {
   const [payload, setPayload] = useState<DailyOutreachPayload>(emptyPayload);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -309,10 +309,12 @@ export function DailyOutreachClient() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className={cn("space-y-6", embedded && "pb-2")}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Admin execution</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">
+            {embedded ? "Daily execution" : "Admin execution"}
+          </p>
           <h1 className="mt-1 text-2xl font-bold text-gray-950">Daily Outreach Command Center</h1>
           <p className="mt-1 max-w-3xl text-sm text-gray-500">
             Fast daily action console for outreach tasks, social drafts, follow-ups, and exportable progress.
