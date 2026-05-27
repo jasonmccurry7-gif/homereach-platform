@@ -64,7 +64,7 @@ function NonprofitForm() {
           <div className="text-5xl mb-4">🤝</div>
           <h1 className="text-2xl font-bold text-gray-900">Application Received!</h1>
           <p className="mt-3 text-gray-500">
-            We'll review your nonprofit and reach out within 2 business days. Once approved, local
+            We&apos;ll review your nonprofit and reach out within 2 business days. Once approved, local
             businesses will be able to sponsor your cause.
           </p>
           <Link

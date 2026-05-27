@@ -1,5 +1,6 @@
 import { NextResponse }       from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/alerts/log
@@ -16,6 +17,9 @@ import { createServiceClient } from "@/lib/supabase/service";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const { searchParams } = new URL(req.url);
   const agentId  = searchParams.get("agent_id");
   const alertType = searchParams.get("type");

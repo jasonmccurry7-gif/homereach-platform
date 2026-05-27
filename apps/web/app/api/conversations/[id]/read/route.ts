@@ -5,12 +5,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getConversationRepository } from "@/lib/engine/db/factory";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 export async function POST(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
     const { id: conversationId } = await context.params;
     const repo = getConversationRepository();
     await repo.markRead(conversationId);

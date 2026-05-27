@@ -8,7 +8,7 @@
 import type {
   AdCopy, AdDesignInput, AdSlotType,
   AnchorAdSchema, StandardAdSchema, AdSchema,
-  AdDimensions, ColorPalette,
+  AdDimensions, ColorPalette, ExportElement,
 } from "./types";
 import { AD_DIMENSIONS } from "./types";
 import { getTemplate }   from "./templates/category-templates";
@@ -96,18 +96,14 @@ export class LayoutEngine {
    * Convert a layout schema to a flat list of positioned elements
    * for Canva / PDF export. Uses percentage-based coordinates.
    */
-  static toExportElements(schema: AdSchema): Array<{
-    id: string; type: string; content?: string;
-    x: number; y: number; width: number; height: number;
-    style: Record<string, string | number>;
-  }> {
+  static toExportElements(schema: AdSchema): ExportElement[] {
     if (schema.type === "anchor") {
       return this._anchorToExport(schema);
     }
     return this._standardToExport(schema);
   }
 
-  private static _anchorToExport(schema: AnchorAdSchema) {
+  private static _anchorToExport(schema: AnchorAdSchema): ExportElement[] {
     const { contentSide: c, palette: p } = schema;
     return [
       // Content pane background
@@ -163,10 +159,10 @@ export class LayoutEngine {
       { id: "image_label", type: "text", content: schema.imageSide.placeholderLabel,
         x: 58, y: 68, width: 36, height: 8,
         style: { color: "#FFFFFF40", fontSize: 8, fontWeight: "600", textAlign: "center" } },
-    ];
+    ] as ExportElement[];
   }
 
-  private static _standardToExport(schema: StandardAdSchema) {
+  private static _standardToExport(schema: StandardAdSchema): ExportElement[] {
     const { header: h, body: b, footer: f, palette: p } = schema;
     return [
       { id: "bg", type: "shape", x: 0, y: 0, width: 100, height: 100,
@@ -193,6 +189,6 @@ export class LayoutEngine {
         id: "phone", type: "text", content: `📞 ${f.phone}`, x: 60, y: 82, width: 37, height: 14,
         style: { color: p.secondaryText, fontSize: 8, fontWeight: "600", textAlign: "right" }
       }] : []),
-    ];
+    ] as ExportElement[];
   }
 }

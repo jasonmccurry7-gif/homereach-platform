@@ -48,33 +48,36 @@ async function getWarRoomData(): Promise<WarRoomData> {
   const todayEnd = `${today}T23:59:59Z`;
 
   // Fetch today's sales events
-  const { data: todaysSalesEvents = [] } = await db
+  const { data: todaysSalesEventsData } = await db
     .from("sales_events")
     .select("*")
     .gte("created_at", todayStart)
     .lte("created_at", todayEnd);
+  const todaysSalesEvents = todaysSalesEventsData ?? [];
 
   // Fetch leads by status (hot ones)
-  const { data: salesLeadsByStatus = [] } = await db
+  const { data: salesLeadsByStatusData } = await db
     .from("sales_leads")
     .select(
       `id, business_name, city, category, status, last_reply_at, phone, email, assigned_agent_id`
     )
     .in("status", ["replied", "interested"])
     .order("last_reply_at", { ascending: false });
+  const salesLeadsByStatus = salesLeadsByStatusData ?? [];
 
   // Build agent daily stats
-  const { data: agentProfiles = [] } = await db
+  const { data: agentProfilesData } = await db
     .from("profiles")
     .select("id, full_name")
     .eq("role", "sales_agent");
+  const agentProfiles = agentProfilesData ?? [];
 
   const agentDailyStats = await Promise.all(
     agentProfiles.map(async (agent) => {
       // Count texts sent today
       const { count: textsSent = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "sms")
         .eq("action_type", "text_sent")
@@ -84,7 +87,7 @@ async function getWarRoomData(): Promise<WarRoomData> {
       // Count emails sent today
       const { count: emailsSent = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "email")
         .eq("action_type", "email_sent")
@@ -94,7 +97,7 @@ async function getWarRoomData(): Promise<WarRoomData> {
       // Count calls made today
       const { count: callsMade = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("channel", "call")
         .gte("created_at", todayStart)
@@ -103,14 +106,14 @@ async function getWarRoomData(): Promise<WarRoomData> {
       // Count hot leads assigned to this agent
       const { count: hotLeads = 0 } = await db
         .from("sales_leads")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("assigned_agent_id", agent.id)
         .in("status", ["replied", "interested"]);
 
       // Count deals closed today
       const { count: dealsClosed = 0 } = await db
         .from("sales_events")
-        .select("*", { count: "exact", head: 0 })
+        .select("*", { count: "exact", head: true })
         .eq("agent_id", agent.id)
         .eq("action_type", "deal_closed")
         .gte("created_at", todayStart)

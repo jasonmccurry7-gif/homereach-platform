@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { createServiceClient } from "@/lib/supabase/service";
 import { listPublishedPages } from "@/lib/seo/registry";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeReach sitemap
@@ -34,7 +35,7 @@ const SLUG_CATEGORIES = new Set([
 ]);
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+  const base = getPublicAppBaseUrl();
   const now = new Date();
 
   const staticRoutes: MetadataRoute.Sitemap = [

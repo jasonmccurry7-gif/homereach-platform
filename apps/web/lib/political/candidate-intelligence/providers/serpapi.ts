@@ -231,7 +231,7 @@ export async function fetchSerpapiCandidateIntel(args: {
   cycle?: number;
   maxRecords?: number;
 }): Promise<CandidateIntelProviderResult> {
-  const key = process.env.SERPAPI_KEY;
+  const key = process.env.SERPAPI_KEY ?? process.env.SERP_API;
   if (!isCandidateSerpApiEnabled()) {
     return {
       sourceKey: SOURCE_KEY,
@@ -244,7 +244,7 @@ export async function fetchSerpapiCandidateIntel(args: {
     return {
       sourceKey: SOURCE_KEY,
       skipped: true,
-      reason: "SERPAPI_KEY is not configured.",
+      reason: "SERPAPI_KEY or SERP_API is not configured.",
       records: [],
     };
   }

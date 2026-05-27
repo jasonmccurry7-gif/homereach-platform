@@ -9,7 +9,8 @@ import {
   marketingCampaigns,
   outreachReplies,
 } from "@homereach/db";
-import { eq, count, sum, gte, isNull, desc, and } from "drizzle-orm";
+import { eq, count, sum, gte, lte, isNull, desc, and } from "drizzle-orm";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard — HomeReach Admin" };
@@ -17,7 +18,7 @@ export const metadata: Metadata = { title: "Dashboard — HomeReach Admin" };
 // ── System health fetch (non-blocking) ────────────────────────────────────────
 async function getSystemHealth() {
   try {
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+    const base = getInternalAppBaseUrl();
     const res = await fetch(`${base}/api/admin/health`, { cache: "no-store" });
     if (!res.ok) return null;
     return res.json() as Promise<{
@@ -93,7 +94,7 @@ export default async function AdminDashboardPage() {
       and(
         eq(orders.status, "paid"),
         gte(orders.paidAt, lastMonthStart),
-        gte(lastMonthEnd, orders.paidAt!)
+        lte(orders.paidAt, lastMonthEnd)
       )
     ), [{ total: "0" }]),
 
@@ -243,6 +244,12 @@ export default async function AdminDashboardPage() {
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors"
           >
             🎯 View Leads
+          </Link>
+          <Link
+            href="/admin/daily-outreach"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100 transition-colors"
+          >
+            Daily Outreach
           </Link>
         </div>
       </div>

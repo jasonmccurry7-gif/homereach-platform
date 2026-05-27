@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,10 @@ export const dynamic = "force-dynamic";
 // Sends check-in messages to new customers at key milestones.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const runAt = new Date().toISOString();
 
@@ -58,15 +62,17 @@ export async function POST() {
     }
 
     // ── Log beacon scan ───────────────────────────────────────────────────────
-    await supabase.from("sales_events").insert({
-      event_type: "beacon_scan",
-      notes: JSON.stringify({
-        new_orders: newOrders?.length ?? 0,
-        stuck_intakes: stuckIntakes?.length ?? 0,
-        thirty_day_milestone: thirtyDayMilestone?.length ?? 0,
-      }),
-      created_at: runAt,
-    }).catch(() => {});
+    try {
+      await supabase.from("sales_events").insert({
+        event_type: "beacon_scan",
+        notes: JSON.stringify({
+          new_orders: newOrders?.length ?? 0,
+          stuck_intakes: stuckIntakes?.length ?? 0,
+          thirty_day_milestone: thirtyDayMilestone?.length ?? 0,
+        }),
+        created_at: runAt,
+      });
+    } catch {}
 
     return NextResponse.json({
       agent: "Beacon",
@@ -88,5 +94,8 @@ export async function POST() {
 }
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   return NextResponse.json({ agent: "Beacon", status: "ready", description: "POST to run client success scan" });
 }

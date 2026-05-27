@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes — orchestrator runs all agents
@@ -21,7 +23,7 @@ export const maxDuration = 300; // 5 minutes — orchestrator runs all agents
 //   9. Atlas/Sentinel/Sync (status reports only)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://home-reach.com";
+const BASE_URL = getPublicAppBaseUrl();
 
 type AgentResult = {
   agent: string;
@@ -99,17 +101,13 @@ function extractSummary(agent: string, data: Record<string, unknown>): string {
 }
 
 export async function POST(req: NextRequest) {
+  const access = await requireAdminOrCron(req);
+  if (!access.ok) return access.response;
+
   const supabase = createServiceClient();
   const startTime = Date.now();
   const runId = crypto.randomUUID();
   const runDate = new Date().toISOString();
-
-  // Security: require cron secret or admin session
-  const cronSecret = req.headers.get("x-cron-secret");
-  if (cronSecret !== process.env.CRON_SECRET && cronSecret !== "internal") {
-    // Allow unauthenticated for now in dev — lock down in prod
-    console.warn("[APEX] Running without cron secret — ensure CRON_SECRET is set");
-  }
 
   const results: AgentResult[] = [];
 
@@ -182,16 +180,15 @@ export async function POST(req: NextRequest) {
   const report = reportLines.join("\n");
 
   // ── Log run to Supabase ────────────────────────────────────────────────────
-  await supabase
+  await Promise.resolve(supabase
     .from("apex_command_log" as never)
     .insert({
       command: "APEX_ORCHESTRATION",
       sender: "system",
       response: report.slice(0, 2000),
       executed_at: runDate,
-    })
-    .then(() => {})
-    .catch(err => console.warn("[APEX] Failed to log orchestration:", err));
+    }))
+    .catch((err: unknown) => console.warn("[APEX] Failed to log orchestration:", err));
 
   return NextResponse.json({
     run_id: runId,

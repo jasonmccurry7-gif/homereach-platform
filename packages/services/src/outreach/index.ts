@@ -165,18 +165,22 @@ export async function sendSms(
       fromNumber: options.fromNumber,
       messagingServiceSid: options.messagingServiceSid,
     });
+    const useMessagingServiceSid = Boolean(
+      smsIdentity.messagingServiceSid &&
+      (options.messagingServiceSid || !options.fromNumber)
+    );
 
     if (!smsIdentity.messagingServiceSid && !smsIdentity.fromNumber) {
       throw new Error(
-        "TWILIO_MESSAGING_SERVICE_SID or TWILIO_PHONE_NUMBER is required"
+        "OUTREACH_TWILIO_MESSAGING_SERVICE_SID, TWILIO_MESSAGING_SERVICE_SID, or TWILIO_PHONE_NUMBER is required"
       );
     }
 
     const message = await client.messages.create({
       body: options.body,
       to: options.to,
-      // Prefer messaging service (supports opt-out auto-handling) over single number
-      ...(smsIdentity.messagingServiceSid
+      // Explicit per-agent sender numbers preserve reply continuity; otherwise use the messaging service when available.
+      ...(useMessagingServiceSid
         ? { messagingServiceSid: smsIdentity.messagingServiceSid }
         : { from: smsIdentity.fromNumber }),
       ...(options.statusCallbackUrl ? { statusCallback: options.statusCallbackUrl } : {}),

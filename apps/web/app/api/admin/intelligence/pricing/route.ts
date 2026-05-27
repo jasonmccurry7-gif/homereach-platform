@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/intelligence/pricing?city=Austin,TX&category=Roofing
@@ -7,6 +8,9 @@ import { NextResponse } from "next/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const { searchParams } = new URL(req.url);
   const city = searchParams.get("city");
   const category = searchParams.get("category") || "all";

@@ -4,20 +4,81 @@
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
+import {
+  normalizeTargetedCheckoutEmail,
+  verifyTargetedCheckoutToken,
+} from "@homereach/services/targeted";
 import Stripe from "stripe";
+import { z } from "zod";
+
+const ALLOWED_ADDONS = new Set([
+  "door_hangers",
+  "fliers",
+  "yard_signs",
+  "business_cards",
+  "website_setup",
+  "website_maintenance",
+  "sms_automation",
+  "email_automation",
+  "full_automation",
+  "nonprofit",
+]);
+
+const TargetedCheckoutRequestSchema = z.object({
+  campaignId: z.string().uuid(),
+  checkoutToken: z.string().trim().min(1).optional(),
+  checkoutEmail: z.string().trim().email().optional(),
+  addons: z.array(z.string()).optional().default([]),
+});
+
+const TARGETED_CHECKOUT_RATE_LIMIT = {
+  scope: "checkout:targeted",
+  limit: 12,
+  windowMs: 10 * 60_000,
+};
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is required");
-  return new Stripe(key, { apiVersion: "2025-03-31.basil" });
+  return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
 }
 
 export async function POST(req: Request) {
+  const rateLimit = checkPublicRateLimit(req, TARGETED_CHECKOUT_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many checkout attempts. Try again shortly." },
+      { status: 429, headers }
+    );
+  }
+
   try {
-    const { campaignId, addons = [] } = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers });
+    }
+
+    const parsed = TargetedCheckoutRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid input", details: parsed.error.flatten() },
+        { status: 400, headers }
+      );
+    }
+
+    const { campaignId, checkoutToken, checkoutEmail } = parsed.data;
+    const addons = normalizeAddons(parsed.data.addons);
 
     if (!campaignId) {
-      return NextResponse.json({ error: "campaignId required" }, { status: 400 });
+      return NextResponse.json({ error: "campaignId required" }, { status: 400, headers });
     }
 
     const db  = createServiceClient();
@@ -28,15 +89,42 @@ export async function POST(req: Request) {
       .single();
 
     if (error || !campaign) {
-      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404, headers });
     }
 
     if (["paid", "mailed", "complete"].includes(campaign.status)) {
-      return NextResponse.json({ error: "Campaign is already paid" }, { status: 400 });
+      return NextResponse.json({ error: "Campaign is already paid" }, { status: 400, headers });
+    }
+
+    const campaignEmail = typeof campaign.email === "string" ? campaign.email : "";
+    if (!campaignEmail) {
+      return NextResponse.json(
+        { error: "Campaign email is missing; checkout cannot be verified" },
+        { status: 500, headers }
+      );
+    }
+
+    const tokenResult = verifyTargetedCheckoutToken(checkoutToken, {
+      campaignId: campaign.id,
+      email: campaignEmail,
+    });
+    const emailProofAccepted =
+      typeof checkoutEmail === "string" &&
+      normalizeTargetedCheckoutEmail(checkoutEmail) ===
+        normalizeTargetedCheckoutEmail(campaignEmail);
+
+    if (!tokenResult.ok && !emailProofAccepted) {
+      return NextResponse.json(
+        {
+          error:
+            "Checkout link could not be verified. Confirm the email used for this campaign and try again.",
+        },
+        { status: 403, headers }
+      );
     }
 
     const stripe  = getStripe();
-    const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const appUrl = getPublicAppBaseUrl();
     const basePrice = campaign.price_cents ?? 40000;
 
     // ── Main campaign line item ───────────────────────────────────────────────
@@ -68,17 +156,17 @@ export async function POST(req: Request) {
     if (addons.includes("website_setup"))
       lineItems.push({ price_data: { currency: "usd", unit_amount: 49700, product_data: { name: "Website Design (One-Time Setup)", description: "Professional mobile-friendly website designed and built for your business" } }, quantity: 1 });
     if (addons.includes("website_maintenance"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, product_data: { name: "Website Hosting & Maintenance (first month)", description: "Hosting, updates, and support — $97/mo going forward" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, product_data: { name: "Website Hosting & Maintenance (first month)", description: "First month of hosting, updates, and support. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
     if (addons.includes("full_automation"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 7900, product_data: { name: "Full Automation Bundle (first month)", description: "SMS + Email automation — billed monthly going forward" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 7900, product_data: { name: "Full Automation Bundle (first month)", description: "First month of SMS and email automation. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
     else {
       if (addons.includes("sms_automation"))
-        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "SMS Automation (first month)", description: "SMS follow-up sequences — billed monthly going forward" } }, quantity: 1 });
+        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "SMS Automation (first month)", description: "First month of SMS follow-up sequences. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
       if (addons.includes("email_automation"))
-        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "Email Automation (first month)", description: "Email drip sequences — billed monthly going forward" } }, quantity: 1 });
+        lineItems.push({ price_data: { currency: "usd", unit_amount: 4900, product_data: { name: "Email Automation (first month)", description: "First month of email drip sequences. Ongoing service is activated separately after onboarding." } }, quantity: 1 });
     }
     if (addons.includes("nonprofit"))
-      lineItems.push({ price_data: { currency: "usd", unit_amount: 2500, product_data: { name: "Nonprofit Sponsorship (first month)", description: "Local nonprofit feature — billed monthly going forward" } }, quantity: 1 });
+      lineItems.push({ price_data: { currency: "usd", unit_amount: 2500, product_data: { name: "Nonprofit Sponsorship (first month)", description: "First month of the local nonprofit feature. Ongoing sponsorship is activated separately after onboarding." } }, quantity: 1 });
 
     // ── Create Stripe session ─────────────────────────────────────────────────
     const session = await stripe.checkout.sessions.create({
@@ -95,7 +183,7 @@ export async function POST(req: Request) {
         addons:       addons.join(","),
       },
       success_url: `${appUrl}/targeted/confirmed?campaign=${campaign.id}`,
-      cancel_url:  `${appUrl}/targeted/checkout?campaign=${campaign.id}&cancelled=true`,
+      cancel_url:  `${appUrl}/targeted/checkout?${buildCancelQuery(campaign.id, tokenResult.ok ? checkoutToken : undefined)}`,
     });
 
     // Save session ID to campaign row
@@ -104,10 +192,36 @@ export async function POST(req: Request) {
       .update({ stripe_checkout_session_id: session.id })
       .eq("id", campaignId);
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: session.url }, { headers });
 
   } catch (err) {
     console.error("[api/stripe/targeted-checkout] error:", err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500, headers }
+    );
   }
+}
+
+function normalizeAddons(addons: string[]): string[] {
+  const normalized = Array.from(
+    new Set(addons.filter((addon) => ALLOWED_ADDONS.has(addon)))
+  );
+
+  if (normalized.includes("full_automation")) {
+    return normalized.filter(
+      (addon) => addon !== "sms_automation" && addon !== "email_automation"
+    );
+  }
+
+  return normalized;
+}
+
+function buildCancelQuery(campaignId: string, checkoutToken?: string): string {
+  const params = new URLSearchParams({
+    campaign: campaignId,
+    cancelled: "true",
+  });
+  if (checkoutToken) params.set("token", checkoutToken);
+  return params.toString();
 }

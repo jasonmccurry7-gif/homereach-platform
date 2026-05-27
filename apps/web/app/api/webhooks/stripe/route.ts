@@ -15,6 +15,24 @@ import {
 } from "@homereach/services/targeted";
 import { createServiceClient } from "@homereach/services/auth";
 import { sendEmail } from "@homereach/services/outreach";
+import {
+  decideStripeEventClaimForExisting,
+  type StripeEventClaim,
+} from "@/lib/stripe/webhook-idempotency";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import {
+  PROPERTY_INTELLIGENCE_CHECKOUT_TYPE,
+  stripeResourceId,
+  toPositiveCents,
+} from "@/lib/intelligence/checkout";
+import {
+  checkPropertyIntelligenceFoundingSchemaReady,
+} from "@/lib/intelligence/schema-readiness";
+import {
+  isCheckoutSessionPaymentSatisfied,
+  isStripeSubscriptionProvisionableStatus,
+  mapStripeSubscriptionStatusToSpotStatus,
+} from "@/lib/stripe/subscription-activation";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/stripe
@@ -27,6 +45,94 @@ import { sendEmail } from "@homereach/services/outreach";
 export const config = {
   api: { bodyParser: false },
 };
+
+async function claimStripeEvent(event: Stripe.Event): Promise<StripeEventClaim> {
+  try {
+    const [inserted] = await db
+      .insert(stripeWebhookEvents)
+      .values({
+        id: event.id,
+        eventType: event.type,
+        payload: event as unknown as Record<string, unknown>,
+        status: "received",
+      })
+      .onConflictDoNothing()
+      .returning({ id: stripeWebhookEvents.id });
+
+    if (inserted) {
+      return "process";
+    }
+
+    const [existing] = await db
+      .select({
+        status: stripeWebhookEvents.status,
+        receivedAt: stripeWebhookEvents.receivedAt,
+      })
+      .from(stripeWebhookEvents)
+      .where(eq(stripeWebhookEvents.id, event.id))
+      .limit(1);
+
+    const claim = decideStripeEventClaimForExisting(existing);
+    if (claim !== "process") {
+      return claim;
+    }
+
+    if (existing) {
+      const [reclaimed] = await db
+        .update(stripeWebhookEvents)
+        .set({
+          eventType: event.type,
+          payload: event as unknown as Record<string, unknown>,
+          status: "received",
+          error: null,
+          receivedAt: new Date(),
+          processedAt: null,
+        })
+        .where(and(
+          eq(stripeWebhookEvents.id, event.id),
+          eq(stripeWebhookEvents.status, existing.status),
+          eq(stripeWebhookEvents.receivedAt, existing.receivedAt),
+        ))
+        .returning({ id: stripeWebhookEvents.id });
+
+      return reclaimed ? "process" : "retry_later";
+    }
+
+    return "process";
+  } catch (err) {
+    // Do not drop paid-customer events if the ledger is temporarily unavailable.
+    console.warn(
+      "[stripe/webhook] idempotency layer error (proceeding):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return "process";
+  }
+}
+
+async function markStripeEventProcessed(eventId: string) {
+  try {
+    await db
+      .update(stripeWebhookEvents)
+      .set({ status: "processed", processedAt: new Date() })
+      .where(eq(stripeWebhookEvents.id, eventId));
+  } catch {
+    // Non-fatal: the migration may not be applied during a rolling deploy.
+  }
+}
+
+async function markStripeEventFailed(eventId: string, err: unknown) {
+  try {
+    await db
+      .update(stripeWebhookEvents)
+      .set({
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      })
+      .where(eq(stripeWebhookEvents.id, eventId));
+  } catch {
+    // Non-fatal.
+  }
+}
 
 // Stripe requires the raw request body for signature verification
 export async function POST(req: Request) {
@@ -49,37 +155,21 @@ export async function POST(req: Request) {
     );
   }
 
-  // ── Idempotency check (Migration 075) ─────────────────────────────────────
-  // Stripe retries on 5xx — same event.id arrives multiple times. Dedup at the door.
-  // Failure-tolerant: if the table is missing (migration not yet applied), log and proceed.
-  try {
-    const [existing] = await db
-      .select({ status: stripeWebhookEvents.status })
-      .from(stripeWebhookEvents)
-      .where(eq(stripeWebhookEvents.id, event.id))
-      .limit(1);
-    if (existing?.status === "processed") {
-      console.log(`[stripe/webhook] idempotent skip — event ${event.id} already processed`);
-      return NextResponse.json({ received: true, idempotent: true });
-    }
-    await db
-      .insert(stripeWebhookEvents)
-      .values({
-        id: event.id,
-        eventType: event.type,
-        payload: event as unknown as Record<string, unknown>,
-        status: "received",
-      })
-      .onConflictDoNothing();
-  } catch (err) {
-    // Don't block delivery if the idempotency layer is down — better a duplicate than a drop.
-    console.warn(
-      `[stripe/webhook] idempotency layer error (proceeding):`,
-      err instanceof Error ? err.message : String(err),
-    );
+  const eventClaim = await claimStripeEvent(event);
+  if (eventClaim === "processed_duplicate") {
+    console.log(`[stripe/webhook] duplicate skip - event ${event.id} already processed`);
+    return NextResponse.json({ received: true, duplicate: true });
   }
 
-  console.log(`[stripe/webhook] processing event=${event.id} type=${event.type}`);
+  if (eventClaim === "retry_later") {
+    console.warn(
+      `[stripe/webhook] event ${event.id} is already being processed; requesting Stripe retry`,
+    );
+    return NextResponse.json(
+      { received: false, retry: true },
+      { status: 409 },
+    );
+  }
 
   // ── Event dispatch ─────────────────────────────────────────────────────────
 
@@ -90,6 +180,8 @@ export async function POST(req: Request) {
         // Route to correct handler based on metadata.type
         if (session.metadata?.type === "targeted_route_campaign") {
           await handleTargetedCheckoutCompleted(session);
+        } else if (session.metadata?.type === PROPERTY_INTELLIGENCE_CHECKOUT_TYPE) {
+          await handlePropertyIntelligenceCheckoutCompleted(session);
         } else {
           await handleCheckoutCompleted(session);
         }
@@ -151,9 +243,12 @@ export async function POST(req: Request) {
       // Non-fatal — table may not exist yet on first deploy after migration.
     }
 
+    await markStripeEventProcessed(event.id);
+
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error(`[stripe/webhook] error handling ${event.type}:`, err);
+    await markStripeEventFailed(event.id, err);
     // Mark failed in idempotency log (best-effort).
     try {
       await db
@@ -179,6 +274,14 @@ export async function POST(req: Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  if (!isCheckoutSessionPaymentSatisfied(session.payment_status)) {
+    console.warn(
+      `[stripe/webhook] checkout.session.completed skipped — session=${session.id}` +
+      ` payment_status=${session.payment_status ?? "(missing)"}`,
+    );
+    return;
+  }
+
   const orderId = session.metadata?.orderId;
   if (!orderId) {
     console.error("[stripe/webhook] no orderId in session metadata");
@@ -202,6 +305,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     .set({
       status: "paid",
       stripePaymentIntentId: session.payment_intent as string | null,
+      stripeSubscriptionId: stripeResourceId(session.subscription),
       // orders.stripeCustomerId is deprecated — authoritative copy is on businesses.stripeCustomerId
       // We still set it here for backward compatibility with any admin queries reading orders directly
       stripeCustomerId: session.customer as string | null,
@@ -301,6 +405,139 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+async function handlePropertyIntelligenceCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const metadata = session.metadata ?? {};
+
+  if (session.payment_status && !["paid", "no_payment_required"].includes(session.payment_status)) {
+    throw new Error(
+      `Property intelligence checkout ${session.id} completed with payment_status=${session.payment_status}`,
+    );
+  }
+
+  if (metadata.founding_flag !== "true") {
+    console.log(`[stripe/webhook] property intelligence checkout ${session.id} paid without founding slot`);
+    return;
+  }
+
+  const businessName = metadata.business_name;
+  const city = metadata.city;
+  const product = metadata.product || (metadata.tier ? `intelligence_${metadata.tier}` : "");
+  const tier = metadata.tier;
+  const category = metadata.category || null;
+  const slotId = metadata.slot_id || null;
+  const lockedPriceCents = toPositiveCents(metadata.locked_price);
+  const standardPriceCents = toPositiveCents(metadata.standard_price);
+
+  if (!businessName || !city || !product || !tier || lockedPriceCents === null || standardPriceCents === null) {
+    throw new Error(`Property intelligence checkout ${session.id} is missing required metadata`);
+  }
+
+  const supabase = createServiceClient();
+  const schemaReady = await checkPropertyIntelligenceFoundingSchemaReady(supabase);
+  if (!schemaReady.ok) {
+    throw new Error(schemaReady.diagnostics);
+  }
+
+  const { data: existingMembership, error: existingError } = await supabase
+    .from("founding_memberships")
+    .select("id")
+    .eq("stripe_checkout_session_id", session.id)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (!existingMembership) {
+    const { error: insertError } = await supabase
+      .from("founding_memberships")
+      .insert({
+        business_name: businessName,
+        city,
+        category,
+        product,
+        tier,
+        locked_price_cents: lockedPriceCents,
+        standard_price_cents: standardPriceCents,
+        stripe_subscription_id: stripeResourceId(session.subscription),
+        stripe_checkout_session_id: session.id,
+        status: "active",
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
+  }
+
+  if (slotId) {
+    await syncPropertyIntelligenceFoundingSlotCount(supabase, {
+      slotId,
+      city,
+      category,
+      product,
+    });
+  } else {
+    console.warn(`[stripe/webhook] property intelligence checkout ${session.id} has no slot_id metadata`);
+  }
+
+  console.log(`[stripe/webhook] property intelligence founding checkout ${session.id} finalized`);
+}
+
+async function syncPropertyIntelligenceFoundingSlotCount(
+  supabase: ReturnType<typeof createServiceClient>,
+  input: {
+    slotId: string;
+    city: string;
+    category: string | null;
+    product: string;
+  },
+) {
+  let membershipCountQuery = supabase
+    .from("founding_memberships")
+    .select("id", { count: "exact", head: true })
+    .eq("product", input.product)
+    .eq("city", input.city)
+    .eq("status", "active");
+
+  membershipCountQuery = input.category
+    ? membershipCountQuery.eq("category", input.category)
+    : membershipCountQuery.is("category", null);
+
+  const { count, error: countError } = await membershipCountQuery;
+  if (countError) {
+    throw countError;
+  }
+
+  const { data: slot, error: slotError } = await supabase
+    .from("founding_slots")
+    .select("id,total_slots")
+    .eq("id", input.slotId)
+    .maybeSingle();
+
+  if (slotError) {
+    throw slotError;
+  }
+
+  if (!slot) {
+    console.warn(`[stripe/webhook] founding slot ${input.slotId} not found during intelligence checkout finalization`);
+    return;
+  }
+
+  const slotsTaken = count ?? 0;
+  const totalSlots = Number(slot.total_slots ?? slotsTaken);
+  const { error: updateError } = await supabase
+    .from("founding_slots")
+    .update({
+      slots_taken: slotsTaken,
+      slots_remaining: Math.max(0, totalSlots - slotsTaken),
+    })
+    .eq("id", input.slotId);
+
+  if (updateError) {
+    throw updateError;
+  }
+}
+
 // Subscription lifecycle handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -324,12 +561,29 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
  *   - Each step logs progress; failure of one step does not abort the chain.
  */
 async function handleSubscriptionCreated(sub: Stripe.Subscription) {
+  if (!isStripeSubscriptionProvisionableStatus(sub.status)) {
+    console.warn(
+      `[stripe/webhook] subscription.created skipped — sub=${sub.id}` +
+      ` status=${sub.status ?? "(missing)"}`,
+    );
+    return;
+  }
+
+  await activateSpotSubscription(sub, "created");
+}
+
+async function activateSpotSubscription(
+  sub: Stripe.Subscription,
+  eventSource: "created" | "updated",
+) {
   const reservationId  = sub.metadata?.reservationId ?? null;
   const orderIdMeta    = sub.metadata?.orderId       ?? null;
   const businessIdMeta = sub.metadata?.businessId    ?? null;
+  const eventLabel = `subscription.${eventSource}`;
 
   console.log(
-    `[stripe/webhook] subscription.created — sub=${sub.id}` +
+    `[stripe/webhook] ${eventLabel} activation — sub=${sub.id}` +
+    ` status=${sub.status}` +
     ` order=${orderIdMeta ?? "(none)"}` +
     ` reservation=${reservationId ?? "(none)"}` +
     ` business=${businessIdMeta ?? "(none)"}`,
@@ -342,7 +596,34 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   const activatedAt      = new Date();
   const commitmentEndsAt = new Date(activatedAt.getTime() + 90 * 24 * 60 * 60 * 1000); // +90 days
 
-  if (reservationId) {
+  const [linkedSpot] = await db
+    .select({
+      id: spotAssignments.id,
+      businessId: spotAssignments.businessId,
+    })
+    .from(spotAssignments)
+    .where(eq(spotAssignments.stripeSubscriptionId, sub.id))
+    .limit(1);
+
+  if (linkedSpot) {
+    resolvedSpotId = linkedSpot.id;
+    resolvedBusinessId = resolvedBusinessId ?? linkedSpot.businessId;
+
+    await db
+      .update(spotAssignments)
+      .set({
+        status: "active",
+        stripeCustomerId: sub.customer as string,
+        updatedAt: new Date(),
+      })
+      .where(eq(spotAssignments.id, linkedSpot.id));
+
+    console.log(
+      `[stripe/webhook] ${eventLabel} confirmed existing spot ${resolvedSpotId} active`,
+    );
+  }
+
+  if (!resolvedSpotId && reservationId) {
     const [updated] = await db
       .update(spotAssignments)
       .set({
@@ -505,13 +786,11 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   // ── 5. Invite user to Supabase — redirect lands on intake URL ─────────────
   // Pre-hotfix: redirectTo hardcoded to /dashboard → user lost mid-flow.
   // Post-hotfix: redirectTo points at /intake/${token} → single click → intake.
-  if (businessEmail && resolvedBusinessId) {
+  if (businessEmail && resolvedBusinessId && intakeToken) {
     try {
-      const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+      const appUrl = getPublicAppBaseUrl();
       const supaAdmin = createServiceClient();
-      const redirectTo = intakeToken
-        ? `${appUrl}/intake/${intakeToken}`
-        : `${appUrl}/dashboard`;
+      const redirectTo = `${appUrl}/intake/${intakeToken}`;
 
       const { data: inviteData, error: inviteError } = await supaAdmin.auth.admin.inviteUserByEmail(
         businessEmail,
@@ -538,7 +817,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
 
   // ── 6. Send intake invitation email — defense in depth ────────────────────
   if (businessEmail && intakeToken) {
-    const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const appUrl = getPublicAppBaseUrl();
     const intakeUrl = `${appUrl}/intake/${intakeToken}`;
 
     await sendEmail({
@@ -570,7 +849,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   }
 
   console.log(
-    `[stripe/webhook] subscription.created COMPLETE — sub=${sub.id}` +
+    `[stripe/webhook] ${eventLabel} activation COMPLETE — sub=${sub.id}` +
     ` spot=${resolvedSpotId ?? "(none)"}` +
     ` business=${resolvedBusinessId ?? "(none)"}` +
     ` intake=${intakeToken ? "created" : "missing"}`,
@@ -586,13 +865,12 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
 
   const stripeStatus = sub.status;
 
-  // Map Stripe subscription statuses to our spot assignment statuses
-  let newStatus: "active" | "paused" | null = null;
-  if (stripeStatus === "active") {
-    newStatus = "active";
-  } else if (stripeStatus === "past_due" || stripeStatus === "unpaid") {
-    newStatus = "paused";
+  if (isStripeSubscriptionProvisionableStatus(stripeStatus)) {
+    await activateSpotSubscription(sub, "updated");
+    return;
   }
+
+  const newStatus = mapStripeSubscriptionStatusToSpotStatus(stripeStatus);
 
   if (newStatus) {
     await db
@@ -680,7 +958,7 @@ async function handleInvoicePaymentFailed(inv: Stripe.Invoice) {
       .limit(1);
 
     if (biz?.email) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+      const appUrl = getPublicAppBaseUrl();
 
       await sendEmail({
         to:      biz.email,
@@ -715,6 +993,14 @@ async function handleInvoicePaymentFailed(inv: Stripe.Invoice) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handleTargetedCheckoutCompleted(session: Stripe.Checkout.Session) {
+  if (!isCheckoutSessionPaymentSatisfied(session.payment_status)) {
+    console.warn(
+      `[stripe/webhook] targeted checkout skipped — session=${session.id}` +
+      ` payment_status=${session.payment_status ?? "(missing)"}`,
+    );
+    return;
+  }
+
   const campaignId = session.metadata?.campaignId;
   if (!campaignId) {
     console.error("[stripe/webhook] targeted checkout — no campaignId in metadata");

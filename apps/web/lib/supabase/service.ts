@@ -6,10 +6,18 @@ import { createClient } from "@supabase/supabase-js";
 // This bypasses RLS entirely — never expose to the browser.
 // ─────────────────────────────────────────────────────────────────────────────
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
 export function createServiceClient() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
     {
       auth: {
         autoRefreshToken: false,

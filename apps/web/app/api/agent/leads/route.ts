@@ -1,7 +1,9 @@
 import { NextResponse }       from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies }            from "next/headers";
 import { createServiceClient } from "@/lib/supabase/service";
+import {
+  requireAdminOrSalesAgent,
+  resolveAgentScope,
+} from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/agent/leads
@@ -12,19 +14,15 @@ import { createServiceClient } from "@/lib/supabase/service";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const cookieStore = await cookies();
-  const sessionClient = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
-  const { data: { user } } = await sessionClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user!;
 
-  const role = user.app_metadata?.user_role as string;
   const { searchParams } = new URL(req.url);
   const previewId = searchParams.get("preview_agent_id");
-  const agentId   = (role === "admin" && previewId) ? previewId : user.id;
+  const scope = resolveAgentScope(user, previewId);
+  if (!scope.ok) return scope.response;
+  const agentId = scope.agentId ?? user.id;
 
   const status  = searchParams.get("status") ?? "all";
   const page    = Math.max(parseInt(searchParams.get("page")  ?? "1",  10), 1);

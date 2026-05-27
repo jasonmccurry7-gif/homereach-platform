@@ -7,6 +7,7 @@ import {
   type ProposalRow,
   type StrategyProposalScenarioInput,
 } from "./proposals";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export type PlannerIntent = "request_review" | "generate_proposal";
 
@@ -96,7 +97,7 @@ function candidateName(input: CreateOutreachLeadInput): string {
 }
 
 function appUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+  return getPublicAppBaseUrl();
 }
 
 export async function createProposalHandoffFromPlanner(

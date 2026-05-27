@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    const isSalesAgent = user?.app_metadata?.user_role === "sales_agent";
 
     const { leadId } = await req.json();
     if (!leadId) {
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
 
     if (!lead.assigned_agent_id) {
       return NextResponse.json({ error: "Lead not assigned to agent" }, { status: 400 });
+    }
+    if (isSalesAgent && lead.assigned_agent_id !== user?.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Fetch agent profile

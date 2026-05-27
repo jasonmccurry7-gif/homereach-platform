@@ -64,10 +64,10 @@ export default function TargetedStartPage() {
             Step 1 of 3
           </p>
           <h1 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
-            Let's get started
+            Let&apos;s get started
           </h1>
           <p className="mt-2 text-gray-500">
-            Tell us a bit about your business and we'll set up your campaign.
+            Tell us a bit about your business and we&apos;ll set up your campaign.
           </p>
         </div>
 

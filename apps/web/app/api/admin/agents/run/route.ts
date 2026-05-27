@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent Orchestrator — Run all agents in sequence
@@ -32,7 +34,7 @@ async function callAgent(
   duration_ms: number;
 }> {
   const startTime = Date.now();
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const baseUrl = getInternalAppBaseUrl();
 
   try {
     const response = await fetch(
@@ -75,6 +77,9 @@ async function callAgent(
 // ─── POST: Run agents ─────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  const guard = await requireAdminOrCron(request);
+  if (!guard.ok) return guard.response;
+
   const startTime = Date.now();
   const orchestrationResult: OrchestrationResult = {
     success: true,
@@ -140,7 +145,10 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
+    const baseUrl = getInternalAppBaseUrl();
     const agents = ["echo", "closer", "anchor"];
     const statuses = await Promise.all(
       agents.map(async (agent) => {

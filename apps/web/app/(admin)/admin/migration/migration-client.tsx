@@ -488,7 +488,7 @@ function ClientCard({ client, onStatusChange, onRemove, onUpdate }: {
               </EditField>
             )}
             <EditField label="Spot Type">
-              <select value={editSpot} onChange={e => setEditSpot(e.target.value)}>
+              <select value={editSpot} onChange={e => setEditSpot(e.target.value as SpotType)}>
                 {Object.entries(SPOT_TYPE_META).map(([key, meta]) => (
                   <option key={key} value={key}>{meta.label}</option>
                 ))}
@@ -911,7 +911,7 @@ function MigrationStat({ icon, label, value, sub }: {
 function Field({
   label, required, children,
 }: {
-  label: string; required?: boolean; children: React.ReactElement;
+  label: string; required?: boolean; children: React.ReactElement<{ className?: string }>;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -929,7 +929,7 @@ function Field({
   );
 }
 
-function EditField({ label, children }: { label: string; children: React.ReactElement }) {
+function EditField({ label, children }: { label: string; children: React.ReactElement<{ className?: string }> }) {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-semibold text-blue-300/70">{label}</label>

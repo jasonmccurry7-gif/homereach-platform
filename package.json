@@ -10,6 +10,7 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
+    "test": "vitest run",
     "type-check": "turbo type-check",
     "db:generate": "turbo db:generate",
     "db:migrate": "turbo db:migrate",
@@ -17,10 +18,13 @@
     "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "prettier": "^3.4.0",
     "turbo": "^2.3.0",
     "typescript": "^5.7.0",
-    "prettier": "^3.4.0",
-    "@types/node": "^22.0.0"
+    "vitest": "^4.1.7"
   },
   "engines": {
     "node": ">=20.0.0",

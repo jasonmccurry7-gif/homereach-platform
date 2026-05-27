@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { validateTwilioInboundSignature } from "@/lib/outreach/inbound-sms-webhook";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +14,21 @@ export const dynamic = "force-dynamic";
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getApprovedSenders(): Set<string> {
-  const extra = (process.env.APEX_APPROVED_SENDERS ?? "")
+  const extra = (process.env.APEX_APPROVED_SENDERS ?? process.env.APEX_APPROVED_SENDER ?? "")
     .split(",").map(s => s.trim()).filter(Boolean);
   return new Set([getOwnerIdentity().cellPhone, ...extra]); // owner personal cell only
+}
+
+function validateTwilioCommandSignature(req: Request, params: URLSearchParams): boolean {
+  return validateTwilioInboundSignature({
+    authToken: process.env.TWILIO_AUTH_TOKEN,
+    nodeEnv: process.env.NODE_ENV,
+    signature: req.headers.get("x-twilio-signature"),
+    requestUrl: req.url,
+    appUrl: process.env.NEXT_PUBLIC_APP_URL,
+    params,
+    canonicalPath: "/api/command",
+  });
 }
 
 function twimlMessage(text: string) {
@@ -39,9 +53,10 @@ function twimlOk() {
 export async function GET() {
   return new NextResponse(JSON.stringify({
     status: "APEX command line is live",
-    approved: Array.from(getApprovedSenders()),
-    apex_number: process.env.APEX_COMMAND_NUMBER ?? "not set",
+    approved_sender_count: getApprovedSenders().size,
+    apex_number_configured: !!process.env.APEX_COMMAND_NUMBER,
     cron_secret_set: !!process.env.CRON_SECRET,
+    twilio_auth_token_set: !!process.env.TWILIO_AUTH_TOKEN,
   }), { headers: { "Content-Type": "application/json" } });
 }
 
@@ -54,6 +69,11 @@ export async function POST(req: Request) {
     const body   = (params.get("Body") ?? "").trim();
 
     console.log(`[APEX] SMS in: From=${from} To=${to} Body="${body}"`);
+
+    if (!validateTwilioCommandSignature(req, params)) {
+      console.warn("[APEX] Rejected: invalid Twilio signature");
+      return new NextResponse("Forbidden", { status: 403 });
+    }
 
     // Security gate
     if (!getApprovedSenders().has(from)) {
@@ -87,7 +107,7 @@ export async function POST(req: Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function executeCommand(cmd: string): Promise<string> {
-  const appUrl = "https://home-reach.com";
+  const appUrl = getInternalAppBaseUrl();
   const lower  = cmd.toLowerCase();
   const start  = Date.now();
 

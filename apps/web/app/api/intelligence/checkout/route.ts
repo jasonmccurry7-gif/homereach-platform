@@ -1,10 +1,22 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import {
+  buildPropertyIntelligenceCheckoutMetadata,
+  pickFoundingSlot,
+  readIntelligenceCheckoutPayload,
+  toPositiveCents,
+} from "@/lib/intelligence/checkout";
+import {
+  checkPropertyIntelligenceFoundingSchemaReady,
+  PROPERTY_INTELLIGENCE_FOUNDING_SCHEMA_UNAVAILABLE,
+} from "@/lib/intelligence/schema-readiness";
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-27",
-});
+import { getStripe } from "@homereach/services/stripe";
+import type Stripe from "stripe";
+import {
+  checkPublicRateLimit,
+  publicRateLimitHeaders,
+} from "@/lib/security/public-rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/intelligence/checkout
@@ -12,84 +24,111 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
 // - Looks up pricing from property_intelligence_tiers
 // - Checks founding_slots availability
 // - Creates Stripe checkout session
-// - Creates founding_membership record (if founding available)
-// - Updates founding_slots.slots_taken
+// - Defers membership/slot activation to signed Stripe webhook after payment
 // - Returns { checkoutUrl }
 // ─────────────────────────────────────────────────────────────────────────────
 
+const INTELLIGENCE_CHECKOUT_RATE_LIMIT = {
+  scope: "checkout:intelligence",
+  limit: 12,
+  windowMs: 10 * 60_000,
+};
+
 export async function POST(req: Request) {
-  const db = createServiceClient();
+  const rateLimit = checkPublicRateLimit(req, INTELLIGENCE_CHECKOUT_RATE_LIMIT);
+  const headers = publicRateLimitHeaders(rateLimit);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many checkout attempts. Try again shortly." },
+      { status: 429, headers },
+    );
+  }
 
   try {
-    const body = await req.json();
-    const {
-      tier,
-      city,
-      category,
-      market_size,
-      businessName,
-      email,
-      phone,
-      userId,
-    } = body;
-
-    if (!tier || !city || !businessName || !email || !phone) {
-      return NextResponse.json(
-        {
-          error:
-            "Missing required fields: tier, city, businessName, email, phone",
-        },
-        { status: 400 }
-      );
+    const normalized = await readIntelligenceCheckoutPayload(req);
+    if (!normalized.ok) {
+      return NextResponse.json({ error: normalized.error }, { status: 400, headers });
     }
+
+    const checkout = normalized.value;
+    const db = createServiceClient();
 
     // Step 1: Look up pricing from property_intelligence_tiers
     const { data: tierData, error: tierError } = await db
       .from("property_intelligence_tiers")
       .select("*")
-      .eq("tier", tier)
+      .eq("tier", checkout.tier)
       .eq("is_active", true)
       .single();
 
     if (tierError || !tierData) {
       return NextResponse.json(
         { error: "Tier not found or inactive" },
-        { status: 404 }
+        { status: 404, headers }
       );
     }
 
-    // Step 2: Check founding_slots availability
-    const { data: slot, error: slotError } = await db
+    const standardPriceCents = toPositiveCents(tierData.standard_price_cents);
+    if (standardPriceCents === null) {
+      return NextResponse.json(
+        { error: "Tier pricing is not configured" },
+        { status: 500, headers }
+      );
+    }
+
+    const product = `intelligence_${checkout.tier}`;
+
+    // Step 2: Check founding_slots availability. Fetch city/product slots so
+    // category-specific availability can win over a citywide fallback slot.
+    const { data: slots, error: slotError } = await db
       .from("founding_slots")
       .select("*")
-      .eq("product", `intelligence_${tier}`)
-      .eq("city", city)
-      .eq("founding_open", true)
-      .single();
+      .eq("product", product)
+      .eq("city", checkout.city)
+      .eq("founding_open", true);
 
     if (slotError) {
       console.error("Error checking founding slots:", slotError);
     }
 
     // Determine if founding is available and use appropriate pricing
-    let isFounding = false;
-    let priceCents = tierData.standard_price_cents;
+    const slot = pickFoundingSlot(slots, checkout.category);
+    const foundingPriceCents = toPositiveCents(tierData.founding_price_cents);
+    const isFounding = Boolean(slot && foundingPriceCents !== null);
+    const priceCents = isFounding ? foundingPriceCents! : standardPriceCents;
 
-    if (slot && slot.slots_remaining > 0 && slot.founding_open) {
-      isFounding = true;
-      priceCents = tierData.founding_price_cents;
+    // Step 3: Create Stripe checkout session. Do not write active membership
+    // or decrement founding inventory until the signed Stripe webhook confirms payment.
+    if (isFounding) {
+      const schemaReady = await checkPropertyIntelligenceFoundingSchemaReady(db);
+      if (!schemaReady.ok) {
+        console.error("[intelligence/checkout] founding schema unavailable:", schemaReady.diagnostics);
+        return NextResponse.json(
+          { error: PROPERTY_INTELLIGENCE_FOUNDING_SCHEMA_UNAVAILABLE },
+          { status: 503, headers }
+        );
+      }
     }
 
-    // Step 3: Create Stripe checkout session
-    const isSubscription = tier === "t2" || tier === "t3";
+    const isSubscription = checkout.tier === "t2" || checkout.tier === "t3";
     const mode: "payment" | "subscription" = isSubscription ? "subscription" : "payment";
+    const appUrl = getPublicAppBaseUrl();
+    const metadata = buildPropertyIntelligenceCheckoutMetadata({
+      checkout,
+      product,
+      isFounding,
+      lockedPriceCents: priceCents,
+      standardPriceCents,
+      slotId: slot?.id ?? null,
+      slotCategory: slot?.category ?? null,
+    });
 
     const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = isSubscription
       ? {
           price_data: {
             currency: "usd",
             product_data: {
-              name: `Property Intelligence ${tier.toUpperCase()} - ${city}`,
+              name: `Property Intelligence ${checkout.tier.toUpperCase()} - ${checkout.city}`,
               description: `Monthly subscription${
                 isFounding ? " (Founding Member Rate)" : ""
               }`,
@@ -106,7 +145,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: "usd",
             product_data: {
-              name: `Property Intelligence ${tier.toUpperCase()} - ${city}`,
+              name: `Property Intelligence ${checkout.tier.toUpperCase()} - ${checkout.city}`,
               description: `One-time purchase${
                 isFounding ? " (Founding Member Rate)" : ""
               }`,
@@ -116,56 +155,25 @@ export async function POST(req: Request) {
           quantity: 1,
         };
 
+    const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode,
       line_items: [lineItem],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://homereach.app"}/intelligence?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://homereach.app"}/intelligence?cancelled=true`,
-      customer_email: email,
-      metadata: {
-        city,
-        category: category || "all",
-        tier,
-        founding_flag: isFounding.toString(),
-        locked_price: priceCents.toString(),
-        business_name: businessName,
-      },
+      success_url: `${appUrl}/intelligence?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/intelligence?cancelled=true`,
+      customer_email: checkout.email,
+      client_reference_id: checkout.email,
+      metadata,
+      ...(isSubscription
+        ? { subscription_data: { metadata } }
+        : { payment_intent_data: { metadata } }),
     });
 
-    // Step 4: Create founding_membership record if founding
-    if (isFounding && slot) {
-      const { error: memberError } = await db
-        .from("founding_memberships")
-        .insert({
-          business_name: businessName,
-          city,
-          category: category || null,
-          product: `intelligence_${tier}`,
-          tier,
-          locked_price_cents: priceCents,
-          standard_price_cents: tierData.standard_price_cents,
-          stripe_subscription_id: isSubscription ? session.subscription : null,
-          stripe_checkout_session_id: session.id,
-          status: "active",
-        });
-
-      if (memberError) {
-        console.error("Error creating founding membership:", memberError);
-      }
-
-      // Step 5: Update founding_slots.slots_taken
-      const newSlotsTaken = (slot.slots_taken || 0) + 1;
-      const { error: updateError } = await db
-        .from("founding_slots")
-        .update({
-          slots_taken: newSlotsTaken,
-          slots_remaining: Math.max(0, slot.total_slots - newSlotsTaken),
-        })
-        .eq("id", slot.id);
-
-      if (updateError) {
-        console.error("Error updating founding slot:", updateError);
-      }
+    if (!session.url) {
+      return NextResponse.json(
+        { error: "Stripe did not return a checkout URL" },
+        { status: 502, headers }
+      );
     }
 
     return NextResponse.json({
@@ -173,12 +181,12 @@ export async function POST(req: Request) {
       isFounding,
       priceCents,
       stripeSessionId: session.id,
-    });
+    }, { headers });
   } catch (error) {
-    console.error("Error creating checkout session:", error);
+    console.error("Error creating intelligence checkout session:", error);
     return NextResponse.json(
       { error: "Failed to create checkout session" },
-      { status: 500 }
+      { status: 500, headers }
     );
   }
 }

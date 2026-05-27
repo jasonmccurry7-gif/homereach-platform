@@ -26,13 +26,16 @@ const BADGE_STYLES: Record<string, string> = {
 function TargetedCheckoutInner() {
   const searchParams = useSearchParams();
   const campaignId   = searchParams.get("campaign");
+  const checkoutToken = searchParams.get("token") ?? "";
   const cancelled    = searchParams.get("cancelled") === "true";
+  const needsEmailProof = !checkoutToken;
 
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(
     cancelled ? "Your payment was cancelled. Click below to try again." : null
   );
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const [checkoutEmail, setCheckoutEmail] = useState("");
 
   if (!campaignId) {
     return (
@@ -73,7 +76,12 @@ function TargetedCheckoutInner() {
       const res = await fetch("/api/stripe/targeted-checkout", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, addons: selectedAddons }),
+        body: JSON.stringify({
+          campaignId,
+          checkoutToken: checkoutToken || undefined,
+          checkoutEmail: needsEmailProof ? checkoutEmail : undefined,
+          addons: selectedAddons,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Payment setup failed."); setLoading(false); return; }
@@ -169,6 +177,26 @@ function TargetedCheckoutInner() {
               }`}>{error}</div>
             )}
 
+            {needsEmailProof && (
+              <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                <label className="block text-sm font-semibold text-blue-950" htmlFor="checkout-email">
+                  Confirm your campaign email
+                </label>
+                <p className="mt-1 text-xs text-blue-700">
+                  Use the email submitted with this campaign so we can open the right checkout.
+                </p>
+                <input
+                  id="checkout-email"
+                  type="email"
+                  value={checkoutEmail}
+                  onChange={(event) => setCheckoutEmail(event.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                  className="mt-3 block w-full rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            )}
+
             <div className="space-y-2 text-sm mb-5">
               <div className="flex justify-between">
                 <span className="text-gray-600">Targeted Route Campaign</span>
@@ -185,9 +213,9 @@ function TargetedCheckoutInner() {
                 <span>${todayTotal}</span>
               </div>
               {monthlyAddons > 0 && (
-                <div className="flex justify-between text-gray-500 text-xs">
-                  <span>Monthly add-ons (billed next month)</span>
-                  <span>+${monthlyAddons}/mo</span>
+                <div className="flex justify-between gap-3 text-gray-500 text-xs">
+                  <span>Ongoing add-ons after onboarding</span>
+                  <span className="shrink-0">+${monthlyAddons}/mo</span>
                 </div>
               )}
             </div>
@@ -198,7 +226,7 @@ function TargetedCheckoutInner() {
               ))}
             </div>
 
-            <button onClick={handlePay} disabled={loading}
+            <button onClick={handlePay} disabled={loading || (needsEmailProof && !checkoutEmail.trim())}
               className="w-full rounded-xl bg-blue-600 px-6 py-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (

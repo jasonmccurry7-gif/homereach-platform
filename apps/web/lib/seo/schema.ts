@@ -7,12 +7,14 @@
 //
 // These builders are UNGATED on purpose. Organization + WebSite are brand
 // primitives that should always emit regardless of any feature flag.
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type JsonLd = Record<string, unknown>;
 
 function getBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+  return getPublicAppBaseUrl();
 }
 
 /** Organization JSON-LD for the site identity. Emitted from root layout. */

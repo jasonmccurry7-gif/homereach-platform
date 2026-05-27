@@ -82,7 +82,7 @@ export default function QuickCallLog({
   const [selectedLead, setSelectedLead] = useState<LeadMatch | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Debounced search

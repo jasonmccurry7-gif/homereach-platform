@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Route Protection Middleware
@@ -17,6 +17,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PROTECTED = {
   admin: /^\/admin(\/|$)/,
+  adminApi: /^\/api\/admin(\/|$)/,
   agent: /^\/agent(\/|$)/,
   dashboard: /^\/dashboard(\/|$)/,
 };
@@ -24,6 +25,33 @@ const PROTECTED = {
 // Routes inside /admin accessible to sales_agent role.
 const AGENT_ALLOWED_ROUTES =
   /^\/admin\/(agent-view|ad-designer|roi-preview|products|bundles|crm|sales-dashboard|sales-engine|facebook)(\/|$)|^\/admin\/agent-view$/;
+
+const SALES_AGENT_ALLOWED_API_PREFIXES = [
+  "/api/admin/alerts",
+  "/api/admin/content-intel",
+  "/api/admin/crm",
+  "/api/admin/facebook",
+  "/api/admin/lead-intel",
+  "/api/admin/qa",
+  "/api/admin/sales",
+];
+
+function hasValidCronSecret(request: NextRequest) {
+  const authorization = request.headers.get("authorization") ?? "";
+  const bearer = authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length).trim()
+    : "";
+  const headerSecret = request.headers.get("x-cron-secret") ?? "";
+  const provided = bearer || headerSecret;
+  if (!provided) return false;
+
+  const allowed = [
+    process.env.CRON_SECRET,
+    process.env.CONTENT_INTEL_CRON_SECRET,
+  ].filter(Boolean);
+
+  return allowed.some((secret) => secret === provided);
+}
 
 function safeAuthRedirectPath(request: NextRequest): string | null {
   const redirect = request.nextUrl.searchParams.get("redirect");
@@ -50,7 +78,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Dev bypass: skip all auth logic for admin routes in local/dev only.
-  if (devBypass && PROTECTED.admin.test(pathname)) {
+  if (devBypass && (PROTECTED.admin.test(pathname) || PROTECTED.adminApi.test(pathname))) {
+    return NextResponse.next({ request });
+  }
+
+  // Cron-driven admin APIs can authenticate with a shared secret.
+  if (PROTECTED.adminApi.test(pathname) && hasValidCronSecret(request)) {
     return NextResponse.next({ request });
   }
 
@@ -64,7 +97,7 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
@@ -82,6 +115,25 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const role = user?.app_metadata?.user_role as string | undefined;
+
+  if (PROTECTED.adminApi.test(pathname)) {
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (role === "admin") {
+      return supabaseResponse;
+    }
+
+    if (
+      role === "sales_agent" &&
+      SALES_AGENT_ALLOWED_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+    ) {
+      return supabaseResponse;
+    }
+
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   if (PROTECTED.admin.test(pathname)) {
     if (!user) {

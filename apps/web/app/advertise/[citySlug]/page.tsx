@@ -9,11 +9,12 @@ import { PageBlocks } from "@/components/seo/PageBlocks";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { buildBreadcrumbLd, buildLocalBusinessLd, buildFaqPageLd, type JsonLd as JsonLdShape } from "@/lib/seo/schema";
 import type { FaqBlock } from "@/lib/seo/blocks";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const runtime = "nodejs";
 export const revalidate = 300;
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://www.home-reach.com";
+const BASE = getPublicAppBaseUrl();
 
 type Props = { params: Promise<{ citySlug: string }> };
 

@@ -1,8 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");

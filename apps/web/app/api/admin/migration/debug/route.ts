@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 export async function GET() {
-  // Auth guard — admin only
-  const session = await createClient();
-  const { data: { user } } = await session.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
 
   const supabase = createServiceClient();
 

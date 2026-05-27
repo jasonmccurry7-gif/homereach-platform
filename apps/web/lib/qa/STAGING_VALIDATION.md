@@ -11,13 +11,14 @@ Date run: __________________  Tester: __________________
 The goal is to prove that the V1a merge, with the flag off, has zero effect on the existing platform.
 
 - [ ] Deployed V1a branch to staging with `ENABLE_QA_SYSTEM=false` (or unset).
-- [ ] `GET https://staging.home-reach.com/api/admin/health` returns 200 with `status=GREEN` and `9 total / 9 passed`.
-- [ ] `POST https://staging.home-reach.com/api/admin/agents/sentinel` returns 200 (Sentinel `.catch()` fix has landed).
+- [ ] `GET https://staging.home-reach.com/api/admin/health` returns 200 with `status=GREEN` and `9 total / 9 passed` when called with an admin session or `Authorization: Bearer <CRON_SECRET>`; unauthenticated requests return 401.
+- [ ] `POST https://staging.home-reach.com/api/admin/agents/sentinel` returns 200 with an admin session or `Authorization: Bearer <CRON_SECRET>` (Sentinel `.catch()` fix has landed); unauthenticated requests return 401.
 - [ ] `POST /api/admin/qa/questions` returns **HTTP 404** (proving the flag gate).
 - [ ] `GET /admin/qa` returns **HTTP 404** (proving the page gate).
 - [ ] `GET /agent/qa` returns **HTTP 404** (proving the agent page gate).
 - [ ] The Sales Dashboard (existing) looks identical to the pre-V1a snapshot. No new Q&A tab visible.
 - [ ] Run a Stripe test-mode checkout end-to-end. Confirm webhook received, order created, subscription active. Stripe is unaffected.
+- [ ] `POST /api/intelligence/checkout` with malformed JSON returns HTTP 400 and does not create a Stripe Checkout session or mutate founding membership/slot data.
 - [ ] Trigger the Apex orchestrator. Confirm all 10 agents complete (modulo the already-known `.catch()` bug status). No new errors.
 
 **If any check fails:** STOP. Do not proceed. Investigate which new file is leaking behavior through the flag.

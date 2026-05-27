@@ -22,6 +22,9 @@
         "./*"
       ]
     },
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "types": ["node", "react", "react-dom"],
     "noEmit": true,
     "resolveJsonModule": true
   },
@@ -32,6 +35,9 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__/**"
   ]
 }

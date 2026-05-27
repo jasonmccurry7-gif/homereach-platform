@@ -409,7 +409,7 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
 
                 {/* Primary actions */}
                 <div className="flex gap-2">
-                  {item.phone&&<a href={`tel:${item.phone}`} onClick={()=>logEvent(item,"text_sent","phone")} className="flex-1 text-center py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-xl">📞 Call</a>}
+                  {item.phone&&<a href={`tel:${item.phone}`} onClick={()=>logEvent(item,"lead_loaded","call")} className="flex-1 text-center py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-xl">📞 Call</a>}
                   {item.phone&&<button onClick={()=>logEvent(item,"text_sent","sms")} disabled={sending===item.id} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl disabled:opacity-50">📱 Text</button>}
                   {item.email&&<button onClick={()=>logEvent(item,"email_sent","email")} disabled={sending===item.id} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl disabled:opacity-50">📧 Email</button>}
                   {item.facebook_url&&<a href={item.facebook_url} target="_blank" rel="noopener noreferrer" onClick={()=>logEvent(item,"facebook_sent","facebook")} className="flex-1 text-center py-2.5 bg-blue-800 hover:bg-blue-700 text-white text-sm font-bold rounded-xl">💬 DM</a>}

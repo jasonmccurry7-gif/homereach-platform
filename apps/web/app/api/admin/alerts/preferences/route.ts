@@ -1,7 +1,6 @@
 import { NextResponse }       from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies }            from "next/headers";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/alerts/preferences          — read own or (admin) any agent's prefs
@@ -15,20 +14,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 //     enabled_types?, urgent_override?, enabled? }
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function getSessionUser() {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
-}
-
 export async function GET(req: Request) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user!;
 
   const { searchParams } = new URL(req.url);
   const role = user.app_metadata?.user_role;
@@ -58,8 +47,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user!;
 
   let body: Record<string, unknown>;
   try { body = await req.json(); }

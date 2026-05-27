@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +12,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
     const url     = new URL(req.url);
-    const agentId = url.searchParams.get("agent_id") ?? user.id;
+    const agentScope = resolveAgentScope(guard.user, url.searchParams.get("agent_id"));
+    if (!agentScope.ok) return agentScope.response;
+    const agentId = agentScope.agentId;
     const db      = createServiceClient();
     const now     = new Date();
     const h48     = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
@@ -31,12 +32,13 @@ export async function GET(req: Request) {
       recovery_action: string; recovery_message: string;
       estimated_value: string; days_stale: number;
     }[] = [];
-
     // ── Interested leads — no follow-up in 48h ────────────────────────────────
-    const { data: intLeads } = await db.from("sales_leads").select("*")
+    let intLeadsQuery = db.from("sales_leads").select("*")
       .eq("status", "interested")
       .lt("last_contacted_at", h48)
-      .eq("do_not_contact", false)
+      .eq("do_not_contact", false);
+    if (agentId) intLeadsQuery = intLeadsQuery.eq("assigned_agent_id", agentId);
+    const { data: intLeads } = await intLeadsQuery
       .order("last_contacted_at", { ascending: true })
       .limit(5);
 
@@ -61,10 +63,12 @@ export async function GET(req: Request) {
     }
 
     // ── Replied leads — no response sent ────────────────────────────────────
-    const { data: repliedLeads } = await db.from("sales_leads").select("*")
+    let repliedLeadsQuery = db.from("sales_leads").select("*")
       .eq("status", "replied")
       .lt("last_reply_at", h48)
-      .eq("do_not_contact", false)
+      .eq("do_not_contact", false);
+    if (agentId) repliedLeadsQuery = repliedLeadsQuery.eq("assigned_agent_id", agentId);
+    const { data: repliedLeads } = await repliedLeadsQuery
       .order("last_reply_at", { ascending: true })
       .limit(5);
 
@@ -89,10 +93,12 @@ export async function GET(req: Request) {
     }
 
     // ── Payment sent — not yet confirmed ────────────────────────────────────
-    const { data: paymentLeads } = await db.from("sales_leads").select("*")
+    let paymentLeadsQuery = db.from("sales_leads").select("*")
       .eq("status", "payment_sent")
       .lt("last_contacted_at", h48)
-      .eq("do_not_contact", false)
+      .eq("do_not_contact", false);
+    if (agentId) paymentLeadsQuery = paymentLeadsQuery.eq("assigned_agent_id", agentId);
+    const { data: paymentLeads } = await paymentLeadsQuery
       .order("last_contacted_at", { ascending: true })
       .limit(3);
 
@@ -117,10 +123,12 @@ export async function GET(req: Request) {
     }
 
     // ── Contacted 7+ days ago — no movement ─────────────────────────────────
-    const { data: staleLeads } = await db.from("sales_leads").select("*")
+    let staleLeadsQuery = db.from("sales_leads").select("*")
       .eq("status", "contacted")
       .lt("last_contacted_at", d7)
-      .eq("do_not_contact", false)
+      .eq("do_not_contact", false);
+    if (agentId) staleLeadsQuery = staleLeadsQuery.eq("assigned_agent_id", agentId);
+    const { data: staleLeads } = await staleLeadsQuery
       .order("score", { ascending: false })
       .limit(3);
 

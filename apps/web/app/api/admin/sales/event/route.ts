@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import {
@@ -11,6 +12,11 @@ import {
   sendEmail,
   sendSms,
 } from "@homereach/services/outreach";
+import {
+  assertLeadCanReceiveSalesSend,
+  resolveSalesOutboundChannel,
+  resolveStoredLeadDestination,
+} from "@/lib/sales/outbound-send-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/event
@@ -32,97 +38,6 @@ type OutreachSystemControls = {
   sms_prospecting_live_enabled?: boolean;
 };
 
-// ─── Direct Twilio SMS (supports per-agent from number) ───────────────────────
-async function sendViaTwilio(
-  to: string,
-  from: string,
-  body: string
-): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken  = process.env.TWILIO_AUTH_TOKEN;
-    if (!accountSid || !authToken)
-      return { success: false, error: "Twilio credentials not configured" };
-
-    const form = new URLSearchParams();
-    form.append("To",   to);
-    form.append("From", from);
-    form.append("Body", body);
-
-    const resp = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method:  "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Twilio ${resp.status}: ${detail}`);
-    }
-    const data = await resp.json() as { sid?: string };
-    return { success: true, externalId: data.sid };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown SMS error";
-    console.error("[sales/event/sms]", error);
-    return { success: false, error };
-  }
-}
-
-// ─── Direct Mailgun Email (supports per-agent from email) ─────────────────────
-async function sendViaMailgun(options: {
-  to: string;
-  subject: string;
-  html: string;
-  text: string;
-  fromEmail: string;
-  fromName: string;
-  replyTo?: string;
-}): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const apiKey = process.env.MAILGUN_API_KEY;
-    const domain = process.env.MAILGUN_DOMAIN;
-    if (!apiKey || !domain)
-      return { success: false, error: "Mailgun credentials not configured" };
-
-    const form = new URLSearchParams();
-    form.set("from",    `${options.fromName} <${options.fromEmail}>`);
-    form.set("to",      options.to);
-    form.set("subject", options.subject);
-    form.set("html",    options.html);
-    form.set("text",    options.text);
-    if (options.replyTo) form.set("h:Reply-To", options.replyTo);
-
-    const resp = await fetch(
-      `https://api.mailgun.net/v3/${domain}/messages`,
-      {
-        method:  "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Mailgun ${resp.status}: ${detail}`);
-    }
-    const data = await resp.json() as { id?: string };
-    return { success: true, externalId: data.id };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown email error";
-    console.error("[sales/event/email]", error);
-    return { success: false, error };
-  }
-}
-
 // ─── Main Handler ──────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
@@ -135,11 +50,12 @@ export async function POST(request: Request) {
     const supabase = createServiceClient();
     const body = await request.json();
 
-    let {
-      agent_id, lead_id, action_type, channel, city, category,
-      message, revenue_cents, metadata,
+    const {
+      lead_id, action_type, channel, city, category,
+      revenue_cents, metadata,
       to_address, subject,
     } = body;
+    let { agent_id, message } = body;
 
     if (isSalesAgent) {
       agent_id = user.id;
@@ -190,12 +106,11 @@ export async function POST(request: Request) {
       if (sysCtrl?.all_paused) {
         return NextResponse.json({ error: "System is paused. Cannot send." }, { status: 403 });
       }
-      const outboundChannel =
-        channel === "sms" || action_type === "text_sent" || action_type === "sms_sent"
-          ? "sms"
-          : channel === "facebook" || action_type === "facebook_sent" || action_type === "fb_message_sent"
-            ? "facebook"
-            : "email";
+      const channelResult = resolveSalesOutboundChannel(action_type, channel);
+      if (!channelResult.ok) {
+        return NextResponse.json({ error: channelResult.error }, { status: channelResult.status });
+      }
+      const outboundChannel = channelResult.value;
 
       if (outboundChannel === "sms" && sysCtrl?.sms_paused) {
         return NextResponse.json({ error: "SMS outreach is paused." }, { status: 403 });
@@ -226,17 +141,15 @@ export async function POST(request: Request) {
       if (isSalesAgent && lead?.assigned_agent_id && lead.assigned_agent_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      if (lead?.do_not_contact)
-        return NextResponse.json({ error: "Lead is DNC. Cannot send." }, { status: 403 });
-      if (lead?.is_quarantined)
-        return NextResponse.json({ error: "Lead is quarantined. Cannot send." }, { status: 403 });
-      if (channel === "sms" && lead?.sms_opt_out)
-        return NextResponse.json({ error: "Lead has opted out of SMS." }, { status: 403 });
-      if (
-        channel === "email" &&
-        ["bounced_permanent", "complained", "unsubscribed"].includes(String(lead?.email_status ?? ""))
-      ) {
-        return NextResponse.json({ error: "Lead email is suppressed." }, { status: 403 });
+      const leadGuard = assertLeadCanReceiveSalesSend({
+        channel: outboundChannel,
+        doNotContact: lead?.do_not_contact,
+        smsOptOut: lead?.sms_opt_out,
+        isQuarantined: lead?.is_quarantined,
+        emailStatus: lead?.email_status,
+      });
+      if (!leadGuard.ok) {
+        return NextResponse.json({ error: leadGuard.error }, { status: leadGuard.status });
       }
 
       // Resolve agent identity (from DB, fallback to env vars)
@@ -288,13 +201,19 @@ export async function POST(request: Request) {
         // Note: dedup hash is inserted AFTER successful send (see below)
       }
 
-      // Resolve destination address
-      const dest = to_address ?? (outboundChannel === "sms" ? lead?.phone : lead?.email);
-      if (!dest) {
-        return NextResponse.json({
-          error: `No ${outboundChannel} contact info for this lead.`,
-        }, { status: 400 });
+      const destinationResult = resolveStoredLeadDestination({
+        channel: outboundChannel,
+        leadPhone: lead?.phone,
+        leadEmail: lead?.email,
+        requestedToAddress: typeof to_address === "string" ? to_address : null,
+      });
+      if (!destinationResult.ok) {
+        return NextResponse.json(
+          { error: destinationResult.error },
+          { status: destinationResult.status },
+        );
       }
+      const dest = destinationResult.value;
 
       // Send
       const isSms = outboundChannel === "sms";
@@ -312,6 +231,7 @@ export async function POST(request: Request) {
           body: smsBody,
           fromNumber: agentPhone || undefined,
           intent: "prospecting",
+          statusCallbackUrl: getTwilioStatusCallbackUrl(),
           testMode,
         });
       } else if (isEmail) {

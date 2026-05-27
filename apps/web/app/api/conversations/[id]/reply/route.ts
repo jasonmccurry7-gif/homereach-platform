@@ -13,6 +13,7 @@ import { db, outreachReplies, outreachContacts } from "@homereach/db";
 import { eq } from "drizzle-orm";
 import { getConversationRepository } from "@/lib/engine/db/factory";
 import { AutomationEngine } from "@/lib/engine/automation";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 const ReplySchema = z.object({
   body:           z.string().min(1),
@@ -26,6 +27,9 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
     const { id: conversationId } = await context.params;
     const body = await req.json();
     const data = ReplySchema.parse(body);

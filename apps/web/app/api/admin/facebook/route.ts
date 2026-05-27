@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Facebook Revenue Engine API
@@ -129,6 +130,7 @@ function generateDmFlow(
   const loc  = city ?? "your area";
   const cat  = category ?? "your industry";
   const firstName = businessName.split(/\s+/)[0] ?? "there";
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
 
   return {
     stage1: `Hey! Saw your post in the group and had to reach out — we work with ${cat} businesses in ${loc} specifically. Are you doing anything right now to get in front of homeowners consistently, or is it mostly referrals and social?`,
@@ -139,21 +141,23 @@ function generateDmFlow(
 
     stage4: `Real talk — we have one spot open right now for ${cat} in ${loc}. I don't know how long it'll stay open because we had another business asking about it earlier this week. Spots typically go in 3–5 days once we start outreach. Want me to send you the details on what it costs and what it looks like?`,
 
-    stage5: `Here's how to lock it in — takes 3 minutes: home-reach.com/get-started\n\nPick your spot size (starts at $200/mo), enter your info, and you're in. I can hold your category for 24 hours if you want to look it over first — just let me know.\n\nOr if it's easier, call/text me directly: ${agentPhone} — happy to walk you through it.\n\n— ${agentName}, HomeReach`,
+    stage5: `Here's how to lock it in — takes 3 minutes: ${startUrl}\n\nPick your spot size (starts at $200/mo), enter your info, and you're in. I can hold your category for 24 hours if you want to look it over first — just let me know.\n\nOr if it's easier, call/text me directly: ${agentPhone} — happy to walk you through it.\n\n— ${agentName}, HomeReach`,
   };
 }
 
 // ─── GET ─────────────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user!;
+    const isAdmin = user.app_metadata?.user_role === "admin";
 
     const db  = createServiceClient();
     const url = new URL(req.url);
     const view = url.searchParams.get("view") ?? "execution";
-    const agentId = url.searchParams.get("agent_id") ?? user.id;
+    const requestedAgentId = url.searchParams.get("agent_id");
+    const agentId = isAdmin && requestedAgentId ? requestedAgentId : user.id;
 
     if (view === "execution") {
       // Today's execution: items that need action
@@ -192,11 +196,13 @@ export async function GET(req: Request) {
     }
 
     // Full pipeline view
-    const { data: all } = await db
+    let pipelineQuery = db
       .from("fb_opportunities")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(200);
+    if (!isAdmin) pipelineQuery = pipelineQuery.eq("assigned_agent_id", user.id);
+    const { data: all } = await pipelineQuery;
 
     return NextResponse.json({ opportunities: all ?? [] });
 
@@ -208,9 +214,9 @@ export async function GET(req: Request) {
 // ─── POST — Create opportunity + generate scripts ────────────────────────────
 export async function POST(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user!;
 
     const db   = createServiceClient();
     const body = await req.json();
@@ -301,6 +307,11 @@ export async function POST(req: Request) {
 // ─── PUT — Update opportunity (log action, advance stage) ────────────────────
 export async function PUT(req: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user!;
+    const isAdmin = user.app_metadata?.user_role === "admin";
+
     const db   = createServiceClient();
     const body = await req.json();
     const { id, action, ...updates } = body;
@@ -339,10 +350,13 @@ export async function PUT(req: Request) {
       }
     }
 
-    const { data, error } = await db
+    let updateQuery = db
       .from("fb_opportunities")
       .update(patch)
-      .eq("id", id)
+      .eq("id", id);
+    if (!isAdmin) updateQuery = updateQuery.eq("assigned_agent_id", user.id);
+
+    const { data, error } = await updateQuery
       .select()
       .single();
 

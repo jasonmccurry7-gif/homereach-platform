@@ -70,6 +70,24 @@ const ENV_SPECS: EnvSpec[] = [
     productionOnly: true,
     dangerIfSet: "whsec_placeholder", // fail loudly if placeholder is still set
   },
+  {
+    // Signs public targeted campaign payment links. Without it, legacy links can
+    // still be verified by customer email, but production links should not trust
+    // a campaign UUID alone.
+    key: "TARGETED_CHECKOUT_SIGNING_SECRET",
+    required: true,
+    productionOnly: true,
+    dangerIfSet: "generate-a-long-random-secret",
+  },
+  {
+    // Reversible safety guard for the old /api/stripe/checkout route.
+    // Leave false/absent unless the legacy one-time checkout path is deliberately
+    // revalidated against the current subscription business model.
+    key: "ENABLE_LEGACY_STRIPE_CHECKOUT",
+    required: false,
+    productionOnly: false,
+    validValues: ["true", "false"],
+  },
 
   // ── Twilio ──────────────────────────────────────────────────────────────────
   {
@@ -113,6 +131,11 @@ const ENV_SPECS: EnvSpec[] = [
   },
   {
     key: "OUTREACH_SMS_FROM_NUMBER",
+    required: false,
+    productionOnly: false,
+  },
+  {
+    key: "OUTREACH_TWILIO_MESSAGING_SERVICE_SID",
     required: false,
     productionOnly: false,
   },
@@ -307,9 +330,10 @@ export function validateEnv(): void {
   const hasTwilioSender =
     process.env.OUTREACH_SMS_FROM_NUMBER ||
     process.env.TWILIO_PHONE_NUMBER ||
+    process.env.OUTREACH_TWILIO_MESSAGING_SERVICE_SID ||
     process.env.TWILIO_MESSAGING_SERVICE_SID;
   if (process.env.TWILIO_ACCOUNT_SID && !hasTwilioSender) {
-    missing.push("OUTREACH_SMS_FROM_NUMBER, TWILIO_PHONE_NUMBER, or TWILIO_MESSAGING_SERVICE_SID (at least one required)");
+    missing.push("OUTREACH_SMS_FROM_NUMBER, TWILIO_PHONE_NUMBER, OUTREACH_TWILIO_MESSAGING_SERVICE_SID, or TWILIO_MESSAGING_SERVICE_SID (at least one required)");
   }
 
   const emailProvider = (process.env.EMAIL_PROVIDER ?? "resend").toLowerCase();

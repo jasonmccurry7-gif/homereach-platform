@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/crm/quarantine?reviewed=false&page=0
@@ -9,6 +10,9 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const sp = req.nextUrl.searchParams;
   const reviewed = sp.get("reviewed");
@@ -60,6 +64,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const { lead_id, note } = await req.json();
 
@@ -82,6 +89,9 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   const supabase = await createClient();
   const { lead_id, reason, note } = await req.json();
 

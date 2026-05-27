@@ -8,6 +8,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { DailyOutreachClient } from "../daily-outreach/daily-outreach-client";
 
 type QueueRow = {
   video_id: string; title: string; channel_name: string | null; category: string;
@@ -90,10 +92,31 @@ async function getJson<T>(url: string): Promise<{ enabled: boolean; rows: T[] }>
   return { enabled: true, rows: Array.isArray(j?.rows) ? j.rows : [] };
 }
 
-type Tab = "queue" | "insights" | "sources" | "conflicts" | "topics" | "channels" | "top_channels" | "competitors" | "competitor_insights" | "signals" | "patterns";
+const contentIntelTabs = [
+  "daily_outreach",
+  "queue",
+  "insights",
+  "sources",
+  "conflicts",
+  "signals",
+  "patterns",
+  "top_channels",
+  "competitor_insights",
+  "topics",
+  "channels",
+  "competitors",
+] as const;
+
+type Tab = (typeof contentIntelTabs)[number];
+
+function isTab(value: string | null): value is Tab {
+  return contentIntelTabs.includes(value as Tab);
+}
 
 export default function ContentIntelAdminClient() {
-  const [tab, setTab] = useState<Tab>("queue");
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [tab, setTab] = useState<Tab>(isTab(requestedTab) ? requestedTab : "queue");
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [queue,     setQueue]     = useState<QueueRow[]>([]);
   const [insights,  setInsights]  = useState<Insight[]>([]);
@@ -127,6 +150,9 @@ export default function ContentIntelAdminClient() {
     setSignals(sg.rows); setPatterns(pt.rows); setConflicts(cf.rows); setSources(sr.rows);
   }
   useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    if (isTab(requestedTab)) setTab(requestedTab);
+  }, [requestedTab]);
 
   if (enabled === null) {
     return <div className="p-6 text-sm text-gray-500">Loading…</div>;
@@ -184,6 +210,13 @@ export default function ContentIntelAdminClient() {
           >
             Open Action Center
           </a>
+          <button
+            type="button"
+            onClick={() => setTab("daily_outreach")}
+            className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-sm hover:bg-blue-50"
+          >
+            Open Daily Outreach
+          </button>
           <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">
             Human approval required before implementation
           </div>
@@ -208,7 +241,7 @@ export default function ContentIntelAdminClient() {
       </section>
 
       <nav className="mb-4 flex gap-2 border-b overflow-x-auto">
-        {(["queue", "insights", "sources", "conflicts", "signals", "patterns", "top_channels", "competitor_insights", "topics", "channels", "competitors"] as const).map((k) => (
+        {contentIntelTabs.map((k) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -217,6 +250,7 @@ export default function ContentIntelAdminClient() {
         ))}
       </nav>
 
+      {tab === "daily_outreach" && <DailyOutreachClient embedded />}
       {tab === "queue" && <QueueTable rows={queue} />}
       {tab === "insights" && <InsightsTable rows={insights} onAction={approve} onPromote={promoteInsight} />}
       {tab === "sources" && <SourceRegistryTable rows={sources} />}

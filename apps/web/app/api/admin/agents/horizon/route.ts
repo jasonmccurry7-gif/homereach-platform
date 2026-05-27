@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,10 @@ export const dynamic = "force-dynamic";
 // - 30/60/90 day outlook
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const runAt = new Date().toISOString();
 
@@ -119,5 +123,8 @@ export async function POST() {
 }
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   return NextResponse.json({ agent: "Horizon", status: "ready", description: "POST to run strategic planning analysis" });
 }

@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { extractRequestSecret } from "./request-secret";
+import { userHasRole, type AppRole } from "./agent-scope";
+
+export { extractBearerToken, extractRequestSecret } from "./request-secret";
+export {
+  isAdminUser,
+  isSalesAgentUser,
+  resolveAgentScope,
+  userHasRole,
+  type AgentScopeResult,
+  type AppRole,
+} from "./agent-scope";
 
 type GuardSuccess = {
   ok: true;
@@ -13,31 +25,8 @@ type GuardFailure = {
 };
 
 export type ApiGuardResult = GuardSuccess | GuardFailure;
-export type AppRole = "admin" | "sales_agent" | "client";
-
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
-}
-
-export function extractBearerToken(req: Request): string | null {
-  const authHeader = req.headers.get("authorization") ?? "";
-  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
-  return authHeader.slice("bearer ".length).trim() || null;
-}
-
-export function extractRequestSecret(req: Request): string | null {
-  return req.headers.get("x-cron-secret")?.trim() || extractBearerToken(req);
-}
-
-export function isAdminUser(user: User | null | undefined): user is User {
-  return user?.app_metadata?.user_role === "admin";
-}
-
-export function userHasRole(
-  user: User | null | undefined,
-  roles: readonly AppRole[]
-): user is User {
-  return Boolean(user && roles.includes(user.app_metadata?.user_role as AppRole));
 }
 
 export async function requireRole(roles: readonly AppRole[]): Promise<ApiGuardResult> {
@@ -87,4 +76,13 @@ export async function requireAdminOrCron(req: Request): Promise<ApiGuardResult> 
   if (cron.ok) return cron;
 
   return requireAdmin();
+}
+
+export async function requireAdminSalesAgentOrCron(
+  req: Request
+): Promise<ApiGuardResult> {
+  const cron = requireCron(req);
+  if (cron.ok) return cron;
+
+  return requireAdminOrSalesAgent();
 }

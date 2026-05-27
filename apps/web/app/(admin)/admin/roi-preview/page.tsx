@@ -75,7 +75,7 @@ export default function RoiPreviewPage() {
           <p className="text-sm text-gray-500">Welcome back</p>
           <h1 className="text-2xl font-bold text-gray-900">{MOCK_BUSINESS.ownerName.split(" ")[0]} 👋</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {MOCK_BUSINESS.businessName} · {MOCK_BUSINESS.city} · {MOCK_BUSINESS.category}
+            {MOCK_BUSINESS.name} · {MOCK_BUSINESS.city} · {MOCK_BUSINESS.category}
           </p>
         </div>
         <div className="text-right">

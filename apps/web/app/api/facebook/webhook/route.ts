@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import crypto from "crypto";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import {
+  resolveFacebookWebhookVerifyToken,
+  validateFacebookWebhookSignature,
+} from "@/lib/facebook/webhook-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +97,14 @@ export async function GET(req: Request) {
   const token  = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
 
-  const verifyToken = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN;
+  const verifyToken = resolveFacebookWebhookVerifyToken({
+    primary: process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN,
+    legacy: process.env.FACEBOOK_VERIFY_TOKEN,
+  });
+  if (!verifyToken) {
+    return new NextResponse("Facebook verify token not configured", { status: 503 });
+  }
+
   if (mode === "subscribe" && token === verifyToken && challenge) {
     return new NextResponse(challenge, { status: 200 });
   }
@@ -102,27 +113,24 @@ export async function GET(req: Request) {
 
 // ── Main webhook handler ──────────────────────────────────────────────────────
 export async function POST(req: Request) {
-  // Verify Meta signature
-  const appSecret = process.env.FACEBOOK_APP_SECRET;
-  if (appSecret) {
-    const signature = req.headers.get("x-hub-signature-256") ?? "";
-    const rawBody   = await req.text();
-    const expected  = "sha256=" + crypto
-      .createHmac("sha256", appSecret)
-      .update(rawBody)
-      .digest("hex");
-    if (signature !== expected) {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
-    // Re-parse since we consumed the body
-    try {
-      const payload = JSON.parse(rawBody);
-      await processWebhookPayload(payload);
-    } catch { /* ignore parse errors */ }
-  } else {
-    // No signature check in dev
-    const payload = await req.json().catch(() => null);
-    if (payload) await processWebhookPayload(payload);
+  const rawBody = await req.text();
+  const signatureValidation = validateFacebookWebhookSignature({
+    rawBody,
+    signature: req.headers.get("x-hub-signature-256"),
+    appSecret: process.env.FACEBOOK_APP_SECRET,
+  });
+
+  if (!signatureValidation.ok) {
+    return new NextResponse(signatureValidation.error, {
+      status: signatureValidation.status,
+    });
+  }
+
+  try {
+    const payload = JSON.parse(rawBody);
+    await processWebhookPayload(payload);
+  } catch {
+    return new NextResponse("Invalid JSON", { status: 400 });
   }
 
   return new NextResponse("EVENT_RECEIVED", { status: 200 });
@@ -279,7 +287,7 @@ async function handleMessage(event: Record<string, unknown>) {
 
   // ── 7. Upsert to sales_leads for full CRM tracking ───────────────────────
   if (lead.fb_name || detectedCity) {
-    await db.from("sales_leads").upsert({
+    await Promise.resolve(db.from("sales_leads").upsert({
       business_name: lead.fb_name ?? `Facebook Lead ${sender.slice(-6)}`,
       city:          detectedCity ?? lead.city ?? "",
       category:      detectedCategory ?? lead.category ?? "",
@@ -287,9 +295,9 @@ async function handleMessage(event: Record<string, unknown>) {
       source:        "facebook",
       do_not_contact: false,
       sms_opt_out:   false,
-    }, { onConflict: "id", ignoreDuplicates: false }).then(({ data: sl }) => {
+    }, { onConflict: "id", ignoreDuplicates: false })).then(({ data: sl }) => {
       if (sl && !lead.sales_lead_id) {
-        db.from("facebook_leads").update({ sales_lead_id: (sl as any)[0]?.id }).eq("id", lead.id).then(() => {}).catch(() => {});
+        void Promise.resolve(db.from("facebook_leads").update({ sales_lead_id: (sl as any)[0]?.id }).eq("id", lead.id)).catch(() => {});
       }
     }).catch(() => {});
   }
@@ -321,14 +329,14 @@ async function handleComment(value: Record<string, unknown>) {
   );
 
   // Log as a lead from comment
-  await db.from("facebook_leads").upsert({
+  await Promise.resolve(db.from("facebook_leads").upsert({
     fb_psid:         senderId,
     fb_name:         profile.name ?? null,
     source:          "comment",
     comment_post_id: commentId,
     current_agent:   "echo",
     lead_status:     "warm",
-  }, { onConflict: "fb_psid" }).catch(() => {});
+  }, { onConflict: "fb_psid" })).catch(() => {});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -432,6 +440,7 @@ function buildCloserResponse(
   const cat  = category ?? (lead.category as string) ?? "your category";
   const loc  = city ?? (lead.city as string) ?? "your area";
   const lower = text.toLowerCase();
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
 
   // Objection handling
   if (/too expensive|too much|can't afford|not in budget/.test(lower)) {
@@ -453,14 +462,14 @@ function buildCloserResponse(
 
   // Hot intent
   if (/interested|tell me more|want to know|availability|spots left/.test(lower)) {
-    return `${name}, here's the deal — we have limited spots open in ${loc} for ${cat} right now.\n\n📬 Your postcard goes to 2,500+ verified homeowners monthly\n🔒 You're the ONLY ${cat.toLowerCase()} in the mailer\n💰 Starts at just $200/mo\n\nTo lock your spot right now: home-reach.com/get-started\n\nSpots have been filling fast this week. Want me to hold yours while you check it out?`;
+    return `${name}, here's the deal — we have limited spots open in ${loc} for ${cat} right now.\n\n📬 Your postcard goes to 2,500+ verified homeowners monthly\n🔒 You're the ONLY ${cat.toLowerCase()} in the mailer\n💰 Starts at just $200/mo\n\nTo lock your spot right now: ${startUrl}\n\nSpots have been filling fast this week. Want me to hold yours while you check it out?`;
   }
 
   // Affirmative / ready to close
   if (/yes|yeah|sure|ok|let's|ready|sign|lock in|reserve/.test(lower)) {
-    return `🎉 Awesome ${name}! Let's lock in your ${cat} spot in ${loc} before someone else grabs it.\n\nHere's your signup link:\nhome-reach.com/get-started\n\nTakes about 3 minutes. Choose your spot size, enter your business info, and you're in.\n\nIf you have any questions while you're going through it, just text me here. Let's get you live! 🚀`;
+    return `🎉 Awesome ${name}! Let's lock in your ${cat} spot in ${loc} before someone else grabs it.\n\nHere's your signup link:\n${startUrl}\n\nTakes about 3 minutes. Choose your spot size, enter your business info, and you're in.\n\nIf you have any questions while you're going through it, just text me here. Let's get you live! 🚀`;
   }
 
   // Default closer response
-  return `${name}, based on what you've told me — this is exactly what HomeReach was built for.\n\n${cat} in ${loc}, reaching 2,500+ homeowners monthly with ZERO competition in your category.\n\nHere's your link to claim your spot:\nhome-reach.com/get-started\n\nWhat's holding you back from locking it in today?`;
+  return `${name}, based on what you've told me — this is exactly what HomeReach was built for.\n\n${cat} in ${loc}, reaching 2,500+ homeowners monthly with ZERO competition in your category.\n\nHere's your link to claim your spot:\n${startUrl}\n\nWhat's holding you back from locking it in today?`;
 }

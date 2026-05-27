@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/power-mode/end-of-day
@@ -9,11 +11,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
 
   const db = createServiceClient();
 
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
       : `⚠️ You missed Power Mode today (${streak.today_sms_sent}/40 SMS, ${streak.today_email_sent}/40 Email). Streak reset. Tomorrow is a fresh start, ${name}.`;
 
     if (email) {
-      await db.from("sales_events").insert({
+      await Promise.resolve(db.from("sales_events").insert({
         agent_id:    streak.agent_id,
         action_type: streak.today_power_mode ? "power_mode_achieved" : "power_mode_missed",
         channel:     "system",
@@ -58,7 +57,7 @@ export async function POST(req: Request) {
           power_mode:     streak.today_power_mode,
           streak_day:     streak.current_streak,
         },
-      }).then(() => {}).catch(() => {});
+      })).catch(() => {});
     }
 
     if (streak.today_power_mode) summary.power_mode_hit++;
@@ -66,13 +65,13 @@ export async function POST(req: Request) {
   }
 
   // Reset daily counters via DB function
-  await db.rpc("reset_daily_power_mode").catch(() => {});
+  await Promise.resolve(db.rpc("reset_daily_power_mode")).catch(() => {});
 
   // ── Alert hook (fire-and-forget, never blocks, additive) ─────────────────
   // Fires quota_warning personal SMS alerts for agents who missed Power Mode today.
   // Guarded by ENABLE_INTERNAL_ALERTS flag.
   if (process.env.ENABLE_INTERNAL_ALERTS === "true") {
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = getInternalAppBaseUrl();
     const missedAgents = (streaks ?? []).filter(s => !s.today_power_mode);
 
     for (const streak of missedAgents) {
@@ -82,7 +81,10 @@ export async function POST(req: Request) {
       Promise.resolve().then(() =>
         fetch(`${baseUrl}/api/admin/alerts/send`, {
           method:  "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-cron-secret": process.env.CRON_SECRET ?? "",
+          },
           body: JSON.stringify({
             agent_id:     streak.agent_id,
             alert_type:   "quota_warning",

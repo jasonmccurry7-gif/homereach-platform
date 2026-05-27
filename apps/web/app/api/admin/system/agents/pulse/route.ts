@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getInternalAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const guard = await requireAdminOrCron(req);
+    if (!guard.ok) return guard.response;
+
     const supabase = await createClient();
     const thirtyMinutesAgo = new Date(
       Date.now() - 30 * 60 * 1000
@@ -113,12 +118,15 @@ export async function POST(req: NextRequest) {
     // Always sends to SYSTEM_ALERT_PHONE (+13302069639) regardless of shadow mode.
     // Guarded by ENABLE_INTERNAL_ALERTS flag.
     if (process.env.ENABLE_INTERNAL_ALERTS === "true" && status === "critical") {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = getInternalAppBaseUrl();
       const JASON_AGENT_ID = process.env.JASON_AGENT_ID || "";
       Promise.resolve().then(() =>
         fetch(`${baseUrl}/api/admin/alerts/send`, {
           method:  "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-cron-secret": process.env.CRON_SECRET ?? "",
+          },
           body: JSON.stringify({
             agent_id:     JASON_AGENT_ID,
             alert_type:   "system_failure",

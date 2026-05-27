@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { requireCron } from "@/lib/auth/api-guards";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +31,12 @@ async function fbSend(psid: string, text: string): Promise<void> {
 }
 
 export async function POST(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = requireCron(req);
+  if (!guard.ok) return guard.response;
 
   const db  = createServiceClient();
   const now = new Date();
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
   const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const h48 = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
@@ -57,21 +57,21 @@ export async function POST(req: Request) {
     const loc  = lead.city ?? "your area";
 
     const msg = lead.lead_status === "hot"
-      ? `Hey ${name}! 👋 Just checking in — that ${cat} spot in ${loc} is still available but filling up fast. Ready to lock it in? home-reach.com/get-started`
-      : `Hey ${name}! Wanted to follow up — are you still interested in reaching homeowners in ${loc}? We have exclusive spots available for ${cat} businesses. Takes 3 minutes to get started: home-reach.com/get-started`;
+      ? `Hey ${name}! 👋 Just checking in — that ${cat} spot in ${loc} is still available but filling up fast. Ready to lock it in? ${startUrl}`
+      : `Hey ${name}! Wanted to follow up — are you still interested in reaching homeowners in ${loc}? We have exclusive spots available for ${cat} businesses. Takes 3 minutes to get started: ${startUrl}`;
 
     await fbSend(lead.fb_psid, msg);
-    await db.from("facebook_leads").update({
+    await Promise.resolve(db.from("facebook_leads").update({
       follow_up_1_sent_at: now.toISOString(),
       messages_sent:       (lead.messages_sent ?? 0) + 1,
-    }).eq("id", lead.id).catch(() => {});
+    }).eq("id", lead.id)).catch(() => {});
 
-    await db.from("facebook_messages").insert({
+    await Promise.resolve(db.from("facebook_messages").insert({
       lead_id:   lead.id,
       direction: "outbound",
       message:   msg,
       agent:     "closer",
-    }).catch(() => {});
+    })).catch(() => {});
 
     summary.followup1_sent++;
   }
@@ -91,21 +91,21 @@ export async function POST(req: Request) {
 
     const msg = `Hey ${name}, last message from me — I know you're busy.\n\n` +
       `We have ONE exclusive spot open for your business type in ${loc}. Once it's claimed, it's gone.\n\n` +
-      `If you're ever ready: home-reach.com/get-started 🏠\n\nWishing you continued success!`;
+      `If you're ever ready: ${startUrl} 🏠\n\nWishing you continued success!`;
 
     await fbSend(lead.fb_psid, msg);
-    await db.from("facebook_leads").update({
+    await Promise.resolve(db.from("facebook_leads").update({
       follow_up_2_sent_at: now.toISOString(),
       lead_status:         "dead", // final follow-up sent
       messages_sent:       (lead.messages_sent ?? 0) + 1,
-    }).eq("id", lead.id).catch(() => {});
+    }).eq("id", lead.id)).catch(() => {});
 
-    await db.from("facebook_messages").insert({
+    await Promise.resolve(db.from("facebook_messages").insert({
       lead_id:   lead.id,
       direction: "outbound",
       message:   msg,
       agent:     "closer",
-    }).catch(() => {});
+    })).catch(() => {});
 
     summary.followup2_sent++;
   }

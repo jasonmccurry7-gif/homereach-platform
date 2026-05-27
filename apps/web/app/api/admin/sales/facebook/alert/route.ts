@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminSalesAgentOrCron, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/facebook/alert
@@ -62,12 +63,19 @@ async function sendTwilioSms(to: string, from: string, body: string): Promise<{ 
 
 export async function POST(req: Request) {
   try {
+    const access = await requireAdminSalesAgentOrCron(req);
+    if (!access.ok) return access.response;
+
     const body = await req.json();
     const { agent_id, alert_type, message, context } = body;
 
     if (!agent_id || !alert_type) {
       return NextResponse.json({ error: "agent_id and alert_type required" }, { status: 400 });
     }
+    const scopedAgentId = access.user
+      ? resolveAgentScope(access.user, agent_id, { requireAgentId: true })
+      : { ok: true as const, agentId: agent_id };
+    if (!scopedAgentId.ok) return scopedAgentId.response;
 
     const supabase = createServiceClient();
     const meta     = ALERT_TYPES[alert_type] ?? { label: "Facebook Alert", emoji: "📘", priority: "medium" };
@@ -76,7 +84,7 @@ export async function POST(req: Request) {
     const { data: identity } = await supabase
       .from("agent_identities")
       .select("twilio_phone, from_name, is_active")
-      .eq("agent_id", agent_id)
+      .eq("agent_id", scopedAgentId.agentId)
       .maybeSingle();
 
     const agentPhone  = identity?.twilio_phone ?? null;
@@ -104,7 +112,7 @@ export async function POST(req: Request) {
     // ── Log alert event ──────────────────────────────────────────────────────
     try {
       await supabase.from("facebook_alert_events").insert({
-        agent_id,
+        agent_id: scopedAgentId.agentId,
         alert_type,
         message:         alertBody,
         context:         context ?? {},
@@ -116,13 +124,13 @@ export async function POST(req: Request) {
       });
     } catch {
       // Table may not exist yet — log to sales_events as fallback
-      await supabase.from("sales_events").insert({
-        agent_id,
+      await Promise.resolve(supabase.from("sales_events").insert({
+        agent_id: scopedAgentId.agentId,
         action_type: "facebook_sent",
         channel: "facebook",
         message: `[FB ALERT] ${alert_type}: ${message ?? ""}`,
         metadata: { alert_type, priority: meta.priority, sms_sent: smsResult.ok },
-      }).then(() => {}).catch(() => {});
+      })).catch(() => {});
     }
 
     return NextResponse.json({

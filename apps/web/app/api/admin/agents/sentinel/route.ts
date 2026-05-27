@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,10 @@ type ValidationResult = {
   detail: string;
 };
 
-export async function POST() {
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const runAt = new Date().toISOString();
   const results: ValidationResult[] = [];
@@ -136,11 +140,13 @@ export async function POST() {
       "GREEN";
 
     // Log to DB
-    await supabase.from("sales_events").insert({
-      event_type: "sentinel_scan",
-      notes: JSON.stringify({ passed: passed.length, warned: warned.length, failed: failed.length }),
-      created_at: runAt,
-    }).catch(() => {});
+    try {
+      await supabase.from("sales_events").insert({
+        event_type: "sentinel_scan",
+        notes: JSON.stringify({ passed: passed.length, warned: warned.length, failed: failed.length }),
+        created_at: runAt,
+      });
+    } catch {}
 
     return NextResponse.json({
       agent: "Sentinel",
@@ -164,5 +170,8 @@ export async function POST() {
 }
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   return NextResponse.json({ agent: "Sentinel", status: "ready", description: "POST to run full security and validation scan" });
 }

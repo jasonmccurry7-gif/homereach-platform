@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,10 @@ export const dynamic = "force-dynamic";
 // flags cities approaching saturation, and surfaces new market candidates.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const runAt = new Date().toISOString();
 
@@ -75,17 +79,19 @@ export async function POST() {
     }
 
     // ── 7. Log to sales events ───────────────────────────────────────────────
-    await supabase.from("sales_events").insert({
-      event_type: "atlas_scan",
-      notes: JSON.stringify({
-        cities_total: cities?.length ?? 0,
-        saturated: saturated.length,
-        high: high.length,
-        growing: growing.length,
-        empty: empty.length,
-      }),
-      created_at: runAt,
-    }).catch(() => {});
+    try {
+      await supabase.from("sales_events").insert({
+        event_type: "atlas_scan",
+        notes: JSON.stringify({
+          cities_total: cities?.length ?? 0,
+          saturated: saturated.length,
+          high: high.length,
+          growing: growing.length,
+          empty: empty.length,
+        }),
+        created_at: runAt,
+      });
+    } catch {}
 
     return NextResponse.json({
       agent: "Atlas",
@@ -110,5 +116,8 @@ export async function POST() {
 }
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   return NextResponse.json({ agent: "Atlas", status: "ready", description: "POST to run city expansion analysis" });
 }

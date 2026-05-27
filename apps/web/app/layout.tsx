@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 import { validateEnv } from "@/lib/env";
 import { buildOrganizationLd, buildWebsiteLd } from "@/lib/seo/schema";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
 
 // Validate all required environment variables at startup.
 // Throws immediately with a clear message if anything critical is missing.
@@ -19,9 +20,7 @@ export const metadata: Metadata = {
   },
   description:
     "HomeReach connects local businesses with their community through targeted postcard campaigns, digital outreach, and smart automation.",
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"
-  ),
+  metadataBase: new URL(getPublicAppBaseUrl()),
   openGraph: {
     type: "website",
     siteName: "HomeReach",

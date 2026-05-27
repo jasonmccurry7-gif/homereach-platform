@@ -27,11 +27,17 @@ import type {
 import type { IConversationRepository, UpsertConversationInput } from "./db/interfaces";
 import { getConversationRepository } from "./db/factory";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 
 // ── OpenAI (optional — loaded lazily if OPENAI_API_KEY is present) ─────────────
 // Using dynamic import to avoid breaking the build when openai package isn't
 // installed in development. Add OPENAI_API_KEY to .env.local to enable.
 let _openaiClient: import("openai").OpenAI | null = null;
+
+function buildIntakeLink(): string {
+  return `${getPublicAppBaseUrl()}/get-started`;
+}
 
 async function getOpenAIClient(): Promise<import("openai").OpenAI | null> {
   if (!process.env.OPENAI_API_KEY) return null;
@@ -456,7 +462,7 @@ export class AutomationEngine {
           firstName:  "",
           city:       "",
           category:   "",
-          intakeLink: (process.env.NEXT_PUBLIC_APP_URL ?? "") + "/get-started",
+          intakeLink: buildIntakeLink(),
         }),
       };
     } catch (err) {
@@ -498,7 +504,7 @@ export class AutomationEngine {
         firstName: "",
         city: "",
         category: "",
-        intakeLink: (process.env.NEXT_PUBLIC_APP_URL ?? "") + "/get-started",
+        intakeLink: buildIntakeLink(),
       }),
     };
   }
@@ -516,7 +522,7 @@ export class AutomationEngine {
       intakeLink?: string;
     }
   ): string {
-    const link = vars.intakeLink ?? (process.env.NEXT_PUBLIC_APP_URL ?? "") + "/get-started";
+    const link = vars.intakeLink ?? buildIntakeLink();
     return AutomationEngine.getTemplateResponse(intent, channel, { ...vars, intakeLink: link });
   }
 
@@ -656,7 +662,12 @@ export class AutomationEngine {
 
       const { appendSmsCompliance, sendSms } = await import("@homereach/services/outreach");
       const finalBody = opts.skipStopFooter ? body : appendSmsCompliance(body);
-      const result = await sendSms({ to, body: finalBody, intent: "follow_up" });
+      const result = await sendSms({
+        to,
+        body: finalBody,
+        intent: "follow_up",
+        statusCallbackUrl: getTwilioStatusCallbackUrl(),
+      });
       if (!result.success) {
         console.error(`[AutomationEngine] SMS to ${to} failed: ${result.error}`);
       }
@@ -815,7 +826,7 @@ Respond to the latest message naturally and briefly (1–3 sentences max).
 Use the conversation history to avoid repeating yourself.
 Intent classification: ${intent}
 If intent is not_interested, politely acknowledge and offer to remove them.
-If intent is ready_to_buy, send the intake link: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/get-started
+If intent is ready_to_buy, send the intake link: ${buildIntakeLink()}
 Channel: ${channel} — keep SMS replies under 160 characters when possible.
 Do NOT add a sign-off or signature.`;
 

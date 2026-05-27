@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db, growthActivityLogs } from "@homereach/db";
 import { eq, and } from "drizzle-orm";
+import { requireAdmin } from "@/lib/auth/api-guards";
 
 const LogSchema = z.object({
   date:                 z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
@@ -24,6 +25,9 @@ const LogSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
     const body   = await req.json();
     const parsed = LogSchema.safeParse(body);
 
@@ -82,6 +86,9 @@ export async function POST(req: NextRequest) {
 // GET — fetch logs for a date range (for client-side refreshes)
 export async function GET(req: NextRequest) {
   try {
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
     const { searchParams } = new URL(req.url);
     const from = searchParams.get("from"); // YYYY-MM-DD
     const to   = searchParams.get("to");   // YYYY-MM-DD

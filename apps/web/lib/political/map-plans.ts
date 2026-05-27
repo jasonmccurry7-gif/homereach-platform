@@ -1,4 +1,4 @@
-import { createServiceClient } from "@/lib/supabase/service";
+import { createServiceClient } from "../supabase/service";
 import {
   MAX_POLITICAL_POSTCARD_PRICE_PER_PIECE_CENTS,
   POLITICAL_POSTCARD_POSTAGE_ESTIMATE_CENTS,
@@ -154,6 +154,21 @@ function tableMissingMessage(message: string) {
 export async function savePublicMapPlan(
   input: SavePublicMapPlanInput,
 ): Promise<SavePublicMapPlanResult> {
+  const state = text(input.state, 2) ?? "OH";
+  const mode = text(input.mode, 40) ?? "county";
+  const drops = Math.min(5, Math.max(1, positiveInt(input.dropCount, 1)));
+  const layers = selectedLayers(input.selectedLayers);
+  const routes = routeRows(input.selectedRoutes);
+  const geographies = geographyRows(input.selectedPoliticalGeographies);
+
+  if (routes.length === 0 && geographies.length === 0) {
+    return {
+      ok: false,
+      stored: "local_only",
+      reason: "No map routes or political geographies were selected.",
+    };
+  }
+
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return {
       ok: false,
@@ -162,12 +177,6 @@ export async function savePublicMapPlan(
     };
   }
 
-  const state = text(input.state, 2) ?? "OH";
-  const mode = text(input.mode, 40) ?? "county";
-  const drops = Math.min(5, Math.max(1, positiveInt(input.dropCount, 1)));
-  const layers = selectedLayers(input.selectedLayers);
-  const routes = routeRows(input.selectedRoutes);
-  const geographies = geographyRows(input.selectedPoliticalGeographies);
   const stats = input.stats && typeof input.stats === "object"
     ? input.stats as Record<string, unknown>
     : {};

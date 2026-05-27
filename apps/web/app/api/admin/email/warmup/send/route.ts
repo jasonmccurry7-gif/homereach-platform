@@ -6,6 +6,8 @@ import {
   getRampEntry,
   getSeedTemplate,
 } from "@/lib/sales-engine/email-warmup-config";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/email/warmup/send
@@ -23,14 +25,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  // ── Auth ────────────────────────────────────────────────────────────────────
-  const authHeader  = req.headers.get("authorization");
-  const cronSecret  = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
 
   const db = createServiceClient();
+  const appUrl = getPublicAppBaseUrl();
   const now = new Date().toISOString();
   const summary = { agents_processed: 0, seeds_sent: 0, real_sent: 0, errors: 0 };
 
@@ -83,12 +82,6 @@ export async function POST(req: NextRequest) {
         const toEmail  = WARMUP_SEED_EMAILS[i % WARMUP_SEED_EMAILS.length]!;
         const template = getSeedTemplate(state.warmup_day, i);
 
-        // Temporarily set agent's from address
-        const savedFromEmail = process.env.MAILGUN_FROM_EMAIL;
-        const savedFromName  = process.env.MAILGUN_FROM_NAME;
-        process.env.MAILGUN_FROM_EMAIL = identity.from_email;
-        process.env.MAILGUN_FROM_NAME  = identity.from_name ?? "HomeReach";
-
         const result = await sendEmail({
           to:      toEmail,
           subject: template.subject,
@@ -96,10 +89,9 @@ export async function POST(req: NextRequest) {
             <p>${template.body}</p>
           </div>`,
           text:    template.body,
+          fromEmail: identity.from_email,
+          fromName:  identity.from_name ?? "HomeReach",
         });
-
-        process.env.MAILGUN_FROM_EMAIL = savedFromEmail;
-        process.env.MAILGUN_FROM_NAME  = savedFromName;
 
         await db.from("email_warmup_log").insert({
           state_id:   state.id,
@@ -144,13 +136,7 @@ export async function POST(req: NextRequest) {
 
         for (const prospect of prospects ?? []) {
           if (!prospect.email) continue;
-          const contactName = prospect.contact_name ?? prospect.business_name ?? "there";
           const template    = getSeedTemplate(state.warmup_day, realSent + seedsSent);
-
-          const savedFromEmail = process.env.MAILGUN_FROM_EMAIL;
-          const savedFromName  = process.env.MAILGUN_FROM_NAME;
-          process.env.MAILGUN_FROM_EMAIL = identity.from_email;
-          process.env.MAILGUN_FROM_NAME  = identity.from_name ?? "HomeReach";
 
           const result = await sendEmail({
             to:      prospect.email,
@@ -160,14 +146,13 @@ export async function POST(req: NextRequest) {
               <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
               <p style="color: #999; font-size: 12px;">
                 You're receiving this from HomeReach.
-                <a href="https://home-reach.com/unsubscribe?email=${encodeURIComponent(prospect.email)}">Unsubscribe</a>
+                <a href="${appUrl}/unsubscribe?email=${encodeURIComponent(prospect.email)}">Unsubscribe</a>
               </p>
             </div>`,
-            text:    `${template.body}\n\nTo unsubscribe: https://home-reach.com/unsubscribe?email=${encodeURIComponent(prospect.email)}`,
+            text:    `${template.body}\n\nTo unsubscribe: ${appUrl}/unsubscribe?email=${encodeURIComponent(prospect.email)}`,
+            fromEmail: identity.from_email,
+            fromName:  identity.from_name ?? "HomeReach",
           });
-
-          process.env.MAILGUN_FROM_EMAIL = savedFromEmail;
-          process.env.MAILGUN_FROM_NAME  = savedFromName;
 
           await db.from("email_warmup_log").insert({
             state_id:   state.id,

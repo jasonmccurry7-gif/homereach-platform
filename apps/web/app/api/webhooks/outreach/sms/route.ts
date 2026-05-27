@@ -1,8 +1,12 @@
 import { db, outreachContacts, outreachReplies, outreachMessages } from "@homereach/db";
 import { eq } from "drizzle-orm";
-import crypto from "crypto";
 import { createServiceClient } from "@/lib/supabase/service";
 import { processInboundRevenueMessage } from "@/lib/revenue-messaging/inbound";
+import {
+  type InboundSmsBridgeResult,
+  shouldRetryUnmatchedInboundSmsReply,
+  validateTwilioInboundSignature,
+} from "@/lib/outreach/inbound-sms-webhook";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/outreach/sms
@@ -19,33 +23,22 @@ const EMPTY_TWIML = new Response("<Response/>", {
   headers: { "Content-Type": "text/xml" },
 });
 
-function timingSafeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return left.length === right.length && crypto.timingSafeEqual(left, right);
+function retryableTwimlResponse() {
+  return new Response("<Response/>", {
+    status: 503,
+    headers: { "Content-Type": "text/xml" },
+  });
 }
 
 function validateTwilioSignature(req: Request, params: URLSearchParams): boolean {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!authToken) return process.env.NODE_ENV !== "production";
-
-  const signature = req.headers.get("x-twilio-signature") ?? "";
-  if (!signature) return false;
-
-  const url = process.env.NEXT_PUBLIC_APP_URL
-    ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/outreach/sms`
-    : req.url;
-
-  const signedPayload = Array.from(new Set(params.keys()))
-    .sort()
-    .reduce((payload, key) => `${payload}${key}${params.get(key) ?? ""}`, url);
-
-  const expected = crypto
-    .createHmac("sha1", authToken)
-    .update(signedPayload)
-    .digest("base64");
-
-  return timingSafeEqual(expected, signature);
+  return validateTwilioInboundSignature({
+    authToken: process.env.TWILIO_AUTH_TOKEN,
+    nodeEnv: process.env.NODE_ENV,
+    signature: req.headers.get("x-twilio-signature"),
+    requestUrl: req.url,
+    appUrl: process.env.NEXT_PUBLIC_APP_URL,
+    params,
+  });
 }
 
 export async function POST(req: Request) {
@@ -98,8 +91,11 @@ export async function POST(req: Request) {
   }
 
   // ── Store reply ────────────────────────────────────────────────────────────
+  let revenueBridgeResult: InboundSmsBridgeResult | null = null;
+  let revenueBridgeFailed = false;
+
   try {
-    await processInboundRevenueMessage({
+    revenueBridgeResult = await processInboundRevenueMessage({
       channel: "sms",
       from,
       to: formData.get("To"),
@@ -109,6 +105,7 @@ export async function POST(req: Request) {
       rawPayload: Object.fromEntries(formData.entries()),
     });
   } catch (err) {
+    revenueBridgeFailed = true;
     console.error("[sms/webhook] revenue messaging bridge failed:", err);
   }
 
@@ -120,6 +117,15 @@ export async function POST(req: Request) {
     .limit(1);
 
   if (!contact) {
+    if (
+      shouldRetryUnmatchedInboundSmsReply({
+        bridgeFailed: revenueBridgeFailed,
+        bridgeResult: revenueBridgeResult,
+      })
+    ) {
+      return retryableTwimlResponse();
+    }
+
     // Unknown number — log and ignore
     console.log(`[sms/webhook] reply from unknown number: ${from}`);
     return EMPTY_TWIML;

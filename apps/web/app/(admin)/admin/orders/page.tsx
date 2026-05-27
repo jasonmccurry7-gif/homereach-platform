@@ -17,7 +17,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default async function AdminOrdersPage() {
   const db = createServiceClient();
 
-  const { data: rows = [] } = await db
+  const { data } = await db
     .from("orders")
     .select(`
       id, status, total, subtotal, locked_price, pricing_type,
@@ -27,6 +27,7 @@ export default async function AdminOrdersPage() {
       bundles:bundle_id ( name )
     `)
     .order("created_at", { ascending: false });
+  const rows = data ?? [];
 
   const totalRevenue = (rows as any[])
     .filter(r => ["paid", "active", "completed"].includes(r.status))

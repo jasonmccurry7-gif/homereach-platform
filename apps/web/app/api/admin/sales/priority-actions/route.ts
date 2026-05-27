@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -48,12 +48,13 @@ interface PriorityAction {
 
 export async function GET(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
 
     const url     = new URL(req.url);
-    const agentId = url.searchParams.get("agent_id") ?? user.id;
+    const agentScope = resolveAgentScope(guard.user, url.searchParams.get("agent_id"));
+    if (!agentScope.ok) return agentScope.response;
+    const agentId = agentScope.agentId;
     const db      = createServiceClient();
     const now     = new Date();
     const h24     = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -63,12 +64,13 @@ export async function GET(req: Request) {
     const actions: PriorityAction[] = [];
 
     // ── 1. Verbal yes — no contract sent ─────────────────────────────────────
-    const { data: verbalYes } = await db.from("sales_leads").select("*")
+    let verbalYesQuery = db.from("sales_leads").select("*")
       .eq("status", "interested")
       .eq("do_not_contact", false)
       .is("next_follow_up_at", null)
-      .lt("last_contacted_at", h24)
-      .limit(3);
+      .lt("last_contacted_at", h24);
+    if (agentId) verbalYesQuery = verbalYesQuery.eq("assigned_agent_id", agentId);
+    const { data: verbalYes } = await verbalYesQuery.limit(3);
 
     for (const lead of verbalYes ?? []) {
       actions.push({
@@ -92,20 +94,21 @@ export async function GET(req: Request) {
     }
 
     // ── 2. Pricing sent > 24h ago — no reply ─────────────────────────────────
-    const { data: pricingSent } = await db.from("sales_events")
+    let pricingSentQuery = db.from("sales_events")
       .select("lead_id, created_at")
       .eq("action_type", "email_sent")
-      .eq("agent_id", agentId)
       .lt("created_at", h24)
-      .gte("created_at", d3)
-      .limit(5);
+      .gte("created_at", d3);
+    if (agentId) pricingSentQuery = pricingSentQuery.eq("agent_id", agentId);
+    const { data: pricingSent } = await pricingSentQuery.limit(5);
 
     const pricingLeadIds = (pricingSent ?? []).map(e => e.lead_id).filter(Boolean);
     if (pricingLeadIds.length > 0) {
-      const { data: pricingLeads } = await db.from("sales_leads").select("*")
+      let pricingLeadsQuery = db.from("sales_leads").select("*")
         .in("id", pricingLeadIds)
-        .not("status", "in", "(closed,dead,replied)")
-        .limit(3);
+        .not("status", "in", "(closed,dead,replied)");
+      if (agentId) pricingLeadsQuery = pricingLeadsQuery.eq("assigned_agent_id", agentId);
+      const { data: pricingLeads } = await pricingLeadsQuery.limit(3);
 
       for (const lead of pricingLeads ?? []) {
         const event = (pricingSent ?? []).find(e => e.lead_id === lead.id);
@@ -131,12 +134,12 @@ export async function GET(req: Request) {
     }
 
     // ── 3. Callback requested — not called yet ────────────────────────────────
-    const { data: callbacks } = await db.from("call_logs")
+    let callbacksQuery = db.from("call_logs")
       .select("lead_id, called_at, business_name, phone, city, category")
-      .eq("agent_id", agentId)
       .eq("outcome", "call_back_later")
-      .lte("called_at", now.toISOString())
-      .limit(5);
+      .lte("called_at", now.toISOString());
+    if (agentId) callbacksQuery = callbacksQuery.eq("agent_id", agentId);
+    const { data: callbacks } = await callbacksQuery.limit(5);
 
     for (const cb of (callbacks ?? []).slice(0, 3)) {
       if (!cb.lead_id) continue;
@@ -161,9 +164,11 @@ export async function GET(req: Request) {
     }
 
     // ── 4. Hot leads — replied but no action ─────────────────────────────────
-    const { data: hotLeads } = await db.from("sales_leads").select("*")
+    let hotLeadsQuery = db.from("sales_leads").select("*")
       .eq("status", "replied")
-      .eq("do_not_contact", false)
+      .eq("do_not_contact", false);
+    if (agentId) hotLeadsQuery = hotLeadsQuery.eq("assigned_agent_id", agentId);
+    const { data: hotLeads } = await hotLeadsQuery
       .order("last_reply_at", { ascending: true })
       .limit(3);
 
@@ -190,8 +195,10 @@ export async function GET(req: Request) {
 
     // ── 5. Nearly full city — urgent close window ─────────────────────────────
     // Check if any assigned cities are filling up
-    const { data: territories } = await db.from("agent_territories")
-      .select("city").eq("agent_id", agentId);
+    const { data: territories } = agentId
+      ? await db.from("agent_territories")
+        .select("city").eq("agent_id", agentId)
+      : { data: [] };
 
     if (territories?.length) {
       const cities = territories.map(t => t.city);
@@ -232,13 +239,13 @@ export async function GET(req: Request) {
     }
 
     // ── 6. Voicemail left 24h+ ago — time to follow up ───────────────────────
-    const { data: voicemails } = await db.from("call_logs")
+    let voicemailsQuery = db.from("call_logs")
       .select("lead_id, called_at, business_name, phone, city, category")
-      .eq("agent_id", agentId)
       .eq("outcome", "left_voicemail")
       .lt("called_at", h24)
-      .gte("called_at", d3)
-      .limit(3);
+      .gte("called_at", d3);
+    if (agentId) voicemailsQuery = voicemailsQuery.eq("agent_id", agentId);
+    const { data: voicemails } = await voicemailsQuery.limit(3);
 
     for (const vm of voicemails ?? []) {
       if (!vm.lead_id) continue;

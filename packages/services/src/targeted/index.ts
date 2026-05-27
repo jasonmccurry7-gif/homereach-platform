@@ -12,6 +12,9 @@ import {
   sendEmail,
   sendSms,
 } from "../outreach/index";
+import { createTargetedCheckoutToken } from "./checkout-token";
+
+export * from "./checkout-token";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -42,8 +45,19 @@ function getAdminPhone(): string | null {
   return process.env.ADMIN_PHONE ?? getOwnerIdentity().cellPhone;
 }
 
+function normalizeBaseUrl(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\/+$/, "");
+}
+
 function getBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_BASE_URL ?? "https://homereach.com";
+  return (
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ??
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_BASE_URL) ??
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL) ??
+    "https://homereach.com"
+  );
 }
 
 function getFromName(): string {
@@ -239,7 +253,13 @@ export async function sendIntakeConfirmationToCustomer(campaign: {
 }) {
   const firstName = campaign.contactName?.split(" ")[0] ?? "there";
   const baseUrl = getBaseUrl();
-  const checkoutUrl = `${baseUrl}/targeted/checkout?campaign=${campaign.campaignId}`;
+  const checkoutParams = new URLSearchParams({ campaign: campaign.campaignId });
+  const checkoutToken = createTargetedCheckoutToken({
+    campaignId: campaign.campaignId,
+    email: campaign.email,
+  });
+  if (checkoutToken) checkoutParams.set("token", checkoutToken);
+  const checkoutUrl = `${baseUrl}/targeted/checkout?${checkoutParams.toString()}`;
 
   const subject = `We got your info — here's your checkout link`;
   const html = `

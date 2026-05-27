@@ -1,5 +1,9 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
+import { sendEmail, sendSms } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -26,112 +30,13 @@ interface Lead {
   category: string | null;
   business_name: string | null;
   contact_name: string | null;
+  assigned_agent_id: string | null;
 }
 
 interface AgentIdentity {
   from_email: string;
   from_name: string;
-  twilio_phone: string;
-}
-
-// ─── Twilio SMS Helper ────────────────────────────────────────────────────────
-
-async function sendViaTwilio(
-  to: string,
-  from: string,
-  body: string
-): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-    if (!accountSid || !authToken) {
-      return {
-        success: false,
-        error: "Twilio credentials not configured",
-      };
-    }
-
-    const form = new URLSearchParams();
-    form.append("To", to);
-    form.append("From", from);
-    form.append("Body", body);
-
-    const resp = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Twilio ${resp.status}: ${detail}`);
-    }
-
-    const data = (await resp.json()) as { sid?: string };
-    return { success: true, externalId: data.sid };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown SMS error";
-    console.error("[sales/close-deal/sms]", error);
-    return { success: false, error };
-  }
-}
-
-// ─── Mailgun Email Helper ─────────────────────────────────────────────────────
-
-async function sendViaMailgun(options: {
-  to: string;
-  subject: string;
-  html: string;
-  text: string;
-  fromEmail: string;
-  fromName: string;
-}): Promise<{ success: boolean; externalId?: string; error?: string }> {
-  try {
-    const apiKey = process.env.MAILGUN_API_KEY;
-    const domain = process.env.MAILGUN_DOMAIN;
-
-    if (!apiKey || !domain) {
-      return {
-        success: false,
-        error: "Mailgun credentials not configured",
-      };
-    }
-
-    const form = new URLSearchParams();
-    form.set("from", `${options.fromName} <${options.fromEmail}>`);
-    form.set("to", options.to);
-    form.set("subject", options.subject);
-    form.set("html", options.html);
-    form.set("text", options.text);
-
-    const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form.toString(),
-    });
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`Mailgun ${resp.status}: ${detail}`);
-    }
-
-    const data = (await resp.json()) as { id?: string };
-    return { success: true, externalId: data.id };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown email error";
-    console.error("[sales/close-deal/email]", error);
-    return { success: false, error };
-  }
+  twilio_phone: string | null;
 }
 
 // ─── Build Close Messages ─────────────────────────────────────────────────────
@@ -141,7 +46,9 @@ function buildCloseSmsMessage(
   agentName: string,
   city: string | null | undefined
 ): string {
-  return `Hey ${firstName}, this is ${agentName} — wanted to lock in your spot before someone else grabs it. Here's everything you need to get started: https://home-reach.com/get-started
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
+
+  return `Hey ${firstName}, this is ${agentName} — wanted to lock in your spot before someone else grabs it. Here's everything you need to get started: ${startUrl}
 
 Pricing:
 • Back Spot: $200/mo (6 available)
@@ -158,6 +65,7 @@ function buildCloseEmailMessage(
   city: string | null | undefined
 ): { subject: string; html: string; text: string } {
   const subject = `Your ${city || "local"} spot — lock it in today, ${firstName}`;
+  const startUrl = `${getPublicAppBaseUrl()}/get-started`;
 
   const text = `Hi ${firstName},
 
@@ -171,7 +79,7 @@ We're offering limited advertising spots in your category with guaranteed access
 
 All packages include professional design, category exclusivity, and direct homeowner access.
 
-Ready to lock in your spot? Visit: https://home-reach.com/get-started
+Ready to lock in your spot? Visit: ${startUrl}
 
 It takes just 3 minutes to secure your position before another business in your category claims it.
 
@@ -244,7 +152,7 @@ ${agentEmail}`;
 
         <p class="scarcity">⚡ Only a few spots remaining in ${city || "your area"}. Lock yours in today.</p>
 
-        <a href="https://home-reach.com/get-started" class="cta">Lock In Your Spot</a>
+        <a href="${startUrl}" class="cta">Lock In Your Spot</a>
 
         <p style="color: #666; font-size: 14px; margin-top: 30px;">It takes just 3 minutes to secure your position before another business claims it.</p>
 
@@ -268,6 +176,9 @@ ${agentEmail}`;
 
 export async function POST(request: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+
     const supabase = createServiceClient();
     const body = (await request.json()) as CloseDealRequest;
 
@@ -282,12 +193,17 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    const agentScope = resolveAgentScope(guard.user, agent_id, {
+      requireAgentId: true,
+    });
+    if (!agentScope.ok) return agentScope.response;
+    const scopedAgentId = agentScope.agentId!;
 
     // ── Load lead ─────────────────────────────────────────────────────────────
     const { data: lead, error: leadError } = await supabase
       .from("sales_leads")
       .select(
-        "id, phone, email, city, category, business_name, contact_name"
+        "id, phone, email, city, category, business_name, contact_name, assigned_agent_id"
       )
       .eq("id", lead_id)
       .single();
@@ -302,6 +218,13 @@ export async function POST(request: Request) {
     }
 
     const typedLead = lead as Lead;
+    if (
+      agentScope.isSalesAgent &&
+      typedLead.assigned_agent_id &&
+      typedLead.assigned_agent_id !== scopedAgentId
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // ── Verify contact method exists ──────────────────────────────────────────
     if (channel === "sms" && !typedLead.phone) {
@@ -326,7 +249,7 @@ export async function POST(request: Request) {
     const { data: agentIdentity, error: agentError } = await supabase
       .from("agent_identities")
       .select("from_email, from_name, twilio_phone")
-      .eq("agent_id", agent_id)
+      .eq("agent_id", scopedAgentId)
       .eq("is_active", true)
       .single();
 
@@ -349,12 +272,20 @@ export async function POST(request: Request) {
     let sendResult: { success: boolean; externalId?: string; error?: string };
 
     if (channel === "sms") {
+      if (!agent.twilio_phone) {
+        return NextResponse.json(
+          { error: "Agent SMS sender is not configured" },
+          { status: 500 }
+        );
+      }
       closedMessage = buildCloseSmsMessage(firstName, agent.from_name, typedLead.city);
-      sendResult = await sendViaTwilio(
-        typedLead.phone!,
-        agent.twilio_phone,
-        closedMessage
-      );
+      sendResult = await sendSms({
+        to: typedLead.phone!,
+        body: closedMessage,
+        fromNumber: agent.twilio_phone,
+        intent: "follow_up",
+        statusCallbackUrl: getTwilioStatusCallbackUrl(),
+      });
     } else {
       const emailData = buildCloseEmailMessage(
         firstName,
@@ -363,13 +294,14 @@ export async function POST(request: Request) {
         typedLead.city
       );
       closedMessage = emailData.text;
-      sendResult = await sendViaMailgun({
+      sendResult = await sendEmail({
         to: typedLead.email!,
         subject: emailData.subject,
         html: emailData.html,
         text: emailData.text,
         fromEmail: agent.from_email,
         fromName: agent.from_name,
+        replyTo: "",
       });
     }
 
@@ -388,7 +320,7 @@ export async function POST(request: Request) {
 
     // ── Log to sales_events ───────────────────────────────────────────────────
     await supabase.from("sales_events").insert({
-      agent_id,
+      agent_id: scopedAgentId,
       lead_id,
       action_type: channel === "sms" ? "text_sent" : "email_sent",
       channel,

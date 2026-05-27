@@ -98,7 +98,7 @@ export default async function OSPage() {
     db
       .select({ n: count() })
       .from(outreachReplies)
-      .where(eq(outreachReplies.status, "pending"))
+      .where(eq(outreachReplies.isRead, false))
       .catch(() => [{ n: 0 }]),
 
     db

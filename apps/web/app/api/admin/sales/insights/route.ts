@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
+import { requireAdminOrSalesAgent, resolveAgentScope } from "@/lib/auth/api-guards";
 
 // GET /api/admin/sales/insights
 // Identifies: best channel, best city, best category, lead quality, bottleneck stage
@@ -9,14 +10,22 @@ const SENT_ACTIONS = new Set(["text_sent", "sms_sent", "email_sent", "facebook_s
 
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const since = searchParams.get("since") ?? new Date(Date.now() - 86400000 * 7).toISOString(); // default 7 days
+  const agentScope = resolveAgentScope(guard.user, searchParams.get("agent_id"));
+  if (!agentScope.ok) return agentScope.response;
 
-  const { data: events, error } = await supabase
+  let eventQuery = supabase
     .from("sales_events")
     .select("action_type, channel, city, category, revenue_cents, lead_id, created_at")
     .gte("created_at", since);
+  if (agentScope.agentId) eventQuery = eventQuery.eq("agent_id", agentScope.agentId);
+
+  const { data: events, error } = await eventQuery;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!events || events.length === 0) {

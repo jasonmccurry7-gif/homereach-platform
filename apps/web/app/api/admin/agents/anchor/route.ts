@@ -1,6 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { getInternalAppBaseUrl, getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Anchor Agent — Client Retention & Renewal Management
@@ -22,14 +24,6 @@ interface SpotAssignment {
   commitment_ends_at: string | null;
   activated_at: string | null;
   created_at: string;
-}
-
-interface Business {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  city: string | null;
 }
 
 interface AnchorResult {
@@ -98,7 +92,7 @@ function daysUntilRenewal(commitmentEndsAt: string): number {
 // ─── Helper: Send SMS via /api/admin/sales/event ────────────────────────────
 
 async function sendRetentionSms(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   businessId: string | null,
   businessPhone: string,
   businessName: string,
@@ -120,7 +114,7 @@ async function sendRetentionSms(
     };
 
     const response = await fetch(
-      `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/admin/sales/event`,
+      `${getInternalAppBaseUrl()}/api/admin/sales/event`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -145,8 +139,11 @@ async function sendRetentionSms(
 
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
-export async function POST() {
-  const supabase = await createClient();
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const details: AnchorResult["summary"] = {
     spots_processed: 0,
     renewals_approaching: 0,
@@ -204,8 +201,6 @@ export async function POST() {
       throw new Error(`Failed to fetch paused spots: ${pausedError.message}`);
     }
 
-    // Combine all spots to process
-    const allSpots = [...(renewalSpots || []), ...(pausedSpots || [])];
     const processedSpotIds = new Set<string>();
 
     // 2. Process paused spots (win-back)
@@ -255,8 +250,7 @@ export async function POST() {
             continue;
           }
 
-          const agent = getAgentByCity(business.city);
-          const winBackMessage = `Hi ${business.name}, your HomeReach spot in ${cityName} is paused due to a billing issue. Update your payment to keep your exclusive spot: https://home-reach.com/dashboard`;
+          const winBackMessage = `Hi ${business.name}, your HomeReach spot in ${cityName} is paused due to a billing issue. Update your payment to keep your exclusive spot: ${getPublicAppBaseUrl()}/dashboard`;
 
           const result = await sendRetentionSms(
             supabase,
@@ -331,15 +325,6 @@ export async function POST() {
             });
             continue;
           }
-
-          // Get city name
-          const { data: cityData } = await supabase
-            .from("cities")
-            .select("name")
-            .eq("id", typedSpot.city_id)
-            .maybeSingle();
-
-          const cityName = cityData?.name || "your area";
 
           // Get business
           const { data: business } = await supabase
@@ -422,7 +407,10 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
+    const supabase = createServiceClient();
 
     // Count spots approaching renewal
     const thirtyDaysFromNow = new Date(

@@ -17,7 +17,7 @@ export default function PrivacyPolicyPage() {
 
         <section>
           <h2 className="text-xl font-bold text-gray-900 mb-3">1. Who We Are</h2>
-          <p>HomeReach ("we," "us," or "our") is a direct-mail advertising platform that helps local businesses reach verified homeowners through targeted postcard campaigns. Our website is <a href="https://home-reach.com" className="text-blue-600 hover:underline">home-reach.com</a>.</p>
+          <p>HomeReach (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) is a direct-mail advertising platform that helps local businesses reach verified homeowners through targeted postcard campaigns. Our website is <a href="https://home-reach.com" className="text-blue-600 hover:underline">home-reach.com</a>.</p>
         </section>
 
         <section>

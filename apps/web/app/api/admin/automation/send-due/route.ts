@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { getTwilioStatusCallbackUrl } from "@/lib/outreach/twilio-status-callback";
 import { recordOutboundRevenueMessage } from "@/lib/revenue-messaging/outbound";
 import {
   appendEmailComplianceHtml,
@@ -269,17 +271,14 @@ export async function POST(req: NextRequest) {
     if (!toAddress) { skipped++; continue; }
 
     // Render template
+    const publicBaseUrl = getPublicAppBaseUrl();
     const vars: Record<string, string> = {
       business_name: lead.business_name ?? "",
       contact_name:  lead.contact_name  ?? lead.business_name ?? "there",
       city:          lead.city          ?? "your area",
       category:      lead.category      ?? "your business",
-      dashboard_url: process.env.NEXT_PUBLIC_SITE_URL
-        ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/inventory-purchasing`
-        : "https://www.home-reach.com/inventory-purchasing",
-      savings_audit_url: process.env.NEXT_PUBLIC_SITE_URL
-        ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/find-my-savings`
-        : "https://www.home-reach.com/find-my-savings",
+      dashboard_url: `${publicBaseUrl}/inventory-purchasing`,
+      savings_audit_url: `${publicBaseUrl}/find-my-savings`,
     };
     const bodyRendered    = renderTemplate(step.body, vars);
     const subjectRendered = step.subject ? renderTemplate(step.subject, vars) : "HomeReach — grow your business";
@@ -327,6 +326,7 @@ export async function POST(req: NextRequest) {
         body: smsBody,
         fromNumber: twilioPhone ?? undefined,
         intent: "prospecting",
+        statusCallbackUrl: getTwilioStatusCallbackUrl(),
         testMode,
       });
     } else {

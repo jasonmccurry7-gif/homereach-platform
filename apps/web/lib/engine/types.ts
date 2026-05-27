@@ -99,8 +99,10 @@ export interface Reservation {
   leadId: string;
   status: ReservationStatus;
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
   ttlHours: number;
+  createdBy?: string;
   adminNote?: string;
 }
 
@@ -144,16 +146,21 @@ export interface AutomationMessage {
 export type AutomationMode = "auto" | "manual";
 
 export interface ConversationContext {
+  id?: string;
   leadId: string;
   leadName: string;
   businessName: string;
   city: string;
   category: string;
-  phone: string;
-  email: string;
+  phone: string | null;
+  email: string | null;
   status: LeadStatus;
   automationMode: AutomationMode;
+  channel?: MessageChannel;
   lastIntent?: IntentType;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  unreadCount?: number;
   messages: AutomationMessage[];
   reservationId?: string;
 }

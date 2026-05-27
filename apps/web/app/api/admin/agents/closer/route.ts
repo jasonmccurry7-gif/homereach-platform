@@ -1,6 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { getInternalAppBaseUrl, getPublicAppBaseUrl } from "@/lib/runtime/app-url";
+import { requireAdmin, requireAdminOrCron } from "@/lib/auth/api-guards";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Closer Agent — Follow-up & Payment Link Delivery
@@ -72,7 +74,7 @@ const DEFAULT_AGENT: AgentIdentity = {
 // ─── Helper: Resolve Agent Identity ───────────────────────────────────────────
 
 async function resolveAgentIdentity(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   lead: CloserLead
 ): Promise<AgentIdentity> {
   // Try agent_identities table first
@@ -108,7 +110,7 @@ async function resolveAgentIdentity(
 // ─── Helper: Check if payment link already sent recently ──────────────────────
 
 async function hasRecentPaymentLink(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   leadId: string
 ): Promise<boolean> {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -128,12 +130,12 @@ async function hasRecentPaymentLink(
 // ─── Helper: Send via /api/admin/sales/event ─────────────────────────────────
 
 async function sendFollowUp(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   lead: CloserLead,
   agent: AgentIdentity
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const message = `Hi ${lead.business_name}! This is ${agent.name} from HomeReach. Ready to lock in your exclusive ${lead.city || "your area"} spot? Here's your link: https://home-reach.com/get-started Reply STOP to opt out.`;
+    const message = `Hi ${lead.business_name}! This is ${agent.name} from HomeReach. Ready to lock in your exclusive ${lead.city || "your area"} spot? Here's your link: ${getPublicAppBaseUrl()}/get-started Reply STOP to opt out.`;
 
     const payload = {
       agent_id: lead.assigned_agent_id,
@@ -145,7 +147,7 @@ async function sendFollowUp(
     };
 
     const response = await fetch(
-      `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/admin/sales/event`,
+      `${getInternalAppBaseUrl()}/api/admin/sales/event`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,8 +172,11 @@ async function sendFollowUp(
 
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
-export async function POST() {
-  const supabase = await createClient();
+export async function POST(req: Request) {
+  const guard = await requireAdminOrCron(req);
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const details: CloserResult["summary"] = {
     leads_processed: 0,
     follow_ups_sent: 0,
@@ -284,7 +289,7 @@ export async function POST() {
     // alerts for leads active in the last 4h. Guarded by ENABLE_INTERNAL_ALERTS.
     if (process.env.ENABLE_INTERNAL_ALERTS === "true") {
       const { origin } = new URL("http://placeholder");
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = getInternalAppBaseUrl();
       Promise.resolve().then(async () => {
         try {
           const alertPromises: Promise<unknown>[] = [];
@@ -303,7 +308,10 @@ export async function POST() {
             alertPromises.push(
               fetch(`${baseUrl}/api/admin/alerts/send`, {
                 method:  "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-cron-secret": process.env.CRON_SECRET ?? "",
+                },
                 body: JSON.stringify({
                   agent_id:      lead.assigned_agent_id,
                   alert_type:    "payment_follow_up",
@@ -331,7 +339,10 @@ export async function POST() {
             alertPromises.push(
               fetch(`${baseUrl}/api/admin/alerts/send`, {
                 method:  "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-cron-secret": process.env.CRON_SECRET ?? "",
+                },
                 body: JSON.stringify({
                   agent_id:      lead.assigned_agent_id,
                   alert_type:    "hot_lead",
@@ -369,7 +380,10 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.response;
+
+    const supabase = createServiceClient();
 
     // Count warm leads
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
