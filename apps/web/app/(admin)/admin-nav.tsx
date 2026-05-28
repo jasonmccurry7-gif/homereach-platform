@@ -56,6 +56,7 @@ const NAV = [
     label: "Revenue Ops",
     items: [
       { label: "CRM", href: "/admin/crm", icon: BriefcaseBusiness },
+      { label: "Group Intelligence", href: "/admin/group-intelligence", icon: MessagesSquare },
       { label: "Revenue Command", href: "/admin/revenue-operations", icon: MessagesSquare },
       { label: "Email Infrastructure", href: "/admin/email-infrastructure", icon: Mail },
       { label: "Procurement", href: "/admin/procurement", icon: Package },
