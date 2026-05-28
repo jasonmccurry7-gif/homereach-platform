@@ -22,6 +22,7 @@ const NAV_GROUPS = [
     label: "Growth",
     items: [
       { label: "Growth Intelligence", href: "/admin/growth",          emoji: "📈", badge: "NEW" },
+      { label: "Group Intelligence", href: "/admin/group-intelligence", emoji: "GI", badge: "NEW" },
     ],
   },
   {
