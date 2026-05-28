@@ -1,0 +1,4 @@
+interface:
+  display_name: "revenue-integrity"
+  short_description: "HomeReach revenue-integrity workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

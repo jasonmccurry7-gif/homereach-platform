@@ -1,0 +1,4 @@
+interface:
+  display_name: "sam-gov"
+  short_description: "HomeReach sam-gov workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

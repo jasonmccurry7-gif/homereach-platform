@@ -4,5 +4,51 @@
   "buildCommand": "pnpm turbo run build --filter=@homereach/web...",
   "outputDirectory": "apps/web/.next",
   "installCommand": "pnpm install",
-  "devCommand": "pnpm turbo run dev --filter=@homereach/web..."
+  "devCommand": "pnpm turbo run dev --filter=@homereach/web...",
+  "crons": [
+    {
+      "path": "/api/admin/automation/send-due",
+      "schedule": "0 9,12,15 * * *"
+    },
+    {
+      "path": "/api/admin/agents/echo",
+      "schedule": "0 8,11,14 * * 1-5"
+    },
+    {
+      "path": "/api/admin/agents/closer",
+      "schedule": "0 10,16 * * 1-5"
+    },
+    {
+      "path": "/api/admin/agents/anchor",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/admin/system/agents/kaizen",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/admin/system/agents/pulse",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/admin/system/agents/ledger",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/admin/system/agents/prospector",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/admin/political/intelligence/sync",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/admin/sales/power-mode/end-of-day",
+      "schedule": "30 17 * * 1-5"
+    },
+    {
+      "path": "/api/facebook/followup",
+      "schedule": "0 9,13,17 * * *"
+    }
+  ]
 }

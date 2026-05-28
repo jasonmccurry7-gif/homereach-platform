@@ -1,0 +1,4 @@
+interface:
+  display_name: "data-revenue"
+  short_description: "HomeReach data-revenue workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

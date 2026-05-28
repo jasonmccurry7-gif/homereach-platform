@@ -1,0 +1,4 @@
+interface:
+  display_name: "qa-system-health"
+  short_description: "HomeReach qa-system-health workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

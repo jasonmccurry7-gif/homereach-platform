@@ -17,6 +17,13 @@ _codex_checkpoints/
 .hotfix-tree/
 .tools/
 output
+outputs/
+.tmp-chrome-*/
+tmp_*.png
+build-cache-backups/
+ai-workforce/logs/
+ai-workforce/reports/
+ai-workforce/qa/*.png
 
 # Environment files
 .env
@@ -52,6 +59,8 @@ pnpm-debug.log*
 # Testing
 coverage
 .nyc_output
+!apps/web/app/political/routes/coverage/
+!apps/web/app/political/routes/coverage/route.ts
 
 # Misc
 *.tsbuildinfo

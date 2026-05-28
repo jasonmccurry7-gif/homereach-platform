@@ -1,0 +1,4 @@
+interface:
+  display_name: "political-campaign"
+  short_description: "HomeReach political-campaign workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

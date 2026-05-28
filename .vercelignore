@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.next
+apps/web/.next
+node_modules
+**/node_modules
+.turbo
+/coverage
+.tmp-chrome-*
+tmp_*.png
+build-cache-backups
+outputs
+ai-workforce/logs
+ai-workforce/reports
