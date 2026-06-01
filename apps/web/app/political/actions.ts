@@ -11,15 +11,17 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { isPoliticalEnabled } from "@/lib/political/env";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import {
   createOutreachLead,
   OutreachLeadValidationError,
   type CreateOutreachLeadInput,
 } from "@/lib/political/leads";
+import type { PlannerIntent } from "@/lib/political/proposal-handoff";
 import {
-  createProposalHandoffFromPlanner,
-  type PlannerIntent,
-} from "@/lib/political/proposal-handoff";
+  buildPoliticalDistrictSaturationMetadata,
+  summarizePoliticalDistrictSaturation,
+} from "@/lib/political/district-saturation";
 
 function s(formData: FormData, key: string): string | null {
   const v = formData.get(key);
@@ -234,6 +236,22 @@ export async function submitPlanIntent(
   }
 
   const h = await headers();
+  const limited = checkRateLimit(
+    new Request("https://home-reach.com/political/plan", {
+      headers: new Headers(h),
+    }),
+    {
+      key: "political-plan-submit",
+      limit: 5,
+      windowMs: 10 * 60 * 1000,
+    },
+  );
+  if (limited) {
+    redirect(
+      `/political/plan?error=${encodeURIComponent("Too many requests. Please wait a moment and try again.")}`,
+    );
+  }
+
   const utmSource    = s(formData, "utm_source");
   const utmMedium    = s(formData, "utm_medium");
   const utmCampaign  = s(formData, "utm_campaign");
@@ -271,6 +289,33 @@ export async function submitPlanIntent(
   const selectedScenarioSnapshot = parseJsonObject(selectedScenarioSnapshotRaw);
   const scenarioComparisonSnapshot = parseJsonArray(scenarioComparisonSnapshotRaw);
   const routeCoverageSnapshot = parseJsonObject(routeCoverageSnapshotRaw);
+  const politicalDistrictSaturation =
+    buildPoliticalDistrictSaturationMetadata({
+      enabled: true,
+      targetGeographies: s(formData, "targetGeographies"),
+      state: stateCode(firstString(formData, ["state", "strategyState"])),
+      geographyType,
+      geographyValue: firstString(formData, ["geographyValue", "strategyGeographyValue"]),
+      districtType,
+      districtSource: s(formData, "districtSource"),
+      districtSourceConfirmed: formData.get("districtSourceConfirmed") === "on",
+      audienceSource: s(formData, "campaignAudienceSource"),
+      disclaimerStatus: s(formData, "campaignDisclaimerStatus"),
+      complianceAcknowledged: formData.get("politicalComplianceAcknowledged") === "on",
+      noSensitiveTargetingAcknowledged:
+        formData.get("noSensitiveTargetingAcknowledged") === "on",
+      electionDate: s(formData, "electionDate"),
+      dropWindow: s(formData, "dropWindow"),
+      mailQuantityEstimate: firstNumber(formData, ["mailQuantityEstimate"]),
+      desiredDropCount: firstNumber(formData, ["desiredDropCount", "strategyDropCount"]),
+      budgetEstimateCents: budgetCents,
+      notes: userNotes,
+      campaignGoal,
+    });
+  const strategySnapshotWithDistrictSaturation = {
+    ...(strategySnapshot ?? {}),
+    political_district_saturation: politicalDistrictSaturation,
+  };
 
   const strategySummary = compactStrategySummary(strategySnapshotRaw);
   const selectedScenarioSummary = compactSelectedScenarioSummary(selectedScenarioSnapshotRaw);
@@ -285,6 +330,7 @@ export async function submitPlanIntent(
     selectedScenarioSummary,
     scenarioComparisonSummary,
     routeCoverageSummary,
+    summarizePoliticalDistrictSaturation(politicalDistrictSaturation),
   ]
     .filter(Boolean)
     .join("\n\n")
@@ -307,7 +353,7 @@ export async function submitPlanIntent(
     notes,
     consentMarketing:     formData.get("consentMarketing") === "on",
     plannerIntent,
-    strategySnapshot,
+    strategySnapshot: strategySnapshotWithDistrictSaturation,
     selectedScenarioSnapshot,
     scenarioComparisonSnapshot,
     routeCoverageSnapshot,
@@ -323,21 +369,9 @@ export async function submitPlanIntent(
   try {
     const { id } = await createOutreachLead(input);
     if (plannerIntent === "generate_proposal") {
-      let publicToken: string | null = null;
-      try {
-        const handoff = await createProposalHandoffFromPlanner(id, input, {
-          strategySnapshot,
-          selectedScenarioSnapshot,
-          scenarioComparisonSnapshot,
-          routeCoverageSnapshot,
-          selectedRouteIds,
-        });
-        publicToken = handoff.proposal.publicToken;
-      } catch (err) {
-        console.error("[political/submitPlanIntent] proposal handoff failed", err);
-        redirect(`/political/thanks?ref=${encodeURIComponent(id)}&proposal=queued`);
-      }
-      if (publicToken) redirect(`/p/${publicToken}`);
+      // Public planner data is estimation/review material. Do not create a
+      // tokenized proposal or checkout path until an operator verifies sources.
+      redirect(`/political/thanks?ref=${encodeURIComponent(id)}&proposal=queued`);
     }
     redirect(`/political/thanks?ref=${encodeURIComponent(id)}`);
   } catch (err) {

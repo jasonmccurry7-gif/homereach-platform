@@ -5,55 +5,141 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Users & Auth
-export * from "./users";
+export * from "./users.js";
 
 // Geography
-export * from "./cities";
+export * from "./cities.js";
 
 // Catalog
-export * from "./products";
+export * from "./products.js";
 
 // Core entities
-export * from "./businesses";
+export * from "./businesses.js";
 
 // Transactions
-export * from "./orders";
+export * from "./orders.js";
 
 // Outreach engine
-export * from "./outreach";
+export * from "./outreach.js";
 
 // Waitlist, nonprofit, sponsorship
-export * from "./misc";
+export * from "./misc.js";
 
 // Marketing campaigns + metrics (Phase 3)
-export * from "./marketing";
+export {
+  campaignMetrics,
+  campaignMetricsRelations,
+  marketingCampaigns,
+  marketingCampaignsRelations,
+  campaignStatusEnum as marketingCampaignStatusEnum,
+} from "./marketing.js";
 
-// Pricing engine — profiles + discount rules (Task 20)
-export * from "./pricing";
+// Pricing engine
+export {
+  billingIntervalEnum,
+  discountRuleTypeEnum,
+  discountRules,
+  pricingProductTypeEnum,
+  pricingProfiles,
+  pricingProfilesRelations,
+  spotTypeEnum as pricingSpotTypeEnum,
+} from "./pricing.js";
+export type {
+  DiscountRule,
+  NewDiscountRule,
+  NewPricingProfile,
+  PricingProfile,
+} from "./pricing.js";
 
-// Lead capture — Facebook + external leads
-export * from "./leads";
+// Spot inventory
+export {
+  spotAssignmentStatusEnum,
+  spotAssignments,
+  spotAssignmentsRelations,
+  spotTypeEnum,
+} from "./spots.js";
 
-// Targeted Route Campaign product
-export * from "./targeted";
+// Intake forms
+export * from "./intake.js";
 
-// Shared Postcard spot inventory (Migration 15)
-export * from "./spots";
+// Targeted route leads + campaigns
+export * from "./leads.js";
 
-// Post-payment intake onboarding (Migration 16)
-export * from "./intake";
+// Targeted route campaigns
+export * from "./targeted.js";
 
-// Persistent conversation log (Migration 17)
-export * from "./conversations";
+// Political campaign map planning
+export * from "./political.js";
+export * from "./politicalMap.js";
+export * from "./politicalIntelligence.js";
+export * from "./politicalLaunchAgent.js";
 
-// Growth intelligence — daily activity tracking (Migration 19)
-export * from "./growth";
+// Conversation log
+export * from "./conversations.js";
 
-// Sales execution system — outbound leads + event tracking (Migration 20)
-export * from "./sales";
+// Sales execution
+export * from "./sales.js";
 
-// Sales Intelligence Q&A — Migrations 048-050 (feature-flagged: ENABLE_QA_SYSTEM)
-export * from "./qa";
+// Executive Revenue Operating System
+export * from "./revenueOs.js";
 
-// Stripe webhook idempotency — Migration 075 (intake/checkout hotfix)
-export * from "./webhooks";
+// Growth tracking
+export * from "./growth.js";
+
+// Food Service Growth OS
+export * from "./fsgos.js";
+
+// AI Operations Copilot
+export * from "./opcopilot.js";
+
+// AI conversational intake
+export * from "./aiIntake.js";
+
+// AI Assets Command Center
+export * from "./aiAssets.js";
+
+// AI Workforce Operating System
+export * from "./aiWorkforce.js";
+
+// Agent Execution Readiness
+export * from "./agentExecution.js";
+
+// Agent-Native Mini Apps
+export * from "./agentMiniApps.js";
+
+// Canonical approval spine
+export * from "./approvalLedger.js";
+
+// AI Creative Production Studio
+export * from "./creativeStudio.js";
+
+// Neighborhood Digital Targeting
+export * from "./digitalTargeting.js";
+
+// Market Capture Sales Engine
+export * from "./marketCapture.js";
+
+// AI COO Recommendation Engine
+export * from "./aiCoo.js";
+
+// Business Memory
+export * from "./businessMemory.js";
+
+// Cost Control Engine
+export * from "./costControl.js";
+
+// Reputation Engine
+export * from "./reputation.js";
+
+// Website Management
+export * from "./websiteManagement.js";
+
+// Growth Intelligence Engine
+export * from "./growthIntelligence.js";
+
+// Ad-Tech Integration Layer
+export * from "./adTech.js";
+
+// Provider observability
+export * from "./twilioObservability.js";
+export * from "./emailObservability.js";

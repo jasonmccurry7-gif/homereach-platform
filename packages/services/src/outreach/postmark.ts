@@ -15,6 +15,8 @@
 // now this file is standalone and importable directly when ready.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { getOwnerIdentity } from "./identity";
+
 export interface PostmarkSendOptions {
   to: string;
   subject: string;
@@ -29,6 +31,8 @@ export interface PostmarkSendOptions {
   tags?: string[];
   /** Optional metadata — round-tripped via Postmark webhook payloads. */
   metadata?: Record<string, string>;
+  /** Optional inline or regular attachments. Content must be base64 encoded. */
+  attachments?: PostmarkAttachment[];
 }
 
 export interface PostmarkSendResult {
@@ -38,19 +42,50 @@ export interface PostmarkSendResult {
   error?: string;
 }
 
+export interface PostmarkAttachment {
+  name: string;
+  content: string;
+  contentType: string;
+  contentId?: string;
+}
+
 const POSTMARK_API_URL = "https://api.postmarkapp.com/email";
+
+function resolvePublicAppUrl() {
+  const candidates = [
+    process.env.OUTBOUND_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const parsed = new URL(candidate);
+      const hostname = parsed.hostname.toLowerCase();
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") continue;
+      return parsed.origin.replace(/\/+$/, "");
+    } catch {
+      continue;
+    }
+  }
+
+  return "https://www.home-reach.com";
+}
+
+const HOMEREACH_APP_URL = resolvePublicAppUrl();
 
 function getPostmarkConfig() {
   const token = process.env.POSTMARK_API_TOKEN;
-  const fromEmail = process.env.POSTMARK_FROM_EMAIL;
+  const owner = getOwnerIdentity();
+  const fromEmail = process.env.POSTMARK_FROM_EMAIL ?? owner.defaultFromEmail ?? owner.domainEmail;
   const fromName = process.env.POSTMARK_FROM_NAME ?? "HomeReach";
   const messageStream = process.env.POSTMARK_MESSAGE_STREAM ?? "outbound";
 
   if (!token) {
     throw new Error("POSTMARK_API_TOKEN is required");
-  }
-  if (!fromEmail) {
-    throw new Error("POSTMARK_FROM_EMAIL is required");
   }
   return { token, fromEmail, fromName, messageStream };
 }
@@ -84,11 +119,22 @@ export async function sendEmailViaPostmark(
       MessageStream: options.messageStream ?? cfg.messageStream,
       TrackOpens: true,
       TrackLinks: "HtmlAndText",
+      Headers: buildListUnsubscribeHeaders(options.to),
     };
     if (options.text) body.TextBody = options.text;
     if (options.replyTo) body.ReplyTo = options.replyTo;
     if (options.tags && options.tags.length > 0) body.Tag = options.tags[0];
     if (options.metadata) body.Metadata = options.metadata;
+    if (options.attachments?.length) {
+      body.Attachments = options.attachments.map((attachment) => ({
+        Name: attachment.name,
+        Content: attachment.content,
+        ContentType: attachment.contentType,
+        ...(attachment.contentId
+          ? { ContentID: attachment.contentId.startsWith("cid:") ? attachment.contentId : `cid:${attachment.contentId}` }
+          : {}),
+      }));
+    }
 
     const response = await fetch(POSTMARK_API_URL, {
       method: "POST",
@@ -120,6 +166,23 @@ export async function sendEmailViaPostmark(
     console.error("[outreach/postmark] send failed:", error);
     return { success: false, error };
   }
+}
+
+function buildListUnsubscribeHeaders(recipient: string) {
+  const email = encodeURIComponent(recipient.trim().toLowerCase());
+  const owner = getOwnerIdentity();
+  const unsubscribeReplyTo = encodeURIComponent(owner.defaultReplyToEmail || owner.domainEmail);
+  const unsubscribeUrl = `${HOMEREACH_APP_URL}/unsubscribe?email=${email}`;
+  return [
+    {
+      Name: "List-Unsubscribe",
+      Value: `<${unsubscribeUrl}>, <mailto:${unsubscribeReplyTo}?subject=unsubscribe>`,
+    },
+    {
+      Name: "List-Unsubscribe-Post",
+      Value: "List-Unsubscribe=One-Click",
+    },
+  ];
 }
 
 /**

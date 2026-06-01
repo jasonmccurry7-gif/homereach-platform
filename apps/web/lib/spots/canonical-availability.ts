@@ -24,12 +24,14 @@
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkDenyList, normalizeName } from "./deny-list";
+import { SHARED_POSTCARD_TOTAL_SPOTS } from "./shared-postcard";
 
 export type AvailabilitySource =
   | "deny_list"
   | "spot_assignments"
   | "orders"
   | "legacy_migration"
+  | "city_capacity"
   | "query_error"
   | "ok";
 
@@ -44,6 +46,86 @@ export type AvailabilityResult = {
 };
 
 type SupaLike = ReturnType<typeof createServiceClient>;
+
+async function countOccupiedCityCategories(args: {
+  supa: SupaLike;
+  cityId: string;
+  cityName: string;
+}) {
+  const { supa, cityId, cityName } = args;
+  const occupied = new Set<string>();
+
+  const { data: assignmentRows, error: assignmentError } = await supa
+    .from("spot_assignments")
+    .select("category_id, spot_type")
+    .eq("city_id", cityId)
+    .in("status", ["pending", "active"]);
+  if (assignmentError) throw assignmentError;
+
+  for (const row of assignmentRows ?? []) {
+    if ((row as any).spot_type === "full_card") {
+      return SHARED_POSTCARD_TOTAL_SPOTS;
+    }
+
+    const categoryId = (row as any).category_id;
+    if (categoryId) occupied.add(`category:${categoryId}`);
+  }
+
+  const { data: bizRows, error: bizError } = await supa
+    .from("businesses")
+    .select("id, category_id")
+    .eq("city_id", cityId);
+  if (bizError) throw bizError;
+
+  const businessToCategory = new Map<string, string>();
+  for (const row of bizRows ?? []) {
+    const id = (row as any).id;
+    const categoryId = (row as any).category_id;
+    if (id && categoryId) businessToCategory.set(id, categoryId);
+  }
+
+  if (businessToCategory.size > 0) {
+    const { data: orderRows, error: orderError } = await supa
+      .from("orders")
+      .select("business_id")
+      .in("business_id", [...businessToCategory.keys()])
+      .in("status", ["pending", "paid", "active"]);
+    if (orderError) throw orderError;
+
+    for (const row of orderRows ?? []) {
+      const categoryId = businessToCategory.get((row as any).business_id);
+      if (categoryId) occupied.add(`category:${categoryId}`);
+    }
+  }
+
+  const { data: legacyRows, error: legacyError } = await supa
+    .from("businesses")
+    .select("id, notes")
+    .like("notes", "%[migration_meta]%")
+    .limit(500);
+  if (legacyError) throw legacyError;
+
+  const cityKey = normalizeName(cityName);
+  for (const row of legacyRows ?? []) {
+    const raw = (row as any).notes as string | null;
+    if (!raw) continue;
+    const idx = raw.indexOf("[migration_meta]");
+    if (idx < 0) continue;
+    let meta: any = null;
+    try {
+      meta = JSON.parse(raw.slice(idx + "[migration_meta]".length).trim());
+    } catch {
+      continue;
+    }
+
+    if (String(meta?.migrationStatus ?? "") !== "legacy_active") continue;
+    if (normalizeName(meta?.city) !== cityKey) continue;
+    const categoryKey = normalizeName(meta?.category);
+    if (categoryKey) occupied.add(`legacy:${categoryKey}`);
+  }
+
+  return occupied.size;
+}
 
 /**
  * Canonical availability check. Fail-closed on any error.
@@ -109,6 +191,24 @@ export async function checkCanonicalAvailability(args: {
 
   // ── 2) spot_assignments (canonical new-system state)
   try {
+    const { data: fullCardRows, error: fullCardError } = await supa
+      .from("spot_assignments")
+      .select("id, status")
+      .eq("city_id", cityId)
+      .eq("spot_type", "full_card")
+      .in("status", ["pending", "active"])
+      .limit(1);
+    if (fullCardError) throw fullCardError;
+    if (fullCardRows && fullCardRows.length > 0) {
+      return {
+        available: false,
+        source: "spot_assignments",
+        detail: `full-card spot_assignment ${(fullCardRows[0] as any).id} is ${(fullCardRows[0] as any).status}`,
+        message:
+          "This city postcard is currently locked by a full-card reservation. Join the waitlist to be notified when it opens.",
+      };
+    }
+
     const { data, error } = await supa
       .from("spot_assignments")
       .select("id, status")
@@ -149,29 +249,17 @@ export async function checkCanonicalAvailability(args: {
     if (bizErr) throw bizErr;
     const bizIds = (bizRows ?? []).map((b: any) => b.id);
     if (bizIds.length > 0) {
-      // Hotfix (Migration 075): pending orders past expires_at no longer block.
-      // Fetch candidates then filter expired pendings in JS — Supabase JS .or()
-      // with nested AND/OR is fragile; this is clearer and easier to audit.
-      const { data: orderRows, error: orderErr } = await supa
+      const { count, error: orderErr } = await supa
         .from("orders")
-        .select("id, status, expires_at")
+        .select("id", { count: "exact", head: true })
         .in("business_id", bizIds)
         .in("status", ["pending", "paid", "active"]);
       if (orderErr) throw orderErr;
-
-      const now = Date.now();
-      const blocking = (orderRows ?? []).filter((o: any) => {
-        if (o.status === "paid" || o.status === "active") return true;
-        // status === "pending" — only blocks if not yet expired
-        if (o.expires_at == null) return true; // legacy pre-migration row, fail-closed
-        return new Date(o.expires_at).getTime() > now;
-      });
-
-      if (blocking.length > 0) {
+      if ((count ?? 0) > 0) {
         return {
           available: false,
           source: "orders",
-          detail: `${blocking.length} non-expired pending/paid/active orders exist`,
+          detail: `${count} pending/paid/active orders already exist`,
           message:
             "This spot is currently in checkout by another buyer. Please try again in a few minutes.",
         };
@@ -237,6 +325,36 @@ export async function checkCanonicalAvailability(args: {
       detail: "legacy migration metadata query failed",
       message:
         "We could not confirm availability right now. Please try again in a moment.",
+      errorDetail: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  // ── 5) City-level shared postcard capacity
+  //      A city postcard has exactly 12 ad cells. Even if this category is
+  //      open, no checkout can proceed once the city layout is full.
+  try {
+    const occupiedCount = await countOccupiedCityCategories({
+      supa,
+      cityId,
+      cityName,
+    });
+
+    if (occupiedCount >= SHARED_POSTCARD_TOTAL_SPOTS) {
+      return {
+        available: false,
+        source: "city_capacity",
+        detail: `${occupiedCount} of ${SHARED_POSTCARD_TOTAL_SPOTS} city spots are occupied`,
+        message:
+          "This city postcard is currently full. Join the waitlist to be notified when a spot opens.",
+      };
+    }
+  } catch (err) {
+    return {
+      available: false,
+      source: "query_error",
+      detail: "city capacity query failed",
+      message:
+        "We could not confirm city availability right now. Please try again in a moment.",
       errorDetail: err instanceof Error ? err.message : String(err),
     };
   }

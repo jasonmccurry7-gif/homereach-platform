@@ -6,8 +6,6 @@ import type {
 } from "./types";
 
 const HIGH_FIT_NAICS = new Set([
-  "238160",
-  "238220",
   "323111",
   "323117",
   "323120",
@@ -24,8 +22,6 @@ const HIGH_FIT_NAICS = new Set([
   "561990",
 ]);
 
-const HOME_SERVICE_NAICS = new Set(["238160", "238220", "561730"]);
-
 const OPERATIONAL_KEYWORDS = [
   "direct mail",
   "printing",
@@ -41,38 +37,7 @@ const OPERATIONAL_KEYWORDS = [
   "facilities",
   "grounds",
   "maintenance",
-  "hvac",
-  "heating",
-  "ventilation",
-  "air conditioning",
-  "mechanical",
-  "boiler",
-  "chiller",
-  "landscaping",
-  "mowing",
-  "turf",
-  "tree",
-  "snow removal",
-  "roofing",
-  "roof repair",
-  "roof replacement",
-  "gutter",
   "distribution",
-];
-
-const HOME_SERVICE_KEYWORDS = [
-  "hvac",
-  "heating",
-  "ventilation",
-  "air conditioning",
-  "landscaping",
-  "grounds maintenance",
-  "mowing",
-  "snow removal",
-  "roofing",
-  "roof repair",
-  "roof replacement",
-  "gutter",
 ];
 
 const SUBCONTRACTABLE_KEYWORDS = [
@@ -126,8 +91,10 @@ export function recommendedActionFor(opportunity: Pick<GovContractOpportunity, "
     return "Review scope and open the Bid Room for a go/no-go decision.";
   }
   if (opportunity.fitScore >= 58 && opportunity.missingItems.length > 0) {
-    const firstMissingItem = opportunity.missingItems[0] ?? "missing procurement data";
-    return `Clarify ${firstMissingItem.toLowerCase()} before committing pursuit resources.`;
+    const firstMissingItem = opportunity.missingItems[0];
+    if (firstMissingItem) {
+      return `Clarify ${firstMissingItem.toLowerCase()} before committing pursuit resources.`;
+    }
   }
   if (opportunity.urgency === "critical") {
     return "Check deadline feasibility before any pursuit decision.";
@@ -173,12 +140,6 @@ export function scoreGovContractOpportunity(input: {
     .toLowerCase();
 
   const naicsFit = input.naicsCode && HIGH_FIT_NAICS.has(input.naicsCode) ? 28 : 0;
-  const homeServiceFit =
-    input.naicsCode && HOME_SERVICE_NAICS.has(input.naicsCode)
-      ? 10
-      : includesAny(text, HOME_SERVICE_KEYWORDS)
-        ? 7
-        : 0;
   const keywordFit = includesAny(text, OPERATIONAL_KEYWORDS) ? 24 : 8;
   const subcontractability = includesAny(text, SUBCONTRACTABLE_KEYWORDS) ? 72 : 44;
   const value = input.estimatedValueCents ?? 0;
@@ -195,7 +156,6 @@ export function scoreGovContractOpportunity(input: {
   // weight; compliance/past performance lower the score when pursuit risk is high.
   const fitScore = clampScore(
     naicsFit +
-      homeServiceFit +
       keywordFit +
       subcontractability * 0.12 +
       revenuePotential * 0.12 +
@@ -215,11 +175,7 @@ export function scoreGovContractOpportunity(input: {
 
   const fitStatus = fitStatusForScore(fitScore);
   const reasons = [
-    homeServiceFit > 0
-      ? "scope matches home-services contractor opportunities"
-      : naicsFit > 0
-        ? "NAICS matches HomeReach-adjacent operations"
-        : "NAICS needs review",
+    naicsFit > 0 ? "NAICS matches HomeReach-adjacent operations" : "NAICS needs review",
     keywordFit >= 24 ? "scope language matches mail/logistics/facilities capabilities" : "scope match is limited",
     deadlineFeasibility >= 66 ? "deadline appears workable" : "deadline is tight",
     complianceComplexity >= 60 ? "compliance complexity appears manageable" : "compliance requirements may be heavy",

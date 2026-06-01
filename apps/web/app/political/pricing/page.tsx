@@ -3,7 +3,7 @@ import { InstantQuote } from "../_components/InstantQuote";
 import { CommandPanel, MetricBand, PublicHero } from "../_components/PublicCommand";
 
 export const metadata: Metadata = {
-  title: "Campaign Mail Pricing - HomeReach Political",
+  title: "PoliticalReach Campaign Mail Pricing - HomeReach",
   description: "Compare coverage, precision, and hybrid campaign mail strategies with live pricing logic.",
 };
 
@@ -13,9 +13,9 @@ export default function PoliticalPricingPage() {
       <PublicHero
         eyebrow="Pricing Strategy"
         title="Compare Campaign Mail Investment Before You Commit"
-        subtitle="See budget-to-coverage tradeoffs, multi-drop cost scaling, payment options, and proposal-ready pricing without waiting on a manual quote."
+        subtitle="See budget-to-coverage tradeoffs, multi-drop cost scaling, payment options, and review-ready planning estimates before final route verification."
         primaryHref="/political/plan"
-        primaryLabel="Generate Proposal"
+        primaryLabel="Request Proposal Review"
         secondaryHref="/political/simulator"
         secondaryLabel="Run Simulator"
       />

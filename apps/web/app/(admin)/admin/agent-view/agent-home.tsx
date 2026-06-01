@@ -31,6 +31,7 @@ const OBJECTIONS: Record<string, string[]> = {
     "No pressure. I'll check back in 60 days — is there a better season for you?",
   ],
 };
+const DEFAULT_OBJECTION_RESPONSES = OBJECTIONS["Not Interested"]!;
 
 const PIPELINE_STAGES = ["Queued","Contacted","Replied","Interested","Pricing","Closed"];
 const STAGE_IDX: Record<string, number> = { queued:0, contacted:1, replied:2, interested:3, payment_sent:4, closed:5 };
@@ -263,7 +264,7 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
         <div className="fixed inset-0 z-40 bg-black/80 flex items-end sm:items-center justify-center p-4" onClick={()=>setObjection(null)}>
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
             <p className="text-xs font-bold text-gray-400 uppercase mb-3">Handle: "{objection}"</p>
-            {(OBJECTIONS[objection]??OBJECTIONS["Not Interested"]).map((r,i)=>(
+            {(OBJECTIONS[objection] ?? DEFAULT_OBJECTION_RESPONSES).map((r,i)=>(
               <div key={i} className="mb-3 bg-gray-800 rounded-xl p-3">
                 <p className="text-sm text-gray-200 leading-relaxed">{r}</p>
                 <button onClick={()=>{navigator.clipboard.writeText(r);toast("Copied!");}} className="mt-2 text-xs text-blue-400">Copy</button>
@@ -378,7 +379,7 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
                       </div>
                     );
                   })}
-                  <span className="ml-2 text-[10px] text-gray-500">{PIPELINE_STAGES[STAGE_IDX[item.pipeline_stage]??0]}</span>
+                  <span className="ml-2 text-[10px] text-gray-500">{PIPELINE_STAGES[STAGE_IDX[item.pipeline_stage] ?? 0] ?? PIPELINE_STAGES[0]}</span>
                 </div>
 
                 {/* Script */}
@@ -386,7 +387,7 @@ export default function AgentHome({ agentId, agentName }: { agentId:string; agen
                   <div className="bg-gray-800 rounded-xl p-3">
                     {(scripts[item.id]??[]).length>1&&(
                       <div className="flex gap-1 mb-2">
-                        {(scripts[item.id]).map((_,i)=>(
+                        {(scripts[item.id] ?? []).map((_,i)=>(
                           <button key={i} onClick={()=>setScriptIdx(prev=>({...prev,[item.id]:i}))}
                             className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${(scriptIdx[item.id]??0)===i?"bg-blue-600 text-white":"bg-gray-700 text-gray-400"}`}>
                             Script {i+1}

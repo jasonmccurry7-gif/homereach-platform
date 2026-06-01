@@ -8,18 +8,18 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { businesses } from "./businesses";
-import { cities } from "./cities";
-import { categories } from "./cities";
-import { bundles } from "./products";
-import { orders } from "./orders";
-import { profiles } from "./users";
+import { businesses } from "./businesses.js";
+import { cities } from "./cities.js";
+import { categories } from "./cities.js";
+import { bundles } from "./products.js";
+import { orders } from "./orders.js";
+import { profiles } from "./users.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const marketingCampaignStatusEnum = pgEnum("marketing_campaign_status", [
+export const campaignStatusEnum = pgEnum("marketing_campaign_status", [
   "upcoming",    // paid, not yet live
   "active",      // currently mailing
   "completed",   // campaign period ended
@@ -46,7 +46,7 @@ export const marketingCampaigns = pgTable("marketing_campaigns", {
   categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
   bundleId: uuid("bundle_id").references(() => bundles.id, { onDelete: "set null" }),
 
-  status: marketingCampaignStatusEnum("status").notNull().default("upcoming"),
+  status: campaignStatusEnum("status").notNull().default("upcoming"),
 
   // Campaign period
   startDate: timestamp("start_date", { withTimezone: true }),

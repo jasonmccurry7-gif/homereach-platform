@@ -4,7 +4,7 @@ import { desc } from "drizzle-orm";
 import { TargetedCampaignsClient } from "./targeted-campaigns-client";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Targeted Campaigns — HomeReach Admin" };
+export const metadata: Metadata = { title: "Targeted Campaigns - HomeReach Admin" };
 
 export default async function TargetedCampaignsPage() {
   const [allLeads, allCampaigns] = await Promise.all([
@@ -14,42 +14,42 @@ export default async function TargetedCampaignsPage() {
 
   return (
     <TargetedCampaignsClient
-      leads={allLeads.map((l) => ({
-        id:                l.id,
-        name:              l.name,
-        businessName:      l.businessName,
-        phone:             l.phone,
-        email:             l.email,
-        source:            l.source,
-        status:            l.status,
-        city:              l.city,
-        notes:             l.notes,
-        intakeToken:       l.intakeToken,
-        intakeSentAt:      l.intakeSentAt?.toISOString() ?? null,
-        intakeSubmittedAt: l.intakeSubmittedAt?.toISOString() ?? null,
-        paidAt:            l.paidAt?.toISOString() ?? null,
-        mailedAt:          l.mailedAt?.toISOString() ?? null,
-        reviewRequested:   l.reviewRequested,
-        createdAt:         l.createdAt.toISOString(),
+      leads={allLeads.map((lead) => ({
+        id: lead.id,
+        name: lead.name,
+        businessName: lead.businessName,
+        phone: lead.phone,
+        email: lead.email,
+        source: lead.source,
+        status: lead.status,
+        city: lead.city,
+        notes: lead.notes,
+        intakeToken: lead.intakeToken,
+        intakeSentAt: lead.intakeSentAt?.toISOString() ?? null,
+        intakeSubmittedAt: lead.intakeSubmittedAt?.toISOString() ?? null,
+        paidAt: lead.paidAt?.toISOString() ?? null,
+        mailedAt: lead.mailedAt?.toISOString() ?? null,
+        reviewRequested: lead.reviewRequested,
+        createdAt: lead.createdAt.toISOString(),
       }))}
-      campaigns={allCampaigns.map((c) => ({
-        id:               c.id,
-        leadId:           c.leadId,
-        businessName:     c.businessName,
-        contactName:      c.contactName,
-        email:            c.email,
-        phone:            c.phone,
-        businessAddress:  c.businessAddress,
-        targetCity:       c.targetCity,
-        targetAreaNotes:  c.targetAreaNotes,
-        homesCount:       c.homesCount,
-        priceCents:       c.priceCents,
-        status:           c.status,
-        designStatus:     c.designStatus,
-        mailingStatus:    c.mailingStatus,
-        reviewRequested:  c.reviewRequested,
-        notes:            c.notes,
-        createdAt:        c.createdAt.toISOString(),
+      campaigns={allCampaigns.map((campaign) => ({
+        id: campaign.id,
+        leadId: campaign.leadId,
+        businessName: campaign.businessName,
+        contactName: campaign.contactName,
+        email: campaign.email,
+        phone: campaign.phone,
+        businessAddress: campaign.businessAddress,
+        targetCity: campaign.targetCity,
+        targetAreaNotes: campaign.targetAreaNotes,
+        homesCount: campaign.homesCount,
+        priceCents: campaign.priceCents,
+        status: campaign.status,
+        designStatus: campaign.designStatus,
+        mailingStatus: campaign.mailingStatus,
+        reviewRequested: campaign.reviewRequested,
+        notes: campaign.notes,
+        createdAt: campaign.createdAt.toISOString(),
       }))}
     />
   );

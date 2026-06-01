@@ -1,481 +1,385 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
+  ArrowRight,
   BadgeDollarSign,
   BarChart3,
-  Building2,
-  CreditCard,
-  Database,
-  DoorOpen,
-  Flag,
+  CheckCircle2,
+  CircleDollarSign,
+  ClipboardList,
   Landmark,
-  Layers,
   Mail,
-  Map,
   MapPinned,
-  PackageCheck,
-  PackageSearch,
+  Megaphone,
+  Navigation,
   Radar,
   Route,
   ShieldCheck,
+  Store,
   Target,
-  Truck,
+  Trees,
 } from "lucide-react";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { CtaButton } from "@/components/marketing/cta-button";
-import { ProductCard } from "@/components/marketing/product-card";
-import { OfferingSection } from "@/components/marketing/offering-section";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { TargetedTerritoryCommandVisual } from "@/components/marketing/homepage-visuals";
 import {
-  CampaignOpsVisual,
-  HeroPlatformVisual,
-  IntelligenceVisual,
-  PrintProductVisual,
-  PurchasingVisual,
-  RouteMapPanel,
-} from "@/components/marketing/homepage-visuals";
-import {
-  accountStartHref,
   PRODUCT_OVERVIEW_PATHS,
   PRODUCT_START_PATHS,
 } from "@/lib/marketing/product-routes";
+import {
+  MARKET_CAPTURE_MANAGEMENT_FEE_CENTS,
+  MARKET_CAPTURE_MIN_COMMITMENT_MONTHS,
+  MARKET_CAPTURE_PRICING_TIERS,
+  MARKET_CAPTURE_RECOMMENDED_AD_SPEND_CENTS,
+  formatUsd,
+} from "@/lib/market-capture/config";
+import { buildServiceCatalogLd, buildWebPageLd, type JsonLd as JsonLdShape } from "@/lib/seo/schema";
 
 export const metadata: Metadata = {
-  title:
-    "HomeReach | Geographic Intelligence & Operational Execution Platform",
+  title: "HomeReach | Market Capture for Local Businesses",
   description:
-    "HomeReach unifies shared postcards, targeted direct mail, political mail, property intelligence, yard signs, door hangers, business cards, and inventory purchasing intelligence for local visibility.",
+    "HomeReach helps local businesses own the neighborhoods around their best customers with Market Capture, digital targeting, and optional direct mail.",
   keywords: [
-    "shared postcards",
-    "targeted direct mail",
-    "political mail",
-    "campaign postcards",
-    "yard signs",
-    "door hangers",
-    "business cards",
-    "property intelligence",
-    "inventory purchasing dashboard",
-    "supplier savings",
-    "local advertising",
+    "market capture",
+    "neighborhood digital targeting",
+    "jobsite halo campaign",
+    "competitor area campaign",
+    "direct mail and digital ads",
+    "local business marketing",
+    "neighborhood saturation",
   ],
   alternates: { canonical: "/" },
   openGraph: {
-    title:
-      "HomeReach | Geographic Intelligence & Operational Execution Platform",
+    title: "HomeReach | Market Capture for Local Businesses",
     description:
-      "A premium operational platform for shared postcards, targeted campaigns, political mail, property intelligence, purchasing savings, and supporting print products.",
+      "Own the neighborhoods around your best customers with digital targeting and optional direct mail.",
   },
 };
+export const dynamic = "force-dynamic";
 
-const products = [
+const primaryHref = PRODUCT_START_PATHS.marketCapture;
+
+const howItWorks = [
   {
-    title: "Co-op Shared Postcards",
-    body: "Affordable visibility through shared premium postcards mailed to local homeowners.",
-    cta: "Reserve My Spot",
-    href: PRODUCT_OVERVIEW_PATHS.sharedPostcards,
-    icon: Mail,
-    accent: "blue" as const,
-    meta: "Shared",
-  },
-  {
-    title: "Targeted Campaigns",
-    body: "Route-level campaigns built around ZIPs, neighborhoods, income zones, and custom delivery areas.",
-    cta: "Build Targeted Campaign",
-    href: PRODUCT_OVERVIEW_PATHS.targetedCampaigns,
+    title: "Choose your target area",
+    body: "Jobsites, neighborhoods, competitors, events, service areas, districts, ZIPs, or custom local pockets.",
     icon: MapPinned,
-    accent: "blue" as const,
-    meta: "Routes",
   },
   {
-    title: "Political Postcard Campaigns",
-    body: "Plan, price, approve, and execute campaign mail from a political command center.",
-    cta: "Launch Campaign Plan",
-    href: PRODUCT_OVERVIEW_PATHS.politicalCampaigns,
-    icon: Landmark,
-    accent: "red" as const,
-    meta: "Campaigns",
+    title: "Choose your budget",
+    body: `Starter management is ${formatUsd(MARKET_CAPTURE_MANAGEMENT_FEE_CENTS)}/month. Ad spend stays client-funded and separate.`,
+    icon: CircleDollarSign,
   },
   {
-    title: "Inventory & Purchasing Dashboard",
-    body: "Track recurring supplies, compare supplier pricing, and uncover savings opportunities.",
-    cta: "Find My Savings",
-    href: PRODUCT_OVERVIEW_PATHS.inventoryIntelligence,
-    icon: PackageSearch,
-    accent: "green" as const,
-    meta: "Savings",
+    title: "Upload business details",
+    body: "Send logo, photos, offer, website, and local notes so HomeReach can prepare the campaign plan.",
+    icon: ClipboardList,
   },
   {
-    title: "Property Intelligence",
-    body: "Use property, neighborhood, and geographic data to target better campaigns.",
-    cta: "Explore Property Intelligence",
-    href: PRODUCT_OVERVIEW_PATHS.propertyIntelligence,
-    icon: Database,
-    accent: "slate" as const,
-    meta: "Data",
-  },
-  {
-    title: "Yard Signs",
-    body: "Campaign and local business visibility products connected to the HomeReach ecosystem.",
-    cta: "Order Yard Signs",
-    href: accountStartHref(PRODUCT_START_PATHS.yardSigns),
-    icon: Flag,
-    accent: "amber" as const,
-    meta: "Print",
-  },
-  {
-    title: "Door Hangers",
-    body: "Local saturation marketing for neighborhoods, routes, and service areas.",
-    cta: "Build Door Hanger Campaign",
-    href: accountStartHref(PRODUCT_START_PATHS.doorHangers),
-    icon: DoorOpen,
-    accent: "red" as const,
-    meta: "Local",
-  },
-  {
-    title: "Business Cards",
-    body: "Premium business cards and branded materials for local visibility.",
-    cta: "Create Business Cards",
-    href: accountStartHref(PRODUCT_START_PATHS.businessCards),
-    icon: CreditCard,
-    accent: "slate" as const,
-    meta: "Brand",
+    title: "Approve the launch plan",
+    body: "HomeReach creates the plan, payment path, tasks, drafts, and approval-gated fulfillment handoff.",
+    icon: ShieldCheck,
   },
 ];
 
-const whyItems = [
+const targetingOptions = [
+  { title: "Jobsite Halo Campaign", body: "Turn every completed job into a neighborhood visibility opportunity.", icon: Route },
+  { title: "Competitor Area Campaign", body: "Build local awareness near competitor areas where platform policies allow.", icon: Store },
+  { title: "Neighborhood Saturation", body: "Stay visible in subdivisions, ZIPs, streets, and high-value local pockets.", icon: Trees },
+  { title: "Service Area Targeting", body: "Support city, ZIP, radius, and route-level demand across your core market.", icon: Navigation },
+  { title: "Event Area Targeting", body: "Prepare campaigns around local events, seasonal moments, fundraisers, and rallies.", icon: Megaphone },
+  { title: "Political District Saturation", body: "Use geography-based awareness with clear compliance guardrails.", icon: Landmark },
+];
+
+const proofPoints = [
+  "No confusing ad-tech jargon",
+  "Manual-first launch control",
+  "Client-funded ad spend",
+  "Optional postcards to the same neighborhoods",
+  "Monthly reporting where data is available",
+  "No guaranteed-result claims",
+];
+
+const ecosystemModules = [
   {
-    title: "Route-Level Precision",
-    body: "Campaigns can be planned around carrier routes, ZIP codes, neighborhoods, custom territories, and known local visibility zones.",
-    icon: Route,
+    title: "Direct mail saturation",
+    body: "Pair digital visibility with postcards reaching the same neighborhoods.",
+    href: PRODUCT_OVERVIEW_PATHS.targetedCampaigns,
+    icon: Mail,
   },
   {
-    title: "Operational Execution",
-    body: "HomeReach connects planning, pricing, approvals, print, mail logistics, and fulfillment in one operating workflow.",
-    icon: Truck,
+    title: "AI Growth OS",
+    body: "Use HomeReach to surface opportunities, tasks, campaigns, and owner-ready next actions.",
+    href: PRODUCT_OVERVIEW_PATHS.aiGrowthOs,
+    icon: Radar,
   },
   {
-    title: "Campaign-Grade Systems",
-    body: "Political teams and businesses can move from strategy to approved mail plans without losing control of timing or costs.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Purchasing Intelligence",
-    body: "Recurring supplies, print runs, and supplier pricing become visible enough to catch savings opportunities before spend repeats.",
-    icon: BadgeDollarSign,
-  },
-  {
-    title: "Property Intelligence",
-    body: "Property, household, and neighborhood signals help teams focus spend on better-fit delivery areas and audiences.",
-    icon: Building2,
-  },
-  {
-    title: "USPS and Mail Expertise",
-    body: "The platform reflects real production, postage, scheduling, and delivery constraints instead of treating mail like a generic ad unit.",
-    icon: PackageCheck,
+    title: "Cost control",
+    body: "After growth is moving, use HomeReach to find supplier and spending opportunities.",
+    href: PRODUCT_OVERVIEW_PATHS.inventoryIntelligence,
+    icon: BarChart3,
   },
 ];
 
 export default function HomePage() {
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+  const schemas: JsonLdShape[] = [
+    buildWebPageLd({
+      name: "HomeReach Market Capture",
+      description:
+        "HomeReach helps local businesses stay visible in high-value neighborhoods with digital targeting and optional direct mail.",
+      url: `${base}/`,
+      primaryImage: `${base}/icons/icon-512.png`,
+      about: [
+        "Market Capture",
+        "Neighborhood digital targeting",
+        "Direct mail and digital saturation",
+        "Jobsite halo campaigns",
+        "Local business growth",
+      ],
+    }),
+    buildServiceCatalogLd({
+      name: "HomeReach local growth services",
+      description:
+        "HomeReach starts with Market Capture, then supports direct mail, AI growth workflows, cost control, reputation, and campaign execution.",
+      url: `${base}/services`,
+      services: [
+        {
+          name: "Market Capture",
+          description:
+            "Digital targeting and optional direct mail around jobsites, service areas, competitors, events, and high-value neighborhoods.",
+          url: `${base}${PRODUCT_OVERVIEW_PATHS.marketCapture}`,
+          category: "Revenue growth",
+        },
+        ...ecosystemModules.map((module) => ({
+          name: module.title,
+          description: module.body,
+          url: `${base}${module.href}`,
+          category: "HomeReach ecosystem",
+        })),
+      ],
+    }),
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <SiteHeader />
+    <div className="min-h-screen overflow-x-hidden bg-slate-50">
+      <JsonLd schemas={schemas} />
+      <SiteHeader variant="digital" />
 
       <main>
-        <section className="relative overflow-hidden bg-slate-950 text-white">
-          <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(rgba(255,255,255,.07)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.07)_1px,transparent_1px)] [background-size:56px_56px]" />
-          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-blue-600/25 to-transparent" />
-          <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:py-20 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:px-6 lg:py-24">
-            <div>
-              <p className="inline-flex rounded-full border border-blue-300/25 bg-blue-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-blue-100">
-                HomeReach Platform Ecosystem
+        <section id="market-capture" className="relative overflow-hidden bg-slate-950 text-white">
+          <div className="absolute inset-0 opacity-45 [background-image:linear-gradient(rgba(255,255,255,.07)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.07)_1px,transparent_1px)] [background-size:52px_52px]" />
+          <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-blue-500/20 to-transparent" />
+          <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 gap-10 px-4 py-12 sm:py-16 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:px-6 lg:py-20">
+            <div className="min-w-0">
+              <p className="inline-flex rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-cyan-100">
+                Market Capture for local businesses
               </p>
-              <h1 className="mt-6 max-w-4xl text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
-                Geographic Intelligence &amp; Operational Execution for Businesses and Campaigns
+              <h1 className="mt-5 max-w-4xl text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
+                Own the neighborhoods around your best customers.
               </h1>
-              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-                HomeReach helps businesses and campaigns dominate local visibility through shared postcards,
-                targeted campaigns, political mail, property intelligence, purchasing intelligence, and supporting
-                print products.
+              <p className="mt-5 max-w-2xl break-words text-base leading-8 text-slate-300 sm:text-lg">
+                HomeReach helps local businesses stay visible with digital targeting and optional direct mail around jobsites,
+                service areas, competitors, events, and high-value neighborhoods.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <CtaButton href={accountStartHref(PRODUCT_START_PATHS.sharedPostcards)} variant="primary">
-                  Get Started
+              <div className="mt-7 flex w-full min-w-0 flex-col gap-3 sm:flex-row">
+                <CtaButton href={primaryHref} className="w-full min-w-0 text-center sm:w-auto">
+                  Start My Campaign
                 </CtaButton>
-                <CtaButton href="#platforms" variant="secondary">
-                  Explore Platforms
+                <CtaButton href="#how-it-works" variant="secondary" className="w-full min-w-0 text-center sm:w-auto">
+                  See How It Works
                 </CtaButton>
               </div>
-              <div className="mt-10 grid grid-cols-3 gap-3">
+              <div className="mt-8 grid gap-3 sm:grid-cols-3">
                 {[
-                  ["Route maps", "Plan by geography"],
-                  ["Mail ops", "Execute with control"],
-                  ["Savings", "See supplier gaps"],
-                ].map(([value, label]) => (
-                  <div key={value} className="rounded-lg border border-white/10 bg-white/[0.08] p-3 backdrop-blur">
-                    <p className="text-sm font-black text-white">{value}</p>
-                    <p className="mt-1 text-xs font-medium text-slate-400">{label}</p>
+                  ["Starter management", `${formatUsd(MARKET_CAPTURE_MANAGEMENT_FEE_CENTS)}/mo`],
+                  ["Recommended ad spend", `${formatUsd(MARKET_CAPTURE_RECOMMENDED_AD_SPEND_CENTS)}/mo`],
+                  ["Commitment", `${MARKET_CAPTURE_MIN_COMMITMENT_MONTHS} months`],
+                ].map(([title, body]) => (
+                  <div key={title} className="min-w-0 rounded-lg border border-white/10 bg-white/[0.07] p-3 backdrop-blur">
+                    <p className="text-sm font-black text-white">{title}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">{body}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <HeroPlatformVisual />
+            <TargetedTerritoryCommandVisual />
           </div>
         </section>
 
-        <section id="platforms" className="scroll-mt-28 px-4 py-16 lg:px-6">
+        <section id="how-it-works" className="border-b border-slate-200 bg-white px-4 py-14 lg:px-6">
           <div className="mx-auto max-w-7xl">
-            <div className="max-w-3xl">
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-700">
-                Product Navigation
-              </p>
-              <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                One ecosystem for local reach, campaign execution, and operating leverage.
-              </h2>
-            </div>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {products.map((product) => (
-                <ProductCard key={product.title} {...product} />
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <OfferingSection
-          id="shared-postcards"
-          eyebrow="Co-op Shared Postcards"
-          title="Affordable local visibility on premium shared postcards."
-          body="Shared postcard campaigns give local businesses repeated mailbox presence without carrying the full cost of a standalone mailer."
-          bullets={[
-            "One business per category in each available city",
-            "Premium homeowner-facing postcards mailed to local routes",
-            "Spot selection and checkout continue through the existing live funnel",
-          ]}
-          cta="Reserve My Spot"
-          href={accountStartHref(PRODUCT_START_PATHS.sharedPostcards)}
-          icon={Mail}
-          tone="blue"
-        >
-          <CampaignOpsVisual />
-        </OfferingSection>
-
-        <OfferingSection
-          id="targeted-campaigns"
-          eyebrow="Targeted Geographic Campaigns"
-          title="Build direct mail around the exact neighborhoods that matter."
-          body="Targeted campaigns support ZIPs, neighborhoods, radius campaigns, route-level planning, and custom delivery areas for businesses that need more control."
-          bullets={[
-            "Flexible geography for any U.S. market",
-            "Volume options for local, ZIP, and multi-neighborhood reach",
-            "Design, print, postage, and delivery connected to one flow",
-          ]}
-          cta="Build Targeted Campaign"
-          href={accountStartHref(PRODUCT_START_PATHS.targetedCampaigns)}
-          icon={Target}
-          tone="blue"
-          reverse
-        >
-          <CampaignOpsVisual />
-        </OfferingSection>
-
-        <OfferingSection
-          id="political-campaigns"
-          eyebrow="Political Postcard Campaigns"
-          title="A command center for campaign mail planning, pricing, approval, and launch."
-          body="Political teams can map coverage, compare scenarios, price mail drops, and move into production with a workflow built for campaign timing."
-          bullets={[
-            "District and route planning from the public political platform",
-            "Pricing scenarios for one-drop and multi-wave campaigns",
-            "Approval, payment, production, and delivery timing in one operating path",
-          ]}
-          cta="Launch Campaign Plan"
-          href={accountStartHref(PRODUCT_START_PATHS.politicalCampaigns)}
-          icon={Landmark}
-          tone="red"
-        >
-          <CampaignOpsVisual tone="red" />
-        </OfferingSection>
-
-        <OfferingSection
-          id="inventory-intelligence"
-          eyebrow="Inventory & Purchasing Dashboard"
-          title="Turn recurring supply spend into visible savings opportunities."
-          body="Inventory intelligence gives operators a clearer view of recurring supplies, supplier pricing, replenishment patterns, and purchase timing."
-          bullets={[
-            "Track print, campaign, signage, and operational supplies",
-            "Compare supplier pricing and spot variance across categories",
-            "Surface savings opportunities before the next purchase cycle",
-          ]}
-          cta="Find My Savings"
-          href={accountStartHref(PRODUCT_START_PATHS.inventoryIntelligence)}
-          icon={PackageSearch}
-          tone="green"
-          reverse
-        >
-          <PurchasingVisual />
-        </OfferingSection>
-
-        <OfferingSection
-          id="property-intelligence"
-          eyebrow="Property Intelligence"
-          title="Use neighborhood and property data to target better campaigns."
-          body="Property intelligence adds geographic context around households, neighborhoods, and local opportunity signals so campaigns can focus spend more intelligently."
-          bullets={[
-            "Map overlays for property, neighborhood, and household signals",
-            "Targeting context for direct mail, door hangers, and field visibility",
-            "Better-fit audiences for local service businesses and campaigns",
-          ]}
-          cta="Explore Property Intelligence"
-          href={PRODUCT_OVERVIEW_PATHS.propertyIntelligence}
-          icon={Map}
-          tone="slate"
-        >
-          <IntelligenceVisual />
-        </OfferingSection>
-
-        <section className="px-4 py-16 lg:px-6">
-          <div className="mx-auto max-w-7xl">
-            <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
-              <div>
-                <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-700">
-                  Supporting Print Products
-                </p>
-                <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                  Yard signs, door hangers, and business cards connected to the same execution system.
-                </h2>
-                <p className="mt-4 text-base leading-7 text-slate-600">
-                  Local visibility rarely depends on one channel. HomeReach connects mailbox, route, jobsite,
-                  neighborhood, and handoff materials into a cohesive operating platform.
-                </p>
-              </div>
-              <PrintProductVisual />
-            </div>
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
-              {[
-                {
-                  id: "yard-signs",
-                  title: "Yard Signs",
-                  body: "Campaign and local business visibility products connected to the HomeReach ecosystem.",
-                  href: accountStartHref(PRODUCT_START_PATHS.yardSigns),
-                  cta: "Order Yard Signs",
-                },
-                {
-                  id: "door-hangers",
-                  title: "Door Hangers",
-                  body: "Local saturation marketing for neighborhoods, routes, and service areas.",
-                  href: accountStartHref(PRODUCT_START_PATHS.doorHangers),
-                  cta: "Build Door Hanger Campaign",
-                },
-                {
-                  id: "business-cards",
-                  title: "Business Cards",
-                  body: "Premium business cards and branded materials for local visibility.",
-                  href: accountStartHref(PRODUCT_START_PATHS.businessCards),
-                  cta: "Create Business Cards",
-                },
-              ].map((item) => (
-                <div
-                  id={item.id}
-                  key={item.title}
-                  className="scroll-mt-28 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
-                >
-                  <h3 className="text-xl font-black text-slate-950">{item.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{item.body}</p>
-                  <CtaButton href={item.href} variant="light" className="mt-5">
-                    {item.cta}
-                  </CtaButton>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white px-4 py-16 lg:px-6">
-          <div className="mx-auto max-w-7xl">
-            <div className="max-w-3xl">
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-700">
-                Why HomeReach
-              </p>
-              <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                Built for local visibility and operational execution, not just printing.
-              </h2>
-            </div>
-            <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {whyItems.map((item) => {
+            <SectionIntro
+              eyebrow="How it works"
+              title="A simple path from neighborhood opportunity to campaign-ready plan."
+              body="The first production goal is revenue: collect intake, qualify the opportunity, create the payment path, and move the campaign into approval-gated fulfillment."
+            />
+            <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {howItWorks.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <div key={item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+                  <article key={item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-5">
                     <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-blue-700 shadow-sm ring-1 ring-slate-200">
                       <Icon className="h-5 w-5" aria-hidden="true" />
                     </span>
-                    <h3 className="mt-4 text-lg font-black text-slate-950">{item.title}</h3>
+                    <p className="mt-4 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Step {index + 1}</p>
+                    <h3 className="mt-2 text-lg font-black text-slate-950">{item.title}</h3>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
-                  </div>
+                  </article>
                 );
               })}
             </div>
           </div>
         </section>
 
-        <section className="bg-slate-950 px-4 py-16 text-white lg:px-6">
-          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-200">
-                Dashboard + Map Intelligence
-              </p>
-              <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-                A local marketing command center with maps, mail, savings, and production signals.
-              </h2>
-              <p className="mt-4 text-base leading-7 text-slate-300">
-                The HomeReach platform presentation now matches the expanded business: route intelligence, campaign
-                planning, purchasing visibility, property overlays, and supporting print products under one brand.
-              </p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {[
-                  "Route planning",
-                  "Campaign workflows",
-                  "Property overlays",
-                  "Supplier savings",
-                ].map((item) => (
-                  <div key={item} className="rounded-lg border border-white/10 bg-white/[0.08] p-3 text-sm font-bold text-slate-200">
-                    {item}
-                  </div>
-                ))}
-              </div>
+        <section id="targeting-options" className="px-4 py-16 lg:px-6">
+          <div className="mx-auto max-w-7xl">
+            <SectionIntro
+              eyebrow="Targeting options"
+              title="Sell local market capture, not complicated geofencing."
+              body="The offer stays simple: choose the places where attention matters, then HomeReach prepares the campaign plan and launch checklist."
+            />
+            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {targetingOptions.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <article key={item.title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg">
+                    <Icon className="h-6 w-6 text-blue-700" aria-hidden="true" />
+                    <h3 className="mt-4 text-lg font-black text-slate-950">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
+                  </article>
+                );
+              })}
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.08] p-4 shadow-2xl shadow-blue-950/20">
-              <RouteMapPanel className="min-h-[24rem]" />
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-white/10 bg-white/10 p-3">
-                  <BarChart3 className="h-5 w-5 text-blue-200" aria-hidden="true" />
-                  <p className="mt-2 text-sm font-black">Campaign ROI</p>
+          </div>
+        </section>
+
+        <section id="pricing" className="border-y border-slate-200 bg-white px-4 py-16 lg:px-6">
+          <div className="mx-auto max-w-7xl">
+            <SectionIntro
+              eyebrow="Pricing"
+              title="Start at $499/month. Grow into higher-margin packages."
+              body="The starter offer is designed to sell quickly. Growth and Dominance protect margin when the client needs more targets, more reporting, direct mail planning, or deeper strategy."
+            />
+            <div className="mt-8 grid gap-4 lg:grid-cols-3">
+              {MARKET_CAPTURE_PRICING_TIERS.map((tier) => (
+                <article
+                  key={tier.id}
+                  className={`rounded-lg border p-5 shadow-sm ${
+                    tier.id === "growth"
+                      ? "border-blue-300 bg-blue-50"
+                      : tier.id === "dominance"
+                        ? "border-slate-800 bg-slate-950 text-white"
+                        : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className={`text-xs font-black uppercase tracking-[0.16em] ${tier.id === "dominance" ? "text-cyan-200" : "text-blue-700"}`}>
+                        {tier.id === "starter" ? "Front-door offer" : tier.id === "growth" ? "Best margin fit" : "Premium saturation"}
+                      </p>
+                      <h3 className="mt-2 text-xl font-black">{tier.name}</h3>
+                    </div>
+                    <BadgeDollarSign className={`h-7 w-7 ${tier.id === "dominance" ? "text-cyan-200" : "text-blue-700"}`} aria-hidden="true" />
+                  </div>
+                  <p className="mt-5 text-4xl font-black">
+                    {formatUsd(tier.managementFeeCents)}
+                    <span className={`text-base ${tier.id === "dominance" ? "text-slate-400" : "text-slate-500"}`}>/month</span>
+                  </p>
+                  <p className={`mt-2 text-sm ${tier.id === "dominance" ? "text-slate-300" : "text-slate-600"}`}>
+                    Recommended ad spend: {formatUsd(tier.recommendedAdSpendCents)}/month. Ad spend is separate.
+                  </p>
+                  <p className={`mt-4 text-sm leading-6 ${tier.id === "dominance" ? "text-slate-300" : "text-slate-600"}`}>
+                    {tier.summary}
+                  </p>
+                  <div className="mt-5 grid gap-2">
+                    {tier.scope.slice(0, 4).map((item) => (
+                      <div key={item} className={`flex items-start gap-2 text-sm ${tier.id === "dominance" ? "text-slate-200" : "text-slate-700"}`}>
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" aria-hidden="true" />
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                  <Link
+                    href={`/market-capture/intake?plan=${tier.id}`}
+                    className={`mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-black ${
+                      tier.id === "dominance"
+                        ? "bg-white text-slate-950 hover:bg-slate-100"
+                        : "bg-blue-700 text-white hover:bg-blue-600"
+                    }`}
+                  >
+                    Start {tier.id === "starter" ? "My Campaign" : tier.name.replace("Market Capture ", "")}
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="direct-mail" className="px-4 py-16 lg:px-6">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+            <SectionIntro
+              eyebrow="HomeReach advantage"
+              title="Most agencies only run ads. HomeReach can pair the same neighborhoods with postcards."
+              body="Digital plus direct mail gives the client repeated exposure without turning the buying decision into a technical ad-platform conversation."
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {proofPoints.map((item) => (
+                <div key={item} className="flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" aria-hidden="true" />
+                  <p className="text-sm font-bold leading-6 text-slate-700">{item}</p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-white/10 p-3">
-                  <Layers className="h-5 w-5 text-emerald-200" aria-hidden="true" />
-                  <p className="mt-2 text-sm font-black">Data Layers</p>
-                </div>
-                <div className="rounded-lg border border-white/10 bg-white/10 p-3">
-                  <Radar className="h-5 w-5 text-red-200" aria-hidden="true" />
-                  <p className="mt-2 text-sm font-black">Route Signals</p>
-                </div>
-              </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="ecosystem" className="bg-slate-950 px-4 py-16 text-white lg:px-6">
+          <div className="mx-auto max-w-7xl">
+            <SectionIntro
+              eyebrow="HomeReach operating system"
+              title="Market Capture is the front door into the broader growth ecosystem."
+              body="The homepage now leads with the fastest revenue path while preserving the platform's broader operating-system direction."
+              dark
+            />
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              {ecosystemModules.map((module) => {
+                const Icon = module.icon;
+                return (
+                  <Link
+                    key={module.title}
+                    href={module.href}
+                    className="rounded-lg border border-white/10 bg-white/[0.06] p-5 transition hover:-translate-y-0.5 hover:bg-white/[0.1]"
+                  >
+                    <Icon className="h-6 w-6 text-cyan-200" aria-hidden="true" />
+                    <h3 className="mt-4 text-lg font-black">{module.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{module.body}</p>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </section>
 
         <section className="bg-white px-4 py-16 lg:px-6">
-          <div className="mx-auto max-w-5xl rounded-lg bg-[linear-gradient(135deg,#0f172a,#1d4ed8)] px-6 py-12 text-center text-white shadow-2xl shadow-blue-950/20">
-            <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-100">
-              Build local dominance with one operating platform
-            </p>
-            <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-black tracking-tight sm:text-4xl">
-              Start with shared postcards, targeted geography, campaign mail, purchasing savings, or property intelligence.
+          <div className="mx-auto max-w-5xl rounded-lg bg-blue-700 px-6 py-12 text-center text-white shadow-2xl shadow-blue-950/20">
+            <Target className="mx-auto h-10 w-10 text-blue-100" aria-hidden="true" />
+            <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-black tracking-tight sm:text-4xl">
+              Turn your best local areas into campaign-ready opportunities.
             </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-blue-50">
+              Start with intake. HomeReach will review the target area, budget, offer, assets, and payment path before anything moves to fulfillment.
+            </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <CtaButton href={accountStartHref(PRODUCT_START_PATHS.sharedPostcards)} variant="light">
-                Get Started
+              <CtaButton href={primaryHref} variant="light">
+                Start My Campaign
               </CtaButton>
-              <CtaButton href={accountStartHref(PRODUCT_START_PATHS.targetedCampaigns)} variant="secondary">
-                Build Targeted Campaign
+              <CtaButton href={PRODUCT_OVERVIEW_PATHS.marketCapture} variant="secondary">
+                View Full Offer
               </CtaButton>
             </div>
           </div>
@@ -483,6 +387,34 @@ export default function HomePage() {
       </main>
 
       <SiteFooter />
+    </div>
+  );
+}
+
+function SectionIntro({
+  eyebrow,
+  title,
+  body,
+  dark = false,
+}: {
+  eyebrow: string;
+  title: string;
+  body?: string;
+  dark?: boolean;
+}) {
+  return (
+    <div className="max-w-3xl">
+      <p className={`text-sm font-black uppercase tracking-[0.18em] ${dark ? "text-cyan-200" : "text-blue-700"}`}>
+        {eyebrow}
+      </p>
+      <h2 className={`mt-3 text-3xl font-black tracking-tight sm:text-4xl ${dark ? "text-white" : "text-slate-950"}`}>
+        {title}
+      </h2>
+      {body ? (
+        <p className={`mt-4 text-base leading-7 ${dark ? "text-slate-300" : "text-slate-600"}`}>
+          {body}
+        </p>
+      ) : null}
     </div>
   );
 }

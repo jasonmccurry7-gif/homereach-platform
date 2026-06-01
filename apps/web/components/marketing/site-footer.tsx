@@ -8,14 +8,14 @@ export function SiteFooter() {
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 lg:grid-cols-[1.2fr_2fr] lg:px-6">
         <div>
           <Link href="/" aria-label="HomeReach home">
-            <HomeReachLogo tone="light" size="md" sublabel="Geographic Operations" />
+          <HomeReachLogo tone="light" size="md" sublabel="AI Growth OS" />
           </Link>
           <p className="mt-5 max-w-sm text-sm leading-6 text-slate-400">
-            Geographic intelligence, campaign execution, property targeting, and
-            purchasing intelligence for local businesses and campaign teams.
+            AI-powered local growth, lead capture, reputation, content, campaign
+            execution, and purchasing intelligence for local businesses and campaign teams.
           </p>
           <p className="mt-6 text-xs text-slate-500">
-            © {new Date().getFullYear()} HomeReach. All rights reserved.
+            &copy; {new Date().getFullYear()} HomeReach. All rights reserved.
           </p>
         </div>
 

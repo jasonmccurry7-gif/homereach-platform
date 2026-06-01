@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { loadFoundationControlTower } from "@/lib/control-tower/foundation";
 import ControlCenterClient from "./control-center-client";
+import { FoundationControlTower } from "./foundation-control-tower";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-export const metadata = { title: "Control Center | HomeReach Admin" };
+export const metadata = { title: "Foundation Control Tower | HomeReach Admin" };
 
 export default async function ControlCenterPage() {
   const devBypass = process.env.ADMIN_DEV_BYPASS === "true";
@@ -17,5 +20,12 @@ export default async function ControlCenterPage() {
     if (role !== "admin") redirect("/dashboard");
   }
 
-  return <ControlCenterClient />;
+  const tower = await loadFoundationControlTower();
+
+  return (
+    <>
+      <FoundationControlTower data={tower} />
+      <ControlCenterClient />
+    </>
+  );
 }

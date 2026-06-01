@@ -17,7 +17,6 @@ interface RouteDbRow {
   carrier_route_id: string;
   route_type: string | null;
   residential_count: number | null;
-  business_count: number | null;
   total_count: number | null;
   county: string | null;
   city: string | null;
@@ -42,7 +41,6 @@ const ROUTE_COLUMNS = [
   "carrier_route_id",
   "route_type",
   "residential_count",
-  "business_count",
   "total_count",
   "county",
   "city",
@@ -52,7 +50,6 @@ const ROUTE_COLUMNS = [
 
 function toRouteSummary(row: RouteDbRow): PoliticalRouteSummary {
   const households = Math.max(0, row.residential_count ?? row.total_count ?? 0);
-  const deliveryPoints = Math.max(households, row.total_count ?? households);
   const base = {
     id: row.id,
     state: row.state,
@@ -60,8 +57,6 @@ function toRouteSummary(row: RouteDbRow): PoliticalRouteSummary {
     carrierRouteId: row.carrier_route_id,
     routeType: row.route_type,
     households,
-    deliveryPoints,
-    businessCount: row.business_count,
     county: row.county,
     city: row.city,
     source: row.source,

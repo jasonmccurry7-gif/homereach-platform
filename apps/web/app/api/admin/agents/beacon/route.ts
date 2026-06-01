@@ -66,7 +66,7 @@ export async function POST() {
         thirty_day_milestone: thirtyDayMilestone?.length ?? 0,
       }),
       created_at: runAt,
-    }).catch(() => {});
+    });
 
     return NextResponse.json({
       agent: "Beacon",

@@ -1,0 +1,4 @@
+state,zip5,carrier_route_id,total_count,city,county
+OH,44109,SMOKE001,500,Cleveland,Cuyahoga
+OH,44109,SMOKE002,600,Cleveland,Cuyahoga
+OH,44109,SMOKE003,450,Cleveland,Cuyahoga

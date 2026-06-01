@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { syncRevenueApprovalLedger } from "@/lib/approvals/revenue-approval-ledger";
 
 type RevenueBusinessLine =
   | "targeted_mailing"
@@ -487,24 +488,59 @@ async function queueApprovalItem(
       ? `Political reply waiting: ${subject.displayName ?? subject.contactName ?? input.from}`
       : `Inbound reply waiting: ${subject.displayName ?? subject.contactName ?? input.from}`;
 
-  const { error } = await supabase.from("revenue_message_approval_queue").insert({
-    thread_id: threadId,
-    business_line: subject.businessLine,
-    channel: input.channel,
-    status: "needs_review",
-    title,
-    message_body: input.body,
-    assigned_to: subject.assignedTo ?? null,
-    due_at: new Date().toISOString(),
-    metadata: {
-      source_system: subject.sourceSystem,
-      source_id: subject.sourceId,
-      provider: input.provider,
-      provider_message_id: input.providerMessageId,
-    },
-  });
+  const dueAt = new Date().toISOString();
+  const metadata = {
+    source_system: subject.sourceSystem,
+    source_id: subject.sourceId,
+    provider: input.provider,
+    provider_message_id: input.providerMessageId,
+  };
+  const { data, error } = await supabase
+    .from("revenue_message_approval_queue")
+    .insert({
+      thread_id: threadId,
+      business_line: subject.businessLine,
+      channel: input.channel,
+      status: "needs_review",
+      title,
+      message_body: input.body,
+      assigned_to: subject.assignedTo ?? null,
+      due_at: dueAt,
+      metadata,
+    })
+    .select("id,created_at,updated_at")
+    .maybeSingle<{ id: string; created_at: string | null; updated_at: string | null }>();
 
-  if (error) logBridgeWarning("approval queue insert skipped", error);
+  if (error) {
+    logBridgeWarning("approval queue insert skipped", error);
+    return;
+  }
+
+  if (!data?.id) return;
+
+  const ledgerResult = await syncRevenueApprovalLedger(
+    {
+      id: data.id,
+      businessLine: subject.businessLine,
+      channel: input.channel,
+      status: "needs_review",
+      title,
+      messageBody: input.body,
+      metadata,
+      threadId,
+      assignedTo: subject.assignedTo ?? null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      dueAt,
+    },
+    {
+      actorLabel: "revenue_inbound_bridge",
+      eventType: "revenue_approval_created",
+    },
+  );
+  if (!ledgerResult.ok && ledgerResult.error) {
+    logBridgeWarning("approval ledger sync skipped", { message: ledgerResult.error });
+  }
 }
 
 async function handlePoliticalHandoff(

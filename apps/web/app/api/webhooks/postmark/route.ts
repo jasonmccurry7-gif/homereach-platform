@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createServiceClient } from "@/lib/supabase/service";
+import { logPlatformAuditEvent } from "@/lib/audit/platform-audit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/postmark
@@ -35,6 +37,12 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 const PROVIDER = "postmark";
 
+function safeStringEqual(actual: string, expected: string): boolean {
+  const actualHash = createHash("sha256").update(actual).digest();
+  const expectedHash = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(actualHash, expectedHash);
+}
+
 function isAuthorized(req: Request): { ok: boolean; reason?: string } {
   const expectedUser = process.env.POSTMARK_WEBHOOK_USER;
   const expectedPass = process.env.POSTMARK_WEBHOOK_PASSWORD;
@@ -61,7 +69,7 @@ function isAuthorized(req: Request): { ok: boolean; reason?: string } {
     if (sep === -1) return { ok: false, reason: "malformed Basic Auth" };
     const user = decoded.slice(0, sep);
     const pass = decoded.slice(sep + 1);
-    if (user !== expectedUser || pass !== expectedPass) {
+    if (!safeStringEqual(user, expectedUser) || !safeStringEqual(pass, expectedPass)) {
       return { ok: false, reason: "Basic Auth mismatch" };
     }
     return { ok: true };
@@ -189,11 +197,37 @@ export async function POST(req: Request) {
       // still 200 — we don't want Postmark retrying on our DB issue
     }
 
+    await logPlatformAuditEvent({
+      actorType: "webhook",
+      actorLabel: "Postmark",
+      module: "communications",
+      actionType: "postmark_webhook_event",
+      sourceTable: "email_events",
+      sourceId: payload.MessageID ?? null,
+      channel: "email",
+      provider: PROVIDER,
+      resultStatus: logErr ? "failure" : "success",
+      severity: logErr ? "high" : eventType === "bounce" || eventType === "spam_complaint" ? "medium" : "info",
+      message: `Postmark ${eventType} event received.`,
+      errorMessage: logErr?.message,
+      metadata: {
+        event_type: eventType,
+        message_id: payload.MessageID ?? null,
+        recipient,
+        bounce_type: bounceType,
+        terminal_lead_status: terminalLeadStatus,
+      },
+    });
+
     // 2. On terminal events, update sales_leads.email_status (additive write)
     if (terminalLeadStatus && recipient) {
+      const updatePayload =
+        terminalLeadStatus === "complained" || terminalLeadStatus === "unsubscribed"
+          ? { email_status: terminalLeadStatus, do_not_contact: true }
+          : { email_status: terminalLeadStatus };
       const { error: updErr } = await supabase
         .from("sales_leads")
-        .update({ email_status: terminalLeadStatus })
+        .update(updatePayload)
         .eq("email", recipient);
       if (updErr) {
         console.warn(

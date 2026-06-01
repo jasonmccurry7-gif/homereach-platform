@@ -54,7 +54,7 @@ export async function addDropResults(
 
     revalidatePath(`/admin/campaigns/${campaignId}`);
     revalidatePath("/dashboard");
-    revalidatePath("/dashboard/campaign");
+    revalidatePath("/campaign");
   } catch (err) {
     console.error("[addDropResults]", err);
     return { error: "Failed to save. Please try again." };
@@ -98,7 +98,7 @@ export async function updateCampaignStatus(
 
     revalidatePath(`/admin/campaigns/${campaignId}`);
     revalidatePath("/dashboard");
-    revalidatePath("/dashboard/campaign");
+    revalidatePath("/campaign");
   } catch (err) {
     console.error("[updateCampaignStatus]", err);
     return { error: "Failed to update campaign. Please try again." };

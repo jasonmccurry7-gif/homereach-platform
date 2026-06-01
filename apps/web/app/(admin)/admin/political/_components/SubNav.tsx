@@ -32,6 +32,7 @@ const SUB_NAV: readonly SubNavItem[] = [
   { label: "Plans",         href: "/admin/political/plans",         badge: "NEW" },
   { label: "Proposals",     href: "/admin/political/proposals" },
   { label: "Outreach",      href: "/admin/political/outreach",      badge: "NEW" },
+  { label: "Outreach Strategy", href: "/admin/political/outreach-strategy", badge: "NEW" },
   { label: "Calendar",      href: "/admin/political/calendar",      badge: "NEW" },
   { label: "Analytics",     href: "/admin/political/analytics",     badge: "NEW" },
   { label: "CRM",           href: "/admin/political/crm",           badge: "NEW" },
@@ -49,7 +50,7 @@ const SUB_NAV: readonly SubNavItem[] = [
 ] as const;
 
 export function PoliticalSubNav() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
 
   return (
     <nav

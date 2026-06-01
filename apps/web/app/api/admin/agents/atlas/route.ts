@@ -85,7 +85,7 @@ export async function POST() {
         empty: empty.length,
       }),
       created_at: runAt,
-    }).catch(() => {});
+    });
 
     return NextResponse.json({
       agent: "Atlas",

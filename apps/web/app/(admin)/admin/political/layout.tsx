@@ -3,7 +3,7 @@ import { isPoliticalEnabled } from "@/lib/political/env";
 import { PoliticalSubNav } from "./_components/SubNav";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Political Command Center — route-level flag gate
+// PoliticalReach — route-level flag gate
 //
 // If ENABLE_POLITICAL is not "true" at runtime, every route under
 // /admin/political returns a real 404 (notFound() triggers the nearest
@@ -25,14 +25,14 @@ export default function PoliticalLayout({ children }: { children: React.ReactNod
         <header className="grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.28em] text-amber-200">
-              HomeReach Political
+              PoliticalReach
             </p>
             <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
-              Campaign Command Center
+              Campaign Mail Command Center
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              Planning, route intelligence, proposals, outreach, payment,
-              fulfillment, and reporting in one protected operating system.
+              Premium political mail strategy, route intelligence, creative direction,
+              proposals, outreach, payment, fulfillment, and reporting in one protected operating system.
             </p>
           </div>
           <div className="rounded-lg border border-red-300/20 bg-red-950/30 px-4 py-3 text-sm text-red-100">

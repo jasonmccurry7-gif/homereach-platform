@@ -29,7 +29,7 @@ export async function GET() {
         dbStatus:        row.status,
         migrationStatus: meta.migrationStatus,
         city:            meta.city,
-        cityNormalized:  ((meta.city as string) ?? "").split(",")[0].trim(),
+        cityNormalized:  (((meta.city as string) ?? "").split(",")[0] ?? "").trim(),
         category:        meta.category,
         spotType:        meta.spotType,
         willCount:       meta.migrationStatus !== "legacy_pending",

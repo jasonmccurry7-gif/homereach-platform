@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { sendEmail } from "@homereach/services/outreach";
+import { requireCron } from "@/lib/auth/api-guards";
+import {
+  appendEmailComplianceHtml,
+  appendEmailComplianceText,
+  sendEmail,
+} from "@homereach/services/outreach";
 import {
   WARMUP_SEED_EMAILS,
   getRampEntry,
@@ -23,12 +28,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  // ── Auth ────────────────────────────────────────────────────────────────────
-  const authHeader  = req.headers.get("authorization");
-  const cronSecret  = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = requireCron(req);
+  if (!guard.ok) return guard.response;
 
   const db = createServiceClient();
   const now = new Date().toISOString();
@@ -83,12 +84,6 @@ export async function POST(req: NextRequest) {
         const toEmail  = WARMUP_SEED_EMAILS[i % WARMUP_SEED_EMAILS.length]!;
         const template = getSeedTemplate(state.warmup_day, i);
 
-        // Temporarily set agent's from address
-        const savedFromEmail = process.env.MAILGUN_FROM_EMAIL;
-        const savedFromName  = process.env.MAILGUN_FROM_NAME;
-        process.env.MAILGUN_FROM_EMAIL = identity.from_email;
-        process.env.MAILGUN_FROM_NAME  = identity.from_name ?? "HomeReach";
-
         const result = await sendEmail({
           to:      toEmail,
           subject: template.subject,
@@ -96,10 +91,11 @@ export async function POST(req: NextRequest) {
             <p>${template.body}</p>
           </div>`,
           text:    template.body,
+          fromEmail: identity.from_email,
+          fromName: identity.from_name ?? "HomeReach",
+          replyTo: identity.from_email,
+          intent: "internal",
         });
-
-        process.env.MAILGUN_FROM_EMAIL = savedFromEmail;
-        process.env.MAILGUN_FROM_NAME  = savedFromName;
 
         await db.from("email_warmup_log").insert({
           state_id:   state.id,
@@ -147,27 +143,19 @@ export async function POST(req: NextRequest) {
           const contactName = prospect.contact_name ?? prospect.business_name ?? "there";
           const template    = getSeedTemplate(state.warmup_day, realSent + seedsSent);
 
-          const savedFromEmail = process.env.MAILGUN_FROM_EMAIL;
-          const savedFromName  = process.env.MAILGUN_FROM_NAME;
-          process.env.MAILGUN_FROM_EMAIL = identity.from_email;
-          process.env.MAILGUN_FROM_NAME  = identity.from_name ?? "HomeReach";
-
+          const emailBodyHtml = `<div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
+              <p>${template.body}</p>
+            </div>`;
           const result = await sendEmail({
             to:      prospect.email,
             subject: template.subject,
-            html:    `<div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
-              <p>${template.body}</p>
-              <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
-              <p style="color: #999; font-size: 12px;">
-                You're receiving this from HomeReach.
-                <a href="https://home-reach.com/unsubscribe?email=${encodeURIComponent(prospect.email)}">Unsubscribe</a>
-              </p>
-            </div>`,
-            text:    `${template.body}\n\nTo unsubscribe: https://home-reach.com/unsubscribe?email=${encodeURIComponent(prospect.email)}`,
+            html:    appendEmailComplianceHtml(emailBodyHtml, prospect.email),
+            text:    appendEmailComplianceText(template.body, prospect.email),
+            fromEmail: identity.from_email,
+            fromName: identity.from_name ?? "HomeReach",
+            replyTo: identity.from_email,
+            intent: "prospecting",
           });
-
-          process.env.MAILGUN_FROM_EMAIL = savedFromEmail;
-          process.env.MAILGUN_FROM_NAME  = savedFromName;
 
           await db.from("email_warmup_log").insert({
             state_id:   state.id,

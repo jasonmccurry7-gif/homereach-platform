@@ -1,10 +1,46 @@
 import type { NextConfig } from "next";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  typedRoutes: false,
+  staticPageGenerationTimeout: 120,
+  outputFileTracingRoot: path.join(__dirname, "../.."),
+  outputFileTracingIncludes: {
+    "/api/admin/daily-content/*/higgsfield": [
+      "./node_modules/@higgsfield/cli/**/*",
+      "../../node_modules/.pnpm/@higgsfield+cli*/node_modules/@higgsfield/cli/**/*",
+    ],
+  },
+  experimental: {
+    cpus: 1,
+    staticGenerationMaxConcurrency: 1,
+    staticGenerationMinPagesPerWorker: 1,
+  },
   // Transpile internal workspace packages
   transpilePackages: ["@homereach/db", "@homereach/services", "@homereach/types"],
+  serverExternalPackages: ["postgres"],
 
-  // Image optimization — allow Supabase storage domain
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
+
+  // Image optimization - allow Supabase storage domain
   images: {
     remotePatterns: [
       {
@@ -15,61 +51,15 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // Server-only packages — excluded from client bundle
-  serverExternalPackages: ["postgres", "twilio"],
+  webpack: (config) => {
+    config.cache = false;
 
-  // Skip TS type errors and ESLint during build — ship now, fix types post-launch
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".ts", ".tsx", ".js"],
+      ".mjs": [".mts", ".mjs"],
+    };
 
-  // Webpack: stub out Node.js built-ins when bundling for the browser.
-  // Twilio and postgres import net/tls/fs which only exist in Node.
-  // Client components that import these through server modules won't
-  // actually call the code at runtime — we just need the build to succeed.
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      // Stub all Node.js built-ins for the browser bundle.
-      // Twilio, postgres, and other server packages import these at module
-      // load time even though they're never called on the client.
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        net: false,
-        tls: false,
-        fs: false,
-        dns: false,
-        dgram: false,
-        child_process: false,
-        cluster: false,
-        http2: false,
-        perf_hooks: false,
-        async_hooks: false,
-        worker_threads: false,
-        readline: false,
-        repl: false,
-        inspector: false,
-        trace_events: false,
-        v8: false,
-        vm: false,
-        wasi: false,
-        crypto: false,
-        stream: false,
-        os: false,
-        path: false,
-        zlib: false,
-        string_decoder: false,
-        events: false,
-        assert: false,
-        constants: false,
-        domain: false,
-        punycode: false,
-        querystring: false,
-        timers: false,
-        tty: false,
-        url: false,
-        util: false,
-        sys: false,
-      };
-    }
     return config;
   },
 };

@@ -1,5 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { logPlatformAuditEvent } from "@/lib/audit/platform-audit";
+import { evaluateAutomationLiveSendGate } from "@/lib/sales-engine/outreach-governance";
 import { NextResponse } from "next/server";
 import {
   appendEmailComplianceHtml,
@@ -346,6 +348,49 @@ export async function POST(req: Request) {
   const detailLog: EchoResult["details"] = [];
 
   try {
+
+    const { data: systemControls } = await supabase
+      .from("system_controls")
+      .select("all_paused,sms_paused,email_paused,outreach_test_mode,manual_approval_mode")
+      .eq("id", 1)
+      .maybeSingle();
+
+    const automationGate = evaluateAutomationLiveSendGate({
+      testMode: Boolean(systemControls?.outreach_test_mode),
+      manualApprovalMode: Boolean(systemControls?.manual_approval_mode),
+    });
+
+    if (systemControls?.all_paused || !automationGate.allowed) {
+      await logPlatformAuditEvent({
+        actorType: "ai",
+        actorLabel: "Echo Agent",
+        module: "sales_outreach",
+        actionType: "echo_agent_live_send_blocked",
+        resultStatus: "blocked",
+        approvalState: automationGate.approval_status === "approved" ? "approved" : "needs_review",
+        severity: "high",
+        message: systemControls?.all_paused
+          ? "Echo Agent live send blocked by global system pause."
+          : automationGate.reason,
+        metadata: {
+          system_controls: {
+            all_paused: Boolean(systemControls?.all_paused),
+            outreach_test_mode: Boolean(systemControls?.outreach_test_mode),
+            manual_approval_mode: Boolean(systemControls?.manual_approval_mode),
+          },
+          required_env: automationGate.required_env,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        summary: details,
+        message: systemControls?.all_paused
+          ? "Echo Agent did not send because the global system pause is active."
+          : "Echo Agent live sends are blocked by manual approval mode. Keep generated outreach in review until a human approves it.",
+        approval_status: automationGate.approval_status,
+      });
+    }
 
     const batchLimit = Number.parseInt(
       process.env.OUTREACH_ECHO_BATCH_LIMIT ?? process.env.OUTREACH_AUTOMATION_BATCH_LIMIT ?? "10",

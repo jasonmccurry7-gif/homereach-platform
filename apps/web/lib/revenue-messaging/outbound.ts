@@ -58,6 +58,51 @@ function logBridgeWarning(message: string, error?: SupabaseErrorLike | null) {
   console.warn(`[revenue-messaging] ${message}${detail ? `: ${detail}` : ""}`);
 }
 
+function stringifyMetadata(metadata: Record<string, unknown> | undefined): string {
+  if (!metadata) return "";
+  return Object.entries(metadata)
+    .map(([key, value]) => `${key} ${typeof value === "string" ? value : ""}`)
+    .join(" ");
+}
+
+function inferBusinessLine(
+  input: RecordOutboundRevenueMessageInput,
+  fallback: RevenueBusinessLine,
+): RevenueBusinessLine {
+  if (fallback === "political") return "political";
+
+  const haystack = [
+    input.sourceSystem,
+    input.displayName,
+    input.organizationName,
+    input.city,
+    input.category,
+    input.subject,
+    stringifyMetadata(input.metadata),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    /\bpolitical\b|\bcandidate\b|\bcampaign committee\b|\bgovernor\b|\bsenate\b|\battorney general\b|\bsecretary of state\b|\bauditor\b|\btreasurer\b|\bmayor\b|\bcity council\b|\bschool board\b|\bcommissioner\b|\bjudicial\b|\bjudge\b|\bsheriff\b/.test(
+      haystack,
+    )
+  ) {
+    return "political";
+  }
+
+  if (
+    /\bprocurement\b|\binventory\b|\bsavings audit\b|\bsupplier\b|\bvendor\b|\blanded cost\b/.test(
+      haystack,
+    )
+  ) {
+    return "inventory_procurement";
+  }
+
+  return fallback;
+}
+
 async function resolveSalesLead(
   supabase: ReturnType<typeof createServiceClient>,
   input: RecordOutboundRevenueMessageInput,
@@ -76,8 +121,10 @@ async function resolveSalesLead(
   }
   if (!data) return null;
 
+  const businessLine = inferBusinessLine(input, input.businessLine ?? "targeted_mailing");
+
   return {
-    businessLine: input.businessLine ?? "targeted_mailing",
+    businessLine,
     sourceSystem: "sales_leads",
     sourceId: data.id,
     contactName: input.contactName ?? data.contact_name,
@@ -105,7 +152,7 @@ async function resolveOutboundSubject(
   if (salesLead) return salesLead;
 
   return {
-    businessLine: input.businessLine ?? "unknown",
+    businessLine: inferBusinessLine(input, input.businessLine ?? "unknown"),
     sourceSystem: input.sourceSystem,
     sourceId: input.sourceId,
     contactName: input.contactName ?? null,

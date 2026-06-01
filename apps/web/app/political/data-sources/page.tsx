@@ -6,7 +6,7 @@ import {
   sourceRequirementsByPriority,
 } from "@/lib/political/map-source-plan";
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Data Sources & Methodology - HomeReach Campaign Mail",
   description:
@@ -171,10 +171,10 @@ export default function DataSourcesPage() {
             Ready to map your district and compare mail coverage?
           </p>
           <Link
-            href="/political/maps"
+            href="/political/plan"
             className="mt-3 inline-flex rounded-xl bg-red-600 px-8 py-3.5 text-sm font-black text-white shadow-lg transition-all hover:-translate-y-0.5 hover:bg-red-500"
           >
-            Open Political Maps
+            Start Public Campaign Plan
           </Link>
         </div>
       </div>

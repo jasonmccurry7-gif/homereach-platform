@@ -1,0 +1,4 @@
+interface:
+  display_name: "procurement"
+  short_description: "HomeReach procurement workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

@@ -12,7 +12,7 @@ export default function TermsPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-16">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms &amp; Conditions</h1>
-      <p className="text-sm text-gray-500 mb-10">Last updated: April 27, 2026</p>
+      <p className="text-sm text-gray-500 mb-10">Last updated: May 28, 2026</p>
 
       <div className="prose prose-gray max-w-none space-y-8 text-gray-700">
 
@@ -30,13 +30,13 @@ export default function TermsPage() {
           <h2 className="text-xl font-bold text-gray-900 mb-3">3. SMS / Text Messaging Program</h2>
           <p className="font-semibold text-gray-900">Program Name: HomeReach Sales &amp; Customer Communications</p>
 
-          <p className="mt-4"><strong>Program Description.</strong> By providing your mobile phone number to HomeReach (whether through our website intake forms, checkout, Facebook inquiry, in-person request, or by replying to a HomeReach communication), you consent to receive SMS / text messages from HomeReach related to: information about our direct-mail advertising program, availability of exclusive city/category slots, follow-up on inquiries you initiated, campaign status updates, payment links for orders you have requested, renewal reminders, and customer support replies.</p>
+          <p className="mt-4"><strong>Program Description.</strong> By providing your mobile phone number to HomeReach and checking an SMS consent box, submitting a form with SMS consent language, texting HomeReach first, replying to a HomeReach message with consent, or verbally requesting text follow-up, you agree to receive SMS / text messages from HomeReach related to your inquiry, quote, appointment, service request, account, or HomeReach services.</p>
 
-          <p className="mt-4"><strong>Message Frequency.</strong> Message frequency varies based on your activity. You will typically receive between 1 and 6 messages per inquiry or active campaign.</p>
+          <p className="mt-4"><strong>Message Types and Frequency.</strong> Messages may include requested information, appointment coordination, quote follow-up, campaign or service updates, proposal/order updates, account support, and customer support replies. Message frequency varies based on your relationship with HomeReach and your request, typically up to 4 messages per month unless you are actively coordinating a campaign, quote, or support issue.</p>
 
           <p className="mt-4"><strong>Message &amp; Data Rates.</strong> Message and data rates may apply. Standard messaging rates from your wireless carrier will apply to messages sent and received. HomeReach is not responsible for any carrier fees you incur.</p>
 
-          <p className="mt-4"><strong>Opt-In.</strong> You opt in to the program by submitting your phone number on a HomeReach intake or contact form, by texting our number first, by replying to a HomeReach message with consent, or by verbally consenting on a recorded sales call. We will never add a phone number to the SMS program without an opt-in.</p>
+          <p className="mt-4"><strong>Opt-In.</strong> SMS consent is optional and is not required as a condition of purchasing HomeReach services. Web forms that request SMS consent identify HomeReach as the sender, describe the types of messages you may receive, disclose that message frequency varies and message and data rates may apply, and link to these Terms and our Privacy Policy before submission.</p>
 
           <p className="mt-4"><strong>Opt-Out (HOW TO STOP MESSAGES).</strong> You can cancel the SMS program at any time. Reply <strong>STOP</strong> (or UNSUBSCRIBE, CANCEL, END, or QUIT) to any message you receive from HomeReach. After you reply STOP, you will receive one final confirmation message and then no further SMS will be sent from HomeReach. If you wish to rejoin, reply <strong>START</strong> (or YES, UNSTOP).</p>
 
@@ -48,7 +48,9 @@ export default function TermsPage() {
 
           <p className="mt-4"><strong>Carrier Disclaimer.</strong> Carriers (including Verizon, AT&amp;T, T-Mobile, US Cellular, and others) are not liable for delayed or undelivered messages.</p>
 
-          <p className="mt-4"><strong>Privacy.</strong> See our <Link href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link> for details on how we handle your phone number and message content. <span className="font-semibold">HomeReach does not sell, rent, or share your mobile phone number or SMS opt-in information with any third party for marketing or promotional purposes.</span> Phone numbers are used only by HomeReach and our SMS delivery provider (Twilio) to operate the messaging program.</p>
+          <p className="mt-4"><strong>Privacy.</strong> See our <Link href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link> for details on how we handle your phone number and message content. <span className="font-semibold">HomeReach does not sell, rent, or share your mobile phone number or SMS opt-in information with any third party for marketing or promotional purposes. Mobile opt-in data will not be shared with third parties or affiliates for marketing or promotional purposes.</span> Phone numbers are used only by HomeReach and our SMS delivery provider (Twilio) to operate the messaging program.</p>
+
+          <p className="mt-4"><strong>Consent Not Required.</strong> You can use HomeReach and purchase HomeReach services without consenting to promotional SMS messages. If you decline SMS consent, HomeReach may still contact you by email or other non-SMS methods where permitted.</p>
         </section>
 
         <section>

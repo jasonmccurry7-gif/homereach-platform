@@ -2,144 +2,313 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import {
+  Activity,
+  BarChart3,
+  Bot,
+  Brain,
+  BriefcaseBusiness,
+  Building2,
+  Brush,
+  Clapperboard,
+  ClipboardList,
+  Compass,
+  CreditCard,
+  DollarSign,
+  Gauge,
+  Globe2,
+  HeartHandshake,
+  History,
+  Inbox,
+  Landmark,
+  Layers3,
+  LogOut,
+  Mail,
+  Map,
+  Menu,
+  Megaphone,
+  MessagesSquare,
+  Package,
+  Palette,
+  Radar,
+  RadioTower,
+  ReceiptText,
+  Search,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Target,
+  Upload,
+  Users,
+  Wand2,
+  Workflow,
+} from "lucide-react";
 import { signOut } from "@/app/actions/auth";
+import { HomeReachLogo } from "@/components/brand/home-reach-logo";
+import { cn } from "@/lib/utils";
 
-const NAV_GROUPS = [
+const NAV = [
   {
-    label: "Command",
+    label: "Executive Layer",
     items: [
-      { label: "⚡ OS Control Center", href: "/os",                    emoji: "🖥️", badge: "PRIMARY" },
-      { label: "Admin Control Center", href: "/admin/control-center", emoji: "🎛️", badge: "NEW" },
-      { label: "Dashboard",      href: "/admin",              emoji: "🏠" },
-      { label: "Leads",          href: "/admin/leads",              emoji: "🎯" },
-      { label: "Targeted Campaigns", href: "/admin/targeted-campaigns", emoji: "📬", badge: "NEW" },
-      { label: "Gov Contracts",  href: "/admin/gov-contracts", emoji: "GC", badge: "NEW" },
-      { label: "Inbox",          href: "/admin/inbox",         emoji: "💬" },
+      { label: "Daily Revenue", href: "/admin", icon: Gauge },
+      { label: "AI COO Queue", href: "/admin/ai-coo-queue", icon: Bot },
+      { label: "Business Memory", href: "/admin/business-memory", icon: Brain },
+      { label: "Cost Control Queue", href: "/admin/cost-control", icon: DollarSign },
+      { label: "Reputation Queue", href: "/admin/reputation", icon: Star },
+      { label: "Growth Intelligence", href: "/admin/growth-intelligence", icon: Compass },
+      { label: "AI Growth Module", href: "/admin/ai-growth-os", icon: Sparkles },
+      { label: "Growth Execution", href: "/admin/growth-execution", icon: Workflow },
+      { label: "Sales Intelligence", href: "/admin/sales-dashboard", icon: BarChart3 },
+      { label: "Communications", href: "/admin/inbox", icon: Inbox },
+      { label: "AI Workforce", href: "/admin/agents", icon: Bot },
+      { label: "Agent Mini Apps", href: "/admin/agent-mini-apps", icon: Workflow },
+      { label: "Agent Control", href: "/admin/agent-execution", icon: ShieldCheck },
+      { label: "AI Assets", href: "/admin/ai-assets", icon: Sparkles },
+      { label: "Executive Review", href: "/admin/content-review", icon: ShieldCheck },
+      { label: "AI Reels", href: "/admin/daily-content", icon: Clapperboard },
+      { label: "Creative Studio", href: "/admin/creative-studio", icon: Palette },
+      { label: "Control Tower", href: "/admin/control-center", icon: Activity },
     ],
   },
   {
-    label: "Growth",
+    label: "Revenue Ops",
     items: [
-      { label: "Growth Intelligence", href: "/admin/growth",          emoji: "📈", badge: "NEW" },
-      { label: "Group Intelligence", href: "/admin/group-intelligence", emoji: "GI", badge: "NEW" },
+      { label: "CRM", href: "/admin/crm", icon: BriefcaseBusiness },
+      { label: "Market Capture Sales", href: "/admin/market-capture-sales", icon: Target },
+      { label: "Outreach Command", href: "/admin/outreach-command", icon: Megaphone },
+      { label: "Group Intelligence", href: "/admin/group-intelligence", icon: MessagesSquare },
+      { label: "Revenue Command", href: "/admin/revenue-operations", icon: MessagesSquare },
+      { label: "Websites", href: "/admin/websites", icon: Globe2 },
+      { label: "AI Web Assistant", href: "/admin/ai-web-assistant", icon: Bot },
+      { label: "Email Infrastructure", href: "/admin/email-infrastructure", icon: Mail },
+      { label: "Deliverability", href: "/admin/deliverability", icon: ShieldCheck },
+      { label: "Procurement", href: "/admin/procurement", icon: Package },
+      { label: "ContractOS Packaging", href: "/admin/contractos", icon: Landmark },
+      { label: "Gov Contracts Approvals", href: "/admin/gov-contracts", icon: Landmark },
+      { label: "Businesses", href: "/admin/businesses", icon: Building2 },
+      { label: "Orders", href: "/admin/orders", icon: ReceiptText },
+      { label: "Profit Center", href: "/admin/profit-center", icon: CreditCard },
+      { label: "Pricing Control", href: "/admin/pricing", icon: DollarSign },
+      { label: "Founding Members", href: "/admin/founding", icon: Star },
     ],
   },
   {
-    label: "Learning & Optimization",
+    label: "Campaign Ops",
     items: [
-      { label: "Learning Engine", href: "/admin/content-intel", emoji: "LE", badge: "AI" },
+      { label: "Shared Postcards", href: "/admin/spots", icon: Layers3 },
+      { label: "AI Intake Carts", href: "/admin/ai-intake", icon: Bot },
+      { label: "Targeted Campaigns", href: "/admin/targeted-campaigns", icon: Target },
+      { label: "Market Capture Fulfillment", href: "/admin/market-capture-fulfillment", icon: Radar },
+      { label: "Digital Targeting", href: "/admin/digital-targeting", icon: Radar },
+      { label: "Ad-Tech Health", href: "/admin/ad-tech", icon: RadioTower },
+      { label: "Political", href: "/admin/political", icon: Landmark },
+      { label: "Political Outreach", href: "/admin/political/outreach-strategy", icon: Megaphone },
+      { label: "Maps", href: "/admin/political/maps", icon: Map },
+      { label: "Campaigns", href: "/admin/campaigns", icon: Activity },
+      { label: "Availability", href: "/admin/availability", icon: Map },
+      { label: "Ad Designer", href: "/admin/ad-designer", icon: Palette },
+      { label: "Canva Design OS", href: "/admin/canva", icon: Palette },
     ],
   },
   {
-    label: "Traffic Engine",
+    label: "Marketing",
     items: [
-      { label: "Traffic Engine",  href: "/admin/traffic-engine", emoji: "🚀", badge: "NEW" },
+      { label: "SEO Command Center", href: "/admin/marketing/seo-command-center", icon: Search },
+      { label: "Local Visibility", href: "/admin/local-visibility", icon: Star },
+      { label: "Content Intelligence", href: "/admin/content-intel", icon: Sparkles },
     ],
   },
   {
-    label: "Sales Execution",
+    label: "Intelligence",
     items: [
-      { label: "Agent Dialer",      href: "/admin/agent-view",       emoji: "⚡", badge: "LIVE" },
-      { label: "Facebook Engine",   href: "/admin/facebook",         emoji: "💙", badge: "LIVE" },
-      { label: "Sales Intelligence",href: "/admin/sales-dashboard",  emoji: "📊", badge: "LIVE" },
-      { label: "CRM",               href: "/admin/crm",              emoji: "🗂️", badge: "NEW" },
-      { label: "Sales Engine",      href: "/admin/sales-engine",     emoji: "🤖" },
-      { label: "Availability",      href: "/admin/availability",     emoji: "📍" },
-      { label: "ROI Preview",       href: "/admin/roi-preview",      emoji: "💰" },
-      { label: "Ad Designer",       href: "/admin/ad-designer",      emoji: "🎨" },
+      { label: "Lead Intel", href: "/admin/leads", icon: Sparkles },
+      { label: "Sales Engine", href: "/admin/sales-engine", icon: Wand2 },
+      { label: "Operator", href: "/admin/operator", icon: ClipboardList },
+      { label: "War Room", href: "/admin/war-room", icon: Activity },
+      { label: "Agent Dialer", href: "/admin/agent-view", icon: ZapIcon },
+      { label: "Facebook Engine", href: "/admin/facebook", icon: Megaphone },
+      { label: "Growth Engine", href: "/admin/growth-engine", icon: Sparkles },
+      { label: "Growth Activity", href: "/admin/growth", icon: Brush },
+      { label: "Traffic Engine", href: "/admin/traffic-engine", icon: Upload },
+      { label: "ROI Preview", href: "/admin/roi-preview", icon: DollarSign },
     ],
   },
   {
-    label: "Management",
+    label: "Catalog & Admin",
     items: [
-      { label: "War Room", href: "/admin/war-room", emoji: "🎯", badge: "LIVE" },
-      { label: "Founding Members", href: "/admin/founding",      emoji: "🏷️", badge: "NEW" },
-      { label: "Pricing Control", href: "/admin/pricing",        emoji: "🏷️", badge: "NEW" },
-      { label: "Profit Center",  href: "/admin/profit-center",  emoji: "💰", badge: "NEW" },
-      { label: "Reviews",        href: "/admin/reviews",        emoji: "⭐", badge: "NEW" },
-      { label: "Legacy Import",  href: "/admin/legacy-import",  emoji: "🗄️", badge: "NEW" },
-      { label: "Migration",      href: "/admin/migration",      emoji: "🔄" },
-      { label: "Businesses",     href: "/admin/businesses",    emoji: "🏢" },
-      { label: "Orders",         href: "/admin/orders",        emoji: "🧾" },
-      { label: "Cities",         href: "/admin/cities",        emoji: "🗺️" },
-      { label: "Campaigns",      href: "/admin/campaigns",     emoji: "📣" },
-      { label: "Waitlist",       href: "/admin/waitlist",      emoji: "📋" },
-    ],
-  },
-  {
-    label: "Catalog",
-    items: [
-      { label: "Products",       href: "/admin/products",      emoji: "📦" },
-      { label: "Bundles",        href: "/admin/bundles",       emoji: "🎁" },
-    ],
-  },
-  {
-    label: "People",
-    items: [
-      { label: "Agents",         href: "/admin/agents",        emoji: "👥", badge: "NEW" },
-      { label: "Users",          href: "/admin/users",         emoji: "🙋" },
-      { label: "Nonprofits",     href: "/admin/nonprofits",    emoji: "🤝" },
+      { label: "Service Catalog", href: "/admin/service-catalog", icon: ClipboardList },
+      { label: "Products", href: "/admin/products", icon: Package },
+      { label: "Bundles", href: "/admin/bundles", icon: Package },
+      { label: "Cities", href: "/admin/cities", icon: Map },
+      { label: "Users", href: "/admin/users", icon: Users },
+      { label: "Waitlist", href: "/admin/waitlist", icon: ClipboardList },
+      { label: "Nonprofits", href: "/admin/nonprofits", icon: HeartHandshake },
+      { label: "Reviews", href: "/admin/reviews", icon: Star },
+      { label: "Legacy Import", href: "/admin/legacy-import", icon: History },
+      { label: "Migration", href: "/admin/migration", icon: Upload },
+      { label: "Settings", href: "/settings", icon: Settings },
     ],
   },
 ];
 
+const MOBILE_COMMAND_ITEMS = [
+  { label: "Today", href: "/admin", icon: Gauge },
+  { label: "Inbox", href: "/admin/inbox", icon: Inbox },
+  { label: "Revenue", href: "/admin/revenue-operations", icon: MessagesSquare },
+  { label: "Reels", href: "/admin/daily-content", icon: Clapperboard },
+  { label: "Agents", href: "/admin/agents", icon: Bot },
+  { label: "Tower", href: "/admin/control-center", icon: Activity },
+];
+
 export function AdminNav() {
   const pathname = usePathname();
+  const currentPath = pathname ?? "";
+  const activeHref =
+    NAV.flatMap((group) => group.items)
+      .filter((item) =>
+        item.href === "/admin"
+          ? currentPath === "/admin"
+          : currentPath === item.href || currentPath.startsWith(`${item.href}/`),
+      )
+      .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col overflow-hidden border-r border-gray-800 bg-gray-900">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-gray-800">
-        <Link href="/os" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
-            HR
-          </div>
-          <div>
-            <p className="text-sm font-bold text-white leading-none">HomeReach</p>
-            <p className="text-xs text-gray-500 mt-0.5">OS v2</p>
-          </div>
+    <>
+      <header className="sticky top-0 z-50 border-b border-slate-800 bg-[#07111f]/95 text-white shadow-2xl shadow-slate-950/20 backdrop-blur-xl lg:hidden">
+        <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-3">
+          <Link href="/admin" className="min-w-0 shrink">
+            <HomeReachLogo size="sm" tone="light" sublabel="Command" />
+          </Link>
+
+          <details className="group relative shrink-0">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 text-sm font-bold text-white transition hover:bg-white/15 [&::-webkit-details-marker]:hidden">
+              <Menu className="h-4 w-4" aria-hidden="true" />
+              Menu
+            </summary>
+            <div className="fixed inset-x-3 top-[4.25rem] max-h-[calc(100dvh-8.75rem)] overflow-y-auto rounded-xl border border-white/10 bg-[#07111f] p-3 shadow-2xl shadow-slate-950/50">
+              <div className="mb-3 rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]" />
+                  <span className="text-xs font-semibold text-emerald-100">Operational command live</span>
+                </div>
+              </div>
+
+              <nav className="space-y-4" aria-label="Admin mobile menu">
+                {NAV.map((group) => (
+                  <div key={group.label}>
+                    <p className="px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                      {group.label}
+                    </p>
+                    <div className="mt-2 grid gap-1">
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const active = activeHref === item.href;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={cn(
+                              "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition",
+                              active
+                                ? "bg-white text-slate-950 shadow-lg"
+                                : "text-slate-300 hover:bg-white/10 hover:text-white",
+                            )}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </nav>
+
+              <div className="mt-4 border-t border-slate-800 pt-3">
+                <Link
+                  href="/dashboard"
+                  className="flex min-h-11 items-center justify-between rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white hover:text-slate-950"
+                >
+                  Client dashboard
+                  <span aria-hidden="true">-&gt;</span>
+                </Link>
+                <form action={signOut} className="mt-2">
+                  <button
+                    type="submit"
+                    className="flex min-h-11 w-full items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-slate-400 transition hover:border-rose-300/30 hover:bg-rose-400/10 hover:text-rose-100"
+                  >
+                    <span className="flex items-center gap-2">
+                      <LogOut className="h-3.5 w-3.5" />
+                      Log out
+                    </span>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <nav className="flex gap-2 overflow-x-auto px-3 pb-3" aria-label="Admin priority navigation">
+          {MOBILE_COMMAND_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = activeHref === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-bold transition",
+                  active
+                    ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-50"
+                    : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </header>
+
+      <aside className="hidden min-h-screen w-72 shrink-0 flex-col border-r border-slate-800 bg-[#07111f] text-white lg:flex">
+      <div className="border-b border-slate-800 px-4 py-5">
+        <Link href="/admin" className="block">
+          <HomeReachLogo size="sm" tone="light" sublabel="HomeReach OS" />
         </Link>
+        <div className="mt-4 rounded-lg border border-sky-300/20 bg-sky-300/10 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]" />
+            <span className="text-xs font-semibold text-emerald-100">Operational command live</span>
+          </div>
+        </div>
       </div>
 
-      {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        {NAV_GROUPS.map((group) => (
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        {NAV.map((group) => (
           <div key={group.label}>
-            <p className="px-3 mb-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <p className="px-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
               {group.label}
             </p>
-            <div className="space-y-0.5">
+            <div className="mt-2 space-y-1">
               {group.items.map((item) => {
-                const isActive =
-                  item.href === "/admin"
-                    ? pathname === "/admin"
-                    : item.href === "/os"
-                    ? pathname === "/os"
-                    : pathname.startsWith(item.href);
+                const Icon = item.icon;
+                const active = activeHref === item.href;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                      isActive
-                        ? "bg-blue-600 text-white"
-                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition",
+                      active
+                        ? "bg-white text-slate-950 shadow-lg"
+                        : "text-slate-300 hover:bg-white/10 hover:text-white",
                     )}
                   >
-                    <span className="text-base leading-none">{item.emoji}</span>
-                    <span className="flex-1">{item.label}</span>
-                    {item.badge && (
-                      <span className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded font-bold",
-                        isActive
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-700 text-gray-400"
-                      )}>
-                        {item.badge}
-                      </span>
-                    )}
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{item.label}</span>
                   </Link>
                 );
               })}
@@ -148,28 +317,55 @@ export function AdminNav() {
         ))}
       </nav>
 
-      {/* Footer */}
-      <div className="shrink-0 px-5 py-4 border-t border-gray-800 space-y-1">
+      <div className="border-t border-slate-800 p-4">
         <Link
-          href="/"
-          className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+          href="/dashboard"
+          className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white hover:text-slate-950"
         >
-          ← Back to site
+          Client dashboard
+          <span aria-hidden="true">-&gt;</span>
         </Link>
-        <form action={signOut}>
+        <form action={signOut} className="mt-2">
           <button
             type="submit"
-            aria-label="Log out of HomeReach admin"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+            className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-slate-400 transition hover:border-rose-300/30 hover:bg-rose-400/10 hover:text-rose-100"
           >
-            <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25z" clipRule="evenodd" />
-              <path fillRule="evenodd" d="M19 10a.75.75 0 0 0-.75-.75H8.704l1.048-1.06a.75.75 0 1 0-1.064-1.056l-2.5 2.5a.75.75 0 0 0 0 1.062l2.5 2.5a.75.75 0 0 0 1.064-1.056l-1.048-1.06h9.546A.75.75 0 0 0 19 10z" clipRule="evenodd" />
-            </svg>
-            Log out
+            <span className="flex items-center gap-2">
+              <LogOut className="h-3.5 w-3.5" />
+              Log out
+            </span>
           </button>
         </form>
       </div>
-    </aside>
+      </aside>
+
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-800 bg-[#07111f]/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 text-white shadow-2xl shadow-slate-950/30 backdrop-blur-xl lg:hidden" aria-label="Admin quick actions">
+        <div className="mx-auto grid max-w-lg grid-cols-5 gap-1">
+          {MOBILE_COMMAND_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = activeHref === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] font-bold transition",
+                  active
+                    ? "bg-white text-slate-950 shadow-lg"
+                    : "text-slate-400 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    </>
   );
+}
+
+function ZapIcon({ className }: { className?: string }) {
+  return <Activity className={className} />;
 }

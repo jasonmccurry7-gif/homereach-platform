@@ -767,7 +767,7 @@ export default function AgentDashboard({ agentId }: { agentId: string }) {
           />
         )}
       </div>
-    </>}
+      </>}
     </div>
   );
 }

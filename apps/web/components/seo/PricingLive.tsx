@@ -42,10 +42,10 @@ export async function PricingLive({
 
   // Show the lowest-priced available bundle as the anchor price
   const sorted = [...availableBundles].sort(
-    (a, b) => a.standardPriceCents - b.standardPriceCents,
+    (a, b) => Number(a.price) - Number(b.price),
   );
-  const anchor = sorted[0];
-  const displayPrice = anchor.standardPriceCents / 100;
+  const anchor = sorted[0]!;
+  const displayPrice = Number(anchor.price);
 
   return (
     <div className="rounded-xl border border-gray-700 bg-gray-900 p-6">

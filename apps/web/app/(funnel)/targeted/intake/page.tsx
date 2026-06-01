@@ -1,75 +1,81 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import {
+  ArrowRight,
+  Building2,
+  CheckCircle2,
+  Clock3,
+  LockKeyhole,
+  MapPinned,
+  ShieldCheck,
+  Sparkles,
+  UsersRound,
+} from "lucide-react";
+import { TargetedTerritoryCommandVisual } from "@/components/marketing/homepage-visuals";
+import {
+  formatTargetedCampaignDollars,
+  getTargetedCampaignTotalCents,
+  TARGETED_CAMPAIGN_PLAYBOOKS,
+  TARGETED_PRICING_TIERS,
+  type TargetedPricingTier,
+} from "@/lib/targeted/pricing";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Targeted Campaign Pricing Tiers
-//
-// Cost basis: ~$0.25 print + ~$0.25 postage = ~$0.50/piece
-// Minimum sell price: $0.70/piece (40% gross margin minimum)
-// ─────────────────────────────────────────────────────────────────────────────
+const ClientSuspense = Suspense as unknown as (props: {
+  fallback: React.ReactNode;
+  children: React.ReactNode;
+}) => React.ReactNode;
 
-const PRICING_TIERS = [
-  {
-    homes: 500,
-    perPieceCents: 80,     // $0.80/piece — 37.5% margin
-    label: "Starter",
-    description: "Perfect for local storefronts or tight radius targeting",
-  },
-  {
-    homes: 1000,
-    perPieceCents: 77,     // $0.77/piece — ~39% margin
-    label: "Growth",
-    description: "Ideal for service businesses covering a few neighborhoods",
-  },
-  {
-    homes: 2500,
-    perPieceCents: 73,     // $0.73/piece — ~42% margin
-    label: "Reach",
-    description: "Full zip code or multi-neighborhood coverage",
-    popular: true,
-  },
-  {
-    homes: 5000,
-    perPieceCents: 70,     // $0.70/piece — ~44% margin
-    label: "Scale",
-    description: "City-wide saturation and high-frequency visibility",
-  },
-];
+const DEFAULT_PRICING_TIER =
+  TARGETED_PRICING_TIERS.find((tier) => tier.popular) ?? TARGETED_PRICING_TIERS[0];
 
-function totalCents(tier: typeof PRICING_TIERS[0]) {
-  return tier.homes * tier.perPieceCents;
-}
-
-function formatDollars(cents: number) {
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
-}
+type OrgType = "business" | "nonprofit";
 
 function IntakeFormInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token  = searchParams.get("token") ?? undefined;
-  const leadId = searchParams.get("lead")  ?? undefined;
+  const token = searchParams?.get("token") ?? undefined;
 
-  const [selectedTier, setSelectedTier] = useState<typeof PRICING_TIERS[0]>(PRICING_TIERS[0]);
-  const [orgType, setOrgType] = useState<"business" | "nonprofit">("business");
+  const [selectedTier, setSelectedTier] = useState<TargetedPricingTier>(DEFAULT_PRICING_TIER);
+  const [orgType, setOrgType] = useState<OrgType>("business");
   const [form, setForm] = useState({
-    businessName:    "",
-    contactName:     "",
-    email:           "",
-    phone:           "",
+    businessName: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    smsConsent: false,
     businessAddress: "",
-    targetCity:      "",
+    targetCity: "",
     targetAreaNotes: "",
-    notes:           "",
+    notes: "",
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function update(field: string, value: string) {
+  const total = getTargetedCampaignTotalCents(selectedTier);
+  const formattedTotal = formatTargetedCampaignDollars(total);
+  const activePlaybook = useMemo(
+    () =>
+      TARGETED_CAMPAIGN_PLAYBOOKS.find((playbook) => playbook.packageHomes === selectedTier.homes) ??
+      TARGETED_CAMPAIGN_PLAYBOOKS[0],
+    [selectedTier.homes],
+  );
+
+  function update(field: string, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function buildInternalNotes() {
+    return [
+      `Selected package: ${selectedTier.label}`,
+      `Package purpose: ${selectedTier.purpose}`,
+      `AI playbook cue: ${activePlaybook?.title ?? "Standard route review"}`,
+      form.notes.trim() ? `Customer notes: ${form.notes.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -79,21 +85,20 @@ function IntakeFormInner() {
 
     try {
       const res = await fetch("/api/targeted/intake", {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          intakeToken:     token,
-          leadId,
-          businessName:    form.businessName,
-          contactName:     form.contactName   || undefined,
-          email:           form.email,
-          phone:           form.phone         || undefined,
+          intakeToken: token,
+          businessName: form.businessName,
+          contactName: form.contactName || undefined,
+          email: form.email,
+          phone: form.phone && form.smsConsent ? form.phone : undefined,
           businessAddress: form.businessAddress || undefined,
-          targetCity:      form.targetCity    || undefined,
+          targetCity: form.targetCity || undefined,
           targetAreaNotes: form.targetAreaNotes,
-          notes:           form.notes         || undefined,
-          homesCount:      selectedTier.homes,
-          priceCents:      totalCents(selectedTier),
+          notes: buildInternalNotes(),
+          homesCount: selectedTier.homes,
+          priceCents: total,
         }),
       });
 
@@ -104,343 +109,443 @@ function IntakeFormInner() {
         return;
       }
 
-      // Nonprofits go to the verification page first
       if (orgType === "nonprofit") {
         const params = new URLSearchParams({
           ...(form.businessName && { orgName: form.businessName }),
-          ...(form.contactName  && { contactName: form.contactName }),
-          ...(form.email        && { email: form.email }),
-          ...(form.phone        && { phone: form.phone }),
-          ...(form.targetCity   && { city: form.targetCity }),
+          ...(form.contactName && { contactName: form.contactName }),
+          ...(form.email && { email: form.email }),
+          ...(form.phone && form.smsConsent && { phone: form.phone }),
+          ...(form.targetCity && { city: form.targetCity }),
         });
         router.push(`/nonprofit?${params.toString()}`);
         return;
       }
 
-      router.push(`/targeted/checkout?campaign=${data.campaign.id}`);
+      const checkoutParam = data.checkoutToken
+        ? `token=${encodeURIComponent(data.checkoutToken)}`
+        : `campaign=${encodeURIComponent(data.campaign.id)}`;
+      router.push(`/targeted/checkout?${checkoutParam}`);
     } catch {
       setError("Network error. Please check your connection and try again.");
       setLoading(false);
     }
   }
 
-  const total = totalCents(selectedTier);
-
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-12">
-      <div className="mx-auto max-w-2xl">
-
-        {/* Header */}
-        <div className="text-center mb-8">
-          <p className="text-sm font-semibold uppercase tracking-widest text-blue-600">
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="border-b border-white/10 bg-slate-950/80 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+          <Link href="/" className="flex items-center gap-2 text-sm font-black">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs">HR</span>
+            HomeReach
+          </Link>
+          <span className="hidden rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-100 sm:inline-flex">
             Step 2 of 3
-          </p>
-          <h1 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
-            Campaign Setup
-          </h1>
-          <p className="mt-2 text-gray-500">
-            Direct mail sent to homeowners around <em>your</em> business or any U.S. city.
-          </p>
+          </span>
         </div>
+      </div>
 
-        {/* Product distinction banner */}
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>Targeted Campaign</strong> — You choose the geography. Postcards go only to the exact area you want.
-          Unlike our shared postcard product, you are not limited to pre-set cities and your reach is completely flexible.
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          {error && (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
+      <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[0.92fr_1.08fr] lg:px-6 lg:py-8">
+        <section className="space-y-5">
+          <div className="rounded-lg border border-white/10 bg-white/[0.08] p-5 shadow-2xl shadow-blue-950/10">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-100">
+              Campaign Command
+            </p>
+            <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
+              Choose the territory package. HomeReach handles the complexity.
+            </h1>
+            <p className="mt-4 text-sm leading-7 text-slate-300">
+              This builder recommends a campaign size, confirms homeowner reach, keeps pricing visible, and preserves
+              human review before production, mailing, or customer-facing claims.
+            </p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {[
+                { label: "AI package fit", value: selectedTier.shortLabel, icon: Sparkles },
+                { label: "Homeowner reach", value: selectedTier.homes.toLocaleString(), icon: UsersRound },
+                { label: "Launch gate", value: "Approval", icon: ShieldCheck },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div key={item.label} className="rounded-lg border border-white/10 bg-white/10 p-3">
+                    <Icon className="h-5 w-5 text-blue-200" aria-hidden="true" />
+                    <p className="mt-3 text-lg font-black">{item.value}</p>
+                    <p className="text-xs font-semibold text-slate-400">{item.label}</p>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-
-            {/* ── PRICING CALCULATOR ────────────────────────────────────────── */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
-                Choose Your Reach
-              </h3>
-              <p className="text-xs text-gray-400 mb-3">
-                All prices include design, printing, postage, and delivery.
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {PRICING_TIERS.map((tier) => {
-                  const isSelected = tier.homes === selectedTier.homes;
-                  return (
-                    <button
-                      key={tier.homes}
-                      type="button"
-                      onClick={() => setSelectedTier(tier)}
-                      className={`relative flex flex-col items-center rounded-xl border p-3 text-center transition-all ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-offset-1"
-                          : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/30"
-                      }`}
-                    >
-                      {tier.popular && (
-                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white whitespace-nowrap">
-                          Most Popular
-                        </span>
-                      )}
-                      <span className="text-xs font-semibold text-gray-500 mt-1">{tier.label}</span>
-                      <span className="text-lg font-black text-gray-900 mt-0.5">
-                        {tier.homes.toLocaleString()}
-                      </span>
-                      <span className="text-[10px] text-gray-500">homes</span>
-                      <span className="mt-1.5 text-sm font-bold text-blue-700">
-                        {formatDollars(totalCents(tier))}/mo
-                      </span>
-                      <span className="text-[10px] text-gray-400">
-                        ${(tier.perPieceCents / 100).toFixed(2)}/piece
-                      </span>
-                    </button>
-                  );
-                })}
+          <div className="rounded-lg border border-white/10 bg-white/[0.08] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-100">
+                  Territory Preview
+                </p>
+                <p className="mt-1 text-lg font-black">{selectedTier.neighborhoods}</p>
               </div>
-
-              {/* Live price summary */}
-              <div className="mt-3 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-semibold text-blue-900">
-                      {selectedTier.homes.toLocaleString()} homes · ${(selectedTier.perPieceCents / 100).toFixed(2)}/piece
-                    </p>
-                    <p className="text-xs text-blue-700 mt-0.5">{selectedTier.description}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xl font-black text-blue-900">{formatDollars(total)}<span className="text-sm font-medium">/mo</span></p>
-                    <p className="text-[10px] text-blue-600">Design + Print + Postage included</p>
-                  </div>
+              <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-black text-emerald-200">
+                {selectedTier.visibilityImpact}
+              </span>
+            </div>
+            <TargetedTerritoryCommandVisual mode="compact" className="mt-4" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {[
+                ["Timeline", "10-14 days after approval"],
+                ["Creative", "Preview before mail"],
+                ["Price", `${formattedTotal} total`],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-white/10 bg-white/10 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p>
+                  <p className="mt-2 text-sm font-black text-white">{value}</p>
                 </div>
-              </div>
+              ))}
             </div>
+          </div>
+        </section>
 
-            <div className="border-t border-gray-100" />
-
-            {/* ── BUSINESS INFO ─────────────────────────────────────────────── */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-                Your Organization
-              </h3>
-
-              {/* Org type selector */}
-              <div className="flex gap-2 mb-3">
-                {([
-                  { value: "business",  label: "🏢 Business" },
-                  { value: "nonprofit", label: "❤️ Nonprofit" },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setOrgType(opt.value)}
-                    className={`flex-1 rounded-xl border py-2 text-sm font-medium transition-all ${
-                      orgType === opt.value
-                        ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-400"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+        <section className="space-y-5">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl shadow-slate-950/20">
+            {error && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
               </div>
+            )}
 
-              {orgType === "nonprofit" && (
-                <div className="mb-3 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-800">
-                  <p className="font-semibold">Nonprofits get special rates 🎉</p>
-                  <p className="mt-0.5 text-xs text-green-700">
-                    After submitting this form, you&apos;ll also be redirected to our nonprofit
-                    verification page to unlock discounted pricing and co-sponsorship visibility.
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">
+                      Recommended Packages
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black">Select your market move.</h2>
+                  </div>
+                  <p className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                    Design + print + postage included
                   </p>
                 </div>
-              )}
 
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Business name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={form.businessName}
-                      onChange={(e) => update("businessName", e.target.value)}
-                      placeholder="Jane's Cleaning Co."
-                      className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Your name</label>
-                    <input
-                      type="text"
-                      value={form.contactName}
-                      onChange={(e) => update("contactName", e.target.value)}
-                      placeholder="Jane Smith"
-                      className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {TARGETED_PRICING_TIERS.map((tier) => {
+                    const isSelected = tier.homes === selectedTier.homes;
+                    return (
+                      <button
+                        key={tier.homes}
+                        type="button"
+                        onClick={() => setSelectedTier(tier)}
+                        aria-pressed={isSelected}
+                        className={`min-h-56 rounded-lg border p-4 text-left transition ${
+                          isSelected
+                            ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600 ring-offset-2"
+                            : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-lg font-black text-slate-950">{tier.label}</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-600">{tier.purpose}</p>
+                          </div>
+                          {tier.popular ? (
+                            <span className="rounded-full bg-blue-700 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+                              Recommended
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          <PackageMetric label="Homes" value={tier.homes.toLocaleString()} />
+                          <PackageMetric
+                            label="Total"
+                            value={formatTargetedCampaignDollars(getTargetedCampaignTotalCents(tier))}
+                          />
+                          <PackageMetric label="Frequency" value={tier.frequency} />
+                          <PackageMetric label="Routes" value={tier.neighborhoods} />
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-1.5">
+                          {tier.recommendedFor.slice(0, 4).map((category) => (
+                            <span
+                              key={category}
+                              className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600"
+                            >
+                              {category}
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Email <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={form.email}
-                      onChange={(e) => update("email", e.target.value)}
-                      placeholder="jane@yourbusiness.com"
-                      className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Phone <span className="text-xs text-gray-400 font-normal">(optional)</span>
-                    </label>
-                    <input
-                      type="tel"
-                      value={form.phone}
-                      onChange={(e) => update("phone", e.target.value)}
-                      placeholder="(512) 555-0100"
-                      className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" aria-hidden="true" />
+                    <div>
+                      <p className="font-black text-blue-950">
+                        AI recommendation: {activePlaybook?.title ?? selectedTier.label}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-blue-800">
+                        {activePlaybook?.signal ?? selectedTier.strategy} HomeReach will verify route fit before launch.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="border-t border-gray-100" />
+              <div className="border-t border-slate-200" />
 
-            {/* ── TARGET AREA ───────────────────────────────────────────────── */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
-                Where You Want Customers
-              </h3>
-              <p className="text-xs text-gray-400 mb-3">
-                Works in any U.S. city — we map the route around your business or any address you choose.
-              </p>
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Business address <span className="text-xs text-gray-400 font-normal">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={form.businessAddress}
-                      onChange={(e) => update("businessAddress", e.target.value)}
-                      placeholder="123 Main St, Austin TX"
-                      className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      City / Zip <span className="text-xs text-gray-400 font-normal">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={form.targetCity}
-                      onChange={(e) => update("targetCity", e.target.value)}
-                      placeholder="Austin, TX — or 78701"
-                      className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Organization
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+                  {([
+                    { value: "business", label: "Business", icon: Building2 },
+                    { value: "nonprofit", label: "Nonprofit", icon: ShieldCheck },
+                  ] as const).map((opt) => {
+                    const Icon = opt.icon;
+                    const active = orgType === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setOrgType(opt.value)}
+                        className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-black transition ${
+                          active ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-950"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" aria-hidden="true" />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Describe the area you want to target <span className="text-red-500">*</span>
+                {orgType === "nonprofit" && (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+                    <p className="font-black">Nonprofit pricing requires verification.</p>
+                    <p className="mt-0.5 text-xs leading-5">
+                      After this form, HomeReach will route you through verification before any discounted pricing is applied.
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    label="Business name"
+                    required
+                    value={form.businessName}
+                    onChange={(value) => update("businessName", value)}
+                    placeholder="Peak Roofing Co."
+                  />
+                  <FormField
+                    label="Your name"
+                    value={form.contactName}
+                    onChange={(value) => update("contactName", value)}
+                    placeholder="Jane Smith"
+                  />
+                  <FormField
+                    label="Email"
+                    required
+                    type="email"
+                    value={form.email}
+                    onChange={(value) => update("email", value)}
+                    placeholder="jane@peakroofing.com"
+                  />
+                  <div>
+                    <FormField
+                      label="Phone"
+                      type="tel"
+                      value={form.phone}
+                      onChange={(value) => update("phone", value)}
+                      placeholder="(512) 555-0100"
+                      helper="Optional. Required only if you want text updates."
+                    />
+                    <label className="mt-2 flex gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={form.smsConsent}
+                        onChange={(e) => update("smsConsent", e.target.checked)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+                      />
+                      <span>
+                        I agree HomeReach may text me about this request, including campaign information, quote follow-up,
+                        appointment coordination, proposal/order updates, and support replies. Message frequency varies.
+                        Msg and data rates may apply. Reply HELP for help or STOP to opt out. SMS consent is not required
+                        as a condition of purchase. Mobile opt-in data will not be shared with third parties or affiliates
+                        for marketing or promotional purposes. See{" "}
+                        <Link href="/terms" className="font-semibold text-blue-700 underline">Terms</Link>{" "}
+                        and{" "}
+                        <Link href="/privacy" className="font-semibold text-blue-700 underline">Privacy Policy</Link>.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200" />
+
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Territory
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    label="Business address"
+                    value={form.businessAddress}
+                    onChange={(value) => update("businessAddress", value)}
+                    placeholder="123 Main St, Austin, TX"
+                    helper="Optional. Helps shape a radius or nearby route plan."
+                  />
+                  <FormField
+                    label="City or ZIP"
+                    value={form.targetCity}
+                    onChange={(value) => update("targetCity", value)}
+                    placeholder="Austin, TX or 78701"
+                    helper="Optional, but recommended for faster review."
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label className="block text-sm font-bold text-slate-800">
+                    Where do you want more customers? <span className="text-red-500">*</span>
                   </label>
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    Neighborhoods, zip codes, radius around your shop — anything specific helps us map it exactly.
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Use plain language. Neighborhoods, ZIPs, service radius, storm areas, or competitor-heavy pockets all work.
                   </p>
                   <textarea
                     required
-                    rows={3}
+                    rows={4}
                     value={form.targetAreaNotes}
                     onChange={(e) => update("targetAreaNotes", e.target.value)}
-                    placeholder="e.g., The streets within a mile of my shop in South Austin. Homeowners only, not apartments."
-                    className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Example: Homeowners within 2 miles of our shop, especially the newer subdivisions west of Main Street."
+                    className="mt-1 block w-full rounded-lg border border-slate-300 px-4 py-3 text-sm shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Anything else? <span className="text-xs text-gray-400 font-normal">(optional)</span>
+                <div className="mt-4">
+                  <label className="block text-sm font-bold text-slate-800">
+                    Campaign notes <span className="text-xs font-medium text-slate-400">(optional)</span>
                   </label>
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={form.notes}
                     onChange={(e) => update("notes", e.target.value)}
-                    placeholder="e.g., We specialize in deep cleaning. Looking for budget-conscious homeowners."
-                    className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Example: We want spring HVAC tune-ups, fast scheduling, and a clean premium feel."
+                    className="mt-1 block w-full rounded-lg border border-slate-300 px-4 py-3 text-sm shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
               </div>
-            </div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={
-                loading ||
-                !form.businessName.trim() ||
-                !form.email.trim() ||
-                !form.targetAreaNotes.trim()
-              }
-              className="w-full rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading
-                ? "Submitting…"
-                : orgType === "nonprofit"
-                ? "Submit & Apply for Nonprofit Pricing →"
-                : `Continue to Payment → ${formatDollars(total)}/mo`}
-            </button>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {[
+                    { label: "Area", value: selectedTier.neighborhoods, icon: MapPinned },
+                    { label: "Reach", value: `${selectedTier.homes.toLocaleString()} homes`, icon: UsersRound },
+                    { label: "Launch", value: "After approval", icon: Clock3 },
+                    { label: "Due at checkout", value: formattedTotal, icon: LockKeyhole },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.label}>
+                        <Icon className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                        <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                          {item.label}
+                        </p>
+                        <p className="mt-1 text-sm font-black text-slate-950">{item.value}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-            <p className="text-center text-xs text-gray-400">
-              You'll review your order before anything is charged. Secure checkout via Stripe.
-            </p>
-          </form>
-        </div>
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  !form.businessName.trim() ||
+                  !form.email.trim() ||
+                  !form.targetAreaNotes.trim() ||
+                  (!!form.phone.trim() && !form.smsConsent)
+                }
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-blue-950/20 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading
+                  ? "Preparing checkout path..."
+                  : orgType === "nonprofit"
+                    ? "Submit and verify nonprofit pricing"
+                    : `Continue to secure launch path - ${formattedTotal}`}
+                {!loading ? <ArrowRight className="h-4 w-4" aria-hidden="true" /> : null}
+              </button>
 
-        {/* Product comparison callout */}
-        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 text-sm">
-          <h4 className="font-semibold text-gray-700 mb-3">Targeted vs. Shared Postcards</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="font-medium text-blue-700 mb-1">✅ Targeted Campaign (this)</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li>→ Any U.S. city, any geography</li>
-                <li>→ Direct mail to your exact target area</li>
-                <li>→ Flexible volume, per-piece pricing</li>
-                <li>→ No exclusivity restrictions</li>
-              </ul>
-            </div>
-            <div>
-              <p className="font-medium text-gray-600 mb-1">📬 Shared Postcard</p>
-              <ul className="text-xs text-gray-500 space-y-1">
-                <li>→ 2,500+ homeowners per select city</li>
-                <li>→ One business per category guaranteed</li>
-                <li>→ Monthly recurring, flat rate</li>
-                <li>→ <a href="/get-started" className="text-blue-600 underline">View available cities →</a></li>
-              </ul>
-            </div>
+              <div className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-500">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                <p>
+                  You will review checkout before payment. HomeReach still reviews creative, route notes, and launch readiness before anything mails.
+                </p>
+              </div>
+            </form>
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function PackageMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-slate-50 px-3 py-2">
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-black text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function FormField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  required = false,
+  helper,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: string;
+  required?: boolean;
+  helper?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-bold text-slate-800">
+        {label}
+        {required ? <span className="text-red-500"> *</span> : null}
+      </label>
+      {helper ? <p className="mt-0.5 text-xs text-slate-500">{helper}</p> : null}
+      <input
+        type={type}
+        required={required}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1 block w-full rounded-lg border border-slate-300 px-4 py-3 text-sm shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+      />
     </div>
   );
 }
 
 export default function TargetedIntakePage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-gray-500">Loading…</p></div>}>
+    <ClientSuspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-950">
+          <p className="text-sm font-semibold text-slate-300">Loading campaign builder...</p>
+        </div>
+      }
+    >
       <IntakeFormInner />
-    </Suspense>
+    </ClientSuspense>
   );
 }

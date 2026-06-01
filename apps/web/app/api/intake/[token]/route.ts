@@ -3,6 +3,7 @@ import { db, intakeSubmissions, businesses } from "@homereach/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { sendEmail } from "@homereach/services/outreach";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/intake/[token]
@@ -27,6 +28,13 @@ interface Params {
 
 export async function POST(req: Request, { params }: Params) {
   try {
+    const limited = checkRateLimit(req, {
+      key: "shared-intake-submit",
+      limit: 8,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (limited) return limited;
+
     const { token } = await params;
 
     const body = await req.json();

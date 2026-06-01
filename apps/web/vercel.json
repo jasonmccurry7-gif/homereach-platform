@@ -1,16 +1,25 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
       "path": "/api/admin/automation/send-due",
-      "schedule": "0 9,12,15 * * *"
+      "schedule": "0 14 * * 1-5"
+    },
+    {
+      "path": "/api/admin/daily-outreach/send-due",
+      "schedule": "30 13 * * 1-5"
+    },
+    {
+      "path": "/api/admin/revenue-messaging/send-approved",
+      "schedule": "0 14 * * 1-5"
     },
     {
       "path": "/api/admin/agents/echo",
-      "schedule": "0 8,11,14 * * 1-5"
+      "schedule": "0 8 * * 1-5"
     },
     {
       "path": "/api/admin/agents/closer",
-      "schedule": "0 10,16 * * 1-5"
+      "schedule": "0 10 * * 1-5"
     },
     {
       "path": "/api/admin/agents/anchor",
@@ -22,7 +31,7 @@
     },
     {
       "path": "/api/admin/system/agents/pulse",
-      "schedule": "*/30 * * * *"
+      "schedule": "30 6 * * *"
     },
     {
       "path": "/api/admin/ai-orchestration/briefings/run",
@@ -37,8 +46,12 @@
       "schedule": "0 5 * * *"
     },
     {
-      "path": "/api/admin/agents/scraper",
-      "schedule": "0 */3 * * *"
+      "path": "/api/admin/daily-content/generate",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/admin/political/intelligence/sync",
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/admin/sales/power-mode/end-of-day",
@@ -46,19 +59,7 @@
     },
     {
       "path": "/api/facebook/followup",
-      "schedule": "0 9,13,17 * * *"
-    },
-    {
-      "path": "/api/admin/sales/nudge",
-      "schedule": "0 10,13,15 * * 1-5"
-    },
-    {
-      "path": "/api/admin/sales/follow-up-sequence",
-      "schedule": "0 8 * * 1-5"
-    },
-    {
-      "path": "/api/admin/email/warmup/send",
-      "schedule": "0 7 * * *"
+      "schedule": "15 15 * * 1-5"
     }
   ]
 }

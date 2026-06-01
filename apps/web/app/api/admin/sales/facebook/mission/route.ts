@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,9 +19,9 @@ const MISSION_TASKS = [
     target: 2,
     why: "Posts with local homeowner/business angles drive visibility and build trust. Aim for 2 per day that invite comments.",
     scripts: [
-      "Just spoke with a [CITY] homeowner who had 3 quotes for HVAC — picked the company that showed up first and followed up. If you're in [CATEGORY] and not advertising to homeowners yet, what are you waiting for?\n\nDrop a comment if you want to know how we help local businesses get in front of 2,500+ homeowners in [CITY].",
-      "Real talk: homeowners in [CITY] are hiring right now. Most of them pick the first name they recognize.\n\nAre you the name they recognize? Happy to show you what we're doing to help local [CATEGORY] businesses own their neighborhood. 👇",
-      "Hot take: the best marketing for a [CITY] [CATEGORY] business isn't Google Ads. It's showing up in the mailbox of every homeowner in your target zip before they even start searching.\n\nWe do that for $0.08 per home. Comment or DM me if you're curious.",
+      "Local visibility matters when homeowners start comparing options. If you're in [CATEGORY] in [CITY], what are you doing to stay easy to remember?\n\nDrop a comment if you want the simple HomeReach overview.",
+      "Real talk: homeowners in [CITY] often choose the local names they recognize and trust.\n\nHappy to show what we are doing to help [CATEGORY] businesses stay visible without adding another complicated marketing channel.",
+      "For a [CITY] [CATEGORY] business, direct mail can be a useful local visibility layer alongside digital channels.\n\nComment or DM me if you want the simple coverage and pricing overview.",
     ],
     fields: ["post_url", "post_copy", "group_or_page"],
     proof_label: "Paste post URL or describe where you posted",
@@ -35,8 +36,8 @@ const MISSION_TASKS = [
       "Great point — homeowners in [CITY] are making decisions like this more and more. Happy to share what we've seen work in the area.",
       "This is so true for [CITY]. Local businesses that show up consistently in front of homeowners are the ones winning right now.",
       "Love seeing this conversation — [CITY] homeowners and local businesses are a great match. Are you advertising locally yet?",
-      "Spot on. We help [CATEGORY] businesses in [CITY] get in front of 2,500+ homeowner mailboxes for less than the cost of one Google click. DM me if you want to see how.",
-      "Solid advice. I'd add that the businesses dominating [CITY] right now are also showing up in physical mailboxes — before people even start searching.",
+      "Spot on. We help [CATEGORY] businesses in [CITY] review postcard coverage options for nearby homeowners. DM me if you want the simple breakdown.",
+      "Solid advice. I'd add that consistent local visibility matters, including physical mailboxes and digital follow-up.",
     ],
     fields: ["comment_url", "thread_context"],
     proof_label: "Paste comment link or describe the post you commented on",
@@ -64,7 +65,7 @@ const MISSION_TASKS = [
     scripts: [
       "Hey [NAME] — loved our conversation on [POST]. Didn't want to clog up the comments. Happy to send you a quick overview of what we do for [CATEGORY] businesses in [CITY]. Cool if I drop it here?",
       "Following up from your post about [TOPIC] — I think there might be a fit for what we do. Mind if I share a quick breakdown?",
-      "Hey — saw your comment and wanted to reach out directly. We help [CATEGORY] businesses in [CITY] get exclusive access to 2,500+ homeowner mailboxes. Worth a 2-min look?",
+      "Hey, saw your comment and wanted to reach out directly. We help [CATEGORY] businesses in [CITY] review postcard coverage options for nearby homeowners. Worth a quick look?",
     ],
     fields: ["dm_sent_to", "source_thread", "outcome"],
     proof_label: "Who did you DM? From which thread? What happened?",
@@ -76,9 +77,9 @@ const MISSION_TASKS = [
     target: 2,
     why: "Local Facebook groups are full of business owners and homeowners. A strategic post (not spammy) creates inbound interest.",
     scripts: [
-      "For any [CITY]-area business owners here — we have 1 exclusive advertising spot open for [CATEGORY] businesses. You get your name in front of 2,500+ verified homeowner addresses in [CITY]. DM me if you're interested before it's gone.",
+      "For any [CITY]-area business owners here, HomeReach is reviewing postcard campaign options for [CATEGORY] businesses. If you want a simple coverage and pricing overview, DM me and I can send the details.",
       "Question for local [CITY] business owners: how are you reaching homeowners right now? Curious what's working. (Also happy to share what we're seeing work for home services businesses.)",
-      "Sharing this because a few business owners here might find it useful — we just opened up a new advertising route covering [CITY] homeowners. First [CATEGORY] business to sign up locks out competitors. Details in DM.",
+      "Sharing this because a few business owners here might find it useful. We are reviewing local postcard coverage options for [CITY] homeowners. Details in DM if you want the simple breakdown.",
     ],
     fields: ["group_name", "post_url", "city"],
     proof_label: "Which group? What was the post about? Any engagement?",
@@ -88,11 +89,11 @@ const MISSION_TASKS = [
     label: "Sales Opportunity Follow-Up",
     icon: "🎯",
     target: 0, // dynamic — all warm threads
-    why: "Any warm Facebook interaction needs a next step. Push it: continue thread → DM → intake link → call.",
+    why: "Any warm Facebook interaction needs a next step: continue thread, DM, intake link, or call after approval.",
     scripts: [
-      "Following up on our Facebook conversation — wanted to check if you'd had a chance to think about the homeowner advertising spot we discussed. The [CITY] slot for [CATEGORY] is still available but goes fast.",
+      "Following up on our Facebook conversation. Did you get a chance to review the HomeReach visibility option for [CATEGORY] in [CITY]?",
       "Hey [NAME] — just wanted to circle back. We had a great conversation about reaching [CITY] homeowners. If you're ready to take a look at pricing, I can send that over right now.",
-      "Quick check-in — any questions I can answer? We can also set up a 10-min call if easier. I want to make sure [BUSINESS] has the first shot at this before the spot goes.",
+      "Quick check-in. Any questions I can answer? We can also set up a 10-minute call if easier so [BUSINESS] can review the details clearly.",
     ],
     fields: ["lead_name", "next_action", "outcome"],
     proof_label: "Who did you follow up with? What was the outcome or next step?",
@@ -103,8 +104,18 @@ const MISSION_TASKS = [
 // GET — fetch today's mission state
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
+
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agent_id");
+  const agentId = isSalesAgent ? user.id : searchParams.get("agent_id");
+
+  if (!agentId) {
+    return NextResponse.json({ error: "agent_id required" }, { status: 400 });
+  }
 
   const supabase = createServiceClient();
   const today = new Date().toISOString().split("T")[0];
@@ -148,6 +159,7 @@ export async function GET(req: Request) {
       .select("business_name, city, category, facebook_url")
       .not("facebook_url", "is", null)
       .in("status", ["replied", "interested", "contacted"])
+      .or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agentId}`)
       .order("last_reply_at", { ascending: false })
       .limit(10);
     warmOpportunities = fbLeads ?? [];
@@ -236,18 +248,46 @@ export async function GET(req: Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
+
     const body = await req.json();
-    const {
+    let {
       agent_id, task_type, city, category, proof_text, proof_url,
       script_used, thread_depth, prospect_type, next_action, outcome,
       dm_converted, business_owner_interaction, lead_id,
     } = body;
+
+    if (isSalesAgent) {
+      agent_id = user.id;
+    }
 
     if (!agent_id || !task_type) {
       return NextResponse.json({ error: "agent_id and task_type required" }, { status: 400 });
     }
 
     const supabase = createServiceClient();
+
+    if (isSalesAgent && lead_id) {
+      const { data: leadOwner, error: leadOwnerError } = await supabase
+        .from("sales_leads")
+        .select("assigned_agent_id")
+        .eq("id", lead_id)
+        .maybeSingle();
+
+      if (leadOwnerError) {
+        return NextResponse.json({ error: leadOwnerError.message }, { status: 500 });
+      }
+      if (!leadOwner) {
+        return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+      }
+      if (leadOwner.assigned_agent_id && leadOwner.assigned_agent_id !== user.id) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
 
     // Compute quality score
     let qualityScore = 50; // base
@@ -298,16 +338,18 @@ export async function POST(req: Request) {
     }
 
     // Also fire to sales_events for unified tracking
-    await supabase.from("sales_events").insert({
-      agent_id,
-      lead_id: lead_id ?? null,
-      action_type: "facebook_sent",
-      channel: "facebook",
-      city,
-      category,
-      message: `[FB:${task_type}] ${script_used?.slice(0, 100) ?? proof_text?.slice(0, 100) ?? ""}`,
-      metadata: { task_type, quality_score: qualityScore, dm_converted, thread_depth },
-    }).then(() => {}).catch(() => {});
+    try {
+      await supabase.from("sales_events").insert({
+        agent_id,
+        lead_id: lead_id ?? null,
+        action_type: "facebook_sent",
+        channel: "facebook",
+        city,
+        category,
+        message: `[FB:${task_type}] ${script_used?.slice(0, 100) ?? proof_text?.slice(0, 100) ?? ""}`,
+        metadata: { task_type, quality_score: qualityScore, dm_converted, thread_depth },
+      });
+    } catch {}
 
     return NextResponse.json({ ok: true, quality_score: qualityScore, inserted });
   } catch (err) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HomeReachLogo } from "@/components/brand/home-reach-logo";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Funnel Layout
@@ -17,17 +18,17 @@ export default function FunnelLayout({
       <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-lg font-bold text-gray-900">HomeReach</span>
+            <HomeReachLogo size="sm" tone="dark" />
           </Link>
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <span className="hidden sm:flex items-center gap-1">
               <svg className="h-3.5 w-3.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
               </svg>
-              Secure checkout
+              Protected checkout
             </span>
             <span className="hidden sm:block">·</span>
-            <span className="hidden sm:block">No contracts, cancel anytime</span>
+            <span className="hidden sm:block">Review before payment</span>
           </div>
         </div>
       </header>

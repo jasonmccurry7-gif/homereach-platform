@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCityBySlug, getCategoriesForCity } from "@/lib/funnel/queries";
+import {
+  getCityBySlug,
+  getCategoriesForCity,
+  getSharedPostcardCitySnapshot,
+} from "@/lib/funnel/queries";
 import { FunnelProgress } from "@/components/funnel/funnel-progress";
-import { OtherCategoryCard } from "./other-category-card";
+import { SharedPostcardVisual } from "@/components/funnel/shared-postcard-visual";
 import { cn } from "@/lib/utils";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 interface Props {
   params: Promise<{ citySlug: string }>;
@@ -17,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const city = await getCityBySlug(citySlug);
   if (!city) return { title: "Not Found" };
   return {
-    title: `${city.name} — Choose Your Category`,
+    title: `${city.name} - Choose Your Category`,
     description: `See available advertising spots for your business type in ${city.name}, ${city.state}.`,
   };
 }
@@ -28,13 +32,12 @@ export default async function CategorySelectionPage({ params }: Props) {
 
   if (!city || !city.isActive) notFound();
 
-  const categoryList = await getCategoriesForCity(city.id);
-
-  // Separate "Other" from the rest
-  const otherCategory = categoryList.find((c) => c.slug === "other");
-  const regularCategories = categoryList.filter((c) => c.slug !== "other");
-  const available = regularCategories.filter((c) => c.isAvailable);
-  const full = regularCategories.filter((c) => !c.isAvailable);
+  const [categoryList, postcardSnapshot] = await Promise.all([
+    getCategoriesForCity(city.id),
+    getSharedPostcardCitySnapshot(city.id),
+  ]);
+  const available = categoryList.filter((c) => c.isAvailable);
+  const full = categoryList.filter((c) => !c.isAvailable);
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-16">
@@ -49,38 +52,30 @@ export default async function CategorySelectionPage({ params }: Props) {
           What type of business are you?
         </h1>
         <p className="mt-3 text-lg text-gray-500">
-          One business per category. Choose yours before a competitor does.
+          Each category has limited spots per mailer. One business per category can be protected after availability is confirmed.
         </p>
-
-        {full.length > 0 && (
-          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-4 py-1.5">
-            <span className="flex h-1.5 w-1.5 rounded-full bg-green-500" />
-            <p className="text-sm font-medium text-green-700">
-              {full.length} categor{full.length === 1 ? "y" : "ies"} already claimed in {city.name}
-            </p>
-          </div>
-        )}
       </div>
+
+      <SharedPostcardVisual snapshot={postcardSnapshot} />
 
       {/* Available categories */}
       {available.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {available.map((cat) => (
-            <CategoryCard key={cat.id} category={cat} citySlug={citySlug} />
+            <CategoryCard
+              key={cat.id}
+              category={cat}
+              citySlug={citySlug}
+            />
           ))}
-
-          {/* Other card — always last */}
-          {otherCategory && (
-            <OtherCategoryCard citySlug={citySlug} />
-          )}
         </div>
       )}
 
-      {/* Sold out */}
+      {/* Full / sold-out categories */}
       {full.length > 0 && (
         <div className="mt-10">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Already claimed — these spots are taken
+            Sold out in {city.name}
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {full.map((cat) => (
@@ -90,10 +85,14 @@ export default async function CategorySelectionPage({ params }: Props) {
         </div>
       )}
 
+      {/* Back link */}
       <div className="mt-10 text-center">
-        <Link href="/get-started" className="text-sm text-gray-500 hover:text-gray-700">
-          ← Choose a different city
-        </Link>
+        <Link
+          href="/get-started"
+          className="text-sm text-gray-500 hover:text-gray-700"
+        >
+        Choose a different city
+      </Link>
       </div>
     </div>
   );
@@ -109,8 +108,11 @@ function CategoryCard({
   citySlug: string;
 }) {
   const urgency =
-    category.spotsRemaining <= 1 ? "critical" :
-    category.spotsRemaining <= 3 ? "high" : "normal";
+    category.spotsRemaining <= 1
+      ? "critical"
+      : category.spotsRemaining <= 3
+      ? "high"
+      : "normal";
 
   return (
     <Link
@@ -122,7 +124,10 @@ function CategoryCard({
           1 spot left
         </div>
       )}
-      <div className="mb-3 text-3xl">{category.icon ?? "🏢"}</div>
+
+      <div className="mb-3 rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-blue-700">
+        Category
+      </div>
       <h3 className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
         {category.name}
       </h3>
@@ -131,16 +136,29 @@ function CategoryCard({
           {category.description}
         </p>
       )}
+
       <div className="mt-3 flex items-center justify-between">
-        <span className={cn(
-          "text-xs font-medium",
-          urgency === "critical" ? "text-red-600" :
-          urgency === "high" ? "text-amber-600" : "text-green-600"
-        )}>
-          {urgency === "critical" ? "⚠️ Almost full" :
-           urgency === "high" ? `${category.spotsRemaining} left` : "Available"}
+        <span
+          className={cn(
+            "text-xs font-medium",
+            urgency === "critical" ? "text-red-600" :
+            urgency === "high" ? "text-amber-600" :
+            "text-green-600"
+          )}
+        >
+          {urgency === "critical"
+            ? "Almost full"
+            : urgency === "high"
+            ? `${category.spotsRemaining} left`
+            : "Available"}
         </span>
-        <svg className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <svg
+          className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          stroke="currentColor"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
         </svg>
       </div>
@@ -157,7 +175,9 @@ function SoldOutCategoryCard({
 }) {
   return (
     <div className="relative flex flex-col rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-5 opacity-60">
-      <div className="mb-3 text-3xl grayscale">{category.icon ?? "🏢"}</div>
+      <div className="mb-3 rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+        Category
+      </div>
       <h3 className="font-semibold text-gray-400 leading-tight">{category.name}</h3>
       <span className="mt-3 text-xs font-semibold uppercase text-gray-400">Sold out</span>
     </div>

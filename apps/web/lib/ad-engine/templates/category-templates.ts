@@ -271,7 +271,7 @@ export function resolveTemplateKey(category: string): string {
 
 export function getTemplate(category: string): CategoryTemplate {
   const key = resolveTemplateKey(category);
-  return CATEGORY_TEMPLATES[key] ?? CATEGORY_TEMPLATES.general;
+  return CATEGORY_TEMPLATES[key] ?? CATEGORY_TEMPLATES.general!;
 }
 
 /** All categories for dropdowns */

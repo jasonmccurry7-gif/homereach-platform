@@ -1,0 +1,4 @@
+interface:
+  display_name: "outreach"
+  short_description: "HomeReach outreach workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

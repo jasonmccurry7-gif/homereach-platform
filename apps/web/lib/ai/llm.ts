@@ -45,10 +45,14 @@ function resolveModel(args: GenerateTextArgs, provider: AiProvider): string {
   if (configured && isCompatibleModel(provider, configured)) return configured;
 
   if (configured) {
-    console.warn(`[ai:${args.feature}] Ignoring ${configured} because it is not compatible with ${provider}.`);
+    console.warn(
+      `[ai:${args.feature}] Ignoring ${configured} because it is not compatible with ${provider}.`,
+    );
   }
 
-  if (provider === "openai") return process.env.OPENAI_DEFAULT_MODEL || DEFAULT_OPENAI_MODEL;
+  if (provider === "openai") {
+    return process.env.OPENAI_DEFAULT_MODEL || DEFAULT_OPENAI_MODEL;
+  }
   return args.anthropicDefaultModel || DEFAULT_ANTHROPIC_MODEL;
 }
 
@@ -56,15 +60,20 @@ export async function generateText(args: GenerateTextArgs): Promise<GenerateText
   const provider = resolveProvider(args.feature);
   const model = resolveModel(args, provider);
 
-  if (provider === "openai") return generateOpenAiText(args, model);
+  if (provider === "openai") {
+    return generateOpenAiText(args, model);
+  }
   return generateAnthropicText(args, model);
 }
 
-async function generateOpenAiText(args: GenerateTextArgs, model: string): Promise<GenerateTextResult> {
+async function generateOpenAiText(
+  args: GenerateTextArgs,
+  model: string,
+): Promise<GenerateTextResult> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({
@@ -75,7 +84,9 @@ async function generateOpenAiText(args: GenerateTextArgs, model: string): Promis
       ],
       max_tokens: args.maxTokens ?? 1000,
       temperature: args.temperature ?? 0.2,
-      ...(args.responseFormat === "json" ? { response_format: { type: "json_object" } } : {}),
+      ...(args.responseFormat === "json"
+        ? { response_format: { type: "json_object" } }
+        : {}),
     }),
   });
 
@@ -89,8 +100,9 @@ async function generateOpenAiText(args: GenerateTextArgs, model: string): Promis
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
 
+  const text = data.choices?.[0]?.message?.content ?? "";
   return {
-    text: data.choices?.[0]?.message?.content ?? "",
+    text,
     provider: "openai",
     modelName: model,
     tokensInput: data.usage?.prompt_tokens ?? 0,
@@ -98,7 +110,10 @@ async function generateOpenAiText(args: GenerateTextArgs, model: string): Promis
   };
 }
 
-async function generateAnthropicText(args: GenerateTextArgs, model: string): Promise<GenerateTextResult> {
+async function generateAnthropicText(
+  args: GenerateTextArgs,
+  model: string,
+): Promise<GenerateTextResult> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -111,7 +126,12 @@ async function generateAnthropicText(args: GenerateTextArgs, model: string): Pro
       max_tokens: args.maxTokens ?? 1000,
       temperature: args.temperature ?? 0.2,
       system: args.system,
-      messages: [{ role: "user", content: args.prompt }],
+      messages: [
+        {
+          role: "user",
+          content: args.prompt,
+        },
+      ],
     }),
   });
 
@@ -125,11 +145,13 @@ async function generateAnthropicText(args: GenerateTextArgs, model: string): Pro
     usage?: { input_tokens?: number; output_tokens?: number };
   };
 
+  const text = (data.content || [])
+    .filter((block) => block.type === "text")
+    .map((block) => block.text || "")
+    .join("");
+
   return {
-    text: (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text || "")
-      .join(""),
+    text,
     provider: "anthropic",
     modelName: model,
     tokensInput: data.usage?.input_tokens ?? 0,

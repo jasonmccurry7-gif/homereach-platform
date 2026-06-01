@@ -31,13 +31,16 @@ export default function PricingClient({ bundles, cities }: PricingClientProps) {
   const [confirmDialog, setConfirmDialog] = useState<{ cityId: string; cityName: string } | null>(null);
 
   const handleBundleChange = (bundleId: string, field: 'standardPrice' | 'foundingPrice', value: string) => {
-    setBundleEdits(prev => ({
-      ...prev,
-      [bundleId]: {
-        ...prev[bundleId],
-        [field]: value,
-      },
-    }));
+    setBundleEdits(prev => {
+      const current = prev[bundleId] ?? { standardPrice: "", foundingPrice: "" };
+      return {
+        ...prev,
+        [bundleId]: {
+          ...current,
+          [field]: value,
+        },
+      };
+    });
   };
 
   const saveBundlePrice = async (bundleId: string, bundleName: string) => {

@@ -74,16 +74,10 @@ function text(value: unknown, max = 220): string | null {
   return trimmed.slice(0, max);
 }
 
-function positiveInt(value: unknown, fallback = 0): number {
+function positiveInt(value: unknown, fallback = 0, max = 10_000_000): number {
   const num = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(num)) return fallback;
-  return Math.max(0, Math.round(num));
-}
-
-function moneyCents(value: unknown): number {
-  const num = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(num)) return 0;
-  return Math.max(0, Math.round(num * 100));
+  return Math.min(max, Math.max(0, Math.round(num)));
 }
 
 function dataConfidence(value: unknown): string {
@@ -126,8 +120,8 @@ function routeRows(value: unknown) {
       zip5: text(route.zip5, 5),
       carrierRouteId: text(route.carrierRouteId, 32),
       label: text(route.label, 220) ?? "USPS route",
-      deliverableAddressCount: positiveInt(route.deliveryPoints),
-      residentialCount: positiveInt(route.households),
+      deliverableAddressCount: positiveInt(route.deliveryPoints, 0, 20_000),
+      residentialCount: positiveInt(route.households, 0, 20_000),
       dataConfidence: dataConfidence(route.confidence),
       sourceLabel: dataConfidence(route.confidence) === "demo_sample" ? "Demo/Sample USPS overlay" : "USPS route data",
     }));
@@ -140,7 +134,7 @@ function geographyRows(value: unknown) {
       geographyKey: text(geo.id, 140) ?? "unknown-geography",
       geographyType: text(geo.mode, 64) ?? "unknown",
       label: text(geo.label, 220) ?? "Political geography",
-      householdCount: positiveInt(geo.households),
+      householdCount: positiveInt(geo.households, 0, 2_000_000),
       dataConfidence: dataConfidence(geo.confidence),
       sourceLabel: text(geo.source, 220) ?? "Public aggregate geography",
     }));
@@ -181,13 +175,28 @@ export async function savePublicMapPlan(
       ? healthToneRaw
       : null;
   const healthScore = Math.min(100, positiveInt(health.score));
-  const households = positiveInt(stats.households);
-  const deliveryPoints = positiveInt(stats.deliveryPoints);
-  const printQuantity = positiveInt(stats.printQuantity);
-  const printCostCents = moneyCents(stats.printCost);
-  const postageCents = moneyCents(stats.postage);
-  const totalCents = moneyCents(stats.total);
-  const grossMarginCents = moneyCents(stats.margin);
+  const routeHouseholds = routes.reduce((sum, route) => sum + route.residentialCount, 0);
+  const geographyHouseholds = geographies.reduce((sum, geo) => sum + geo.householdCount, 0);
+  const households = Math.min(
+    10_000_000,
+    routes.length > 0 ? routeHouseholds : geographyHouseholds,
+  );
+  const routeDeliveryPoints = routes.reduce(
+    (sum, route) => sum + route.deliverableAddressCount,
+    0,
+  );
+  const deliveryPoints = Math.min(
+    10_000_000,
+    routeDeliveryPoints > 0 ? routeDeliveryPoints : households,
+  );
+  const printQuantity = Math.min(50_000_000, households * drops);
+  const printCostCents =
+    printQuantity * POLITICAL_POSTCARD_PRINT_ESTIMATE_CENTS;
+  const postageCents =
+    printQuantity * POLITICAL_POSTCARD_POSTAGE_ESTIMATE_CENTS;
+  const totalCents =
+    printQuantity * MAX_POLITICAL_POSTCARD_PRICE_PER_PIECE_CENTS;
+  const grossMarginCents = Math.max(0, totalCents - printCostCents - postageCents);
   const serviceCostCents = Math.max(0, totalCents - printCostCents - postageCents);
   const now = typeof input.generatedAt === "string" ? input.generatedAt : new Date().toISOString();
   const supabase = createServiceClient();
@@ -202,6 +211,9 @@ export async function savePublicMapPlan(
     deliveryPoints,
     printQuantity,
     totalCostCents: totalCents,
+    source: "server_recomputed_public_draft",
+    checkoutEligible: false,
+    requiresHumanApproval: true,
     dataConfidence: confidence,
     generatedAt: now,
   };
@@ -264,7 +276,7 @@ export async function savePublicMapPlan(
       proposal_status: "not_started",
       payment_status: "not_started",
       data_confidence: confidence,
-      source_labels: ["Public Aggregate", "Estimated", confidence === "demo_sample" ? "Demo/Sample" : "USPS route data"],
+      source_labels: ["Public unapproved draft", "Server-recomputed estimate", confidence === "demo_sample" ? "Demo/Sample" : "USPS route data"],
       campaign_health_score: healthScore,
       campaign_health_tone: healthTone,
       ai_recommendations: jsonArray(input.recommendations, 12),

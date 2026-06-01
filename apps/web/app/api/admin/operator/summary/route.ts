@@ -163,7 +163,7 @@ export async function GET(req: Request) {
   // Payment sent > 6h
   const paymentStale = (paymentSentLeads as unknown[]).length;
   if (paymentStale > 0) {
-    commandItems.push({ type: "payment_stale", label: `${paymentStale} payment link${paymentStale > 1 ? "s" : ""} sent > 6h — close needed`, severity: "red", count: paymentStale, action: "/agent/queue" });
+    commandItems.push({ type: "payment_stale", label: `${paymentStale} payment link${paymentStale > 1 ? "s" : ""} sent > 6h — close needed`, severity: "red", count: paymentStale, action: "/agent/leads" });
   }
 
   // New unfulfilled orders

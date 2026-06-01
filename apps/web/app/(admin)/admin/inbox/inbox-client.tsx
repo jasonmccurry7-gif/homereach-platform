@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { AutomationMessage, AutomationMode, IntentType, LeadStatus } from "@/lib/engine/types";
-import { AutomationEngine } from "@/lib/engine/automation";
+import { AutomationEngine } from "@/lib/engine/automation-client";
 // MOCK_CONVERSATIONS removed — inbox now loads from real DB via /api/conversations
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,7 +58,6 @@ function IntentBadge({ intent }: { intent?: IntentType }) {
 
 function MessageBubble({ msg }: { msg: AutomationMessage }) {
   const isOut = msg.direction === "outbound";
-  const intentBadge = msg.intent ? AutomationEngine.getIntentBadge(msg.intent) : null;
   return (
     <div className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}>
       {/* Intent badge on inbound messages */}
@@ -248,7 +247,7 @@ export function InboxClient() {
       "Not interested thanks",
       "How many homes is that again?",
     ];
-    const body = samples[Math.floor(Math.random() * samples.length)];
+    const body = samples[Math.floor(Math.random() * samples.length)] ?? "Yeah send me the link";
     const detected = AutomationEngine.detectIntent(body);
     const inboundMsg: AutomationMessage = {
       id: `msg-${Date.now()}-in`,
@@ -262,7 +261,7 @@ export function InboxClient() {
 
     let autoReply: AutomationMessage | null = null;
     if (active.automationMode === "auto") {
-      const firstName = active.leadName.split(" ")[0];
+      const firstName = active.leadName.split(" ")[0] ?? active.leadName;
       const responseBody = AutomationEngine.generateResponse(detected.type, active.channel, {
         firstName,
         city: active.city,
@@ -348,7 +347,7 @@ export function InboxClient() {
 
   function handleUseTemplate(intent: IntentType = "interested") {
     if (!active) return;
-    const firstName = active.leadName.split(" ")[0];
+    const firstName = active.leadName.split(" ")[0] ?? active.leadName;
     const body = AutomationEngine.generateResponse(intent, active.channel, {
       firstName,
       city: active.city,
@@ -358,6 +357,15 @@ export function InboxClient() {
   }
 
   const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
+  const replyQueue = conversations.filter((c) => c.unreadCount > 0 || c.messages.at(-1)?.direction === "inbound");
+  const autoActiveCount = conversations.filter((c) => c.automationMode === "auto").length;
+  const readyToBuyCount = conversations.filter((c) => c.lastIntent === "ready_to_buy").length;
+  const sortedConversations = [...conversations].sort((a, b) => {
+    const aNeedsReply = a.unreadCount > 0 || a.messages.at(-1)?.direction === "inbound";
+    const bNeedsReply = b.unreadCount > 0 || b.messages.at(-1)?.direction === "inbound";
+    if (aNeedsReply !== bNeedsReply) return aNeedsReply ? -1 : 1;
+    return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+  });
   const needsHandoff = active && active.automationMode === "auto" &&
     (active.lastIntent === "ready_to_buy" || active.lastIntent === "not_interested");
 
@@ -391,23 +399,37 @@ export function InboxClient() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] max-w-6xl rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div className="flex h-[calc(100vh-6rem)] max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:flex-row">
 
       {/* ── Left: conversation list ── */}
-      <div className="w-80 shrink-0 flex flex-col border-r border-gray-200">
+      <div className="h-72 shrink-0 flex flex-col border-b border-gray-200 lg:h-auto lg:w-80 lg:border-b-0 lg:border-r">
         <div className="px-4 py-4 border-b border-gray-100 bg-gray-50">
           <div className="flex items-center justify-between">
-            <h1 className="font-bold text-gray-900">Inbox</h1>
+            <h1 className="font-bold text-gray-900">Revenue Inbox</h1>
             {totalUnread > 0 && (
               <span className="text-xs font-bold text-blue-600 bg-blue-50 rounded-full px-2 py-0.5">
                 {totalUnread} unread
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-0.5">{conversations.length} conversations</p>
+          <p className="text-xs text-gray-500 mt-0.5">{conversations.length} conversations - newest owner actions first</p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5">
+              <p className="text-[10px] font-bold uppercase text-amber-700">Reply</p>
+              <p className="text-lg font-black text-amber-900">{replyQueue.length}</p>
+            </div>
+            <div className="rounded-lg border border-green-200 bg-green-50 px-2 py-1.5">
+              <p className="text-[10px] font-bold uppercase text-green-700">Ready</p>
+              <p className="text-lg font-black text-green-900">{readyToBuyCount}</p>
+            </div>
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1.5">
+              <p className="text-[10px] font-bold uppercase text-violet-700">Auto</p>
+              <p className="text-lg font-black text-violet-900">{autoActiveCount}</p>
+            </div>
+          </div>
         </div>
         <div className="overflow-y-auto flex-1">
-          {conversations.map((conv) => (
+          {sortedConversations.map((conv) => (
             <ConversationRow
               key={conv.id}
               conv={conv}
@@ -424,7 +446,7 @@ export function InboxClient() {
 
           {/* Thread header */}
           <div className="px-5 py-4 border-b border-gray-100 bg-white">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-bold text-gray-900">{active.leadName}</p>
@@ -436,9 +458,9 @@ export function InboxClient() {
                 <p className="text-sm text-gray-500 mt-0.5">
                   {active.businessName} · {active.city} · {active.category}
                 </p>
-                <div className="flex gap-3 mt-1">
-                  <a href={`tel:${active.phone}`} className="text-xs text-blue-600 hover:underline">📞 {active.phone}</a>
-                  <a href={`mailto:${active.email}`} className="text-xs text-blue-600 hover:underline">✉️ {active.email}</a>
+                <div className="flex flex-wrap gap-3 mt-1">
+                  {active.phone && <a href={`tel:${active.phone}`} className="text-xs text-blue-600 hover:underline">Call {active.phone}</a>}
+                  {active.email && <a href={`mailto:${active.email}`} className="text-xs text-blue-600 hover:underline">Email {active.email}</a>}
                 </div>
               </div>
 
@@ -452,14 +474,14 @@ export function InboxClient() {
                       : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
                   }`}
                 >
-                  {active.automationMode === "auto" ? "🤖 Auto ON" : "👤 Manual"}
+                  {active.automationMode === "auto" ? "Auto ON" : "Manual"}
                 </button>
                 <button
                   onClick={handleSimulateInbound}
                   className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
                   title="Simulate an inbound message (dev only)"
                 >
-                  ⚡ Simulate reply
+                  Simulate reply
                 </button>
               </div>
             </div>
@@ -469,8 +491,8 @@ export function InboxClient() {
               <div className="mt-3 rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 flex items-center justify-between">
                 <p className="text-sm font-medium text-green-800">
                   {active.lastIntent === "ready_to_buy"
-                    ? "🟢 This lead is ready to buy — intake link was auto-sent!"
-                    : "🔴 Lead marked not interested — automation paused."}
+                    ? "This lead is ready to buy. Confirm the next payment/intake step before sending anything else."
+                    : "Lead marked not interested. Keep automation paused until a human reviews."}
                 </p>
                 <button
                   onClick={() => toggleAutomation(active.id)}
@@ -487,7 +509,7 @@ export function InboxClient() {
             {active.automationMode === "auto" && (
               <div className="text-center">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 text-violet-700 px-3 py-1 text-xs font-medium">
-                  🤖 Automation active — responding automatically
+                  Automation active - monitor replies and switch to manual for pricing, payment, or objections.
                 </span>
               </div>
             )}
@@ -501,7 +523,7 @@ export function InboxClient() {
           <form onSubmit={handleSend} className="px-5 py-4 border-t border-gray-100 bg-white">
             {/* Quick templates */}
             <div className="flex gap-2 mb-2.5 flex-wrap">
-              <span className="text-xs text-gray-400 self-center">Templates:</span>
+              <span className="text-xs text-gray-400 self-center">Draft helpers:</span>
               {(["interested", "objection", "ready_to_buy"] as IntentType[]).map((intent) => {
                 const badge = AutomationEngine.getIntentBadge(intent);
                 return (
@@ -518,14 +540,14 @@ export function InboxClient() {
               <button
                 type="button"
                 onClick={() => {
-                  const firstName = active.leadName.split(" ")[0];
+                  const firstName = active.leadName.split(" ")[0] ?? active.leadName;
                   setReplyText(
                     `Hi ${firstName}, here's your intake link to lock in the ${active.category} spot in ${active.city}: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com"}/get-started\n\nTakes about 3 minutes! — HomeReach`
                   );
                 }}
                 className="text-xs px-2 py-1 rounded-full border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors"
               >
-                📋 Send Intake Link
+                Draft intake link
               </button>
             </div>
 
@@ -533,14 +555,19 @@ export function InboxClient() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-medium text-gray-500">
-                    via {active.channel.toUpperCase()} → {active.channel === "sms" ? active.phone : active.email}
+                    Manual send via {active.channel.toUpperCase()} to {active.channel === "sms" ? active.phone : active.email}. Review pricing, claims, and opt-out rules before sending.
                   </span>
                 </div>
                 <textarea
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend(e as any); }}
-                  placeholder={`Type a ${active.channel === "sms" ? "text" : "reply"}… (Cmd+Enter to send)`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                    }
+                  }}
+                  placeholder={`Draft a ${active.channel === "sms" ? "text" : "reply"}... (Cmd+Enter sends manually)`}
                   rows={3}
                   className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm resize-none focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
@@ -550,7 +577,7 @@ export function InboxClient() {
                 disabled={sending || !replyText.trim()}
                 className="shrink-0 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {sending ? "…" : "Send"}
+                {sending ? "..." : "Send manually"}
               </button>
             </div>
           </form>

@@ -13,7 +13,7 @@ export default async function PoliticalProposalsPage() {
       title="Proposal Pipeline"
       subtitle="Client-facing campaign proposals, view signals, approval state, expiration risk, and public proposal links."
       primaryHref="/political/plan"
-      primaryLabel="Generate Proposal"
+      primaryLabel="Request Proposal Review"
       secondaryHref="/admin/political/reporting"
       secondaryLabel="Approval Log"
       data={data}

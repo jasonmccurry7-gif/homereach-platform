@@ -1,0 +1,4 @@
+interface:
+  display_name: "orchestration"
+  short_description: "HomeReach orchestration workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

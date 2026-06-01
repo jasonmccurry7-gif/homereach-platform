@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8,8 +9,14 @@ import { NextResponse } from "next/server";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
+
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agent_id");
+  const agentId = isSalesAgent ? user.id : searchParams.get("agent_id");
 
   if (!agentId) {
     return NextResponse.json({ error: "agent_id required" }, { status: 400 });
@@ -50,11 +57,11 @@ export async function GET(req: Request) {
   } catch {}
 
   // ── 7-day history for streak ──────────────────────────────────────────────
-  let weekLogs: Array<{ created_at: string; quality_score: number }> = [];
+  let weekLogs: Array<{ created_at: string; quality_score: number; task_type: string }> = [];
   try {
     const { data } = await supabase
       .from("facebook_activity_logs")
-      .select("created_at, quality_score")
+      .select("created_at, quality_score, task_type")
       .eq("agent_id", agentId)
       .gte("created_at", week7d)
       .order("created_at", { ascending: false });

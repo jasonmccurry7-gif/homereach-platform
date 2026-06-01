@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { isPoliticalEnabled } from "@/lib/political/env";
 import { savePublicMapPlan } from "@/lib/political/map-plans";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 export async function POST(request: Request) {
   if (!isPoliticalEnabled()) {
     return NextResponse.json({ ok: false, error: "Political module disabled" }, { status: 404 });
   }
+
+  const limited = checkRateLimit(request, {
+    key: "political-map-plans",
+    limit: 6,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
 
   let body: unknown;
   try {
@@ -15,7 +23,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await savePublicMapPlan(body && typeof body === "object" ? body : {});
+    const result = await savePublicMapPlan(
+      body && typeof body === "object" ? body : {},
+    );
     return NextResponse.json(result, { status: result.ok ? 201 : 202 });
   } catch (error) {
     console.error("[api/political/map-plans] failed", error);
@@ -25,7 +35,7 @@ export async function POST(request: Request) {
         stored: "local_only",
         reason: "Map plan save failed before reaching the database.",
       },
-      { status: 202 }
+      { status: 202 },
     );
   }
 }

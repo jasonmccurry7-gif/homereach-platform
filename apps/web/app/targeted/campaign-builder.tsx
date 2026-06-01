@@ -40,6 +40,7 @@ interface ContactForm {
   phone:        string;
   email:        string;
   notes:        string;
+  smsConsent:   boolean;
 }
 
 const BLANK_CONTACT: ContactForm = {
@@ -48,6 +49,7 @@ const BLANK_CONTACT: ContactForm = {
   phone:        "",
   email:        "",
   notes:        "",
+  smsConsent:   false,
 };
 
 // ── Progress Bar ──────────────────────────────────────────────────────────────
@@ -498,14 +500,18 @@ function StepContactDetails({
   onChange,
   onSubmit,
   submitting,
+  error,
 }: {
   form: ContactForm;
   onChange: <K extends keyof ContactForm>(k: K, v: ContactForm[K]) => void;
   onSubmit: () => void;
   submitting: boolean;
+  error?: string | null;
 }) {
+  const canSubmit = !!form.businessName && !!form.email && !!form.phone && form.smsConsent;
+
   function FormField({ label, name, type = "text", placeholder, required }: {
-    label: string; name: keyof ContactForm; type?: string; placeholder: string; required?: boolean;
+    label: string; name: Exclude<keyof ContactForm, "smsConsent">; type?: string; placeholder: string; required?: boolean;
   }) {
     return (
       <div className="flex flex-col gap-1.5">
@@ -538,6 +544,17 @@ function StepContactDetails({
           </div>
           <FormField label="Your Name" name="contactName" placeholder="Mike Harrington" required />
           <FormField label="Phone" name="phone" type="tel" placeholder="+1 (330) 555-0100" required />
+          <label className="col-span-2 flex gap-2 rounded-2xl border border-gray-800 bg-gray-900/60 px-4 py-3 text-xs leading-5 text-gray-400">
+            <input
+              type="checkbox"
+              checked={form.smsConsent}
+              onChange={(e) => onChange("smsConsent", e.target.checked)}
+              className="mt-1 h-4 w-4 shrink-0 rounded border-gray-600"
+            />
+            <span>
+              I agree HomeReach may text me about this request, including campaign information, quote follow-up, appointment coordination, proposal/order updates, and support replies. Message frequency varies. Msg and data rates may apply. Reply HELP for help or STOP to opt out. SMS consent is not required as a condition of purchase. Mobile opt-in data will not be shared with third parties or affiliates for marketing or promotional purposes. See <Link href="/terms" className="font-semibold text-blue-300 underline">Terms</Link> and <Link href="/privacy" className="font-semibold text-blue-300 underline">Privacy Policy</Link>.
+            </span>
+          </label>
           <div className="col-span-2">
             <FormField label="Email" name="email" type="email" placeholder="mike@harringtonplumbing.com" required />
           </div>
@@ -561,12 +578,18 @@ function StepContactDetails({
         <p>→ Once approved, your postcards go to print within 5–7 business days.</p>
       </div>
 
+      {error && (
+        <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-100">
+          {error}
+        </div>
+      )}
+
       <button
         onClick={onSubmit}
-        disabled={submitting || !form.businessName || !form.email || !form.phone}
+        disabled={submitting || !canSubmit}
         className={cn(
           "w-full py-4 rounded-2xl text-base font-bold transition-all",
-          submitting || !form.businessName || !form.email || !form.phone
+          submitting || !canSubmit
             ? "bg-gray-800 text-gray-500 cursor-not-allowed"
             : "bg-blue-600 hover:bg-blue-500 text-white"
         )}
@@ -640,6 +663,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
   const [contact, setContact] = useState<ContactForm>(BLANK_CONTACT);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const selectedCity = cities.find((c) => c.id === selectedCityId) ?? null;
   const cityRoutes = useMemo(
@@ -668,7 +692,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
   function handleCampaignTypeSelect(type: "shared" | "targeted") {
     setCampaignType(type);
     if (type === "shared") {
-      window.location.href = "/get-started";
+      window.location.href = "/shared-postcards";
     } else {
       setStep(2);
     }
@@ -683,12 +707,13 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
     if (step === 2) return selectedCityId !== null;
     if (step === 3) return !summary.isBelowMinimum && summary.totalHouseholds > 0;
     if (step === 4) return true;
-    if (step === 5) return !!contact.businessName && !!contact.email && !!contact.phone;
+    if (step === 5) return !!contact.businessName && !!contact.email && !!contact.phone && contact.smsConsent;
     return false;
   }
 
   async function handleSubmit() {
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await fetch("/api/targeted-campaign", {
         method:  "POST",
@@ -710,12 +735,15 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("[CampaignBuilder] Submit failed:", err);
+        setSubmitError("We could not save this campaign request. Please review the fields and try again.");
+        return;
       }
+      setSubmitted(true);
     } catch (err) {
       console.error("[CampaignBuilder] Submit error:", err);
+      setSubmitError("Network error. Please check your connection and try again.");
     } finally {
       setSubmitting(false);
-      setSubmitted(true);
     }
   }
 
@@ -780,6 +808,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
               onChange={updateContact}
               onSubmit={handleSubmit}
               submitting={submitting}
+              error={submitError}
             />
           )}
         </div>

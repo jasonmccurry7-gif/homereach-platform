@@ -111,7 +111,7 @@ export default function AccountPage() {
         <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-3">Profile</p>
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-blue-700 rounded-full flex items-center justify-center text-xl font-bold">
-            {(user?.full_name ?? user?.email ?? "A")[0].toUpperCase()}
+            {(user?.full_name ?? user?.email ?? "A").charAt(0).toUpperCase()}
           </div>
           <div>
             <p className="font-semibold text-white">{user?.full_name ?? "Agent"}</p>

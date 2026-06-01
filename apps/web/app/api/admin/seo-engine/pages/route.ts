@@ -7,6 +7,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { seoFlagGate, requireAdmin } from "@/lib/seo/guards";
 import { listPages } from "@/lib/seo/registry";
 import { getInventorySnapshot } from "@/lib/seo/inventory-rules";
+import { syncSeoPageLedger } from "@/lib/approvals/seo-ledger";
 import type { SeoPageStatus } from "@/lib/seo/registry";
 
 export const runtime = "nodejs";
@@ -136,6 +137,27 @@ export async function POST(req: NextRequest) {
 
   if (insertErr || !inserted) {
     return NextResponse.json({ ok: false, error: insertErr?.message ?? "insert_failed" }, { status: 500 });
+  }
+
+  const ledgerResult = await syncSeoPageLedger({
+    id: String(inserted.id),
+    slug: String(inserted.slug),
+    pageType: String(inserted.page_type),
+    status: "draft",
+    titleTag: typeof inserted.title_tag === "string" ? inserted.title_tag : null,
+    metaDescription: typeof inserted.meta_description === "string" ? inserted.meta_description : null,
+    h1: typeof inserted.h1 === "string" ? inserted.h1 : null,
+    cityId: typeof inserted.city_id === "string" ? inserted.city_id : null,
+    categoryId: typeof inserted.category_id === "string" ? inserted.category_id : null,
+    createdAt: typeof inserted.created_at === "string" ? inserted.created_at : null,
+    updatedAt: typeof inserted.updated_at === "string" ? inserted.updated_at : null,
+  }, {
+    actorId: admin.adminId,
+    actorLabel: "seo_page_create",
+    eventType: "seo_page_created",
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] seo page create sync skipped:", ledgerResult.error);
   }
 
   return NextResponse.json({ ok: true, row: inserted });

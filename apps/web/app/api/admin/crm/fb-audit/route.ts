@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     .select("fb_outreach_status, fb_actually_sent")
     .eq("channel", "facebook");
 
-  const summary: Record<string, number> = {
+  const summary: Record<string, number> & { never_sent: number; total: number } = {
     never_sent:      0,
     draft_generated: 0,
     queued:          0,
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   (statusCounts ?? []).forEach(r => {
     const key = r.fb_outreach_status ?? (r.fb_actually_sent ? "sent" : "never_sent");
     summary[key] = (summary[key] ?? 0) + 1;
-    summary.total++;
+    summary.total = (summary.total ?? 0) + 1;
   });
 
   // Detail query

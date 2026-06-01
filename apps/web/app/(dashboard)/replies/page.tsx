@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Replies — HomeReach" };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Replies Page
-// Phase 4: Will display inbound SMS/email responses from mailer recipients.
-// Campaigns are category-exclusive — every reply here is a warm lead.
-// ─────────────────────────────────────────────────────────────────────────────
+export const metadata: Metadata = { title: "Replies - HomeReach" };
 
 export default async function RepliesPage() {
   const supabase = await createClient();
@@ -18,46 +13,94 @@ export default async function RepliesPage() {
   if (!user) redirect("/login");
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Replies</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Inbound responses from your mailer — calls, texts, and form submissions.
+    <div className="max-w-3xl space-y-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+          Customer response center
+        </p>
+        <h1 className="mt-2 text-2xl font-bold text-gray-900">Replies</h1>
+        <p className="mt-1 max-w-xl text-sm leading-6 text-gray-500">
+          Calls, texts, QR scans, and form submissions will collect here so warm
+          opportunities are easier to spot and follow up.
         </p>
       </div>
 
-      {/* Coming soon state */}
-      <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center">
-        <div className="mx-auto mb-4 text-5xl">💬</div>
-        <h2 className="text-xl font-bold text-gray-900">Reply tracking coming soon</h2>
-        <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-          Once your first mailer drops, inbound calls, text replies, and form
-          submissions will appear here automatically.
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">
+          Current status
         </p>
-        <div className="mt-8 grid gap-4 text-left sm:grid-cols-3">
-          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-            <p className="text-2xl">📱</p>
-            <p className="mt-2 text-sm font-semibold text-gray-800">QR scans</p>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Every scan tracked in real time
-            </p>
-          </div>
-          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-            <p className="text-2xl">📞</p>
-            <p className="mt-2 text-sm font-semibold text-gray-800">Phone leads</p>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Calls routed through a tracked number
-            </p>
-          </div>
-          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-            <p className="text-2xl">📋</p>
-            <p className="mt-2 text-sm font-semibold text-gray-800">Form fills</p>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Contact info captured and forwarded
-            </p>
-          </div>
+        <h2 className="mt-2 text-xl font-bold text-blue-950">
+          Reply tracking is being prepared for your campaign activity.
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-blue-700">
+          When response data is connected, this page will show who replied, how
+          they came in, and what should happen next.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href="/campaign"
+            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+          >
+            View campaign
+          </Link>
+          <Link
+            href="/settings"
+            className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50"
+          >
+            Check contact info
+          </Link>
         </div>
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <ReplySignal
+          title="QR scans"
+          body="Shows interest from people who scanned the postcard."
+        />
+        <ReplySignal
+          title="Phone leads"
+          body="Keeps tracked calls visible with the campaign they came from."
+        />
+        <ReplySignal
+          title="Form fills"
+          body="Captures contact details so the next step is clear."
+        />
+      </div>
+
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <p className="text-sm font-bold text-gray-900">
+          How HomeReach will use this
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[
+            ["Capture", "Collect the response and connect it to the campaign."],
+            ["Clarify", "Separate new interest from routine activity."],
+            ["Follow up", "Make the next customer action easier to see."],
+          ].map(([label, detail]) => (
+            <div
+              key={label}
+              className="rounded-xl border border-gray-100 bg-gray-50 p-4"
+            >
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                {label}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-gray-600">{detail}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReplySignal({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <p className="text-sm font-bold text-gray-900">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-gray-500">{body}</p>
+      <span className="mt-4 inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">
+        Pending data
+      </span>
     </div>
   );
 }

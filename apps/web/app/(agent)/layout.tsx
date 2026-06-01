@@ -5,6 +5,7 @@ import { createServerClient } from "@supabase/ssr";
 import AgentBottomNav    from "./agent-bottom-nav";
 
 export const metadata: Metadata = { title: "HomeReach Agent", description: "Mobile sales agent dashboard" };
+export const dynamic = "force-dynamic";
 
 async function getSessionUser() {
   const cookieStore = await cookies();

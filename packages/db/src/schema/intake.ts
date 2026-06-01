@@ -5,8 +5,8 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { businesses } from "./businesses";
-import { spotAssignments } from "./spots";
+import { businesses } from "./businesses.js";
+import { spotAssignments } from "./spots.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // intake_submissions

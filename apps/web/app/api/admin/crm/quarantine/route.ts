@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/crm/quarantine?reviewed=false&page=0
@@ -9,7 +10,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const sp = req.nextUrl.searchParams;
   const reviewed = sp.get("reviewed");
   const page  = parseInt(sp.get("page")  ?? "0");
@@ -60,7 +64,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const { lead_id, note } = await req.json();
 
   if (!lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
@@ -82,7 +89,10 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const { lead_id, reason, note } = await req.json();
 
   if (!lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });

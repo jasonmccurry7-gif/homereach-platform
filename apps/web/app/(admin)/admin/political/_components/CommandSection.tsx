@@ -89,6 +89,17 @@ export function CommandSection({
         </div>
       )}
 
+      <div className="rounded-lg border border-blue-300/20 bg-blue-950/25 p-4 text-sm leading-6 text-blue-100">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-200">
+          Protected workflow
+        </p>
+        <p className="mt-2">
+          This section opens review surfaces and records only. Political outreach, proposal sends, payment changes,
+          pricing edits, route reservations, creative publication, and production handoffs still require explicit
+          human approval and verified source data.
+        </p>
+      </div>
+
       <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] shadow-2xl shadow-slate-950/40">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3">
           <div>
@@ -99,8 +110,12 @@ export function CommandSection({
               Refreshed {new Date(data.refreshedAt).toLocaleString()}
             </p>
           </div>
-          <div className="rounded-full border border-emerald-300/25 bg-emerald-950/40 px-3 py-1 text-xs font-semibold text-emerald-200">
-            Connected to Supabase
+          <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+            data.errors.length > 0
+              ? "border-amber-300/25 bg-amber-950/40 text-amber-200"
+              : "border-emerald-300/25 bg-emerald-950/40 text-emerald-200"
+          }`}>
+            {data.errors.length > 0 ? "Partial data - needs review" : "Connected to Supabase"}
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type FunnelStages = {
@@ -91,11 +91,14 @@ export default function SalesDashboardClient() {
   const [fbLeaderboard, setFbLeaderboard] = useState<FbLeaderboardEntry[]>([]);
   const [fbTeamSummary, setFbTeamSummary] = useState<FbTeamSummary | null>(null);
 
-  const sinceMap: Record<TimeRange, string> = {
-    today: new Date(Date.now() - 86400000).toISOString(),
-    week:  new Date(Date.now() - 86400000 * 7).toISOString(),
-    month: new Date(Date.now() - 86400000 * 30).toISOString(),
-  };
+  const sinceMap = useMemo<Record<TimeRange, string>>(
+    () => ({
+      today: new Date(Date.now() - 86400000).toISOString(),
+      week:  new Date(Date.now() - 86400000 * 7).toISOString(),
+      month: new Date(Date.now() - 86400000 * 30).toISOString(),
+    }),
+    [],
+  );
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -115,7 +118,7 @@ export default function SalesDashboardClient() {
     setFbLeaderboard(fbData.leaderboard ?? []);
     setFbTeamSummary(fbData.team_summary ?? null);
     setLoading(false);
-  }, [timeRange]);
+  }, [sinceMap, timeRange]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => { const i = setInterval(fetchAll, 30000); return () => clearInterval(i); }, [fetchAll]);
@@ -407,15 +410,14 @@ export default function SalesDashboardClient() {
         <BreakdownCard
           title="By Channel"
           data={funnel?.by_channel ?? {}}
-          labelKey="ch"
           icons={{ sms: "📱", email: "📧", facebook: "💬", call: "📞" }}
         />
 
         {/* By city */}
-        <BreakdownCard title="By City" data={funnel?.by_city ?? {}} labelKey="city" />
+        <BreakdownCard title="By City" data={funnel?.by_city ?? {}} />
 
         {/* By category */}
-        <BreakdownCard title="By Category" data={funnel?.by_category ?? {}} labelKey="cat" />
+        <BreakdownCard title="By Category" data={funnel?.by_category ?? {}} />
 
         {/* Insights */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
@@ -462,11 +464,10 @@ function Flag({ label, color }: { label: string; color: "red" | "yellow" | "oran
 }
 
 function BreakdownCard({
-  title, data, labelKey, icons,
+  title, data, icons,
 }: {
   title: string;
   data: Record<string, { sent: number; replies?: number; deals: number; revenue: number }>;
-  labelKey: string;
   icons?: Record<string, string>;
 }) {
   const sorted = Object.entries(data)

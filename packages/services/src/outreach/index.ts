@@ -61,6 +61,14 @@ export interface EmailSendOptions {
   metadata?: Record<string, string>;
   intent?: OutreachIntent;
   testMode?: boolean;
+  attachments?: EmailAttachment[];
+}
+
+export interface EmailAttachment {
+  name: string;
+  content: string;
+  contentType: string;
+  contentId?: string;
 }
 
 export interface OutreachSendResult {
@@ -185,7 +193,8 @@ export async function sendSms(
     return { success: true, externalId: message.sid, provider: "twilio" };
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown SMS error";
-    console.error("[outreach/sms] send failed:", error);
+    const logSmsFailure = options.intent === "internal" ? console.warn : console.error;
+    logSmsFailure("[outreach/sms] send failed:", error);
     return { success: false, error, provider: "twilio" };
   }
 }
@@ -223,6 +232,7 @@ export async function sendEmail(
         messageStream: options.messageStream,
         tags: options.tags,
         metadata: options.metadata,
+        attachments: options.attachments,
       });
       return { ...result, provider: "postmark" };
     }

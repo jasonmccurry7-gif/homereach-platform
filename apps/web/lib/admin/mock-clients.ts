@@ -17,8 +17,8 @@ function contractFrom(startISO: string, durationMonths: number): MigratedClient[
   const isNearingRenewal = daysRemaining <= 60;
 
   return {
-    startDate:       start.toISOString().split("T")[0],
-    endDate:         end.toISOString().split("T")[0],
+    startDate:       start.toISOString().slice(0, 10),
+    endDate:         end.toISOString().slice(0, 10),
     remainingMonths,
     isNearingRenewal,
     renewalTriggered: isNearingRenewal && remainingMonths <= 1,

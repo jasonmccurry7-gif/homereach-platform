@@ -413,13 +413,14 @@ function TaskCard({
 
   const category = "home services";
   const scripts  = task.scripts.map(s => rotatePlaceholders(s, activeCity, category));
+  const selectedScript = scripts[scriptIdx] ?? scripts[0] ?? "";
 
   const submit = async () => {
     setSubmitting(true);
     await onLogTask(task.type, {
       proof_text:                proofText,
       proof_url:                 proofUrl,
-      script_used:               scripts[scriptIdx],
+      script_used:               selectedScript,
       thread_depth:              threadDepth,
       dm_converted:              dmConverted,
       business_owner_interaction: bizOwner,
@@ -561,9 +562,9 @@ function TaskCard({
                 )}
               </div>
               <div className="bg-gray-800 rounded-xl p-3">
-                <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">{scripts[scriptIdx]}</p>
+                <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">{selectedScript}</p>
                 <button
-                  onClick={() => navigator.clipboard.writeText(scripts[scriptIdx])}
+                  onClick={() => navigator.clipboard.writeText(selectedScript)}
                   className="mt-2 text-xs text-gray-500 hover:text-white underline"
                 >
                   Copy

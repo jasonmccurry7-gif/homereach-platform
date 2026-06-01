@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CONTRACT_WORKFLOW_GOVERNANCE } from "@/lib/admin/admin-operating-model";
 import { loadGovContractDashboard } from "@/lib/gov-contracts/data";
-import { GOV_CONTRACT_FOCUS_DEFINITIONS, getGovContractFocusMatches, isGovContractFocus } from "@/lib/gov-contracts/focus";
+import { buildGeneratedBidWorkspace } from "@/lib/gov-contracts/execution";
 import type { GovContractDashboardFilters, GovContractOpportunity } from "@/lib/gov-contracts/types";
-import { GovContractsSyncControl } from "./_components/GovContractsSyncControl";
 import { OpportunityStatusActions } from "./_components/OpportunityStatusActions";
+import { OpportunityExecutionActions } from "./_components/OpportunityExecutionActions";
+import { BidSubmissionActions } from "./_components/BidSubmissionActions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Gov Contracts - HomeReach Admin" };
@@ -18,10 +20,8 @@ function first(value: string | string[] | undefined) {
 }
 
 function parseFilters(params: Record<string, string | string[] | undefined>): GovContractDashboardFilters {
-  const focus = first(params.focus)?.trim();
   return {
     keyword: first(params.keyword)?.trim() || undefined,
-    focus: focus === "all" || isGovContractFocus(focus) ? focus : undefined,
     naics: first(params.naics)?.trim() || undefined,
     psc: first(params.psc)?.trim() || undefined,
     agency: first(params.agency)?.trim() || undefined,
@@ -29,7 +29,6 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Go
     setAside: first(params.setAside)?.trim() || undefined,
     noticeType: first(params.noticeType)?.trim() || undefined,
     status: (first(params.status)?.trim() as GovContractDashboardFilters["status"]) || "all",
-    sort: (first(params.sort)?.trim() as GovContractDashboardFilters["sort"]) || "fit",
   };
 }
 
@@ -56,6 +55,51 @@ function statusTone(status: string) {
   return "bg-slate-100 text-slate-700 ring-slate-200";
 }
 
+function pursuitSignal(opportunity: GovContractOpportunity) {
+  if (opportunity.fitStatus === "no_bid" || opportunity.pipelineStatus === "no_bid") {
+    return { label: "No-bid candidate", detail: "Capture rationale and archive the pursuit unless a human overrides.", tone: "rose" };
+  }
+  if (opportunity.missingItems.length || opportunity.requiredDocuments.length === 0) {
+    return { label: "Docs before bid", detail: "Verify solicitation package, required forms, and response method before pricing.", tone: "amber" };
+  }
+  if (opportunity.riskScore >= 70) {
+    return { label: "Risk review first", detail: "Resolve pricing, compliance, or delivery exposure before committing bid resources.", tone: "amber" };
+  }
+  if (opportunity.fitScore >= 75) {
+    return { label: "Bid-ready review", detail: "Strong candidate for fit evaluation and bid room setup after human go/no-go.", tone: "emerald" };
+  }
+  return { label: "Evaluate fit", detail: "Confirm scope, value, deadlines, and internal delivery capacity before pursuit.", tone: "blue" };
+}
+
+function signalTone(tone: string) {
+  if (tone === "emerald") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (tone === "rose") return "border-rose-200 bg-rose-50 text-rose-950";
+  if (tone === "amber") return "border-amber-200 bg-amber-50 text-amber-950";
+  return "border-blue-200 bg-blue-50 text-blue-950";
+}
+
+function formatPercent(value: number) {
+  return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
+}
+
+function ProgressMeter({ value }: { value: number }) {
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  const barClass = clamped >= 75 ? "bg-emerald-600" : clamped >= 50 ? "bg-amber-500" : "bg-rose-500";
+
+  return (
+    <div className="mt-2 h-2 rounded-full bg-slate-200">
+      <div className={`h-2 rounded-full ${barClass}`} style={{ width: `${clamped}%` }} />
+    </div>
+  );
+}
+
+function insightTone(tone: "blue" | "indigo" | "rose" | "slate") {
+  if (tone === "blue") return "border-blue-100 bg-blue-50 text-blue-950";
+  if (tone === "indigo") return "border-indigo-100 bg-indigo-50 text-indigo-950";
+  if (tone === "rose") return "border-rose-100 bg-rose-50 text-rose-950";
+  return "border-slate-200 bg-slate-50 text-slate-900";
+}
+
 function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -66,8 +110,39 @@ function SummaryCard({ label, value, detail }: { label: string; value: string; d
   );
 }
 
+function OpportunityInsight({
+  label,
+  value,
+  detail,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "blue" | "indigo" | "rose" | "slate";
+}) {
+  return (
+    <div className={`rounded-xl border p-4 ${insightTone(tone)}`}>
+      <p className="text-xs font-black uppercase tracking-[0.16em] opacity-70">{label}</p>
+      <p className="mt-2 text-sm font-black leading-5">{value}</p>
+      <p className="mt-2 text-xs font-semibold leading-5 opacity-80">{detail}</p>
+    </div>
+  );
+}
+
 function OpportunityCard({ opportunity }: { opportunity: GovContractOpportunity }) {
-  const focusMatches = getGovContractFocusMatches(opportunity);
+  const signal = pursuitSignal(opportunity);
+  const workspace = buildGeneratedBidWorkspace(opportunity);
+  const firstNeed = workspace.subcontractorNeeds[0];
+  const awardIntel = workspace.operatingModel.awardIntel;
+  const marketGaps = awardIntel.intelligenceGaps.slice(0, 3).join(", ");
+  const partnerValue = firstNeed
+    ? `${firstNeed.workCategory} near ${firstNeed.geography}`
+    : `Direct review for ${opportunity.location.label}`;
+  const partnerDetail = firstNeed
+    ? `${firstNeed.pipelineStage}; verify ${firstNeed.requiredCapabilities.slice(0, 2).join(" and ")} before pricing.`
+    : "No immediate subcontractor need detected; keep capacity, insurance, and delivery assumptions under review.";
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -84,14 +159,6 @@ function OpportunityCard({ opportunity }: { opportunity: GovContractOpportunity 
                 Sample data
               </span>
             ) : null}
-            {focusMatches.map((match) => (
-              <span
-                key={match.id}
-                className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200"
-              >
-                {match.shortLabel}
-              </span>
-            ))}
           </div>
           <h2 className="mt-3 text-xl font-black leading-tight text-slate-950">{opportunity.title}</h2>
           <p className="mt-2 text-sm text-slate-600">
@@ -103,10 +170,38 @@ function OpportunityCard({ opportunity }: { opportunity: GovContractOpportunity 
             <Metric label="Pipeline value" value={formatCurrency(opportunity.estimatedValueCents)} />
             <Metric label="Location" value={opportunity.location.label} />
             <Metric label="NAICS / PSC" value={[opportunity.naicsCode, opportunity.pscCode].filter(Boolean).join(" / ") || "TBD"} />
+            <Metric label="Contract type" value={opportunity.contractType ?? "TBD"} />
+            <Metric label="Response method" value={opportunity.responseMethod ?? "Verify notice"} />
+            <Metric label="Required docs" value={opportunity.requiredDocuments.length ? `${opportunity.requiredDocuments.length} listed` : "Extract needed"} />
+            <Metric label="Incumbent" value={opportunity.incumbentVendor ?? "Not discovered"} />
+          </div>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            <OpportunityInsight
+              label="Strategic summary"
+              value={workspace.bidDecision.recommendation}
+              detail={`${workspace.bidDecision.capabilityFit} ${workspace.bidDecision.financialFit}`}
+              tone="blue"
+            />
+            <OpportunityInsight
+              label="Subcontractor near job"
+              value={partnerValue}
+              detail={`${partnerDetail} No partner commitment without approval.`}
+              tone={firstNeed ? "indigo" : "slate"}
+            />
+            <OpportunityInsight
+              label="Market / underbid warning"
+              value={awardIntel.realisticCompetitiveRange}
+              detail={`${workspace.pricing.underpricingWarning} Research gaps: ${marketGaps || "none flagged"}.`}
+              tone="rose"
+            />
           </div>
           <div className="mt-4 rounded-xl bg-slate-50 p-4">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Recommended next step</p>
             <p className="mt-1 text-sm font-semibold text-slate-900">{opportunity.recommendedNextAction}</p>
+          </div>
+          <div className={`mt-3 rounded-xl border p-4 ${signalTone(signal.tone)}`}>
+            <p className="text-xs font-black uppercase tracking-[0.16em]">{signal.label}</p>
+            <p className="mt-1 text-sm font-semibold leading-6">{signal.detail}</p>
           </div>
         </div>
         <div className="w-full shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:w-64">
@@ -115,27 +210,27 @@ function OpportunityCard({ opportunity }: { opportunity: GovContractOpportunity 
             <Score label="Risk" value={opportunity.riskScore} />
             <Score label="Urgency" value={opportunity.urgencyScore} />
           </div>
-          <div className="mt-4 flex flex-col gap-2">
-            <Link
-              href={`/admin/gov-contracts/${encodeURIComponent(opportunity.id)}`}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-center text-sm font-black text-white shadow-sm hover:bg-blue-700"
-            >
-              Review
-            </Link>
-            <Link
-              href={`/admin/gov-contracts/${encodeURIComponent(opportunity.id)}/bid-room`}
-              className="rounded-lg bg-slate-950 px-4 py-2 text-center text-sm font-black text-white shadow-sm hover:bg-slate-800"
-            >
-              Open Bid Room
-            </Link>
-            <button
-              type="button"
-              disabled
-              title="Phase 2: subcontractor matching will use the Gov Contracts subcontractor network."
-              className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-slate-400 ring-1 ring-slate-200"
-            >
-              Match Subs - Phase 2
-            </button>
+          <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Bid completion</p>
+              <p className="text-sm font-black text-slate-950">{formatPercent(workspace.submissionReadinessScore)}</p>
+            </div>
+            <ProgressMeter value={workspace.submissionReadinessScore} />
+            <p className="mt-2 text-[11px] font-semibold leading-4 text-slate-500">
+              Completion is preparation readiness only; submit authority stays locked behind human approval.
+            </p>
+          </div>
+          <p className="mt-3 text-[11px] font-semibold leading-4 text-slate-500">
+            Primary actions are internal and approval-gated. Nothing here submits a bid or certifies eligibility.
+          </p>
+          <div className="mt-4">
+            <OpportunityExecutionActions opportunityId={opportunity.id} sourceUrl={opportunity.sourceUrl} compact />
+          </div>
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-800">Submit / research gate</p>
+            <div className="mt-2">
+              <BidSubmissionActions opportunityId={opportunity.id} compact />
+            </div>
           </div>
           <div className="mt-4">
             <OpportunityStatusActions opportunityId={opportunity.id} initialStatus={opportunity.pipelineStatus} />
@@ -167,7 +262,6 @@ function Score({ label, value }: { label: string; value: number }) {
 export default async function GovContractsPage({ searchParams }: PageProps) {
   const filters = parseFilters(await searchParams);
   const data = await loadGovContractDashboard(filters);
-  const activeFocus = filters.focus ?? "all";
 
   return (
     <div className="space-y-6">
@@ -175,11 +269,12 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
         <div className="bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.35),transparent_42%),linear-gradient(135deg,#020617,#0f172a)] p-6 lg:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-200">Admin only - Phase 1</p>
-              <h1 className="mt-3 text-3xl font-black tracking-tight lg:text-4xl">Gov Contracts Command Center</h1>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-200">Admin only - Bid execution platform</p>
+              <h1 className="mt-3 text-3xl font-black tracking-tight lg:text-4xl">Government Contract Mission Control</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                Discover, score, review, and organize government opportunities without creating commitments. Final submission,
-                pricing, certification claims, and subcontractor commitments stay under explicit human approval.
+                Find opportunities, decide bid/no-bid, start bid workspaces, price profitably, manage subcontractors,
+                prepare response packages, and track post-award execution. Final submission, pricing, certification claims,
+                and subcontractor commitments stay under explicit human approval.
               </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-slate-200">
@@ -198,40 +293,61 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
         <SummaryCard label="Pipeline value" value={formatCurrency(data.summary.estimatedPipelineValueCents)} detail="Estimated or award values" />
       </section>
 
-      <GovContractsSyncControl
-        samConfigured={data.sync.configured}
-        databaseReady={data.sync.databaseReady}
-        lastRunAt={data.sync.lastRunAt}
-      />
-
-      <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Home services pursuit lane</p>
-            <h2 className="mt-1 text-lg font-black text-slate-950">Focus the feed on contractor-friendly work</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-700">
-              Prioritize HVAC, landscaping, and roofing opportunities that can be worked through local subcontractor matching,
-              RFQs, insurance checks, and bid-room follow-up.
-            </p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Canonical approval surface</p>
+            <h2 className="mt-1 text-lg font-black">Gov Contracts owns bid approval and submission status evidence.</h2>
+            <p className="mt-2 max-w-4xl text-sm leading-6">{CONTRACT_WORKFLOW_GOVERNANCE.rule}</p>
           </div>
           <Link
-            href="/admin/gov-contracts?focus=home_services&sort=fit"
-            className="rounded-lg bg-emerald-700 px-4 py-2 text-center text-sm font-black text-white hover:bg-emerald-800"
+            href={CONTRACT_WORKFLOW_GOVERNANCE.packagingSurfacePath}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg bg-white px-4 text-sm font-black text-blue-950 ring-1 ring-blue-200"
           >
-            View all home services
+            Open ContractOS packaging
           </Link>
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <FocusLink href="/admin/gov-contracts?sort=fit" label="All opportunities" active={activeFocus === "all"} />
-          {GOV_CONTRACT_FOCUS_DEFINITIONS.filter((definition) => definition.id !== "home_services").map((definition) => (
-            <FocusLink
-              key={definition.id}
-              href={`/admin/gov-contracts?focus=${definition.id}&sort=fit`}
-              label={definition.label}
-              detail={definition.naicsCodes.join(", ")}
-              active={activeFocus === definition.id}
-            />
-          ))}
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Submitted bids" value={String(data.summary.submittedBids)} detail="Under evaluation or submitted" />
+        <SummaryCard label="Awards won" value={String(data.summary.awardedBids)} detail="Post-award execution candidates" />
+        <SummaryCard label="Pending approvals" value={String(data.summary.pendingApprovals)} detail="Human review required" />
+        <SummaryCard label="Missing docs" value={String(data.summary.missingDocuments)} detail="Potential compliance blockers" />
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Expected profit" value={formatCurrency(data.summary.expectedProfitCents)} detail="Advisory pipeline margin" />
+        <SummaryCard label="Cash exposure" value={formatCurrency(data.summary.cashFlowExposureCents)} detail="Estimated working-capital load" />
+        <SummaryCard label="Compliance risks" value={String(data.summary.complianceRisks)} detail="Need human review" />
+        <SummaryCard label="Subcontractor needs" value={String(data.summary.activeSubcontractorNeeds)} detail="Potential partner dependencies" />
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">Government Contract Operating System</h2>
+            <p className="mt-1 text-sm text-slate-500">Discovery, qualification, pricing, compliance, proposal, teaming, execution, recompete, and past performance.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/admin/gov-contracts" className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white">
+              Opportunities
+            </Link>
+            <Link href="/admin/gov-contracts?status=bid_prep" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
+              Bid Pipeline
+            </Link>
+            <Link href="/admin/gov-contracts?status=ready_to_submit" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
+              Submit Review
+            </Link>
+            <Link href="/admin/gov-contracts/subcontractors" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
+              Subcontractors
+            </Link>
+            {["Documents", "Pricing Models", "Compliance", "Awards", "Past Performance", "Agency Intel", "Gov CRM", "Recompetes", "AI Assistant", "Reports"].map((item) => (
+              <span key={item} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
+                {item} <span className="text-slate-400">planned</span>
+              </span>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -250,43 +366,12 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
             Clear filters
           </Link>
         </div>
-        <form className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-8">
+        <form className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <FilterInput name="keyword" label="Keyword" defaultValue={filters.keyword} placeholder="mailing, courier..." />
-          <label className="block">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Focus</span>
-            <select
-              name="focus"
-              defaultValue={filters.focus ?? "all"}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              <option value="all">All</option>
-              <option value="home_services">Home services</option>
-              {GOV_CONTRACT_FOCUS_DEFINITIONS.filter((definition) => definition.id !== "home_services").map((definition) => (
-                <option key={definition.id} value={definition.id}>
-                  {definition.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <FilterInput name="naics" label="NAICS" defaultValue={filters.naics} placeholder="541860" />
           <FilterInput name="psc" label="PSC" defaultValue={filters.psc} placeholder="R701" />
           <FilterInput name="agency" label="Agency" defaultValue={filters.agency} placeholder="GSA, VA..." />
           <FilterInput name="state" label="State" defaultValue={filters.state} placeholder="OH" />
-          <label className="block">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Sort</span>
-            <select
-              name="sort"
-              defaultValue={filters.sort ?? "fit"}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              <option value="fit">Fit score</option>
-              <option value="due">Due date</option>
-              <option value="urgency">Urgency</option>
-              <option value="value">Value</option>
-              <option value="agency">Agency</option>
-              <option value="status">Status</option>
-            </select>
-          </label>
           <div className="flex items-end">
             <button type="submit" className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-black text-white hover:bg-blue-700">
               Filter
@@ -314,30 +399,6 @@ export default async function GovContractsPage({ searchParams }: PageProps) {
         )}
       </div>
     </div>
-  );
-}
-
-function FocusLink({
-  href,
-  label,
-  detail,
-  active,
-}: {
-  href: string;
-  label: string;
-  detail?: string;
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`rounded-xl border p-3 text-sm shadow-sm ${
-        active ? "border-emerald-300 bg-white text-emerald-900" : "border-emerald-100 bg-white/70 text-slate-700 hover:bg-white"
-      }`}
-    >
-      <span className="font-black">{label}</span>
-      {detail ? <span className="mt-1 block text-xs text-slate-500">NAICS {detail}</span> : null}
-    </Link>
   );
 }
 

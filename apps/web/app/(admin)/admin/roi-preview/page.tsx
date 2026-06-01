@@ -10,6 +10,7 @@ export const metadata: Metadata = { title: "ROI Dashboard Preview — HomeReach 
 //   ORDER BY month DESC LIMIT 6
 const MOCK_BUSINESS = {
   name: "Harrington Plumbing",
+  businessName: "Harrington Plumbing",
   ownerName: "Mike Harrington",
   city: "Medina, OH",
   category: "Plumber",
@@ -26,8 +27,8 @@ const MOCK_METRICS: (CampaignMetrics & { monthLabel: string })[] = [
   { businessId: "biz-1", month: "2026-04", monthLabel: "Apr",  homesReached: 2500, qrScans: 58,  calls: 21, formLeads: 8,  estimatedRevenue: 0 },
 ];
 
-const CURRENT = MOCK_METRICS[MOCK_METRICS.length - 1];
-const PREV    = MOCK_METRICS[MOCK_METRICS.length - 2];
+const CURRENT = MOCK_METRICS[MOCK_METRICS.length - 1]!;
+const PREV    = MOCK_METRICS[MOCK_METRICS.length - 2] ?? CURRENT;
 
 function pctChange(curr: number, prev: number) {
   if (prev === 0) return null;

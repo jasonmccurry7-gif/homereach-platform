@@ -1,59 +1,19 @@
-import { createServiceClient } from "@/lib/supabase/service";
+import { db, cities, categories, bundles, orders, businesses, spotAssignments } from "@homereach/db";
+import { eq, and, inArray, sql, isNull, or } from "drizzle-orm";
+import { normalizeName } from "@/lib/spots/deny-list";
+import {
+  SHARED_POSTCARD_SIZE_LABEL,
+  SHARED_POSTCARD_SLOT_SIZE_LABEL,
+  SHARED_POSTCARD_TOTAL_SPOTS,
+  type SharedPostcardSlot,
+  type SharedPostcardSnapshot,
+} from "@/lib/spots/shared-postcard";
+import { getPostcardDesignUrl } from "@/lib/spots/design-metadata";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Funnel Query Helpers
 // Server-side only. Used in Server Components for each funnel step.
-// Uses Supabase JS client (HTTP) — reliable in Vercel serverless.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// ── Migrated client spot counts ───────────────────────────────────────────────
-// Migrated clients store city/category/spotType in a [migration_meta] JSON blob
-// in the notes field (city_id is null). This helper parses them and returns a
-// nested map: cityName → categoryName → spotType → count.
-// Only "legacy_active" and "new_system" statuses occupy real spots.
-// "legacy_pending" does NOT count — not yet confirmed.
-
-type MigratedCountMap = Record<string, Record<string, Record<string, number>>>;
-
-async function getMigratedCounts(
-  supabase: ReturnType<typeof createServiceClient>
-): Promise<MigratedCountMap> {
-  try {
-    const { data } = await supabase
-      .from("businesses")
-      .select("notes")
-      .like("notes", "%[migration_meta]%");
-
-    const result: MigratedCountMap = {};
-
-    for (const row of data ?? []) {
-      try {
-        const metaStr = row.notes?.split("[migration_meta]")[1];
-        const meta = JSON.parse(metaStr ?? "{}") as Record<string, unknown>;
-
-        // Pending clients don't occupy a spot yet
-        if (meta.migrationStatus === "legacy_pending") continue;
-
-        // Normalize "Ravenna, OH" → "Ravenna"
-        const rawCity  = (meta.city  as string) ?? "";
-        const cityName = rawCity.split(",")[0].trim();
-        const category = ((meta.category as string) ?? "").trim();
-        const spotType = ((meta.spotType as string) ?? "front").trim();
-
-        if (!cityName || !category) continue;
-
-        result[cityName] ??= {};
-        result[cityName][category] ??= {};
-        result[cityName][category][spotType] =
-          (result[cityName][category][spotType] ?? 0) + 1;
-      } catch { /* skip malformed rows */ }
-    }
-
-    return result;
-  } catch {
-    return {};
-  }
-}
 
 export type CityWithAvailability = {
   id: string;
@@ -64,8 +24,6 @@ export type CityWithAvailability = {
   launchedAt: Date | null;
   totalSpotsRemaining: number;
   isComingSoon: boolean;
-  foundingEligible: boolean;
-  isFoundingOpen: boolean;
 };
 
 export type CategoryWithAvailability = {
@@ -94,83 +52,351 @@ export type BundleWithAvailability = {
   badgeColor: string | null;
   highlight: boolean;
   sortOrder: number;
-  standardPriceCents: number;
-  foundingPriceCents: number;
 };
+
+const OCCUPYING_ORDER_STATUSES: Array<"pending" | "paid" | "active"> = [
+  "pending",
+  "paid",
+  "active",
+];
+const OCCUPYING_SPOT_STATUSES: Array<"pending" | "active"> = [
+  "pending",
+  "active",
+];
+const MIGRATION_META_MARKER = "[migration_meta]";
+
+type OccupiedSlot = Omit<SharedPostcardSlot, "position"> & {
+  key: string;
+  priority: number;
+  spotType?: string | null;
+};
+
+function extractMigrationMeta(notes: string | null): Record<string, unknown> | null {
+  if (!notes) return null;
+  const idx = notes.indexOf(MIGRATION_META_MARKER);
+  if (idx < 0) return null;
+
+  try {
+    const json = notes.slice(idx + MIGRATION_META_MARKER.length).trim();
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractDesignUrl(notes: string | null): string | null {
+  return getPostcardDesignUrl(notes);
+}
+
+function firstStringValue(meta: Record<string, unknown> | null, keys: string[]): string {
+  if (!meta) return "";
+
+  for (const key of keys) {
+    const value = meta[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function addOccupiedSlot(slots: Map<string, OccupiedSlot>, slot: OccupiedSlot) {
+  const existing = slots.get(slot.key);
+  if (!existing || slot.priority < existing.priority) {
+    slots.set(slot.key, slot);
+  }
+}
+
+function normalizeBundleFeatures(features: unknown): string[] {
+  if (!Array.isArray(features)) return [];
+
+  return Array.from(
+    new Set(
+      features
+        .filter((feature): feature is string => typeof feature === "string" && feature.trim().length > 0)
+        .map((feature) => {
+          if (/front page placement/i.test(feature) || /back page placement/i.test(feature)) {
+            return `${SHARED_POSTCARD_SLOT_SIZE_LABEL} shared postcard ad slot`;
+          }
+          if (/largest spot on the card/i.test(feature) || /\d+\s*spots?\s+available/i.test(feature)) {
+            return `Category-exclusive ${SHARED_POSTCARD_SLOT_SIZE_LABEL} ad slot`;
+          }
+          return feature.trim();
+        })
+    )
+  );
+}
+
+function normalizeBundleDescription(
+  description: string | null,
+  spotType: BundleWithAvailability["spotType"]
+): string | null {
+  if (!description) return null;
+
+  if (
+    /three spots available/i.test(description) ||
+    /six spots available/i.test(description) ||
+    /spans the full top half/i.test(description) ||
+    /largest placement/i.test(description) ||
+    /12\s*[x×]\s*6\.5/i.test(description)
+  ) {
+    const placement = spotType === "back" ? "Back-side" : "Front-side";
+    return `${placement} visibility for one category-exclusive ${SHARED_POSTCARD_SLOT_SIZE_LABEL} city postcard slot. Your design is shown in the live ${SHARED_POSTCARD_SIZE_LABEL} layout and mailed to 2,500+ homeowners.`;
+  }
+
+  return description;
+}
+
+export async function getSharedPostcardCitySnapshot(
+  cityId: string
+): Promise<SharedPostcardSnapshot> {
+  const [city] = await db
+    .select({ id: cities.id, name: cities.name })
+    .from(cities)
+    .where(eq(cities.id, cityId))
+    .limit(1);
+
+  const occupied = new Map<string, OccupiedSlot>();
+
+  if (!city) {
+    return {
+      cityId,
+      cityName: "Unknown market",
+      totalSpots: SHARED_POSTCARD_TOTAL_SPOTS,
+      occupiedSpots: 0,
+      availableSpots: SHARED_POSTCARD_TOTAL_SPOTS,
+      sizeLabel: SHARED_POSTCARD_SIZE_LABEL,
+      slotSizeLabel: SHARED_POSTCARD_SLOT_SIZE_LABEL,
+      slots: Array.from({ length: SHARED_POSTCARD_TOTAL_SPOTS }, (_, index) => ({
+        position: index + 1,
+        status: "available",
+        businessName: null,
+        categoryId: null,
+        categoryName: null,
+        categorySlug: null,
+        designUrl: null,
+        source: "open",
+      })),
+    };
+  }
+
+  const [assignmentRows, orderRows, legacyRows] = await Promise.all([
+    db
+      .select({
+        businessName: businesses.name,
+        categoryId: spotAssignments.categoryId,
+        categoryName: categories.name,
+        categorySlug: categories.slug,
+        status: spotAssignments.status,
+        spotType: spotAssignments.spotType,
+        notes: businesses.notes,
+      })
+      .from(spotAssignments)
+      .leftJoin(businesses, eq(spotAssignments.businessId, businesses.id))
+      .leftJoin(categories, eq(spotAssignments.categoryId, categories.id))
+      .where(
+        and(
+          eq(spotAssignments.cityId, cityId),
+          inArray(spotAssignments.status, OCCUPYING_SPOT_STATUSES)
+        )
+      ),
+    db
+      .select({
+        businessName: businesses.name,
+        categoryId: businesses.categoryId,
+        categoryName: categories.name,
+        categorySlug: categories.slug,
+        status: orders.status,
+        notes: businesses.notes,
+      })
+      .from(orders)
+      .innerJoin(businesses, eq(orders.businessId, businesses.id))
+      .leftJoin(categories, eq(businesses.categoryId, categories.id))
+      .where(
+        and(
+          eq(businesses.cityId, cityId),
+          inArray(orders.status, OCCUPYING_ORDER_STATUSES)
+        )
+      ),
+    db
+      .select({
+        id: businesses.id,
+        businessName: businesses.name,
+        notes: businesses.notes,
+      })
+      .from(businesses)
+      .where(sql`${businesses.notes} like '%[migration_meta]%'`)
+      .limit(500),
+  ]);
+
+  for (const row of assignmentRows) {
+    const key = row.categoryId ? `category:${row.categoryId}` : null;
+    if (!key) continue;
+    addOccupiedSlot(occupied, {
+      key,
+      priority: 1,
+      status: row.status === "active" ? "active" : "pending",
+      businessName: row.businessName ?? "Reserved advertiser",
+      categoryId: row.categoryId,
+      categoryName: row.categoryName,
+      categorySlug: row.categorySlug,
+      designUrl: extractDesignUrl(row.notes),
+      source: "spot_assignments",
+      spotType: row.spotType,
+    });
+  }
+
+  for (const row of orderRows) {
+    const key = row.categoryId ? `category:${row.categoryId}` : null;
+    if (!key) continue;
+    addOccupiedSlot(occupied, {
+      key,
+      priority: 2,
+      status: row.status === "pending" ? "pending" : "active",
+      businessName: row.businessName,
+      categoryId: row.categoryId,
+      categoryName: row.categoryName,
+      categorySlug: row.categorySlug,
+      designUrl: extractDesignUrl(row.notes),
+      source: "orders",
+    });
+  }
+
+  const cityKey = normalizeName(city.name);
+  for (const row of legacyRows) {
+    const meta = extractMigrationMeta(row.notes);
+    if (String(meta?.migrationStatus ?? "") !== "legacy_active") continue;
+    if (normalizeName(String(meta?.city ?? "")) !== cityKey) continue;
+
+    const categoryName = firstStringValue(meta, ["category", "categoryName", "businessCategory"]);
+    const categoryKey = normalizeName(categoryName);
+    if (!categoryKey) continue;
+    const categoryAlreadyOccupied = [...occupied.values()].some(
+      (slot) => normalizeName(slot.categoryName) === categoryKey
+    );
+    if (categoryAlreadyOccupied) continue;
+
+    addOccupiedSlot(occupied, {
+      key: `legacy:${categoryKey}`,
+      priority: 3,
+      status: "active",
+      businessName: row.businessName,
+      categoryId: null,
+      categoryName,
+      categorySlug: null,
+      designUrl: extractDesignUrl(row.notes),
+      source: "legacy_migration",
+    });
+  }
+
+  const fullCardSlot = [...occupied.values()].find((slot) => slot.spotType === "full_card");
+  if (fullCardSlot) {
+    const slots: SharedPostcardSlot[] = Array.from(
+      { length: SHARED_POSTCARD_TOTAL_SPOTS },
+      (_, index) => ({
+        position: index + 1,
+        status: fullCardSlot.status,
+        businessName: fullCardSlot.businessName,
+        categoryId: fullCardSlot.categoryId,
+        categoryName: fullCardSlot.categoryName ?? "Full-card exclusivity",
+        categorySlug: fullCardSlot.categorySlug,
+        designUrl: fullCardSlot.designUrl,
+        source: fullCardSlot.source,
+      }),
+    );
+
+    return {
+      cityId: city.id,
+      cityName: city.name,
+      totalSpots: SHARED_POSTCARD_TOTAL_SPOTS,
+      occupiedSpots: SHARED_POSTCARD_TOTAL_SPOTS,
+      availableSpots: 0,
+      sizeLabel: SHARED_POSTCARD_SIZE_LABEL,
+      slotSizeLabel: SHARED_POSTCARD_SLOT_SIZE_LABEL,
+      slots,
+    };
+  }
+
+  const occupiedSlots = [...occupied.values()]
+    .sort((a, b) => {
+      const statusScore = (value: OccupiedSlot) => (value.status === "active" ? 0 : 1);
+      return (
+        statusScore(a) - statusScore(b) ||
+        (a.categoryName ?? "").localeCompare(b.categoryName ?? "") ||
+        (a.businessName ?? "").localeCompare(b.businessName ?? "")
+      );
+    })
+    .slice(0, SHARED_POSTCARD_TOTAL_SPOTS)
+    .map<SharedPostcardSlot>((slot, index) => ({
+      position: index + 1,
+      status: slot.status,
+      businessName: slot.businessName,
+      categoryId: slot.categoryId,
+      categoryName: slot.categoryName,
+      categorySlug: slot.categorySlug,
+      designUrl: slot.designUrl,
+      source: slot.source,
+    }));
+
+  const availableSpots = Math.max(0, SHARED_POSTCARD_TOTAL_SPOTS - occupiedSlots.length);
+  const openSlots: SharedPostcardSlot[] = Array.from({ length: availableSpots }, (_, index) => ({
+    position: occupiedSlots.length + index + 1,
+    status: "available",
+    businessName: null,
+    categoryId: null,
+    categoryName: null,
+    categorySlug: null,
+    designUrl: null,
+    source: "open",
+  }));
+
+  return {
+    cityId: city.id,
+    cityName: city.name,
+    totalSpots: SHARED_POSTCARD_TOTAL_SPOTS,
+    occupiedSpots: occupiedSlots.length,
+    availableSpots,
+    sizeLabel: SHARED_POSTCARD_SIZE_LABEL,
+    slotSizeLabel: SHARED_POSTCARD_SLOT_SIZE_LABEL,
+    slots: [...occupiedSlots, ...openSlots],
+  };
+}
 
 // ── Step 1: Cities ────────────────────────────────────────────────────────────
 
-const MAX_SPOTS_PER_CITY = 10; // 1 anchor + 3 front + 6 back per spec
-
 export async function getActiveCities(): Promise<CityWithAvailability[]> {
-  const supabase = createServiceClient();
+  const allCities = await db
+    .select()
+    .from(cities)
+    .orderBy(cities.name);
 
-  const { data: allCities, error } = await supabase
-    .from("cities")
-    .select("*")
-    .order("name");
+  // Calculate total spots remaining from the canonical 12-slot postcard layout.
+  const cityResults: CityWithAvailability[] = allCities.map((city) => ({
+    ...city,
+    totalSpotsRemaining: city.isActive ? SHARED_POSTCARD_TOTAL_SPOTS : 0,
+    isComingSoon: !city.isActive,
+  }));
 
-  if (error || !allCities) return [];
+  const activeCityIds = allCities
+    .filter((c) => c.isActive)
+    .map((c) => c.id);
 
-  const activeCityIds = allCities.filter(c => c.is_active).map(c => c.id);
+  if (activeCityIds.length === 0) return cityResults;
 
-  // Count distinct categories with active/paid orders per city
-  // (each category slot = 1 spot taken out of the 10 per city)
-  let takenMap: Record<string, number> = {};
-  if (activeCityIds.length > 0) {
-    try {
-      const { data: bizWithOrders } = await supabase
-        .from("businesses")
-        .select("city_id, category_id, orders!inner(status)")
-        .in("city_id", activeCityIds)
-        .in("orders.status", ["paid", "active"]);
+  const snapshots = await Promise.all(
+    activeCityIds.map((id) => getSharedPostcardCitySnapshot(id))
+  );
+  const availabilityMap = Object.fromEntries(
+    snapshots.map((snapshot) => [snapshot.cityId, snapshot.availableSpots])
+  );
 
-      if (bizWithOrders) {
-        // Count unique city_id + category_id combos (each = 1 taken slot)
-        const seen = new Set<string>();
-        for (const biz of bizWithOrders) {
-          const key = `${biz.city_id}:${biz.category_id}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            takenMap[biz.city_id] = (takenMap[biz.city_id] ?? 0) + 1;
-          }
-        }
-      }
-    } catch { /* fallback to 10 remaining if query fails */ }
-  }
-
-  // Add migrated client spots (city_id is null; city stored as text in migration_meta)
-  // Each unique city+category combo in migration_meta = 1 taken slot
-  const migratedCounts = await getMigratedCounts(supabase);
-  // Build a city name → city id lookup for matching
-  const cityNameToId: Record<string, string> = {};
-  for (const city of allCities) {
-    cityNameToId[city.name.toLowerCase()] = city.id;
-  }
-  for (const [cityName, categoryMap] of Object.entries(migratedCounts)) {
-    const cityId = cityNameToId[cityName.toLowerCase()];
-    if (!cityId) continue; // migrated city not in DB yet — skip
-    // Each distinct category in this city = 1 slot taken
-    const migSlots = Object.keys(categoryMap).length;
-    takenMap[cityId] = (takenMap[cityId] ?? 0) + migSlots;
-  }
-
-  return allCities.map((city) => {
-    const taken = takenMap[city.id] ?? 0;
-    const remaining = Math.max(0, MAX_SPOTS_PER_CITY - taken);
-    return {
-      id: city.id,
-      name: city.name,
-      state: city.state,
-      slug: city.slug,
-      isActive: city.is_active,
-      launchedAt: city.launched_at ? new Date(city.launched_at) : null,
-      foundingEligible: city.founding_eligible ?? false,
-      totalSpotsRemaining: city.is_active ? remaining : 0,
-      isComingSoon: !city.is_active,
-      isFoundingOpen: city.founding_eligible ?? true,
-    };
-  });
+  return cityResults.map((city) => ({
+    ...city,
+    totalSpotsRemaining: city.isActive
+      ? availabilityMap[city.id] ?? SHARED_POSTCARD_TOTAL_SPOTS
+      : 0,
+  }));
 }
 
 // ── Step 2: Categories ────────────────────────────────────────────────────────
@@ -178,168 +404,99 @@ export async function getActiveCities(): Promise<CityWithAvailability[]> {
 export async function getCategoriesForCity(
   cityId: string
 ): Promise<CategoryWithAvailability[]> {
-  const supabase = createServiceClient();
+  const allCategories = await db
+    .select()
+    .from(categories)
+    .where(eq(categories.isActive, true))
+    .orderBy(categories.name);
 
-  const { data: allCategories, error } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("is_active", true)
-    .order("name");
-
-  if (error || !allCategories) return [];
-
-  // Count paid orders per category — best-effort, default to 0 if query fails
-  let countMap: Record<string, number> = {};
-  try {
-    const { data: orderCounts } = await supabase
-      .from("orders")
-      .select("bundle_id, businesses!inner(category_id, city_id)")
-      .eq("businesses.city_id", cityId)
-      .in("status", ["paid", "active"]);
-
-    if (orderCounts) {
-      for (const order of orderCounts) {
-        const catId = (order.businesses as any)?.category_id;
-        if (catId) countMap[catId] = (countMap[catId] ?? 0) + 1;
-      }
-    }
-  } catch {
-    countMap = {};
-  }
-
-  // Add migrated clients for this city (matched by city name)
-  // countMap keys are category UUIDs; migrated clients store category names.
-  // Build a categoryName → categoryId lookup from allCategories.
-  const catNameToId: Record<string, string> = {};
-  for (const cat of allCategories) {
-    catNameToId[cat.name.toLowerCase()] = cat.id;
-  }
-  try {
-    // Look up this city's name so we can match migrated records
-    const { data: cityRow } = await supabase
-      .from("cities").select("name").eq("id", cityId).single();
-    if (cityRow?.name) {
-      const migratedCounts = await getMigratedCounts(supabase);
-      const cityName = cityRow.name.toLowerCase();
-      const catMap = migratedCounts[cityRow.name] ?? migratedCounts[cityName] ?? {};
-      for (const [catName, spotTypes] of Object.entries(catMap)) {
-        const catId = catNameToId[catName.toLowerCase()];
-        if (!catId) continue;
-        const total = Object.values(spotTypes).reduce((s, n) => s + n, 0);
-        countMap[catId] = (countMap[catId] ?? 0) + total;
-      }
-    }
-  } catch { /* non-critical */ }
-
-  const TOTAL_SPOTS_PER_CATEGORY = 10;
+  const snapshot = await getSharedPostcardCitySnapshot(cityId);
+  const occupiedCategoryIds = new Set(
+    snapshot.slots
+      .filter((slot) => slot.status !== "available" && slot.categoryId)
+      .map((slot) => slot.categoryId!)
+  );
+  const occupiedCategoryNames = new Set(
+    snapshot.slots
+      .filter((slot) => slot.status !== "available" && slot.categoryName)
+      .map((slot) => normalizeName(slot.categoryName))
+  );
+  const cityHasOpenSpot = snapshot.availableSpots > 0;
 
   return allCategories.map((cat) => {
-    const taken = countMap[cat.id] ?? 0;
-    const remaining = Math.max(0, TOTAL_SPOTS_PER_CATEGORY - taken);
+    const categoryTaken =
+      occupiedCategoryIds.has(cat.id) ||
+      occupiedCategoryNames.has(normalizeName(cat.name));
+    const remaining = cityHasOpenSpot && !categoryTaken ? 1 : 0;
     return {
-      id: cat.id,
-      name: cat.name,
-      slug: cat.slug,
-      description: cat.description ?? null,
-      icon: cat.icon ?? null,
+      ...cat,
       spotsRemaining: remaining,
       isAvailable: remaining > 0,
     };
   });
 }
 
-// ── Step 3: Bundles ────────────────────────────────────────────────────────────
+// ── Step 3: Bundles (with real scarcity) ──────────────────────────────────────
 
 export async function getBundlesWithAvailability(
   cityId: string,
   categoryId: string
 ): Promise<BundleWithAvailability[]> {
-  const supabase = createServiceClient();
+  // Fetch global bundles (cityId = null) and city-specific bundles
+  const availableBundles = await db
+    .select()
+    .from(bundles)
+    .where(
+      and(
+        eq(bundles.isActive, true),
+        or(isNull(bundles.cityId), eq(bundles.cityId, cityId))
+      )
+    );
 
-  // Fetch active bundles (city_id = null means global, available everywhere)
-  const { data: rawBundles, error } = await supabase
-    .from("bundles")
-    .select("*")
-    .eq("is_active", true)
-    .or(`city_id.is.null,city_id.eq.${cityId}`);
+  if (availableBundles.length === 0) return [];
 
-  if (error || !rawBundles || rawBundles.length === 0) return [];
+  const [snapshot, category] = await Promise.all([
+    getSharedPostcardCitySnapshot(cityId),
+    db
+      .select({ name: categories.name })
+      .from(categories)
+      .where(eq(categories.id, categoryId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ]);
+  const categoryNameKey = normalizeName(category?.name);
+  const categoryTaken = snapshot.slots.some(
+    (slot) =>
+      slot.status !== "available" &&
+      (slot.categoryId === categoryId ||
+        (categoryNameKey.length > 0 && normalizeName(slot.categoryName) === categoryNameKey))
+  );
+  const hasInventory = snapshot.availableSpots > 0 && !categoryTaken;
 
-  const bundleIds = rawBundles.map((b) => b.id);
-
-  // Count paid orders per bundle in this city+category — best-effort
-  let countMap: Record<string, number> = {};
-  try {
-    const { data: orderCounts } = await supabase
-      .from("orders")
-      .select("bundle_id, businesses!inner(city_id, category_id)")
-      .eq("businesses.city_id", cityId)
-      .eq("businesses.category_id", categoryId)
-      .in("bundle_id", bundleIds)
-      .in("status", ["paid", "active"]);
-
-    if (orderCounts) {
-      for (const order of orderCounts) {
-        const bid = order.bundle_id;
-        if (bid) countMap[bid] = (countMap[bid] ?? 0) + 1;
-      }
-    }
-  } catch {
-    countMap = {};
-  }
-
-  // Add migrated clients — match by city name + category name, then by spotType
-  try {
-    const [cityRow, catRow] = await Promise.all([
-      supabase.from("cities").select("name").eq("id", cityId).single(),
-      supabase.from("categories").select("name").eq("id", categoryId).single(),
-    ]);
-    if (cityRow.data?.name && catRow.data?.name) {
-      const migratedCounts = await getMigratedCounts(supabase);
-      const cityName = cityRow.data.name;
-      const catName  = catRow.data.name;
-      // Look up the migrated spot-type counts for this city+category
-      const spotTypeCounts =
-        migratedCounts[cityName]?.[catName] ??
-        migratedCounts[cityName.toLowerCase()]?.[catName.toLowerCase()] ??
-        {};
-      // Map spotType → bundle IDs with matching spotType in their metadata
-      for (const bundle of rawBundles) {
-        const meta = (bundle.metadata ?? {}) as Record<string, unknown>;
-        const bundleSpotType = (meta.spotType as string) ?? "back";
-        const migCount = spotTypeCounts[bundleSpotType] ?? 0;
-        if (migCount > 0) {
-          countMap[bundle.id] = (countMap[bundle.id] ?? 0) + migCount;
-        }
-      }
-    }
-  } catch { /* non-critical */ }
-
-  return rawBundles
+  return availableBundles
     .map((bundle) => {
       const meta = (bundle.metadata ?? {}) as Record<string, unknown>;
-      const maxSpots = (meta.maxSpots as number) ?? 1;
-      const spotsTaken = countMap[bundle.id] ?? 0;
+      const maxSpots = 1;
+      const spotsTaken = hasInventory ? 0 : 1;
       const spotsRemaining = Math.max(0, maxSpots - spotsTaken);
+      const spotType = (meta.spotType as "anchor" | "front" | "back") ?? "back";
 
       return {
         id: bundle.id,
         name: bundle.name,
         slug: bundle.slug,
-        description: bundle.description ?? null,
-        price: String(bundle.price ?? "0"),
-        spotType: (meta.spotType as "anchor" | "front" | "back") ?? "back",
+        description: normalizeBundleDescription(bundle.description, spotType),
+        price: bundle.price,
+        spotType,
         maxSpots,
         spotsTaken,
         spotsRemaining,
         isSoldOut: spotsRemaining === 0,
-        features: (meta.features as string[]) ?? [],
+        features: normalizeBundleFeatures(meta.features),
         badgeText: (meta.badgeText as string) ?? null,
         badgeColor: (meta.badgeColor as string) ?? null,
         highlight: (meta.highlight as boolean) ?? false,
         sortOrder: (meta.sortOrder as number) ?? 99,
-        standardPriceCents: (bundle.standard_price as number) ?? Math.round(Number(bundle.price) * 150),
-        foundingPriceCents: (bundle.founding_price as number) ?? Math.round(Number(bundle.price) * 100),
       };
     })
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -347,56 +504,29 @@ export async function getBundlesWithAvailability(
 
 // ── Lookups ───────────────────────────────────────────────────────────────────
 
-export async function getCityBySlug(slug: string): Promise<CityWithAvailability | null> {
-  const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from("cities")
-    .select("*")
-    .eq("slug", slug)
-    .single();
-
-  if (error || !data) return null;
-  return {
-    id: data.id,
-    name: data.name,
-    state: data.state,
-    slug: data.slug,
-    isActive: data.is_active,
-    launchedAt: data.launched_at ? new Date(data.launched_at) : null,
-    foundingEligible: data.founding_eligible ?? false,
-    totalSpotsRemaining: data.is_active ? 99 : 0,
-    isComingSoon: !data.is_active,
-    isFoundingOpen: data.founding_eligible ?? true,
-  };
+export async function getCityBySlug(slug: string) {
+  const [city] = await db
+    .select()
+    .from(cities)
+    .where(eq(cities.slug, slug))
+    .limit(1);
+  return city ?? null;
 }
 
-export async function getCategoryBySlug(slug: string): Promise<CategoryWithAvailability | null> {
-  const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("slug", slug)
-    .single();
-
-  if (error || !data) return null;
-  return {
-    id: data.id,
-    name: data.name,
-    slug: data.slug,
-    description: data.description ?? null,
-    icon: data.icon ?? null,
-    spotsRemaining: 10,
-    isAvailable: true,
-  };
+export async function getCategoryBySlug(slug: string) {
+  const [category] = await db
+    .select()
+    .from(categories)
+    .where(eq(categories.slug, slug))
+    .limit(1);
+  return category ?? null;
 }
 
 export async function getBundleById(id: string) {
-  const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from("bundles")
-    .select("*")
-    .eq("id", id)
-    .single();
-  if (error || !data) return null;
-  return data;
+  const [bundle] = await db
+    .select()
+    .from(bundles)
+    .where(eq(bundles.id, id))
+    .limit(1);
+  return bundle ?? null;
 }

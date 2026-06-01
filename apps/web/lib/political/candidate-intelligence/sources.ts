@@ -108,7 +108,7 @@ export const CANDIDATE_INTEL_SOURCES: CandidateIntelSourceDefinition[] = [
     key: "serpapi_candidate_search_v1",
     label: "SerpAPI Candidate Web Search",
     provider: "serpapi",
-    envKeys: ["SERPAPI_KEY", "ENABLE_CANDIDATE_SERPAPI"],
+    envKeys: ["SERPAPI_KEY", "ENABLE_CANDIDATE_SERPAPI", "SERPAPI_PAUSED"],
     dataProvided: ["campaign websites", "public candidate pages", "public social links", "search snippets"],
     format: "json_api",
     coverage: "Targeted candidate-level public web search",

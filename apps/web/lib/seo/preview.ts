@@ -40,6 +40,7 @@ export function validatePreviewToken(token: string, expectedPageId: string): Pre
   const parts = token.split(".");
   if (parts.length !== 2) return { valid: false, reason: "malformed_token" };
   const [payloadB64, sig] = parts;
+  if (!payloadB64 || !sig) return { valid: false, reason: "malformed_token" };
   const expectedSig = createHmac("sha256", secret).update(payloadB64).digest("base64url");
   const expectedBuf = Buffer.from(expectedSig);
   const actualBuf = Buffer.from(sig);

@@ -8,6 +8,7 @@ import {
   sha256Json,
 } from "../normalization";
 import type { CandidateIntelProviderResult, NormalizedCandidateIntelRecord } from "../types";
+import { resolveEnvAlias } from "@/lib/app-url";
 
 const SOURCE_KEY = "serpapi_candidate_search_v1";
 
@@ -62,8 +63,13 @@ const NON_CAMPAIGN_HOST_PARTS = [
   "pbs",
 ];
 
+export function isSerpApiPaused(): boolean {
+  const value = (process.env.SERPAPI_PAUSED ?? "true").trim().toLowerCase();
+  return !["false", "0", "off", "no"].includes(value);
+}
+
 export function isCandidateSerpApiEnabled(): boolean {
-  return process.env.ENABLE_CANDIDATE_SERPAPI === "true";
+  return process.env.ENABLE_CANDIDATE_SERPAPI === "true" && !isSerpApiPaused();
 }
 
 function clean(value: unknown, max = 260): string | null {
@@ -231,7 +237,15 @@ export async function fetchSerpapiCandidateIntel(args: {
   cycle?: number;
   maxRecords?: number;
 }): Promise<CandidateIntelProviderResult> {
-  const key = process.env.SERPAPI_KEY;
+  const key = resolveEnvAlias("SERPAPI_KEY", "SERP_API", "SERPAPI_API_KEY");
+  if (isSerpApiPaused()) {
+    return {
+      sourceKey: SOURCE_KEY,
+      skipped: true,
+      reason: "SERPAPI_PAUSED is active. Candidate SerpAPI enrichment is manually locked off.",
+      records: [],
+    };
+  }
   if (!isCandidateSerpApiEnabled()) {
     return {
       sourceKey: SOURCE_KEY,
@@ -244,7 +258,7 @@ export async function fetchSerpapiCandidateIntel(args: {
     return {
       sourceKey: SOURCE_KEY,
       skipped: true,
-      reason: "SERPAPI_KEY is not configured.",
+      reason: "SERPAPI_KEY, SERP_API, or SERPAPI_API_KEY is not configured.",
       records: [],
     };
   }

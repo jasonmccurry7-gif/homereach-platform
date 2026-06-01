@@ -144,6 +144,7 @@ export interface AutomationMessage {
 export type AutomationMode = "auto" | "manual";
 
 export interface ConversationContext {
+  id: string;
   leadId: string;
   leadName: string;
   businessName: string;
@@ -153,7 +154,11 @@ export interface ConversationContext {
   email: string;
   status: LeadStatus;
   automationMode: AutomationMode;
+  channel?: MessageChannel;
   lastIntent?: IntentType;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  unreadCount?: number;
   messages: AutomationMessage[];
   reservationId?: string;
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "design-brief"
+  short_description: "HomeReach design-brief workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

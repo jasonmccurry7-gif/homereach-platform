@@ -26,9 +26,11 @@ export type {
   NormalizedConversation, NormalizedMessage,
   // Dedupe
   DedupeConfidence, DedupeMatch, DedupeResult,
-  // Suppression
-  SuppressionDecision, SuppressionResult, SuppressionSummary,
   // Import
   ImportRecordStatus, ImportRecord, ImportReport,
   ImportPhase, ImportState,
 }                                             from "./types";
+
+export type {
+  SuppressionDecision, SuppressionResult, SuppressionSummary,
+}                                             from "./suppression";

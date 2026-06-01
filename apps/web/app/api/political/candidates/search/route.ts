@@ -7,10 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   if (!isPoliticalEnabled()) {
-    return NextResponse.json(
-      { ok: false, candidates: [], error: "Political Command Center is disabled." },
-      { status: 404 }
-    );
+    return NextResponse.json({ ok: false, candidates: [], error: "Political Command Center is disabled." }, { status: 404 });
   }
 
   const url = new URL(req.url);
@@ -35,15 +32,11 @@ export async function GET(req: NextRequest) {
     const migrationHint = /candidate_intel|relation .* does not exist/i.test(message)
       ? "Run Supabase migration 088_candidate_intelligence_ingestion.sql before enabling live candidate search."
       : undefined;
-
-    return NextResponse.json(
-      {
-        ok: false,
-        candidates: [],
-        error: message,
-        migrationHint,
-      },
-      { status: migrationHint ? 200 : 500 }
-    );
+    return NextResponse.json({
+      ok: false,
+      candidates: [],
+      error: message,
+      migrationHint,
+    }, { status: migrationHint ? 200 : 500 });
   }
 }

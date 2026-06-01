@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import type { MigratedClient, SpotType, ClientMigrationStatus } from "@/lib/engine/types";
 import { MIGRATION_STATUS_META, SPOT_TYPE_META } from "@/lib/admin/mock-clients";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,7 @@ const BLANK_FORM = {
   category:        "",
   spotType:        "front" as SpotType,
   monthlyPrice:    299,
-  contractStart:   new Date().toISOString().split("T")[0],
+  contractStart:   new Date().toISOString().slice(0, 10),
   remainingMonths: 12,
   migrationStatus: "legacy_active" as ClientMigrationStatus,
   notes:           "",
@@ -32,30 +32,18 @@ type FormState = typeof BLANK_FORM;
 // ── Cities / Categories for dropdowns ────────────────────────────────────
 
 const CITY_OPTIONS = [
-  { id: "city-medina",          label: "Medina, OH"          },
-  { id: "city-stow",            label: "Stow, OH"            },
-  { id: "city-hudson",          label: "Hudson, OH"          },
-  { id: "city-akron",           label: "Akron, OH"           },
-  { id: "city-canton",          label: "Canton, OH"          },
-  { id: "city-wooster",         label: "Wooster, OH"         },
-  { id: "city-cuyahoga-falls",  label: "Cuyahoga Falls, OH"  },
-  { id: "city-kent",            label: "Kent, OH"            },
-  { id: "city-brunswick",       label: "Brunswick, OH"       },
-  { id: "city-strongsville",    label: "Strongsville, OH"    },
-  { id: "city-north-canton",    label: "North Canton, OH"    },
-  { id: "city-massillon",       label: "Massillon, OH"       },
-  { id: "city-wadsworth",       label: "Wadsworth, OH"       },
-  { id: "city-norton",          label: "Norton, OH"          },
-  { id: "city-barberton",       label: "Barberton, OH"       },
-  { id: "city-ravenna",         label: "Ravenna, OH"         },
+  { id: "city-medina",  label: "Medina, OH"  },
+  { id: "city-stow",    label: "Stow, OH"    },
+  { id: "city-hudson",  label: "Hudson, OH"  },
+  { id: "city-akron",   label: "Akron, OH"   },
+  { id: "city-canton",  label: "Canton, OH"  },
+  { id: "city-wooster", label: "Wooster, OH" },
 ];
 
 const CATEGORY_OPTIONS = [
   "Plumber", "HVAC", "Electrician", "Landscaper", "Dentist",
   "Chiropractor", "Realtor", "Insurance", "Attorney",
-  "Pool Service", "Roofer", "House Cleaning", "Pressure Washing",
-  "Pest Control", "Painting", "Flooring", "Windows", "Gutters",
-  "Other",
+  "Pool Service", "Roofer", "House Cleaning",
 ];
 
 // ── Helper: compute contract end date ────────────────────────────────────
@@ -63,7 +51,7 @@ const CATEGORY_OPTIONS = [
 function contractEnd(startDate: string, remainingMonths: number): string {
   const d = new Date(startDate);
   d.setMonth(d.getMonth() + remainingMonths);
-  return d.toISOString().split("T")[0];
+  return d.toISOString().slice(0, 10);
 }
 
 function daysUntil(dateStr: string): number {
@@ -115,7 +103,6 @@ function ContractBar({ contract }: { contract: MigratedClient["contract"] }) {
 function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => void }) {
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [submitting, setSubmitting] = useState(false);
-  const [customCategory, setCustomCategory] = useState("");
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -125,8 +112,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
     e.preventDefault();
     setSubmitting(true);
 
-    const cityObj    = CITY_OPTIONS.find((c) => c.id === form.city || c.label === form.city);
-    const resolvedCategory = form.category === "Other" ? (customCategory.trim() || "Other") : form.category;
+    const cityObj = CITY_OPTIONS.find((c) => c.id === form.city || c.label === form.city);
     const startDate = form.contractStart;
     const endDate   = contractEnd(startDate, form.remainingMonths);
 
@@ -138,8 +124,8 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
       email:           form.email,
       cityId:          cityObj?.id ?? "city-custom",
       city:            cityObj?.label ?? form.city,
-      categoryId:      `cat-${resolvedCategory.toLowerCase().replace(/\s/g, "-")}`,
-      category:        resolvedCategory,
+      categoryId:      `cat-${form.category.toLowerCase().replace(/\s/g, "-")}`,
+      category:        form.category,
       spotId:          null,
       spotType:        form.spotType,
       monthlyPrice:    Number(form.monthlyPrice),
@@ -162,7 +148,6 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
     setTimeout(() => {
       onSubmit(newClient);
       setForm(BLANK_FORM);
-      setCustomCategory("");
       setSubmitting(false);
     }, 600);
   }
@@ -170,7 +155,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
   const endDate = contractEnd(form.contractStart, form.remainingMonths);
 
   return (
-    <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 md:p-6 space-y-5">
+    <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-5">
       <div>
         <h2 className="text-base font-bold text-white">Add Legacy / Migrated Client</h2>
         <p className="text-xs text-gray-500 mt-0.5">
@@ -181,7 +166,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
       {/* Business Info */}
       <fieldset className="space-y-3">
         <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Business Info</legend>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Business Name" required>
             <input value={form.businessName} onChange={(e) => set("businessName", e.target.value)}
               placeholder="Harrington Plumbing" required />
@@ -214,23 +199,13 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
             </select>
           </Field>
           <Field label="Category" required>
-            <select value={form.category} onChange={(e) => { set("category", e.target.value); if (e.target.value !== "Other") setCustomCategory(""); }} required>
+            <select value={form.category} onChange={(e) => set("category", e.target.value)} required>
               <option value="">Select category…</option>
               {CATEGORY_OPTIONS.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
           </Field>
-          {form.category === "Other" && (
-            <Field label="Specify category" required>
-              <input
-                value={customCategory}
-                onChange={(e) => setCustomCategory(e.target.value)}
-                placeholder="e.g. Auto Detailing, Dog Grooming…"
-                required
-              />
-            </Field>
-          )}
           <Field label="Spot Type" required>
             <select value={form.spotType} onChange={(e) => set("spotType", e.target.value as SpotType)}>
               {Object.entries(SPOT_TYPE_META).map(([key, meta]) => (
@@ -272,7 +247,7 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
       {/* Migration Status */}
       <fieldset>
         <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Migration Status</legend>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {(["legacy_active", "legacy_pending", "new_system"] as const).map((status) => {
             const meta = MIGRATION_STATUS_META[status];
             return (
@@ -335,81 +310,18 @@ function MigrationForm({ onSubmit }: { onSubmit: (client: MigratedClient) => voi
 
 // ── Client Card ───────────────────────────────────────────────────────────
 
-function ClientCard({ client, onStatusChange, onRemove, onUpdate }: {
+function ClientCard({ client, onStatusChange }: {
   client: MigratedClient;
   onStatusChange: (id: string, status: ClientMigrationStatus) => void;
-  onRemove: (id: string, name: string) => void;
-  onUpdate: (id: string, patch: Partial<MigratedClient & { contractStart: string; remainingMonths: number }>) => Promise<void>;
 }) {
-  const [expanded,   setExpanded]   = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [editing,    setEditing]    = useState(false);
-  const [saving,     setSaving]     = useState(false);
-
-  // Edit state — pre-populated from current client
-  const [editCity,     setEditCity]     = useState(client.city);
-  const [editCategory, setEditCategory] = useState(client.category);
-  const [editCustomCat, setEditCustomCat] = useState("");
-  const [editSpot,     setEditSpot]     = useState(client.spotType);
-  const [editPrice,    setEditPrice]    = useState(String(client.monthlyPrice));
-  const [editContact,  setEditContact]  = useState(client.contactName);
-  const [editPhone,    setEditPhone]    = useState(client.phone);
-  const [editEmail,    setEditEmail]    = useState(client.email);
-  const [editBizName,  setEditBizName]  = useState(client.businessName);
-  const [editNotes,    setEditNotes]    = useState(client.notes ?? "");
-  const [editStart,    setEditStart]    = useState(client.contract.startDate);
-  const [editMonths,   setEditMonths]   = useState(String(client.contract.remainingMonths));
-
-  function openEdit() {
-    // Reset to current values each time
-    setEditBizName(client.businessName);
-    setEditContact(client.contactName);
-    setEditPhone(client.phone);
-    setEditEmail(client.email);
-    setEditCity(client.city);
-    setEditCategory(client.category);
-    setEditCustomCat("");
-    setEditSpot(client.spotType);
-    setEditPrice(String(client.monthlyPrice));
-    setEditNotes(client.notes ?? "");
-    setEditStart(client.contract.startDate);
-    setEditMonths(String(client.contract.remainingMonths));
-    setEditing(true);
-  }
-
-  async function saveEdit() {
-    setSaving(true);
-    const resolvedCategory = editCategory === "Other"
-      ? (editCustomCat.trim() || "Other")
-      : editCategory;
-    // Resolve city label from either the label itself or the id
-    const cityObj   = CITY_OPTIONS.find(c => c.id === editCity || c.label === editCity);
-    const cityLabel = cityObj?.label ?? editCity;
-    await onUpdate(client.id, {
-      businessName:    editBizName,
-      contactName:     editContact,
-      phone:           editPhone,
-      email:           editEmail,
-      city:            cityLabel,
-      category:        resolvedCategory,
-      spotType:        editSpot as typeof client.spotType,
-      monthlyPrice:    Number(editPrice),
-      notes:           editNotes,
-      contractStart:   editStart,
-      remainingMonths: Number(editMonths),
-    });
-    setSaving(false);
-    setEditing(false);
-  }
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className={cn(
       "bg-gray-900 border rounded-2xl p-5 transition",
-      editing
-        ? "border-blue-600"
-        : client.contract.isNearingRenewal
-          ? "border-amber-800/50"
-          : "border-gray-800"
+      client.contract.isNearingRenewal
+        ? "border-amber-800/50"
+        : "border-gray-800"
     )}>
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
@@ -427,24 +339,16 @@ function ClientCard({ client, onStatusChange, onRemove, onUpdate }: {
             {client.contactName} · {client.city} · {client.category}
           </p>
           <p className="text-xs text-gray-500">
-            {SPOT_TYPE_META[client.spotType as keyof typeof SPOT_TYPE_META]?.label ?? client.spotType} spot ·{" "}
+            {SPOT_TYPE_META[client.spotType].label} spot ·{" "}
             <span className="text-white font-semibold">${client.monthlyPrice}/mo</span>
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => { if (editing) { setEditing(false); } else { openEdit(); setExpanded(true); } }}
-            className={cn("text-xs transition", editing ? "text-gray-500 hover:text-gray-300" : "text-blue-400 hover:text-blue-300")}
-          >
-            {editing ? "✕ Cancel" : "✏️ Edit"}
-          </button>
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="text-xs text-gray-500 hover:text-gray-300"
-          >
-            {expanded ? "▲" : "▼"}
-          </button>
-        </div>
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-xs text-gray-500 hover:text-gray-300 shrink-0"
+        >
+          {expanded ? "▲ Less" : "▼ More"}
+        </button>
       </div>
 
       {/* Contract bar */}
@@ -452,87 +356,21 @@ function ClientCard({ client, onStatusChange, onRemove, onUpdate }: {
         <ContractBar contract={client.contract} />
       </div>
 
-      {/* ── Edit form ── */}
-      {editing && (
-        <div className="mt-4 border-t border-blue-800/40 pt-4 space-y-3">
-          <p className="text-xs text-blue-400 font-semibold uppercase tracking-wide">Editing — {client.businessName}</p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <EditField label="Business Name">
-              <input value={editBizName} onChange={e => setEditBizName(e.target.value)} />
-            </EditField>
-            <EditField label="Contact Name">
-              <input value={editContact} onChange={e => setEditContact(e.target.value)} />
-            </EditField>
-            <EditField label="Phone">
-              <input value={editPhone} onChange={e => setEditPhone(e.target.value)} />
-            </EditField>
-            <EditField label="Email">
-              <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
-            </EditField>
-            <EditField label="City">
-              <select value={editCity} onChange={e => setEditCity(e.target.value)}>
-                <option value="">Select city…</option>
-                {CITY_OPTIONS.map(c => <option key={c.id} value={c.label}>{c.label}</option>)}
-              </select>
-            </EditField>
-            <EditField label="Category">
-              <select value={editCategory} onChange={e => { setEditCategory(e.target.value); if (e.target.value !== "Other") setEditCustomCat(""); }}>
-                <option value="">Select category…</option>
-                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </EditField>
-            {editCategory === "Other" && (
-              <EditField label="Specify category">
-                <input value={editCustomCat} onChange={e => setEditCustomCat(e.target.value)} placeholder="e.g. Auto Detailing…" />
-              </EditField>
-            )}
-            <EditField label="Spot Type">
-              <select value={editSpot} onChange={e => setEditSpot(e.target.value)}>
-                {Object.entries(SPOT_TYPE_META).map(([key, meta]) => (
-                  <option key={key} value={key}>{meta.label}</option>
-                ))}
-              </select>
-            </EditField>
-            <EditField label="Monthly Price ($)">
-              <input type="number" min={0} value={editPrice} onChange={e => setEditPrice(e.target.value)} />
-            </EditField>
-            <EditField label="Contract Start">
-              <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)} />
-            </EditField>
-            <EditField label="Remaining Months">
-              <input type="number" min={1} max={60} value={editMonths} onChange={e => setEditMonths(e.target.value)} />
-            </EditField>
-          </div>
-
-          <EditField label="Notes">
-            <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} placeholder="Notes…" />
-          </EditField>
-
-          <button
-            onClick={saveEdit}
-            disabled={saving}
-            className={cn(
-              "w-full py-3 rounded-xl font-semibold text-sm transition",
-              saving ? "bg-gray-700 text-gray-400 cursor-wait" : "bg-blue-600 hover:bg-blue-500 text-white"
-            )}
-          >
-            {saving ? "Saving…" : "Save Changes"}
-          </button>
-        </div>
-      )}
-
-      {/* Expanded details (read-only) */}
-      {expanded && !editing && (
+      {/* Expanded details */}
+      {expanded && (
         <div className="mt-4 space-y-3 border-t border-gray-800 pt-4">
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
               <p className="text-gray-500">Phone</p>
-              <p className="text-white">{client.phone || "—"}</p>
+              <p className="text-white">{client.phone}</p>
             </div>
             <div>
               <p className="text-gray-500">Email</p>
-              <p className="text-white break-all">{client.email || "—"}</p>
+              <p className="text-white">{client.email}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Spot ID</p>
+              <p className="text-white">{client.spotId ?? "Not yet assigned"}</p>
             </div>
             <div>
               <p className="text-gray-500">Migrated by</p>
@@ -542,6 +380,12 @@ function ClientCard({ client, onStatusChange, onRemove, onUpdate }: {
               <p className="text-gray-500">Dashboard</p>
               <p className={client.appearsInDashboard ? "text-green-400" : "text-gray-500"}>
                 {client.appearsInDashboard ? "✓ Visible" : "✗ Hidden"}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500">ROI Dashboard</p>
+              <p className={client.appearsInROI ? "text-green-400" : "text-gray-500"}>
+                {client.appearsInROI ? "✓ Visible" : "✗ Hidden"}
               </p>
             </div>
           </div>
@@ -566,34 +410,6 @@ function ClientCard({ client, onStatusChange, onRemove, onUpdate }: {
                   </button>
                 ))}
             </div>
-          </div>
-
-          {/* Remove */}
-          <div className="pt-1">
-            {!confirming ? (
-              <button
-                onClick={() => setConfirming(true)}
-                className="text-xs text-red-500 hover:text-red-400 transition"
-              >
-                🗑 Remove this client
-              </button>
-            ) : (
-              <div className="flex items-center gap-3 p-3 bg-red-900/20 border border-red-800/40 rounded-xl">
-                <p className="text-xs text-red-300 flex-1">Permanently delete <strong>{client.businessName}</strong>?</p>
-                <button
-                  onClick={() => { onRemove(client.id, client.businessName); setConfirming(false); }}
-                  className="text-xs px-3 py-1.5 bg-red-700 hover:bg-red-600 text-white rounded-lg transition font-semibold"
-                >
-                  Yes, delete
-                </button>
-                <button
-                  onClick={() => setConfirming(false)}
-                  className="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -689,70 +505,6 @@ export function MigrationClient({ initialClients }: Props) {
     showToast(`Status updated to ${MIGRATION_STATUS_META[status].label}`);
   }
 
-  async function handleUpdate(
-    id: string,
-    patch: Partial<MigratedClient & { contractStart: string; remainingMonths: number }>
-  ) {
-    try {
-      const res = await fetch(`/api/admin/migration?id=${encodeURIComponent(id)}`, {
-        method:  "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(patch),
-      });
-      const data = await res.json() as { error?: string };
-      if (!res.ok) {
-        showToast(`⚠️ Save failed: ${data.error ?? "unknown error"}`);
-        return;
-      }
-      // Optimistically update local state
-      setClients(prev => prev.map(c => {
-        if (c.id !== id) return c;
-        const months = patch.remainingMonths ?? c.contract.remainingMonths;
-        const start  = patch.contractStart   ?? c.contract.startDate;
-        const endD   = new Date(start);
-        endD.setMonth(endD.getMonth() + months);
-        const endDate = endD.toISOString().split("T")[0];
-        return {
-          ...c,
-          businessName:    patch.businessName    ?? c.businessName,
-          contactName:     patch.contactName     ?? c.contactName,
-          phone:           patch.phone           ?? c.phone,
-          email:           patch.email           ?? c.email,
-          city:            patch.city            ?? c.city,
-          category:        patch.category        ?? c.category,
-          spotType:        (patch.spotType       ?? c.spotType) as typeof c.spotType,
-          monthlyPrice:    patch.monthlyPrice    ?? c.monthlyPrice,
-          notes:           patch.notes           ?? c.notes,
-          contract: {
-            ...c.contract,
-            startDate:       start,
-            endDate,
-            remainingMonths: months,
-            isNearingRenewal: Math.ceil((new Date(endDate).getTime() - Date.now()) / 86400000) <= 60,
-          },
-        };
-      }));
-      showToast(`✅ ${patch.businessName ?? "Client"} updated`);
-    } catch {
-      showToast("⚠️ Network error — changes not saved");
-    }
-  }
-
-  async function handleRemove(id: string, name: string) {
-    try {
-      const res = await fetch(`/api/admin/migration?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json() as { error?: string };
-        showToast(`⚠️ Delete failed: ${data.error ?? "unknown error"}`);
-        return;
-      }
-      setClients((prev) => prev.filter((c) => c.id !== id));
-      showToast(`🗑 ${name} removed`);
-    } catch {
-      showToast("⚠️ Network error — could not remove client");
-    }
-  }
-
   const filtered = filter === "all" ? clients : clients.filter((c) => c.migrationStatus === filter);
   const renewalWarnings = clients.filter((c) => c.contract.isNearingRenewal);
 
@@ -765,10 +517,10 @@ export function MigrationClient({ initialClients }: Props) {
   const newSystemCount = clients.filter((c) => c.migrationStatus === "new_system").length;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-4 md:p-6 space-y-5 md:space-y-6 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-950 text-white p-6 space-y-6 max-w-7xl mx-auto">
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-sm z-50 bg-gray-800 border border-gray-700 text-sm text-white px-4 py-3 rounded-xl shadow-lg text-center sm:text-left">
+        <div className="fixed bottom-6 right-6 z-50 bg-gray-800 border border-gray-700 text-sm text-white px-4 py-3 rounded-xl shadow-lg">
           {toast}
         </div>
       )}
@@ -781,17 +533,17 @@ export function MigrationClient({ initialClients }: Props) {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">Client Migration</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Legacy contracts, billing protection, renewal tracking
+            Manage existing customers — legacy contracts, billing protection, renewal tracking
           </p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
           className={cn(
-            "px-4 py-3 sm:py-2 rounded-xl text-sm font-semibold transition w-full sm:w-auto",
+            "px-4 py-2 rounded-xl text-sm font-semibold transition",
             showForm
               ? "bg-gray-700 text-gray-300"
               : "bg-blue-600 hover:bg-blue-500 text-white"
@@ -818,7 +570,7 @@ export function MigrationClient({ initialClients }: Props) {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <MigrationStat icon="💰" label="Legacy MRR"      value={`$${totalMRR.toLocaleString()}`}  sub="from migrated clients" />
         <MigrationStat icon="🔒" label="Legacy Active"   value={String(legacyCount)}               sub="billing prevented" />
         <MigrationStat icon="⏳" label="Pending"         value={String(pendingCount)}              sub="awaiting finalization" />
@@ -829,28 +581,29 @@ export function MigrationClient({ initialClients }: Props) {
       {showForm && <MigrationForm onSubmit={handleAdd} />}
 
       {/* Filter Tabs */}
-      <div className="overflow-x-auto -mx-4 px-4">
-        <div className="flex items-center gap-2 border-b border-gray-800 pb-3 min-w-max">
-          {(["all", "legacy_active", "legacy_pending", "new_system"] as const).map((f) => {
-            const count = f === "all"
-              ? clients.length
-              : clients.filter((c) => c.migrationStatus === f).length;
-            return (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={cn(
-                  "px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap min-h-[36px]",
-                  filter === f
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-500 hover:text-gray-300"
-                )}
-              >
-                {f === "all" ? "All" : MIGRATION_STATUS_META[f].label} ({count})
-              </button>
-            );
-          })}
-        </div>
+      <div className="flex items-center gap-2 border-b border-gray-800 pb-3">
+        {(["all", "legacy_active", "legacy_pending", "new_system"] as const).map((f) => {
+          const count = f === "all"
+            ? clients.length
+            : clients.filter((c) => c.migrationStatus === f).length;
+          return (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition",
+                filter === f
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-500 hover:text-gray-300"
+              )}
+            >
+              {f === "all" ? "All" : MIGRATION_STATUS_META[f].label} ({count})
+            </button>
+          );
+        })}
+        <span className="ml-auto text-xs text-gray-600 italic">
+          Future: bulk CSV import supported
+        </span>
       </div>
 
       {/* Client Grid */}
@@ -872,8 +625,6 @@ export function MigrationClient({ initialClients }: Props) {
               key={client.id}
               client={client}
               onStatusChange={handleStatusChange}
-              onRemove={handleRemove}
-              onUpdate={handleUpdate}
             />
           ))}
         </div>
@@ -897,13 +648,13 @@ function MigrationStat({ icon, label, value, sub }: {
   icon: string; label: string; value: string; sub: string;
 }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 md:p-4">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-sm">{icon}</span>
-        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide truncate">{label}</p>
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <span>{icon}</span>
+        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{label}</p>
       </div>
       <p className="text-xl font-bold text-white">{value}</p>
-      <p className="text-xs text-gray-600 mt-0.5 truncate">{sub}</p>
+      <p className="text-xs text-gray-600 mt-0.5">{sub}</p>
     </div>
   );
 }
@@ -911,7 +662,7 @@ function MigrationStat({ icon, label, value, sub }: {
 function Field({
   label, required, children,
 }: {
-  label: string; required?: boolean; children: React.ReactElement;
+  label: string; required?: boolean; children: React.ReactElement<{ className?: string }>;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -928,21 +679,3 @@ function Field({
     </div>
   );
 }
-
-function EditField({ label, children }: { label: string; children: React.ReactElement }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold text-blue-300/70">{label}</label>
-      {React.cloneElement(children, {
-        className: cn(
-          "w-full bg-gray-800 border border-blue-700/50 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600",
-          "focus:outline-none focus:border-blue-500",
-          children.props.className
-        ),
-      })}
-    </div>
-  );
-}
-
-// Need React for cloneElement
-import React from "react";

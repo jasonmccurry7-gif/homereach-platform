@@ -1,6 +1,13 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
+import {
+  auditDeliverabilityCopy,
+  buildOutreachSourceAttribution,
+  buildOutreachThrottleStatus,
+  scoreNextBestAction,
+  type GovernedOutreachChannel,
+} from "@/lib/sales-engine/outreach-governance";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/sales/todays-tasks
@@ -38,30 +45,30 @@ function smsDraft(
 
   const templates: Record<string, string> = {
     "Restaurant & Food":
-      `${hi}, I'm ${me} with HomeReach — we run postcard campaigns targeting thousands of homeowners near your restaurant in ${loc}. Would you be open to a quick chat? Reply YES to learn more or STOP to opt out.`,
+      `${hi}, I'm ${me} with HomeReach. We help local restaurants stay visible with nearby homeowners through reviewed postcard campaigns in ${loc}. Want the simple coverage details? Reply YES or STOP to opt out.`,
     "Home Services":
-      `${hi}, ${me} here from HomeReach. We connect home service businesses with local homeowners through targeted postcard ads in ${loc}. Interested? Reply YES or STOP to opt out.`,
+      `${hi}, ${me} with HomeReach. We help home service businesses keep a clear local presence with homeowners in ${loc}. Want me to send the coverage option? Reply YES or STOP to opt out.`,
     "Health & Wellness":
-      `${hi}, I'm ${me} with HomeReach. We run hyper-local postcard campaigns reaching homeowners near your business in ${loc}. Want to hear more? Reply YES or STOP to opt out.`,
+      `${hi}, I'm ${me} with HomeReach. We help wellness businesses stay easy to remember in their local market through postcard campaigns in ${loc}. Want details? Reply YES or STOP to opt out.`,
     "Automotive":
-      `${hi}, ${me} with HomeReach — we help auto shops reach thousands of nearby homeowners with postcards in ${loc}. Open to a quick chat? Reply YES or STOP to opt out.`,
+      `${hi}, ${me} with HomeReach. We help auto shops put a clean local message in front of nearby homeowners in ${loc}. Want the short breakdown? Reply YES or STOP to opt out.`,
     "Real Estate":
-      `${hi}, I'm ${me} with HomeReach. We run targeted postcard campaigns for real estate professionals in ${loc}. Great way to stay top-of-mind with local homeowners. Reply YES or STOP to opt out.`,
+      `${hi}, I'm ${me} with HomeReach. We help real estate professionals stay visible with homeowners in ${loc} through reviewed postcard campaigns. Want the simple option? Reply YES or STOP to opt out.`,
     "Cleaning Services":
-      `${hi}, ${me} with HomeReach here. We run postcard campaigns targeting homeowners in ${loc} — perfect for cleaning businesses. Interested? Reply YES or STOP to opt out.`,
+      `${hi}, ${me} with HomeReach. We help cleaning businesses keep a local presence with homeowners in ${loc}. Want me to send the campaign overview? Reply YES or STOP to opt out.`,
     "Plumbing":
-      `${hi}, ${me} from HomeReach. We help plumbers reach thousands of local homeowners with direct-mail in ${loc}. Interested in more calls? Reply YES or STOP to opt out.`,
+      `${hi}, ${me} from HomeReach. We help plumbers stay visible with local homeowners before a repair is urgent. Want the ${loc} coverage details? Reply YES or STOP to opt out.`,
     "HVAC":
-      `${hi}, ${me} with HomeReach. We run postcard campaigns targeting homeowners in ${loc} — great for HVAC businesses looking for more installs. Reply YES or STOP to opt out.`,
+      `${hi}, ${me} with HomeReach. We help HVAC businesses stay remembered by homeowners in ${loc} without adding another complex ad channel. Want details? Reply YES or STOP to opt out.`,
     "Roofing":
-      `${hi}, ${me} here from HomeReach. We get roofing companies in front of thousands of local homeowners via direct mail in ${loc}. Want to learn more? Reply YES or STOP to opt out.`,
+      `${hi}, ${me} with HomeReach. We help roofing companies keep a trusted local presence with homeowners in ${loc}. Want the simple campaign breakdown? Reply YES or STOP to opt out.`,
     "Landscaping":
-      `${hi}, ${me} with HomeReach. We help landscaping businesses reach verified homeowners with postcards in ${loc}. Interested? Reply YES or STOP to opt out.`,
+      `${hi}, ${me} with HomeReach. We help landscaping businesses stay visible as homeowners plan local projects in ${loc}. Want the coverage details? Reply YES or STOP to opt out.`,
   };
 
   return (
     templates[category] ??
-    `${hi}, I'm ${me} with HomeReach. We run targeted postcard ads to homeowners in ${loc} — perfect for businesses like ${businessName}. Interested? Reply YES or STOP to opt out.`
+    `${hi}, I'm ${me} with HomeReach. We help local businesses like ${businessName} stay visible with homeowners in ${loc}. Want the simple coverage details? Reply YES or STOP to opt out.`
   );
 }
 
@@ -75,19 +82,17 @@ function emailDraft(
   const first    = contactName?.split(" ")[0] ?? null;
   const greeting = first ? `Hi ${first},` : "Hi there,";
   const loc      = city || "your area";
-  const subject  = `Grow ${businessName} with targeted homeowner ads in ${loc}`;
+  const subject  = `Local visibility option for ${businessName} in ${loc}`;
 
   const body = `${greeting}
 
-My name is ${agent.full_name} with HomeReach. We run direct-mail postcard campaigns targeting verified homeowners in ${loc} and surrounding neighborhoods.
+My name is ${agent.full_name} with HomeReach. We help local businesses stay visible with homeowners in ${loc} through reviewed direct-mail postcard campaigns.
 
-Each campaign reaches thousands of homeowners in your local market. Businesses in our campaigns typically see strong response rates — especially in categories like ${category || "your industry"}.
+The goal is simple: a clear local message, a clean next step, and less marketing complexity for the owner. I noticed ${businessName} and thought the ${category || "local business"} category may be worth reviewing.
 
-We have a few spots left for our next campaign cycle and I think ${businessName} could be a great fit.
+Would you have 10 minutes this week for a quick call? I can walk you through coverage, format, and current pricing so you can decide if it is useful.
 
-Would you have 10 minutes this week for a quick call? Happy to walk you through exactly what we do and what it would cost.
-
-— ${agent.full_name}
+${agent.full_name}
 HomeReach
 ${agent.phone_display} | home-reach.com`;
 
@@ -104,7 +109,7 @@ function fbDmDraft(
   const hi    = first ? `Hi ${first}!` : "Hi there!";
   const loc   = city || "your area";
 
-  return `${hi} My name is ${agent.first_name} and I'm with HomeReach — we do direct-mail postcard campaigns reaching thousands of homeowners in the ${loc} area. I came across ${businessName} and thought you might be a great fit for our next campaign. We have a few spots left! Would you be open to hearing more? 😊`;
+  return `${hi} My name is ${agent.first_name} and I'm with HomeReach. We help local businesses stay visible with homeowners in the ${loc} area through reviewed postcard campaigns. I came across ${businessName} and wanted to see if a simple coverage overview would be useful.`;
 }
 
 function followUpSmsDraft(
@@ -119,7 +124,7 @@ function followUpSmsDraft(
   const loc   = city || "your area";
   const days  = daysSince === 1 ? "yesterday" : `${daysSince} days ago`;
 
-  return `${hi}, just following up on my message from ${days} about HomeReach postcard advertising in ${loc}. Still interested in reaching more local homeowners? Reply YES or STOP to opt out. — ${agent.first_name}`;
+  return `${hi}, quick follow-up on my note from ${days} about HomeReach postcard visibility in ${loc}. Should I send the simple coverage details or close the loop? Reply YES or STOP to opt out. ${agent.first_name}`;
 }
 
 function followUpEmailDraft(
@@ -134,16 +139,16 @@ function followUpEmailDraft(
   const loc      = city || "your area";
 
   return {
-    subject: `Following up — HomeReach advertising for ${businessName}`,
+    subject: `Following up on ${businessName} in ${loc}`,
     body:    `${greeting}
 
 I wanted to follow up on my previous note about HomeReach's postcard campaigns in ${loc}.
 
-I know things get busy — just didn't want this to fall through the cracks. We have limited spots available for the current campaign cycle and I think ${businessName} would be a great fit.
+I know things get busy, and I do not want to add noise. If local visibility is still worth reviewing, I can send the simple coverage and cost breakdown.
 
-Worth a quick 10-minute call this week?
+Would you like me to send that over, or should I close the loop for now?
 
-— ${agent.full_name}
+${agent.full_name}
 HomeReach | ${agent.phone_display}`,
   };
 }
@@ -158,7 +163,7 @@ function replyResponseDraft(
   const hi    = first ? `Hi ${first}` : "Hi";
   const loc   = city || "your area";
 
-  return `${hi}! Thanks for getting back to me. I'd love to tell you more about how HomeReach works for businesses in ${loc}. Are you available for a quick 10-minute call sometime this week? I can send a calendar link if that's easier. — ${agent.first_name}`;
+  return `${hi}! Thanks for getting back to me. I can keep this simple: HomeReach helps local businesses stay visible with homeowners in ${loc}. Want me to send coverage and pricing details, or would a quick call be easier? ${agent.first_name}`;
 }
 
 // ─── Format phone for signature (e.g. +13302069639 -> (330) 206-9639) ─────────
@@ -167,6 +172,46 @@ function formatPhone(raw: string): string {
   const d = digits.length === 11 ? digits.slice(1) : digits;
   if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
   return raw;
+}
+
+function buildDraftGovernance(input: {
+  lead: any;
+  channel: GovernedOutreachChannel;
+  body: string;
+  subject?: string | null;
+  workflow: string;
+  templateId: string;
+  destination?: string | null;
+}) {
+  const nextBestAction = scoreNextBestAction(input.lead, {
+    channel: input.channel,
+    defaultAction: "Prepare approval-ready outreach draft",
+  });
+  const deliverability = auditDeliverabilityCopy(
+    input.subject ? `${input.subject}\n\n${input.body}` : input.body,
+    input.channel,
+  );
+  const sourceAttribution = buildOutreachSourceAttribution({
+    workflow: input.workflow,
+    channel: input.channel,
+    lead: input.lead,
+    destination: input.destination ?? null,
+    templateId: input.templateId,
+    action: nextBestAction.action,
+    nextAction: nextBestAction.action,
+    sources: ["sales_events", "agent_identities", "system_controls"],
+  });
+
+  return {
+    approval: {
+      required: true,
+      status: "needs_review" as const,
+      reason: "Human approval is required before sending, posting, scheduling, or changing campaign state.",
+    },
+    source_attribution: sourceAttribution,
+    next_best_action: nextBestAction,
+    deliverability,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +303,7 @@ export async function GET(request: Request) {
       { data: emailLeads },
       { data: fbDmLeads },
       { data: todayEvents },
+      { data: systemControls },
     ] = await Promise.all([
       // Replies — need response
       cityFilter(db.from("sales_leads").select("*")
@@ -310,15 +356,31 @@ export async function GET(request: Request) {
         .select("action_type, lead_id, revenue_cents, channel")
         .eq("agent_id", effectiveUserId)
         .gte("created_at", todayStart.toISOString()),
+
+      db.from("system_controls")
+        .select("daily_sms_cap, daily_email_cap_per_sender, automation_batch_limit, manual_approval_mode")
+        .eq("id", 1)
+        .maybeSingle(),
     ]);
 
     // ── Build tasks with AGENT-SPECIFIC messages ──────────────────────────────
 
-    const replies = (replyLeads ?? []).map((lead: any) => ({
-      lead,
-      last_reply_at:     lead.last_reply_at,
-      suggested_response: replyResponseDraft(agent, lead.business_name, lead.city ?? "", lead.contact_name),
-    }));
+    const replies = (replyLeads ?? []).map((lead: any) => {
+      const suggestedResponse = replyResponseDraft(agent, lead.business_name, lead.city ?? "", lead.contact_name);
+      return {
+        lead,
+        last_reply_at:     lead.last_reply_at,
+        suggested_response: suggestedResponse,
+        ...buildDraftGovernance({
+          lead,
+          channel: lead.phone ? "sms" : "email",
+          body: suggestedResponse,
+          workflow: "admin_sales_todays_tasks_reply",
+          templateId: "reply_response_safe_v2",
+          destination: lead.phone ?? lead.email ?? null,
+        }),
+      };
+    });
 
     const followups = (followUpLeads ?? []).map((lead: any) => {
       const lastContacted = lead.last_contacted_at ? new Date(lead.last_contacted_at) : null;
@@ -336,33 +398,93 @@ export async function GET(request: Request) {
         channel: (hasPhone ? "sms" : "email") as "sms" | "email",
         days_since: daysSince,
         overdue:    lead.next_follow_up_at ? new Date(lead.next_follow_up_at) < now : false,
+        ...buildDraftGovernance({
+          lead,
+          channel: hasPhone ? "sms" : "email",
+          body: draft.body,
+          subject: "subject" in draft ? draft.subject : null,
+          workflow: "admin_sales_todays_tasks_followup",
+          templateId: hasPhone ? "followup_sms_safe_v2" : "followup_email_safe_v2",
+          destination: hasPhone ? lead.phone : lead.email,
+        }),
       };
     });
 
-    const texts        = (textLeads ?? []).map((lead: any) => ({
-      lead,
-      draft: { body: smsDraft(agent, lead.business_name, lead.city ?? "", lead.category ?? "", lead.contact_name) },
-    }));
+    const texts        = (textLeads ?? []).map((lead: any) => {
+      const draft = { body: smsDraft(agent, lead.business_name, lead.city ?? "", lead.category ?? "", lead.contact_name) };
+      return {
+        lead,
+        draft,
+        ...buildDraftGovernance({
+          lead,
+          channel: "sms",
+          body: draft.body,
+          workflow: "admin_sales_todays_tasks_first_touch_sms",
+          templateId: "first_touch_sms_safe_v2",
+          destination: lead.phone ?? null,
+        }),
+      };
+    });
 
-    const emails       = (emailLeads ?? []).map((lead: any) => ({
-      lead,
-      draft: emailDraft(agent, lead.business_name, lead.city ?? "", lead.category ?? "", lead.contact_name),
-    }));
+    const emails       = (emailLeads ?? []).map((lead: any) => {
+      const draft = emailDraft(agent, lead.business_name, lead.city ?? "", lead.category ?? "", lead.contact_name);
+      return {
+        lead,
+        draft,
+        ...buildDraftGovernance({
+          lead,
+          channel: "email",
+          body: draft.body,
+          subject: draft.subject,
+          workflow: "admin_sales_todays_tasks_first_touch_email",
+          templateId: "first_touch_email_safe_v2",
+          destination: lead.email ?? null,
+        }),
+      };
+    });
 
-    const facebook_dms = (fbDmLeads ?? []).map((lead: any) => ({
-      lead,
-      draft: { body: fbDmDraft(agent, lead.business_name, lead.city ?? "", lead.contact_name) },
-    }));
+    const facebook_dms = (fbDmLeads ?? []).map((lead: any) => {
+      const draft = { body: fbDmDraft(agent, lead.business_name, lead.city ?? "", lead.contact_name) };
+      return {
+        lead,
+        draft,
+        ...buildDraftGovernance({
+          lead,
+          channel: "facebook_dm",
+          body: draft.body,
+          workflow: "admin_sales_todays_tasks_facebook_dm",
+          templateId: "facebook_dm_safe_v2",
+          destination: lead.facebook_url ?? null,
+        }),
+      };
+    });
 
     // Group posts — use agent name, show only assigned cities
     const targetCities = hasTerritories ? assignedCities : ["Wooster", "Medina", "Massillon", "Cuyahoga Falls"];
-    const group_posts  = targetCities.slice(0, 4).map(city => ({
-      id:           `gp_${city.toLowerCase().replace(/\s+/g, "_")}`,
-      group_name:   `${city} Ohio Community Board`,
-      city,
-      post_copy:    `🏠 Hey ${city} business owners! HomeReach is running its spring postcard campaign targeting thousands of homeowners in the area. We have a few ad spots left — comment below or visit home-reach.com to learn more! — ${agent.full_name}`,
-      scheduled_for: null,
-    }));
+    const group_posts  = targetCities.slice(0, 4).map(city => {
+      const postCopy = `Hey ${city} business owners, HomeReach helps local companies stay visible with nearby homeowners through reviewed postcard campaigns. If you want the simple coverage and pricing overview for ${city}, comment or visit home-reach.com. ${agent.full_name}`;
+      const leadContext = {
+        id: `group-post-${city.toLowerCase().replace(/\s+/g, "_")}`,
+        business_name: `${city} business owners`,
+        city,
+        category: "Local businesses",
+      };
+      return {
+        id:           `gp_${city.toLowerCase().replace(/\s+/g, "_")}`,
+        group_name:   `${city} Ohio Community Board`,
+        city,
+        post_copy:    postCopy,
+        scheduled_for: null,
+        ...buildDraftGovernance({
+          lead: leadContext,
+          channel: "facebook",
+          body: postCopy,
+          workflow: "admin_sales_todays_tasks_facebook_group_post",
+          templateId: "facebook_group_post_safe_v2",
+          destination: `${city} Ohio Community Board`,
+        }),
+      };
+    });
 
     // ── Today's stats (correct action_type mapping) ───────────────────────────
     const events         = todayEvents ?? [];
@@ -374,6 +496,32 @@ export async function GET(request: Request) {
     const revenueToday   = events.filter(e => e.action_type === "deal_closed").reduce((s, e) => s + (e.revenue_cents ?? 0), 0);
 
     const totalTasks = replies.length + followups.length + texts.length + emails.length + facebook_dms.length + group_posts.length;
+    const smsDailyCap = Number(systemControls?.daily_sms_cap ?? 30);
+    const emailDailyCap = Number(systemControls?.daily_email_cap_per_sender ?? 30);
+    const automationBatchLimit = Number(systemControls?.automation_batch_limit ?? 10);
+    const smsRequested = texts.length + followups.filter((task: { channel: string }) => task.channel === "sms").length;
+    const emailRequested = emails.length + followups.filter((task: { channel: string }) => task.channel === "email").length;
+    const facebookRequested = facebook_dms.length + group_posts.length;
+    const throttle = {
+      sms: buildOutreachThrottleStatus({
+        channel: "sms",
+        cap: Number.isFinite(smsDailyCap) ? smsDailyCap : 30,
+        sentToday: smsSentToday,
+        requested: smsRequested,
+      }),
+      email: buildOutreachThrottleStatus({
+        channel: "email",
+        cap: Number.isFinite(emailDailyCap) ? emailDailyCap : 30,
+        sentToday: emailSentToday,
+        requested: emailRequested,
+      }),
+      facebook: buildOutreachThrottleStatus({
+        channel: "facebook",
+        cap: Number.isFinite(automationBatchLimit) ? automationBatchLimit : 10,
+        sentToday: fbSentToday,
+        requested: facebookRequested,
+      }),
+    };
 
     return NextResponse.json({
       date: now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
@@ -396,8 +544,15 @@ export async function GET(request: Request) {
         revenue_today_cents: revenueToday,
       },
       targets: {
-        sms_daily:   40,
-        email_daily: 40,
+        sms_daily:   throttle.sms.cap,
+        email_daily: throttle.email.cap,
+        facebook_review_batch: throttle.facebook.cap,
+      },
+      throttle,
+      approval_policy: {
+        outbound_status: "needs_review",
+        manual_approval_mode: Boolean(systemControls?.manual_approval_mode),
+        note: "Tasks are drafts only. Human approval is required before SMS, email, Facebook DM, or group post use.",
       },
     });
   } catch (err) {

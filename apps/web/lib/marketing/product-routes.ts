@@ -1,20 +1,41 @@
 export const PRODUCT_OVERVIEW_PATHS = {
+  marketCapture: "/market-capture",
   sharedPostcards: "/shared-postcards",
   targetedCampaigns: "/targeted",
+  digitalTargeting: "/digital-targeting",
   politicalCampaigns: "/political",
   inventoryIntelligence: "/inventory-purchasing",
   propertyIntelligence: "/property-intelligence",
+  contractOS: "/contractos",
+  aiGrowthOs: "/local-growth-os",
+  localVisibility: "/local-visibility",
+  services: "/services",
+  aiWebsiteAssistant: "/services/ai-website-assistant",
+  localSeo: "/services/local-seo",
+  reputation: "/services/reputation",
+  socialContent: "/services/social-content",
+  governmentContracts: "/services/government-contracts",
 } as const;
 
 export const PRODUCT_START_PATHS = {
+  marketCapture: "/market-capture/intake",
   sharedPostcards: "/get-started",
-  targetedCampaigns: "/targeted/intake",
+  targetedCampaigns: "/targeted/start",
+  digitalTargeting: "/digital-targeting/intake",
   politicalCampaigns: "/political/plan",
-  inventoryIntelligence: "/inventory-purchasing/dashboard",
+  inventoryIntelligence: "/waitlist?product=procurement-savings-review",
   propertyIntelligence: "/intelligence",
-  yardSigns: "/targeted/intake?product=yard-signs",
-  doorHangers: "/targeted/intake?product=door-hangers",
-  businessCards: "/targeted/intake?product=business-cards",
+  contractOS: "/contractos/dashboard",
+  aiGrowthOs: "/growth-center",
+  localVisibility: "/local-visibility#visibility-scan",
+  aiWebsiteAssistant: "/services/ai-website-assistant#assistant-demo",
+  localSeo: "/waitlist?product=local-seo",
+  reputation: "/waitlist?product=reputation",
+  socialContent: "/waitlist?product=social-content",
+  governmentContracts: "/waitlist?product=government-contracts",
+  yardSigns: "/targeted/start?product=yard-signs",
+  doorHangers: "/targeted/start?product=door-hangers",
+  businessCards: "/targeted/start?product=business-cards",
 } as const;
 
 export function accountStartHref(redirectPath: string) {
@@ -30,5 +51,14 @@ export function safeRelativeRedirect(value: string | undefined, fallback = "/das
     return fallback;
   }
 
-  return value;
+  try {
+    const target = new URL(value, "https://home-reach.local");
+    if (target.pathname.startsWith("/api/")) return fallback;
+    if (target.pathname === "/login" || target.pathname === "/signup") {
+      return fallback;
+    }
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return fallback;
+  }
 }

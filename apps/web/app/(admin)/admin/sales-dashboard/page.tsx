@@ -1,23 +1,16 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import SalesDashboardClient from "./sales-dashboard-client";
-import ContentIntelCards from "@/components/content-intel/ContentIntelCards";
-import HighPriorityLeadsCard from "@/components/lead-intel/HighPriorityLeadsCard";
+import type { Metadata } from "next";
+import { HomeReachOSShell } from "@/components/homereach-os/home-reach-os-shell";
+import { getHomeReachOSData } from "@/lib/homereach-os/queries";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Sales Intelligence — HomeReach Admin" };
+export const metadata: Metadata = {
+  title: "HomeReach OS - Sales Intelligence",
+  description: "Sales intelligence, pipeline, communications, and AI-assisted workflow dashboard",
+};
 
 export default async function SalesDashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?redirect=/admin/sales-dashboard");
-  return (
-    <>
-      {/* Additive: each renders null when its feature flag is off. */}
-      <HighPriorityLeadsCard />
-      <ContentIntelCards />
-      <SalesDashboardClient />
-    </>
-  );
+  const data = await getHomeReachOSData();
+
+  return <HomeReachOSShell data={data} mode="sales" />;
 }

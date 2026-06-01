@@ -1,9 +1,13 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // GET /api/admin/sales/leaderboard
 export async function GET(request: Request) {
   try {
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
   const supabase = createServiceClient();
   const { searchParams } = new URL(request.url);
   const since = searchParams.get("since") ?? new Date(Date.now() - 86400000).toISOString(); // default: today
@@ -143,8 +147,9 @@ export async function GET(request: Request) {
   );
 
   // Tag top performers
-  if (leaderboard.length > 0) {
-    leaderboard[0].flags = [...(leaderboard[0].flags ?? []), "top_closer"];
+  const topCloser = leaderboard[0];
+  if (topCloser) {
+    topCloser.flags = [...(topCloser.flags ?? []), "top_closer"];
     const bestConverter = [...leaderboard].sort((a,b) => b.reply_rate - a.reply_rate)[0];
     if (bestConverter) bestConverter.flags = [...(bestConverter.flags ?? []), "best_converter"];
     const mostActive = [...leaderboard].sort((a,b) => b.messages - a.messages)[0];

@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { UserRole } from "@homereach/types";
+import { profiles, type typeof_db } from "@homereach/db";
+import { eq } from "drizzle-orm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Supabase Auth Service
@@ -34,12 +36,9 @@ export function createServiceClient() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getUserRole(
-  db: import("@homereach/db").typeof_db,
+  db: typeof_db,
   userId: string
 ): Promise<UserRole | null> {
-  const { profiles } = await import("@homereach/db");
-  const { eq } = await import("drizzle-orm");
-
   const [profile] = await db
     .select({ role: profiles.role })
     .from(profiles)
@@ -69,7 +68,7 @@ export function isAdminEmail(email: string): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createProfileOnSignup(
-  db: import("@homereach/db").typeof_db,
+  db: typeof_db,
   args: {
     id: string;
     email: string;

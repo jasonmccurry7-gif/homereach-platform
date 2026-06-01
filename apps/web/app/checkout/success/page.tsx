@@ -4,8 +4,9 @@ import { db, orders, bundles, businesses } from "@homereach/db";
 import { eq } from "drizzle-orm";
 
 export const metadata: Metadata = {
-  title: "You're In! — HomeReach",
+  title: "Checkout Received - HomeReach",
 };
+export const dynamic = "force-dynamic";
 
 interface Props {
   searchParams: Promise<{ order?: string }>;
@@ -66,13 +67,13 @@ export default async function CheckoutSuccessPage({ searchParams }: Props) {
 
         <h1 className="text-3xl font-bold text-gray-900">
           {orderDetails?.businessName
-            ? `${orderDetails.businessName} is on the mailer!`
-            : "Your spot is confirmed!"}
+            ? `${orderDetails.businessName} checkout was received`
+            : "Checkout received"}
         </h1>
         <p className="mt-3 text-lg text-gray-500">
           {orderDetails?.bundleName
-            ? `Your ${orderDetails.bundleName} campaign has been reserved.`
-            : "Your campaign has been reserved."}
+            ? `HomeReach will confirm your ${orderDetails.bundleName} payment event and inventory status before fulfillment begins.`
+            : "HomeReach will confirm the payment event and inventory status before fulfillment begins."}
         </p>
 
         {/* What happens next */}
@@ -82,26 +83,26 @@ export default async function CheckoutSuccessPage({ searchParams }: Props) {
             {[
               {
                 step: "1",
-                title: "We confirm your order",
-                body: "You'll receive a confirmation email within a few minutes.",
+                title: "We confirm payment and inventory",
+                body: "Stripe sends the payment event to HomeReach. If anything needs review, we will contact you before fulfillment starts.",
                 timing: "Right now",
               },
               {
                 step: "2",
                 title: "Our team designs your ad",
                 body: "We'll create your ad and send it for your approval before anything goes to print.",
-                timing: "Within 2–3 business days",
+                timing: "Within 2-3 business days",
               },
               {
                 step: "3",
-                title: "Postcards go to print & mail",
-                body: "Once you approve your design, we handle printing and mailing to 2,500+ homes in your neighborhood.",
-                timing: "10–14 business days",
+                title: "Postcards move to print and mail",
+                body: "Once your proof, payment, and mail window are approved, we coordinate printing and mailing.",
+                timing: "10-14 business days",
               },
               {
                 step: "4",
                 title: "Track results in your dashboard",
-                body: "Log into your HomeReach dashboard to see reach, responses, and ROI in real time.",
+                body: "Log into your HomeReach dashboard to see campaign status, known response signals, notes, and next steps.",
                 timing: "Ongoing",
               },
             ].map((item) => (

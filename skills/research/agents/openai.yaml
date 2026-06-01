@@ -1,0 +1,4 @@
+interface:
+  display_name: "research"
+  short_description: "HomeReach research workflow"
+  default_prompt: "Use this HomeReach workflow skill to produce approval-gated, logged outputs."

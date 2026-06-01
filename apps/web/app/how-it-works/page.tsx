@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import type { Metadata } from "next";
+import { HomeReachLogo } from "@/components/brand/home-reach-logo";
 
 export const metadata: Metadata = {
   title: "How It Works — HomeReach",
@@ -20,8 +21,7 @@ export default function HowItWorksPage() {
       <header className="border-b border-gray-800/60 bg-gray-950/95 backdrop-blur sticky top-0 z-50">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white font-black text-xs shadow-md">HR</div>
-            <span className="text-base font-bold text-white">HomeReach</span>
+            <HomeReachLogo tone="light" size="sm" />
           </Link>
           <Link href="/get-started" className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-500 transition-colors">
             Check Availability →
@@ -226,8 +226,7 @@ export default function HowItWorksPage() {
       <footer className="border-t border-gray-800 bg-gray-900/40">
         <div className="mx-auto max-w-6xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white font-black text-xs">HR</div>
-            <span className="text-sm font-bold text-gray-300">HomeReach</span>
+            <HomeReachLogo tone="light" size="sm" />
           </Link>
           <div className="flex flex-wrap justify-center gap-5 text-sm text-gray-500">
             <Link href="/" className="hover:text-gray-300 transition-colors">Home</Link>

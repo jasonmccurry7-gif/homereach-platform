@@ -138,7 +138,7 @@ export class PricingEngine {
     return (
       [...active].sort((a, b) => b.minSpots - a.minSpots).find((t) => spotCount >= t.minSpots) ??
       active[0] ??
-      DEFAULT_DISCOUNT_TIERS[0]
+      DEFAULT_DISCOUNT_TIERS[0]!
     );
   }
 

@@ -1,6 +1,5 @@
 import {
   db,
-  profiles,
   businesses,
   marketingCampaigns,
   campaignMetrics,
@@ -55,21 +54,24 @@ export async function getCampaignsForUser(userId: string) {
       bundle: {
         id: bundles.id,
         name: bundles.name,
+        price: bundles.price,
         metadata: bundles.metadata,
       },
-      // Use order.total (actual amount charged) for ad spend — NOT bundle.price.
-      // bundle.price is display-only and must never be used for revenue calculations.
       order: {
+        id: orders.id,
+        status: orders.status,
+        subtotal: orders.subtotal,
         total: orders.total,
+        paidAt: orders.paidAt,
       },
     })
     .from(marketingCampaigns)
     .leftJoin(businesses, eq(marketingCampaigns.businessId, businesses.id))
+    .leftJoin(orders, eq(marketingCampaigns.orderId, orders.id))
     .leftJoin(cities, eq(marketingCampaigns.cityId, cities.id))
     .leftJoin(categories, eq(marketingCampaigns.categoryId, categories.id))
     .leftJoin(bundles, eq(marketingCampaigns.bundleId, bundles.id))
-    .leftJoin(orders, eq(marketingCampaigns.orderId, orders.id))
-    .where(eq(marketingCampaigns.businessId, businessIds[0]!))
+    .where(inArray(marketingCampaigns.businessId, businessIds))
     .orderBy(desc(marketingCampaigns.createdAt));
 
   return rows;
@@ -133,6 +135,8 @@ export async function getOrdersForUser(userId: string) {
 
   if (userBusinesses.length === 0) return [];
 
+  const businessIds = userBusinesses.map((business) => business.id);
+
   const rows = await db
     .select({
       order: orders,
@@ -147,7 +151,7 @@ export async function getOrdersForUser(userId: string) {
     .from(orders)
     .leftJoin(bundles, eq(orders.bundleId, bundles.id))
     .leftJoin(businesses, eq(orders.businessId, businesses.id))
-    .where(eq(orders.businessId, userBusinesses[0]!.id))
+    .where(inArray(orders.businessId, businessIds))
     .orderBy(desc(orders.createdAt));
 
   return rows;

@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,8 +63,18 @@ async function sendTwilioSms(to: string, from: string, body: string): Promise<{ 
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
+
     const body = await req.json();
-    const { agent_id, alert_type, message, context } = body;
+    let { agent_id, alert_type, message, context } = body;
+
+    if (isSalesAgent) {
+      agent_id = user.id;
+    }
 
     if (!agent_id || !alert_type) {
       return NextResponse.json({ error: "agent_id and alert_type required" }, { status: 400 });
@@ -116,13 +127,15 @@ export async function POST(req: Request) {
       });
     } catch {
       // Table may not exist yet — log to sales_events as fallback
-      await supabase.from("sales_events").insert({
-        agent_id,
-        action_type: "facebook_sent",
-        channel: "facebook",
-        message: `[FB ALERT] ${alert_type}: ${message ?? ""}`,
-        metadata: { alert_type, priority: meta.priority, sms_sent: smsResult.ok },
-      }).then(() => {}).catch(() => {});
+      try {
+        await supabase.from("sales_events").insert({
+          agent_id,
+          action_type: "facebook_sent",
+          channel: "facebook",
+          message: `[FB ALERT] ${alert_type}: ${message ?? ""}`,
+          metadata: { alert_type, priority: meta.priority, sms_sent: smsResult.ok },
+        });
+      } catch {}
     }
 
     return NextResponse.json({

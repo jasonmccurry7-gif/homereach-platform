@@ -40,7 +40,14 @@ export function userHasRole(
   return Boolean(user && roles.includes(user.app_metadata?.user_role as AppRole));
 }
 
-export async function requireRole(roles: readonly AppRole[]): Promise<ApiGuardResult> {
+export function roleOf(user: User | null | undefined): AppRole | null {
+  const role = user?.app_metadata?.user_role;
+  return role === "admin" || role === "sales_agent" || role === "client"
+    ? role
+    : null;
+}
+
+export async function requireAuthenticated(): Promise<ApiGuardResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -50,6 +57,14 @@ export async function requireRole(roles: readonly AppRole[]): Promise<ApiGuardRe
     return { ok: false, response: jsonError("Unauthorized", 401) };
   }
 
+  return { ok: true, user };
+}
+
+export async function requireRole(roles: readonly AppRole[]): Promise<ApiGuardResult> {
+  const auth = await requireAuthenticated();
+  if (!auth.ok) return auth;
+
+  const user = auth.user;
   if (!userHasRole(user, roles)) {
     return { ok: false, response: jsonError("Forbidden", 403) };
   }

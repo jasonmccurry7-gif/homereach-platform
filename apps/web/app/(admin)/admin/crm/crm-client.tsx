@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
+import { MultiChannelActionRow } from "@/components/outreach/multi-channel-action-row";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type Lead = {
@@ -12,6 +14,8 @@ type Lead = {
   total_messages_sent: number; total_replies: number;
   last_contacted_at: string | null; last_reply_at: string | null;
   next_follow_up_at: string | null; notes: string | null;
+  facebook_url?: string | null; messenger_url?: string | null;
+  website_url?: string | null; website?: string | null;
 };
 type Note = { id: string; body: string; type: string; created_at: string; profiles: { full_name: string } | null };
 type Task = { id: string; title: string; type: string; status: string; due_at: string | null };
@@ -143,30 +147,65 @@ export default function CRMClient({ agentId }: { agentId: string }) {
     if (selectedLead?.id === leadId) setSelectedLead(l => l ? { ...l, pipeline_stage: stage } : l);
   };
 
+  const now = Date.now();
+  const openRevenueLeads = leads.filter(l => !["closed_won", "closed_lost"].includes(l.pipeline_stage ?? l.status));
+  const ownerReplyQueue = openRevenueLeads.filter(l => l.buying_signal || l.total_replies > 0);
+  const overdueFollowUps = openRevenueLeads.filter(l => l.next_follow_up_at && new Date(l.next_follow_up_at).getTime() <= now);
+  const paymentSent = leads.filter(l => (l.pipeline_stage ?? l.status) === "payment_sent");
+  const blockedLeads = leads.filter(l => l.is_duplicate || l.unreachable || (!l.phone && !l.email));
+
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+      <div className="bg-gray-900 border-b border-gray-800 px-4 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-lg font-bold text-white">HomeReach CRM</h1>
-          <p className="text-xs text-gray-500 mt-0.5">1,646 leads · 11 markets · {companies.filter(c=>c.status==='active').length} active clients</p>
+          <h1 className="text-lg font-bold text-white">Revenue CRM</h1>
+          <p className="text-xs text-gray-500 mt-0.5">{leads.length} loaded leads - owner decisions, follow-ups, and payment-ready accounts</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(["pipeline","leads","companies","leaderboard"] as View[]).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-all ${view === v ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
-              {v === "pipeline" ? "🗂 Pipeline" : v === "leads" ? "🎯 Leads" : v === "companies" ? "🏢 Companies" : "🏆 Leaderboard"}
+              {v === "pipeline" ? "Pipeline" : v === "leads" ? "Leads" : v === "companies" ? "Clients" : "Leaderboard"}
             </button>
           ))}
         </div>
+        </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {/* ── Pipeline view ── */}
         {view === "pipeline" && (
           <div className="flex-1 p-6 overflow-y-auto">
+            <div className="grid gap-3 mb-6 md:grid-cols-4">
+              <button onClick={() => { setStageFilter("replied"); setView("leads"); }}
+                className="rounded-xl border border-amber-800/50 bg-amber-950/20 p-4 text-left hover:border-amber-500/70">
+                <div className="text-3xl font-black text-white">{ownerReplyQueue.length}</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-amber-300">Needs reply</div>
+                <p className="mt-2 text-xs leading-5 text-amber-100/75">Buying signals or replies that should become an owner action.</p>
+              </button>
+              <button onClick={() => setView("leads")}
+                className="rounded-xl border border-red-800/50 bg-red-950/20 p-4 text-left hover:border-red-500/70">
+                <div className="text-3xl font-black text-white">{overdueFollowUps.length}</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-red-300">Follow-up due</div>
+                <p className="mt-2 text-xs leading-5 text-red-100/75">Past-due next touches that can leak revenue.</p>
+              </button>
+              <button onClick={() => { setStageFilter("payment_sent"); setView("leads"); }}
+                className="rounded-xl border border-emerald-800/50 bg-emerald-950/20 p-4 text-left hover:border-emerald-500/70">
+                <div className="text-3xl font-black text-white">{paymentSent.length}</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-emerald-300">Payment sent</div>
+                <p className="mt-2 text-xs leading-5 text-emerald-100/75">Owner should verify payment status before marking won.</p>
+              </button>
+              <button onClick={() => setView("leads")}
+                className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 text-left hover:border-slate-500">
+                <div className="text-3xl font-black text-white">{blockedLeads.length}</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-slate-300">Blocked records</div>
+                <p className="mt-2 text-xs leading-5 text-slate-400">Duplicates, no-contact, or unreachable leads to clean before outreach.</p>
+              </button>
+            </div>
             {/* Stage summary */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="grid gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 { stage: "new",       label: "New Leads",   count: pipelineCounts.new ?? 0,         color: "text-gray-300" },
                 { stage: "contacted", label: "Contacted",   count: pipelineCounts.contacted ?? 0,   color: "text-blue-400" },
@@ -182,7 +221,7 @@ export default function CRMClient({ agentId }: { agentId: string }) {
             </div>
 
             {/* Stage pipeline board */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
               {(["new","contacted","replied","interested"] as Stage[]).map(stage => {
                 const stageLeads = leads.filter(l => l.pipeline_stage === stage || l.status === stage).slice(0,10);
                 return (
@@ -241,7 +280,8 @@ export default function CRMClient({ agentId }: { agentId: string }) {
               <span className="text-gray-500 text-xs ml-auto">{leads.length} results</span>
             </div>
 
-            <table className="w-full text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[840px] text-xs">
               <thead>
                 <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/50 sticky top-0">
                   {["Business","City","Category","Stage","Score","Contact","Messages","Flags",""].map(h => (
@@ -288,6 +328,7 @@ export default function CRMClient({ agentId }: { agentId: string }) {
                 ))}
               </tbody>
             </table>
+            </div>
             {loading && <div className="text-center text-gray-500 text-sm py-8 animate-pulse">Loading...</div>}
           </div>
         )}
@@ -370,7 +411,7 @@ export default function CRMClient({ agentId }: { agentId: string }) {
 
         {/* ── Lead detail panel ── */}
         {selectedLead && (
-          <div className="w-96 bg-gray-900 border-l border-gray-800 flex flex-col overflow-hidden">
+          <div className="w-full lg:w-96 bg-gray-900 border-l border-gray-800 flex flex-col overflow-hidden">
             <div className="px-4 py-4 border-b border-gray-800 flex items-start justify-between">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -408,9 +449,39 @@ export default function CRMClient({ agentId }: { agentId: string }) {
               </div>
 
               {/* Action shortcuts */}
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Multi-channel actions
+                </div>
+                <MultiChannelActionRow
+                  compact
+                  subject={{
+                    sourceType: "sales_lead",
+                    sourceId: selectedLead.id,
+                    businessLine: /procurement|inventory|supplier|vendor|restaurant|food|bakery|pizza|cost/i.test(
+                      selectedLead.category ?? selectedLead.business_name ?? "",
+                    )
+                      ? "inventory_procurement"
+                      : "targeted_mailing",
+                    displayName: selectedLead.business_name,
+                    city: selectedLead.city,
+                    category: selectedLead.category,
+                    email: selectedLead.email,
+                    phone: selectedLead.phone,
+                    facebookUrl: selectedLead.facebook_url,
+                    messengerUrl: selectedLead.messenger_url,
+                    websiteUrl: selectedLead.website_url ?? selectedLead.website,
+                  }}
+                />
+              </div>
+
+              {/* Action shortcuts */}
               <div className="grid grid-cols-2 gap-2">
-                <a href="/admin/agent-view" className="flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 rounded-xl">⚡ Open Dialer</a>
-                <a href={`/admin/sales-dashboard`} className="flex items-center justify-center gap-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded-xl">📊 Dashboard</a>
+                <Link href="/admin/agent-view" className="flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 rounded-xl">Open dialer</Link>
+                <Link href="/admin/sales-dashboard" className="flex items-center justify-center gap-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded-xl">Sales dashboard</Link>
+              </div>
+              <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-3 text-xs leading-5 text-amber-100">
+                Owner control: stage changes organize the queue only. Sending, pricing, discounts, and payment decisions still require a human action outside this CRM panel.
               </div>
 
               {/* Outreach history */}

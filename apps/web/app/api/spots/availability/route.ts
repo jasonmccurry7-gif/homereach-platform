@@ -48,31 +48,8 @@ export async function GET(req: Request) {
   const { cityId, categoryId } = parsed.data;
 
   try {
-    const result = await checkCanonicalAvailability({ cityId, categoryId });
-
-    if (result.available) {
-      return NextResponse.json({ available: true, source: "ok" }, { status: 200 });
-    }
-
-    // Log the server-side detail (never surface to client)
-    if (result.source === "query_error") {
-      console.error(
-        "[api/spots/availability] fail-closed on query error:",
-        result.detail,
-        result.errorDetail,
-      );
-    }
-
-    return NextResponse.json(
-      {
-        available: false,
-        source: result.source,
-        message:
-          result.message ??
-          "This spot is currently taken. Join the waitlist to be notified when it opens.",
-      },
-      { status: 200 },
-    );
+    const availability = await checkCanonicalAvailability({ cityId, categoryId });
+    return NextResponse.json(availability, { status: 200 });
   } catch (err) {
     console.error("[api/spots/availability] unexpected error:", err);
     // Fail-closed: tell the UI it's not available rather than let a

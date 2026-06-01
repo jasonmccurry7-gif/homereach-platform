@@ -24,7 +24,7 @@ import { safeRelativeRedirect } from "@/lib/marketing/product-routes";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = safeRelativeRedirect(searchParams.get("next") ?? searchParams.get("redirect") ?? undefined, "/dashboard");
+  const next = safeRelativeRedirect(searchParams.get("next") ?? undefined);
   const type = searchParams.get("type"); // "recovery" for password reset
 
   if (code) {
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
           getAll() {
             return cookieStore.getAll();
           },
-          setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+          setAll(cookiesToSet: Array<{ name: string; value: string; options: Parameters<typeof cookieStore.set>[2] }>) {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
             });

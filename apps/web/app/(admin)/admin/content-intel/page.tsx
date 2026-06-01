@@ -10,7 +10,7 @@ import { redirect } from "next/navigation";
 import ContentIntelAdminClient from "./content-intel-admin-client";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Learning Engine - HomeReach Admin" };
+export const metadata = { title: "Content Intelligence — HomeReach Admin" };
 
 export default async function ContentIntelAdminPage() {
   const supabase = await createClient();

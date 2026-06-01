@@ -12,7 +12,7 @@ import {
   uniqueIndex,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -129,7 +129,7 @@ export const pricingProfiles = pgTable(
     // the same lookup key. Inactive profiles are excluded (historical records preserved).
     activeUniqueIdx: uniqueIndex("idx_pp_active_unique_lookup")
       .on(t.productType, t.billingInterval)
-      .where(/* will use SQL where clause in migration — see 04_pricing_profiles.sql */),
+      .where(sql`${t.isActive} = true`),
 
     productTypeIdx: index("idx_pp_product_type").on(t.productType),
     spotTypeIdx: index("idx_pp_spot_type").on(t.spotType),

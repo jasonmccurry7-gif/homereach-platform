@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST() {
   const cookieStore = await cookies();
-  const responseCookies: { name: string; value: string; options: Record<string, unknown> }[] = [];
+  type ResponseCookie = { name: string; value: string; options: Parameters<typeof cookieStore.set>[2] };
+  const responseCookies: ResponseCookie[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,7 +20,7 @@ export async function POST() {
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) => {
+        setAll: (cookiesToSet: ResponseCookie[]) => {
           cookiesToSet.forEach(({ name, value, options }) =>
             responseCookies.push({ name, value, options })
           );

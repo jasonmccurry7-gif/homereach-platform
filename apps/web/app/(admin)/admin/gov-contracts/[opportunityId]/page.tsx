@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { loadGovContractOpportunity } from "@/lib/gov-contracts/data";
-import type { GovContractOpportunity } from "@/lib/gov-contracts/types";
+import { loadGovContractBidWorkspace } from "@/lib/gov-contracts/execution";
+import { BidSubmissionActions } from "../_components/BidSubmissionActions";
+import { OpportunityExecutionActions } from "../_components/OpportunityExecutionActions";
 import { OpportunityStatusActions } from "../_components/OpportunityStatusActions";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,21 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+function formatPercent(value: number) {
+  return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
+}
+
+function ProgressMeter({ value }: { value: number }) {
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  const barClass = clamped >= 75 ? "bg-emerald-600" : clamped >= 50 ? "bg-amber-500" : "bg-rose-500";
+
+  return (
+    <div className="mt-2 h-2 rounded-full bg-slate-200">
+      <div className={`h-2 rounded-full ${barClass}`} style={{ width: `${clamped}%` }} />
+    </div>
+  );
+}
+
 function ApprovalGate({ label, detail }: { label: string; detail: string }) {
   return (
     <li className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -65,8 +81,15 @@ function ApprovalGate({ label, detail }: { label: string; detail: string }) {
 
 export default async function GovContractDetailPage({ params }: PageProps) {
   const { opportunityId } = await params;
-  const opportunity = await loadGovContractOpportunity(decodeURIComponent(opportunityId));
-  if (!opportunity) notFound();
+  const { opportunity, workspace } = await loadGovContractBidWorkspace(decodeURIComponent(opportunityId));
+  if (!opportunity || !workspace) notFound();
+  const bidDecision = workspace.bidDecision;
+  const pricing = workspace.pricing;
+  const firstNeed = workspace.subcontractorNeeds[0];
+  const awardIntel = workspace.operatingModel.awardIntel;
+  const marketGaps = awardIntel.intelligenceGaps.slice(0, 4);
+  const marketResearch = workspace.marketResearch;
+  const subcontractorCandidates = marketResearch.subcontractorCandidates.slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -78,7 +101,7 @@ export default async function GovContractDetailPage({ params }: PageProps) {
           href={`/admin/gov-contracts/${encodeURIComponent(opportunity.id)}/bid-room`}
           className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800"
         >
-          Open Bid Room
+          Open Bid Command Center
         </Link>
       </div>
 
@@ -100,6 +123,16 @@ export default async function GovContractDetailPage({ params }: PageProps) {
               <ScoreBar label="Risk score" value={opportunity.riskScore} />
               <ScoreBar label="Urgency score" value={opportunity.urgencyScore} />
             </div>
+            <div className="mt-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Bid completion</p>
+                <p className="text-sm font-black text-slate-950">{formatPercent(workspace.submissionReadinessScore)}</p>
+              </div>
+              <ProgressMeter value={workspace.submissionReadinessScore} />
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                Preparation score only. Final submission remains manual and approval-gated.
+              </p>
+            </div>
           </div>
         </div>
       </header>
@@ -109,10 +142,84 @@ export default async function GovContractDetailPage({ params }: PageProps) {
         <DetailRow label="Questions deadline" value={formatDate(opportunity.questionsDeadline)} />
         <DetailRow label="Site visit" value={formatDate(opportunity.siteVisitAt)} />
         <DetailRow label="Estimated value" value={formatCurrency(opportunity.estimatedValueCents)} />
+        <DetailRow label="Contract type" value={opportunity.contractType} />
+        <DetailRow label="Response method" value={opportunity.responseMethod} />
+        <DetailRow label="Incumbent vendor" value={opportunity.incumbentVendor} />
         <DetailRow label="NAICS" value={opportunity.naicsCode} />
         <DetailRow label="PSC" value={opportunity.pscCode} />
         <DetailRow label="Set-aside" value={opportunity.setAsideDescription ?? opportunity.setAsideCode} />
         <DetailRow label="Place of performance" value={opportunity.location.label} />
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Panel title="Strategic Summary">
+          <p className="text-sm font-black text-slate-950">{bidDecision.recommendation}</p>
+          <div className="mt-3 space-y-3 text-sm leading-6 text-slate-700">
+            <p>{bidDecision.capabilityFit}</p>
+            <p>{bidDecision.operationalFit}</p>
+            <p>{bidDecision.financialFit}</p>
+          </div>
+          <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm font-semibold leading-6 text-blue-950">
+            {bidDecision.recommendedNextStep}
+          </p>
+        </Panel>
+
+        <Panel title="Subcontractor Near Job">
+          {firstNeed ? (
+            <div className="space-y-3">
+              <p className="text-sm font-black text-slate-950">{firstNeed.workCategory}</p>
+              <DetailRow label="Place of performance" value={firstNeed.geography} />
+              <DetailRow label="Pipeline stage" value={firstNeed.pipelineStage} />
+              <ul className="space-y-2 text-sm leading-6 text-slate-700">
+                {firstNeed.requiredCapabilities.map((item) => <li key={item}>- {item}</li>)}
+              </ul>
+              <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-900">
+                No quote acceptance, partner selection, or subcontract commitment without human approval.
+              </p>
+              {subcontractorCandidates.length ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Businesses to source</p>
+                  {subcontractorCandidates.map((candidate) => (
+                    <div key={`${candidate.name}-${candidate.sourceUrl}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-sm font-black text-slate-950">{candidate.name}</p>
+                      <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                        {candidate.workCategory} - {candidate.verificationStatus.replaceAll("_", " ")}
+                      </p>
+                      {candidate.sourceUrl ? (
+                        <a href={candidate.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-black text-blue-700 hover:text-blue-900">
+                          Open sourcing link
+                        </a>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm leading-6 text-slate-600">
+              No immediate subcontractor requirement detected near {opportunity.location.label}. Keep delivery capacity,
+              insurance, and direct execution assumptions under review.
+            </p>
+          )}
+        </Panel>
+
+        <Panel title="Market Research / Underbid">
+          <div className="space-y-3">
+            <DetailRow label="Competitive range" value={awardIntel.realisticCompetitiveRange} />
+            <DetailRow label="Research status" value={marketResearch.researchStatus.replaceAll("_", " ")} />
+            <DetailRow label="Research confidence" value={marketResearch.confidence} />
+            <DetailRow label="Incumbent" value={awardIntel.incumbentVendor} />
+            <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold leading-6 text-rose-900">
+              {pricing.underpricingWarning}
+            </p>
+            <p className="rounded-xl bg-blue-50 p-3 text-sm font-semibold leading-6 text-blue-950">
+              {marketResearch.executiveSummary}
+            </p>
+            <ul className="space-y-2 text-sm leading-6 text-slate-700">
+              {marketGaps.map((item) => <li key={item}>- Research gap: {item}</li>)}
+            </ul>
+          </div>
+        </Panel>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
@@ -135,6 +242,25 @@ export default async function GovContractDetailPage({ params }: PageProps) {
           <p className="mt-2 text-sm text-slate-600">
             Status actions are manual and audit-ready. They do not submit bids or create outside commitments.
           </p>
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Bid completion</p>
+              <p className="text-lg font-black text-slate-950">{formatPercent(workspace.submissionReadinessScore)}</p>
+            </div>
+            <ProgressMeter value={workspace.submissionReadinessScore} />
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              Export and ready-to-submit controls prepare the review trail only; final SAM.gov or email submission is outside the AI workflow.
+            </p>
+          </div>
+          <div className="mt-4">
+            <OpportunityExecutionActions opportunityId={opportunity.id} sourceUrl={opportunity.sourceUrl} />
+          </div>
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-black uppercase tracking-wide text-amber-800">Submit / research controls</p>
+            <div className="mt-2">
+              <BidSubmissionActions opportunityId={opportunity.id} />
+            </div>
+          </div>
           <div className="mt-4">
             <OpportunityStatusActions opportunityId={opportunity.id} initialStatus={opportunity.pipelineStatus} />
           </div>
@@ -153,6 +279,41 @@ export default async function GovContractDetailPage({ params }: PageProps) {
             </p>
           )}
         </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+        <Panel title={`Bid / No-Bid: ${bidDecision.recommendation}`}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Decision reasoning</p>
+              <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-700">
+                {bidDecision.why.map((item) => <li key={item}>- {item}</li>)}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Risks and missing items</p>
+              <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-700">
+                {[...bidDecision.risks, ...bidDecision.missingRequirements].map((item) => <li key={item}>- {item}</li>)}
+              </ul>
+            </div>
+          </div>
+          <p className="mt-4 rounded-xl bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-950">
+            {bidDecision.recommendedNextStep}
+          </p>
+        </Panel>
+        <Panel title="Pricing Guardrail">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DetailRow label="Minimum safe bid" value={formatCurrency(pricing.minimumSafeBidCents)} />
+            <DetailRow label="Recommended bid" value={formatCurrency(pricing.recommendedBidCents)} />
+            <DetailRow label="Target margin" value={`${pricing.targetGrossMargin}%`} />
+            <DetailRow label="Expected gross profit" value={formatCurrency(pricing.expectedGrossProfitCents)} />
+          </div>
+          <div className="mt-4 space-y-2 rounded-xl bg-rose-50 p-4 text-sm font-semibold leading-6 text-rose-900">
+            <p>{pricing.underpricingWarning}</p>
+            <p>{pricing.lowMarginWarning}</p>
+            <p>{pricing.cashFlowWarning}</p>
+          </div>
+        </Panel>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -179,6 +340,17 @@ export default async function GovContractDetailPage({ params }: PageProps) {
             </ul>
           ) : (
             <p className="text-sm text-slate-600">No attachments loaded yet. Sync and document ingestion are part of the SAM.gov connector workflow.</p>
+          )}
+        </Panel>
+        <Panel title="Required Documents">
+          {opportunity.requiredDocuments.length > 0 ? (
+            <ul className="space-y-2 text-sm text-slate-700">
+              {opportunity.requiredDocuments.map((item) => (
+                <li key={item}>- {item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-slate-600">Required document extraction is pending. Review the official solicitation and attachments.</p>
           )}
         </Panel>
         <Panel title="Missing Data / Risk Flags">

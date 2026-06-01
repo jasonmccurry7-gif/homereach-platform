@@ -5,8 +5,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { HomeReachLogo } from "@/components/brand/home-reach-logo";
+import InventoryPurchasingPage from "../inventory-purchasing/page";
 
 // ─── data ────────────────────────────────────────────────────────────────────
 
@@ -37,7 +39,7 @@ const CATEGORIES: Record<string, {
     headline: "The Only Roofer in {{city}} Homeowners See Every Month",
     pain: "Homeowners in {{city}} need roofing work — but they can't find you. They search Google, get four results, and call whoever has the most reviews. With HomeReach, you're in their mailbox before they ever open Google.",
     cta: "Claim the Roofing Spot in {{city}}",
-    stats: "Average roofing job: $8,000–$25,000. One job from a postcard = 3–10 years of ad cost.",
+    stats: "Common roofing project range: $8,000–$25,000. Final campaign economics depend on offer, timing, geography, and follow-up.",
     avgJob: "$8,000–$25,000",
   },
   hvac: {
@@ -45,7 +47,7 @@ const CATEGORIES: Record<string, {
     headline: "Be the Only HVAC Company {{city}} Homeowners Know By Name",
     pain: "When a furnace dies in January or AC fails in July, homeowners don't shop around — they call the first name they know. With HomeReach, that name is yours.",
     cta: "Claim the HVAC Spot in {{city}}",
-    stats: "Average HVAC job: $1,500–$8,000. One job/month from a postcard = 7–40× return.",
+    stats: "Common HVAC project range: $1,500–$8,000. Results depend on local demand, offer strength, seasonality, and follow-up.",
     avgJob: "$1,500–$8,000",
   },
   plumbing: {
@@ -125,7 +127,7 @@ const CATEGORIES: Record<string, {
     headline: "Own Home Remodeling in {{city}}",
     pain: "Remodeling is the highest-value home service category. Homeowners plan for months. Be the remodeler they've been seeing in their mailbox the whole time.",
     cta: "Claim the Home Remodeling Spot in {{city}}",
-    stats: "Average remodeling project: $15,000–$75,000+. One job = years of ad cost covered.",
+    stats: "Common remodeling project range: $15,000–$75,000+. Larger projects make consistent local visibility strategically valuable.",
     avgJob: "$15,000–$75,000+",
   },
 };
@@ -152,17 +154,32 @@ export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
   const { slug } = await params;
+  if (
+    slug === "inventory-purchasing" ||
+    slug === "inventory-intelligence" ||
+    slug === "inventory" ||
+    slug === "purchasing" ||
+    slug === "find-my-savings"
+  ) {
+    return {
+      title: "Inventory Purchasing Dashboard & Supplier Savings",
+      description:
+        "Track recurring supplies, compare supplier pricing, and uncover supplier savings opportunities with HomeReach.",
+    };
+  }
+
   const parsed = parseSlug(slug);
   if (!parsed) return { title: "HomeReach" };
 
   const city = CITIES[parsed.city];
   const cat = CATEGORIES[parsed.category];
+  if (!city || !cat) return { title: "HomeReach" };
   const cityDisplay = city.display;
   const catDisplay = cat.display;
 
   return {
     title: `${catDisplay} in ${cityDisplay}, OH — HomeReach`,
-    description: `Only 1 ${catDisplay.toLowerCase()} business gets the exclusive postcard spot in ${cityDisplay}, OH. Be the contractor 2,500+ homeowners see every month — before your competitors claim it.`,
+    description: `Premium shared postcard visibility for ${catDisplay.toLowerCase()} businesses in ${cityDisplay}, OH. Availability, pricing, and route counts are confirmed before checkout.`,
   };
 }
 
@@ -172,11 +189,29 @@ export default async function CityLandingPage(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
+
+  if (slug === "inventory-purchasing") {
+    return <InventoryPurchasingPage />;
+  }
+
+  if (
+    slug === "inventory-intelligence" ||
+    slug === "inventory" ||
+    slug === "purchasing"
+  ) {
+    redirect("/inventory-purchasing");
+  }
+
+  if (slug === "find-my-savings") {
+    redirect("/login?redirect=/operations-copilot");
+  }
+
   const parsed = parseSlug(slug);
   if (!parsed) notFound();
 
   const city = CITIES[parsed.city];
   const cat = CATEGORIES[parsed.category];
+  if (!city || !cat) notFound();
   const cityDisplay = city.display;
   const catDisplay = cat.display;
 
@@ -191,8 +226,7 @@ export default async function CityLandingPage(
       <header className="border-b border-gray-800/60 bg-gray-950/95 backdrop-blur sticky top-0 z-50">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white font-black text-xs">HR</div>
-            <span className="text-base font-bold text-white">HomeReach</span>
+            <HomeReachLogo tone="light" size="sm" />
           </Link>
           <Link href="/get-started" className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-500 transition-colors">
             Claim This Spot →
@@ -219,7 +253,7 @@ export default async function CityLandingPage(
 
           <div className="mt-8 inline-block rounded-xl border border-amber-700/40 bg-amber-900/20 px-6 py-3">
             <p className="text-sm text-amber-200">
-              <span className="font-black text-amber-300">⚠️ Only 1 {catDisplay} business</span> can hold this spot in {cityDisplay}. Check availability now.
+              <span className="font-black text-amber-300">Availability is confirmed before checkout.</span> Check the {catDisplay} spot in {cityDisplay}.
             </p>
           </div>
 
@@ -242,15 +276,15 @@ export default async function CityLandingPage(
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-2xl font-black text-white">2,500+</p>
-              <p className="text-xs text-gray-500 mt-1">Homeowners in {cityDisplay} reached per month</p>
+              <p className="text-xs text-gray-500 mt-1">Typical monthly household reach, verified before checkout</p>
             </div>
             <div>
               <p className="text-2xl font-black text-amber-400">1 spot</p>
-              <p className="text-xs text-gray-500 mt-1">Available per {catDisplay} in {cityDisplay}</p>
+              <p className="text-xs text-gray-500 mt-1">Category protection when availability is confirmed</p>
             </div>
             <div>
               <p className="text-2xl font-black text-green-400">{cat.avgJob}</p>
-              <p className="text-xs text-gray-500 mt-1">Average {catDisplay.toLowerCase()} job value</p>
+              <p className="text-xs text-gray-500 mt-1">Common project value range</p>
             </div>
           </div>
         </div>
@@ -263,23 +297,23 @@ export default async function CityLandingPage(
           {[
             {
               icon: "🔒",
-              title: "Category exclusive — always",
-              body: `Only one ${catDisplay.toLowerCase()} business can hold the spot in ${cityDisplay}. Once you claim it, no competitor can buy onto the same postcard. For as long as you stay active, you own it.`,
+              title: "Category protection, verified first",
+              body: `HomeReach checks the current ${catDisplay.toLowerCase()} category status in ${cityDisplay} before checkout so you know whether a protected placement is actually available.`,
             },
             {
               icon: "📬",
-              title: `2,500+ ${cityDisplay} homeowners, every month`,
-              body: `Premium oversized postcards delivered to 2,500+ verified homeowner addresses in ${cityDisplay} — every single month. Your business is featured prominently, exclusively in the ${catDisplay.toLowerCase()} category.`,
+              title: `Local mailbox visibility in ${cityDisplay}`,
+              body: `Premium oversized postcards are planned around verified household counts, route availability, and print/mail timing before a campaign is approved.`,
             },
             {
               icon: "💰",
-              title: "The math makes sense",
-              body: `${fill(cat.stats)} At $200/month, you need one new customer to cover months of advertising. Everything after that is profit.`,
+              title: "A clearer way to buy local visibility",
+              body: `${fill(cat.stats)} Final pricing and availability are confirmed before checkout, with no unsupported ROI guarantees.`,
             },
             {
               icon: "📞",
-              title: "Homeowners call before they search",
-              body: `After 2–3 months of consistent presence in ${cityDisplay} mailboxes, homeowners recognize your name. When they need a ${catDisplay.toLowerCase()} — they call you before opening Google.`,
+              title: "Stay visible before customers need you",
+              body: `Consistent local presence helps your business stay familiar in ${cityDisplay} so homeowners have a name to remember when a need appears.`,
             },
           ].map(item => (
             <div key={item.title} className="flex gap-5 rounded-2xl border border-gray-800 bg-gray-900 p-6">
@@ -301,11 +335,11 @@ export default async function CityLandingPage(
             Availability: {cityDisplay}, {city.state}
           </div>
           <h2 className="text-3xl font-black text-white mb-4">
-            The {catDisplay} Spot in {cityDisplay} Is Either Available — Or It&apos;s Gone
+            Check Whether the {catDisplay} Spot in {cityDisplay} Is Available
           </h2>
           <p className="text-gray-400 leading-relaxed">
-            Once another {catDisplay.toLowerCase()} business in {cityDisplay} claims this spot, it locks.
-            There&apos;s no waitlist, no buyout, no getting it back unless they cancel.
+            HomeReach verifies current availability before checkout. If the protected spot is already active,
+            we will route you to the waitlist or a targeted campaign option instead of taking an unavailable order.
           </p>
           <div className="mt-8">
             <Link href="/get-started" className="inline-block rounded-xl bg-blue-600 px-10 py-4 text-base font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 hover:bg-blue-500">
@@ -317,30 +351,30 @@ export default async function CityLandingPage(
 
       {/* PRICING PREVIEW */}
       <section className="mx-auto max-w-2xl px-6 py-20 text-center">
-        <h2 className="text-3xl font-black text-white mb-4">Simple, Flat Pricing</h2>
+        <h2 className="text-3xl font-black text-white mb-4">Simple Pricing, Confirmed Before Checkout</h2>
         <p className="text-gray-400 mb-10">
-          The {catDisplay} spot in {cityDisplay} is <strong className="text-white">$200/month</strong>.
-          That&apos;s $0.08 per homeowner reached. No setup fees, no design fees, no long-term commitment.
+          Pricing, household reach, route counts, and category availability are confirmed in the checkout flow before
+          you commit. No hidden setup fees or unsupported performance promises.
         </p>
         <div className="rounded-2xl border border-blue-700/40 bg-gradient-to-b from-blue-950/30 to-gray-900 p-8">
           <div className="grid gap-4 sm:grid-cols-3 text-center mb-6">
             <div>
-              <p className="text-3xl font-black text-white">$200</p>
-              <p className="text-xs text-gray-500 mt-1">Per month</p>
+              <p className="text-3xl font-black text-white">Verified</p>
+              <p className="text-xs text-gray-500 mt-1">Pricing before checkout</p>
             </div>
             <div>
-              <p className="text-3xl font-black text-blue-400">$0.08</p>
-              <p className="text-xs text-gray-500 mt-1">Per homeowner</p>
+              <p className="text-3xl font-black text-blue-400">Route</p>
+              <p className="text-xs text-gray-500 mt-1">Household counts checked</p>
             </div>
             <div>
-              <p className="text-3xl font-black text-green-400">Month-to-month</p>
-              <p className="text-xs text-gray-500 mt-1">No contract</p>
+              <p className="text-3xl font-black text-green-400">Review</p>
+              <p className="text-xs text-gray-500 mt-1">Before payment</p>
             </div>
           </div>
           <ul className="text-left space-y-2.5 mb-8">
             {[
-              "2,500+ homeowners in " + cityDisplay + " per month",
-              "Exclusive " + catDisplay + " placement — no competitors",
+              "Household reach verified for " + cityDisplay,
+              "Category protection confirmed before payment",
               "Professional postcard design included",
               "Cancel anytime with 30 days notice",
             ].map(f => (
@@ -362,8 +396,7 @@ export default async function CityLandingPage(
       <footer className="border-t border-gray-800 bg-gray-900/40">
         <div className="mx-auto max-w-6xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white font-black text-xs">HR</div>
-            <span className="text-sm font-bold text-gray-300">HomeReach</span>
+            <HomeReachLogo tone="light" size="sm" />
           </Link>
           <div className="flex flex-wrap justify-center gap-5 text-sm text-gray-500">
             <Link href="/" className="hover:text-gray-300 transition-colors">Home</Link>

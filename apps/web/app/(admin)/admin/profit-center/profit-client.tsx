@@ -38,10 +38,12 @@ interface Props {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
+const MANUAL_SOURCE_BADGE = { label: "Manual", cls: "bg-amber-900/50  text-amber-300  border-amber-800/40" };
+
 const SOURCE_BADGE: Record<string, { label: string; cls: string }> = {
   live:   { label: "Live",   cls: "bg-green-900/50  text-green-300  border-green-800/40"  },
   cached: { label: "Cached", cls: "bg-blue-900/50   text-blue-300   border-blue-800/40"   },
-  manual: { label: "Manual", cls: "bg-amber-900/50  text-amber-300  border-amber-800/40"  },
+  manual: MANUAL_SOURCE_BADGE,
 };
 
 const PRODUCT_LABELS: Record<string, string> = {
@@ -75,7 +77,7 @@ function marginColor(pct: number): string {
 }
 
 function SourceBadge({ source }: { source: string }) {
-  const meta = SOURCE_BADGE[source] ?? SOURCE_BADGE.manual;
+  const meta = SOURCE_BADGE[source] ?? MANUAL_SOURCE_BADGE;
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium border", meta.cls)}>
       {meta.label}
@@ -458,8 +460,9 @@ function ProfitTable({ rows }: { rows: ProfitRow[] }) {
 function ProductReferenceTable({ rows }: { rows: ProductPricingResult[] }) {
   // Group by product type
   const grouped = rows.reduce<Record<string, ProductPricingResult[]>>((acc, row) => {
-    if (!acc[row.productType]) acc[row.productType] = [];
-    acc[row.productType].push(row);
+    const bucket = acc[row.productType] ?? [];
+    bucket.push(row);
+    acc[row.productType] = bucket;
     return acc;
   }, {});
 

@@ -1,6 +1,9 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
-import { createHmac } from "crypto";
+import {
+  getFacebookVerifyToken,
+  verifyFacebookSignature,
+} from "@/lib/security/facebook-webhook";
 
 export const dynamic = "force-dynamic";
 
@@ -29,22 +32,11 @@ export const dynamic = "force-dynamic";
 // Until then, events will only arrive from the app's test users.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN ?? process.env.FACEBOOK_VERIFY_TOKEN ?? "homereach-fb-verify";
-const APP_SECRET   = process.env.FACEBOOK_APP_SECRET ?? "";
+const VERIFY_TOKEN = getFacebookVerifyToken();
 const BASE_URL     = process.env.NEXT_PUBLIC_SITE_URL ?? "https://home-reach.com";
 const CRON_SECRET  = process.env.CRON_SECRET ?? "";
 
 // ── Signature verification ─────────────────────────────────────────────────
-function verifySignature(rawBody: string, signature: string | null): boolean {
-  if (!APP_SECRET || !signature) return false;
-  const [algo, hash] = signature.split("=");
-  if (algo !== "sha256") return false;
-  const expected = createHmac("sha256", APP_SECRET)
-    .update(rawBody, "utf8")
-    .digest("hex");
-  return hash === expected;
-}
-
 // ── Classify incoming event for alert routing ──────────────────────────────
 function classifyEvent(entry: {
   changes?: Array<{ field: string; value: Record<string, unknown> }>;
@@ -94,6 +86,13 @@ export async function GET(req: Request) {
   const token     = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
+  if (!VERIFY_TOKEN) {
+    return NextResponse.json(
+      { error: "Facebook webhook verify token is not configured" },
+      { status: 503 },
+    );
+  }
+
   if (mode === "subscribe" && token === VERIFY_TOKEN && challenge) {
     console.log("[FB Webhook] Verified subscription");
     return new Response(challenge, { status: 200, headers: { "Content-Type": "text/plain" } });
@@ -107,10 +106,13 @@ export async function POST(req: Request) {
   const rawBody  = await req.text();
   const signature = req.headers.get("x-hub-signature-256");
 
-  // Verify signature in production (skip in dev if APP_SECRET not set)
-  if (APP_SECRET && !verifySignature(rawBody, signature)) {
-    console.warn("[FB Webhook] Invalid signature");
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  const signatureCheck = verifyFacebookSignature(rawBody, signature);
+  if (!signatureCheck.ok) {
+    console.warn("[FB Webhook] Rejected request:", signatureCheck.reason);
+    return NextResponse.json(
+      { error: signatureCheck.reason },
+      { status: signatureCheck.status },
+    );
   }
 
   let payload: {
@@ -173,13 +175,17 @@ export async function POST(req: Request) {
         });
       } catch {
         // Fallback to sales_events
-        await supabase.from("sales_events").insert({
-          agent_id:    targetAgentId,
-          action_type: "facebook_webhook",
-          channel:     "facebook",
-          message:     `[FB Webhook] ${classification.label}`,
-          metadata:    context,
-        }).then(() => {}).catch(() => {});
+        try {
+          await supabase.from("sales_events").insert({
+            agent_id:    targetAgentId,
+            action_type: "facebook_webhook",
+            channel:     "facebook",
+            message:     `[FB Webhook] ${classification.label}`,
+            metadata:    context,
+          });
+        } catch {
+          // Keep webhook acknowledgement fast even if fallback logging fails.
+        }
       }
 
       // ── Trigger SMS alert for high-priority events ─────────────────────

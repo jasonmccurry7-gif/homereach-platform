@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +12,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const sessionClient = await createClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
+    const guard = await requireAdminOrSalesAgent();
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const url     = new URL(req.url);
-    const agentId = url.searchParams.get("agent_id") ?? user.id;
+    const agentId = isSalesAgent ? user.id : (url.searchParams.get("agent_id") ?? user.id);
     const db      = createServiceClient();
     const now     = new Date();
     const h48     = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
@@ -35,6 +37,7 @@ export async function GET(req: Request) {
     // ── Interested leads — no follow-up in 48h ────────────────────────────────
     const { data: intLeads } = await db.from("sales_leads").select("*")
       .eq("status", "interested")
+      .eq("assigned_agent_id", agentId)
       .lt("last_contacted_at", h48)
       .eq("do_not_contact", false)
       .order("last_contacted_at", { ascending: true })
@@ -54,7 +57,7 @@ export async function GET(req: Request) {
         risk_label:      "Interested — No Follow-Up",
         stale_since:     lead.last_contacted_at,
         recovery_action: lead.phone ? "call" : "send_text",
-        recovery_message: `Hey ${lead.business_name.split(" ")[0] ?? "there"} — just circling back. That spot in ${lead.city ?? "your area"} is still open. Did you want to move forward?`,
+        recovery_message: `Hi ${lead.business_name.split(" ")[0] ?? "there"} - quick follow-up on the ${lead.city ?? "your area"} visibility option. Want me to send the simple next step before I close the loop?`,
         estimated_value: "$200–$900/mo",
         days_stale:      days,
       });
@@ -63,6 +66,7 @@ export async function GET(req: Request) {
     // ── Replied leads — no response sent ────────────────────────────────────
     const { data: repliedLeads } = await db.from("sales_leads").select("*")
       .eq("status", "replied")
+      .eq("assigned_agent_id", agentId)
       .lt("last_reply_at", h48)
       .eq("do_not_contact", false)
       .order("last_reply_at", { ascending: true })
@@ -82,7 +86,7 @@ export async function GET(req: Request) {
         risk_label:      "They Replied — You Didn't",
         stale_since:     lead.last_reply_at ?? "",
         recovery_action: "respond",
-        recovery_message: `Hey! Sorry for the slow reply — still have that spot in ${lead.city ?? "your area"} open. Want to lock it in?`,
+        recovery_message: `Hi - sorry for the slow reply. I can still help with the ${lead.city ?? "your area"} visibility option if it is useful. Want the simple next step?`,
         estimated_value: "$200–$900/mo",
         days_stale:      days,
       });
@@ -91,6 +95,7 @@ export async function GET(req: Request) {
     // ── Payment sent — not yet confirmed ────────────────────────────────────
     const { data: paymentLeads } = await db.from("sales_leads").select("*")
       .eq("status", "payment_sent")
+      .eq("assigned_agent_id", agentId)
       .lt("last_contacted_at", h48)
       .eq("do_not_contact", false)
       .order("last_contacted_at", { ascending: true })
@@ -110,7 +115,7 @@ export async function GET(req: Request) {
         risk_label:      "Payment Link Sent — Not Paid",
         stale_since:     lead.last_contacted_at,
         recovery_action: "call",
-        recovery_message: `Hey — wanted to make sure you got the link okay. The ${lead.city ?? ""} spot is still being held for you. Did you run into any issues?`,
+        recovery_message: `Hi - wanted to make sure the payment link worked and nothing got in the way. Do you want me to resend the simple checkout link for ${lead.city ?? "your area"}?`,
         estimated_value: "$200–$900/mo (CONFIRMED CLOSE)",
         days_stale:      days,
       });
@@ -119,6 +124,7 @@ export async function GET(req: Request) {
     // ── Contacted 7+ days ago — no movement ─────────────────────────────────
     const { data: staleLeads } = await db.from("sales_leads").select("*")
       .eq("status", "contacted")
+      .eq("assigned_agent_id", agentId)
       .lt("last_contacted_at", d7)
       .eq("do_not_contact", false)
       .order("score", { ascending: false })
@@ -138,7 +144,7 @@ export async function GET(req: Request) {
         risk_label:      `Contacted ${days} Days Ago — No Movement`,
         stale_since:     lead.last_contacted_at,
         recovery_action: lead.phone ? "call" : "send_text",
-        recovery_message: `Hey — circling back on the homeowner mailer in ${lead.city ?? "your area"}. That ${lead.category?.toLowerCase() ?? "business"} spot is still open. Still interested?`,
+        recovery_message: `Hi - checking back on the ${lead.category?.toLowerCase() ?? "business"} visibility option in ${lead.city ?? "your area"}. Should I send the simple breakdown or close the loop?`,
         estimated_value: "$200–$900/mo",
         days_stale:      days,
       });
@@ -162,7 +168,7 @@ export async function GET(req: Request) {
       total_at_risk:   totalAtRisk,
       estimated_value_cents: estimatedValue * 100,
       message:         totalAtRisk > 0
-        ? `$${(estimatedValue / 100 * totalAtRisk).toLocaleString()} sitting in stalled deals — recover them now`
+        ? `$${(estimatedValue / 100 * totalAtRisk).toLocaleString()} in stalled local visibility opportunities - clear the next action today`
         : null,
     });
 

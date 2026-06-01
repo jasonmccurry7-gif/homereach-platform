@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import { resolveEnvAlias } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 min — scraping takes time
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/agents/scraper
-// Cron: every 3 hours (*/3 * * * * not supported — use 0 */3 * * *)
+// SerpAPI is manually locked off until the owner explicitly restarts it.
+// Vercel cron for this endpoint is disabled while the lock is active.
 //
 // For each city × category combo:
 //   1. Skip if city already has MAX_PER_CITY leads
@@ -18,6 +20,14 @@ export const maxDuration = 300; // 5 min — scraping takes time
 
 const MAX_PER_CITY      = 500;  // total leads per city
 const RESULTS_PER_RUN   = 10; // 10 per category per city per run    // businesses scraped per category per city per run
+const SERPAPI_MANUAL_PAUSE_LOCK = true;
+
+function isSerpApiPaused() {
+  if (SERPAPI_MANUAL_PAUSE_LOCK) return true;
+
+  const value = (process.env.SERPAPI_PAUSED ?? "true").trim().toLowerCase();
+  return !["false", "0", "off", "no"].includes(value);
+}
 
 // City+category search queries (maps to our DB category slugs)
 const CITIES = [
@@ -53,7 +63,9 @@ const CATEGORY_QUERIES: Record<string, string[]> = {
 
 // ── SerpAPI call ──────────────────────────────────────────────────────────────
 async function searchGoogleMaps(query: string, city: string): Promise<SerpResult[]> {
-  const apiKey = process.env.SERPAPI_KEY;
+  if (isSerpApiPaused()) return [];
+
+  const apiKey = resolveEnvAlias("SERPAPI_KEY", "SERP_API", "SERPAPI_API_KEY");
   if (!apiKey) return [];
 
   try {
@@ -76,7 +88,7 @@ async function searchGoogleMaps(query: string, city: string): Promise<SerpResult
 
 // ── Hunter.io email finder ─────────────────────────────────────────────────────
 async function findEmail(businessName: string, domain?: string): Promise<string | null> {
-  const apiKey = process.env.HUNTER_API_KEY;
+  const apiKey = resolveEnvAlias("HUNTER_API_KEY", "HUNTER");
   if (!apiKey || !domain) return null;
 
   try {
@@ -164,6 +176,22 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+  }
+
+  if (isSerpApiPaused()) {
+    return NextResponse.json({
+      status: "paused",
+      message: "SerpAPI scraping is manually locked off. No SerpAPI or Hunter calls were made.",
+      summary: {
+        cities_processed: 0,
+        categories_processed: 0,
+        new_leads_inserted: 0,
+        emails_found: 0,
+        cities_skipped_full: 0,
+        errors: 0,
+      },
+      ran_at: new Date().toISOString(),
+    });
   }
 
   const db = createServiceClient();
@@ -288,6 +316,7 @@ export async function POST(req: Request) {
 
 // GET: run status check
 export async function GET() {
+  const paused = isSerpApiPaused();
   const db = createServiceClient();
   const { data } = await db
     .from("sales_leads")
@@ -301,6 +330,10 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    status: paused ? "paused" : "active",
+    message: paused
+      ? "SerpAPI scraping is paused. POST runs will no-op until the manual lock is removed and SERPAPI_PAUSED=false."
+      : "SerpAPI scraping is active.",
     serpapi_leads_by_city: byCity,
     total: Object.values(byCity).reduce((a, b) => a + b, 0),
     max_per_city: MAX_PER_CITY,

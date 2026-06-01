@@ -2,16 +2,17 @@ import {
   pgTable,
   uuid,
   text,
+  jsonb,
   boolean,
   numeric,
   timestamp,
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { businesses } from "./businesses";
-import { cities } from "./cities";
-import { categories } from "./cities";
-import { profiles } from "./users";
+import { businesses } from "./businesses.js";
+import { cities } from "./cities.js";
+import { categories } from "./cities.js";
+import { profiles } from "./users.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -51,6 +52,8 @@ export const waitlistEntries = pgTable("waitlist_entries", {
   categoryId: uuid("category_id").references(() => categories.id, {
     onDelete: "set null",
   }),
+  productIntent: text("product_intent"),
+  productContext: jsonb("product_context").$type<Record<string, unknown>>(),
   businessName: text("business_name"),
   convertedToBusinessId: uuid("converted_to_business_id").references(
     () => businesses.id,
@@ -109,49 +112,6 @@ export const sponsorships = pgTable("sponsorships", {
     .defaultNow(),
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Public Nonprofit Applications (Migration 18)
-//
-// Stores open registration form submissions — no business record required.
-// Admin reviews and links to a business after verification.
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const publicNonprofitApplicationStatusEnum = pgEnum(
-  "public_nonprofit_application_status",
-  ["pending", "approved", "rejected"]
-);
-
-export const publicNonprofitApplications = pgTable("public_nonprofit_applications", {
-  id:          uuid("id").primaryKey().defaultRandom(),
-
-  // Organization
-  orgName:     text("org_name").notNull(),
-  ein:         text("ein"),
-  website:     text("website"),
-  mission:     text("mission"),
-
-  // Contact
-  contactName: text("contact_name").notNull(),
-  email:       text("email").notNull(),
-  phone:       text("phone"),
-  city:        text("city"),
-
-  // Pipeline
-  status: text("status").notNull().default("pending"),
-
-  // Optional link after admin verification
-  linkedBusinessId: uuid("linked_business_id").references(() => businesses.id, {
-    onDelete: "set null",
-  }),
-
-  // Admin
-  adminNotes:  text("admin_notes"),
-  reviewedAt:  timestamp("reviewed_at", { withTimezone: true }),
-
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const waitlistEntriesRelations = relations(
@@ -185,6 +145,30 @@ export const nonprofitApplicationsRelations = relations(
     }),
   })
 );
+
+export const publicNonprofitApplications = pgTable("public_nonprofit_applications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgName: text("org_name").notNull(),
+  ein: text("ein"),
+  website: text("website"),
+  mission: text("mission"),
+  contactName: text("contact_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  city: text("city"),
+  status: text("status").notNull().default("pending"),
+  linkedBusinessId: uuid("linked_business_id").references(() => businesses.id, {
+    onDelete: "set null",
+  }),
+  adminNotes: text("admin_notes"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 export const sponsorshipsRelations = relations(sponsorships, ({ one }) => ({
   sponsorBusiness: one(businesses, {

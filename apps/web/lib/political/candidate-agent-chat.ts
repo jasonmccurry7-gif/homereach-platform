@@ -117,6 +117,9 @@ export function buildCandidateAgentFallbackReply(
     const standard = coveragePlan.options[0];
     const premium = coveragePlan.options.find((option) => option.key === "premium") ?? coveragePlan.options[2];
     const command = coveragePlan.options[coveragePlan.options.length - 1];
+    if (!standard || !premium || !command) {
+      return `${candidate.candidateName}'s agent needs at least one coverage option loaded before it can compare budget tiers. Proposal and checkout stay locked until USPS counts and pricing are verified.`;
+    }
     return `For ${candidate.candidateName}, the lower-budget path is ${standard.label} at ${moneyFromCents(standard.totalEstimateCents)} for ${number(standard.households)} households. The premium path is ${premium.label} at ${moneyFromCents(premium.totalEstimateCents)} for ${number(premium.households)} households. The highest-coverage path is ${command.label} at ${moneyFromCents(command.totalEstimateCents)}. These are planning estimates, not final USPS quotes.`;
   }
 

@@ -1,0 +1,202 @@
+name: Agent Mini Apps Gates
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/app/(admin)/admin/agent-mini-apps/**"
+      - "apps/web/app/api/admin/agent-mini-apps/**"
+      - "apps/web/components/agent-mini-apps/**"
+      - "apps/web/lib/agent-mini-apps/**"
+      - "packages/db/src/schema/agentMiniApps.ts"
+      - "packages/db/src/schema/agentExecution.ts"
+      - "scripts/agent-mini-apps-*.mjs"
+      - "supabase/migrations/*agent_mini_apps*"
+      - "docs/AGENT_MINI_APPS_AUTHENTICATED_E2E.md"
+      - "docs/AGENT_MINI_APPS_WORLD_CLASS_INTEGRATION_STACK.md"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/agent-mini-apps.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/web/app/(admin)/admin/agent-mini-apps/**"
+      - "apps/web/app/api/admin/agent-mini-apps/**"
+      - "apps/web/components/agent-mini-apps/**"
+      - "apps/web/lib/agent-mini-apps/**"
+      - "packages/db/src/schema/agentMiniApps.ts"
+      - "packages/db/src/schema/agentExecution.ts"
+      - "scripts/agent-mini-apps-*.mjs"
+      - "supabase/migrations/*agent_mini_apps*"
+      - "docs/AGENT_MINI_APPS_AUTHENTICATED_E2E.md"
+      - "docs/AGENT_MINI_APPS_WORLD_CLASS_INTEGRATION_STACK.md"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/agent-mini-apps.yml"
+  workflow_dispatch:
+    inputs:
+      run_authenticated_e2e:
+        description: "Run mutating authenticated E2E against the configured preview/staging database"
+        required: true
+        type: boolean
+        default: false
+      bootstrap_qa_admin:
+        description: "Create/update the staging QA admin before E2E"
+        required: true
+        type: boolean
+        default: false
+      reset_qa_password:
+        description: "Reset the QA admin password during bootstrap"
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: agent-mini-apps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "1"
+  AGENT_MINI_APPS_BASE_URL: "http://localhost:3000"
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.AGENT_MINI_APPS_SUPABASE_URL }}
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.AGENT_MINI_APPS_SUPABASE_ANON_KEY }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.AGENT_MINI_APPS_SUPABASE_SERVICE_ROLE_KEY }}
+  DATABASE_URL: ${{ secrets.AGENT_MINI_APPS_DATABASE_URL }}
+
+jobs:
+  non-destructive-gates:
+    name: Non-Destructive Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check web
+        run: pnpm --filter @homereach/web type-check
+
+      - name: Build web
+        run: pnpm --filter @homereach/web build
+
+      - name: Start web
+        run: |
+          pnpm --filter @homereach/web start > /tmp/homereach-web.log 2>&1 &
+          echo $! > /tmp/homereach-web.pid
+
+      - name: Wait for web
+        run: |
+          for i in {1..45}; do
+            if curl -fsS http://localhost:3000/login > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/homereach-web.log
+          exit 1
+
+      - name: Agent Mini Apps lifecycle smoke
+        run: pnpm smoke:agent-mini-apps
+
+      - name: Agent Mini Apps DB preflight
+        run: pnpm preflight:agent-mini-apps-db
+
+      - name: Agent Mini Apps DB hardening smoke
+        run: pnpm smoke:agent-mini-apps-db
+
+      - name: Agent Mini Apps production QA
+        run: pnpm qa:agent-mini-apps
+
+      - name: Stop web
+        if: always()
+        run: |
+          if [ -f /tmp/homereach-web.pid ]; then
+            kill "$(cat /tmp/homereach-web.pid)" || true
+          fi
+
+  authenticated-e2e:
+    name: Authenticated E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - non-destructive-gates
+    if: github.event_name == 'workflow_dispatch' && inputs.run_authenticated_e2e == true
+    env:
+      AGENT_MINI_APPS_E2E_EMAIL: ${{ secrets.AGENT_MINI_APPS_E2E_EMAIL }}
+      AGENT_MINI_APPS_E2E_PASSWORD: ${{ secrets.AGENT_MINI_APPS_E2E_PASSWORD }}
+      AGENT_MINI_APPS_E2E_MUTATE: "1"
+      AGENT_MINI_APPS_E2E_BROWSER_CHANNEL: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Type-check web
+        run: pnpm --filter @homereach/web type-check
+
+      - name: Build web
+        run: pnpm --filter @homereach/web build
+
+      - name: Bootstrap QA admin
+        if: inputs.bootstrap_qa_admin == true
+        env:
+          AGENT_MINI_APPS_E2E_BOOTSTRAP: "1"
+          AGENT_MINI_APPS_E2E_RESET_PASSWORD: ${{ inputs.reset_qa_password && '1' || '0' }}
+        run: pnpm bootstrap:e2e-agent-mini-apps
+
+      - name: Start web
+        run: |
+          pnpm --filter @homereach/web start > /tmp/homereach-web.log 2>&1 &
+          echo $! > /tmp/homereach-web.pid
+
+      - name: Wait for web
+        run: |
+          for i in {1..45}; do
+            if curl -fsS http://localhost:3000/login > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/homereach-web.log
+          exit 1
+
+      - name: Run authenticated Agent Mini Apps E2E
+        run: pnpm e2e:agent-mini-apps
+
+      - name: Stop web
+        if: always()
+        run: |
+          if [ -f /tmp/homereach-web.pid ]; then
+            kill "$(cat /tmp/homereach-web.pid)" || true
+          fi

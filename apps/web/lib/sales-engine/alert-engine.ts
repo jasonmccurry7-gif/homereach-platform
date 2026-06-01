@@ -29,7 +29,7 @@ if (!process.env.ALERT_PHONE_NUMBER && process.env.NODE_ENV === "production") {
 
 export const ALERT_CONFIG = {
   recipientPhone: process.env.ALERT_PHONE_NUMBER ?? "",   // Set via env var
-  fromNumber:     process.env.TWILIO_PHONE_NUMBER ?? "+1XXXXXXXXXX",
+  fromNumber:     process.env.TWILIO_PHONE_NUMBER ?? "",
   dedupeWindowMs: 30 * 60 * 1000,  // 30 min — don't re-alert same lead within window
   maxAlertsPerLead: 3,              // hard cap on alerts per lead
 } as const;

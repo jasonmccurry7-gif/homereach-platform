@@ -140,7 +140,7 @@ export async function POST() {
       event_type: "sentinel_scan",
       notes: JSON.stringify({ passed: passed.length, warned: warned.length, failed: failed.length }),
       created_at: runAt,
-    }).catch(() => {});
+    });
 
     return NextResponse.json({
       agent: "Sentinel",

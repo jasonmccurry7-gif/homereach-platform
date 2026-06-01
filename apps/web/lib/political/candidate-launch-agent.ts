@@ -10,6 +10,7 @@ import {
   loadContactsForCandidate,
   type CampaignRow,
   type CandidateRow,
+  type ContactRow,
   type DistrictType,
   type GeographyType,
 } from "./queries";
@@ -17,6 +18,12 @@ import { searchCandidateSuggestions, upsertCandidateIntelRecord } from "./candid
 import { normalizeCandidateName } from "./candidate-intelligence/normalization";
 import { fetchSerpapiCandidateIntel, isCandidateSerpApiEnabled } from "./candidate-intelligence/providers/serpapi";
 import { getCandidateIntelSource } from "./candidate-intelligence/sources";
+import {
+  buildPoliticalReachCreativeStrategy,
+  formatPoliticalReachCreativeBrief,
+  type PoliticalReachBrandMode,
+  type PoliticalReachPostcardType,
+} from "./politicalreach-creative-engine";
 import { estimateHouseholds } from "./household-estimator";
 import {
   generatePoliticalQuote,
@@ -29,6 +36,16 @@ import {
   POLITICAL_POSTCARD_POSTAGE_ESTIMATE_CENTS,
   POLITICAL_POSTCARD_PRINT_ESTIMATE_CENTS,
 } from "./pricing-config";
+import {
+  communicationPolicyMetadata,
+  personaForEmail,
+  personaTemplateVars,
+  selectPoliticalSenderPersona,
+  type HomeReachPersona,
+} from "@/lib/revenue-messaging/personas";
+import { syncPoliticalPlanLedger } from "@/lib/approvals/political-ledger";
+import { syncRevenueApprovalLedger } from "@/lib/approvals/revenue-approval-ledger";
+import { getOwnerIdentity } from "@homereach/services/outreach";
 
 type SupabaseLooseClient = Awaited<ReturnType<typeof createClient>> & {
   from(table: string): any;
@@ -189,7 +206,16 @@ export interface CandidateLaunchPlanOutput {
   geography_recommendations: GeographyRecommendation[];
   budget_options: BudgetOption[];
   timeline: Array<{ label: string; date: string | null; note: string }>;
-  creative_briefs: Array<{ phase_key: string; title: string; brief: string }>;
+  creative_briefs: Array<{
+    phase_key: string;
+    title: string;
+    brief: string;
+    brand_mode?: PoliticalReachBrandMode;
+    postcard_type?: PoliticalReachPostcardType;
+    emotional_job?: string;
+    visual_hierarchy?: string[];
+    typography_system?: string[];
+  }>;
   compliance_notes: string[];
   data_sources: DataSourceUsed[];
   confidence_score: number;
@@ -217,6 +243,21 @@ export interface CandidateLaunchPlanPhase {
   qr_landing_page_recommendation: string;
   compliance_disclaimer_notes: string[];
   why_this_phase_matters: string;
+  creative_standard?: {
+    system_name: string;
+    brand_mode: PoliticalReachBrandMode;
+    postcard_type: PoliticalReachPostcardType;
+    emotional_job: string;
+    voter_memory_device: string;
+    visual_hierarchy: string[];
+    typography_system: string[];
+    color_system: string[];
+    image_strategy: string;
+    layout_model: string;
+    cta_strategy: string;
+    print_and_mail_rules: string[];
+    compliance_guardrails: string[];
+  };
 }
 
 export interface GeographyRecommendation {
@@ -300,6 +341,33 @@ export interface CandidateLaunchPlanEditInput {
   recommendedStrategy?: string | null;
   operatorNotes?: string | null;
 }
+
+export interface SalesFollowUpDraft {
+  channel: "email";
+  subject: string;
+  body: string;
+  toEmail: string | null;
+  recipientName: string | null;
+  recipientSource: string | null;
+  senderEmail: string;
+  senderName: string;
+  approvalId: string | null;
+  approvalStatus?: string | null;
+  sendReady: boolean;
+  missingRequirements: string[];
+  politicalOptionsImageUrl: string;
+  politicalPlanUrl: string;
+  outreachStage: "first_touch" | "follow_up";
+  previousEmailCount: number;
+  followUpDueAt: string | null;
+  copyVariantKey: string | null;
+}
+
+export type SalesFollowUpDraftOptions = {
+  allowedStages?: Array<SalesFollowUpDraft["outreachStage"]>;
+  minimumFollowUpDays?: number;
+  forceFollowUp?: boolean;
+};
 
 export class CandidateLaunchAgentSchemaError extends Error {
   constructor(message = "Candidate Launch Agent migration has not been applied.") {
@@ -1365,6 +1433,24 @@ export async function generateCandidateLaunchPlan(
     const send = sendDate ? new Date(`${sendDate}T12:00:00Z`) : null;
     const deliveryStart = send ? dateOnly(addDays(send, 7)) : null;
     const deliveryEnd = send ? dateOnly(addDays(send, 14)) : null;
+    const issueFocus =
+      research.researchJson?.public_profile?.office_sought ??
+      candidate.officeSought ??
+      template.objective;
+    const creativeStrategy = buildPoliticalReachCreativeStrategy({
+      candidateName: candidate.candidateName,
+      shortName: candidate.candidateName.split(/\s+/).slice(-1)[0],
+      office: candidate.officeSought,
+      state: candidate.state,
+      partyOrCommittee: candidate.partyOptionalPublic,
+      campaignFrame: research.raceSummary,
+      phaseKey: template.key,
+      phaseObjective: template.objective,
+      districtType: planning.districtType,
+      geography: `${planning.geographyValue}, ${candidate.state}`,
+      daysUntilElection: days,
+      issueFocus,
+    });
     const quote = quotePhase({
       state: candidate.state,
       geographyType: planning.geographyType,
@@ -1389,7 +1475,20 @@ export async function generateCandidateLaunchPlan(
       price_per_postcard_cents: quote.pricePerPostcardCents,
       total_estimated_cost_cents: quote.totalCents,
       message_theme: template.theme,
-      creative_brief: template.brief,
+      creative_brief: `${template.brief}\n\n${formatPoliticalReachCreativeBrief({
+        candidateName: candidate.candidateName,
+        shortName: candidate.candidateName.split(/\s+/).slice(-1)[0],
+        office: candidate.officeSought,
+        state: candidate.state,
+        partyOrCommittee: candidate.partyOptionalPublic,
+        campaignFrame: research.raceSummary,
+        phaseKey: template.key,
+        phaseObjective: template.objective,
+        districtType: planning.districtType,
+        geography: `${planning.geographyValue}, ${candidate.state}`,
+        daysUntilElection: days,
+        issueFocus,
+      })}`,
       qr_landing_page_recommendation:
         candidate.campaignWebsite ?? "Create a campaign landing page before proposal send.",
       compliance_disclaimer_notes: [
@@ -1397,6 +1496,21 @@ export async function generateCandidateLaunchPlan(
         "Human review required for claims, contrast copy, and candidate authorization language.",
       ],
       why_this_phase_matters: template.why,
+      creative_standard: {
+        system_name: creativeStrategy.systemName,
+        brand_mode: creativeStrategy.brandMode,
+        postcard_type: creativeStrategy.postcardType,
+        emotional_job: creativeStrategy.emotionalJob,
+        voter_memory_device: creativeStrategy.voterMemoryDevice,
+        visual_hierarchy: creativeStrategy.hierarchy,
+        typography_system: creativeStrategy.typographySystem,
+        color_system: creativeStrategy.colorSystem,
+        image_strategy: creativeStrategy.imageStrategy,
+        layout_model: creativeStrategy.layoutModel,
+        cta_strategy: creativeStrategy.ctaStrategy,
+        print_and_mail_rules: creativeStrategy.printAndMailRules,
+        compliance_guardrails: creativeStrategy.complianceGuardrails,
+      },
     };
   });
 
@@ -1461,6 +1575,11 @@ export async function generateCandidateLaunchPlan(
       phase_key: phase.phase_key,
       title: phase.phase_objective,
       brief: phase.creative_brief,
+      brand_mode: phase.creative_standard?.brand_mode,
+      postcard_type: phase.creative_standard?.postcard_type,
+      emotional_job: phase.creative_standard?.emotional_job,
+      visual_hierarchy: phase.creative_standard?.visual_hierarchy,
+      typography_system: phase.creative_standard?.typography_system,
     })),
     compliance_notes: [
       ...CANDIDATE_AGENT_GUARDRAILS,
@@ -1578,6 +1697,15 @@ export async function generateCandidateLaunchPlan(
     actorUserId,
   });
 
+  const planLedgerResult = await syncPoliticalPlanLedger(plan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_generate",
+    eventType: "political_plan_generated",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan generate sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political");
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${candidate.id}`);
@@ -1646,9 +1774,20 @@ export async function approveCandidateLaunchPlan(
     payload: checklist,
     actorUserId,
   });
+
+  const updatedPlan = rowToPlan(updated.data);
+  const planLedgerResult = await syncPoliticalPlanLedger(updatedPlan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_approve",
+    eventType: "political_plan_approved",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan approve sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${plan.candidateId}`);
-  return rowToPlan(updated.data);
+  return updatedPlan;
 }
 
 export async function updateCandidateLaunchPlanDraft(
@@ -1738,10 +1877,20 @@ export async function updateCandidateLaunchPlanDraft(
     actorUserId,
   });
 
+  const updatedPlan = rowToPlan(updated.data);
+  const planLedgerResult = await syncPoliticalPlanLedger(updatedPlan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_edit",
+    eventType: "political_plan_updated",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan edit sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political");
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${plan.candidateId}`);
-  return rowToPlan(updated.data);
+  return updatedPlan;
 }
 
 export async function markCandidatePlanProductionReady(
@@ -1780,9 +1929,20 @@ export async function markCandidatePlanProductionReady(
     payload: { planId },
     actorUserId,
   });
+
+  const updatedPlan = rowToPlan(updated.data);
+  const planLedgerResult = await syncPoliticalPlanLedger(updatedPlan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_production_ready",
+    eventType: "political_plan_production_ready",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan production-ready sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${plan.candidateId}`);
-  return rowToPlan(updated.data);
+  return updatedPlan;
 }
 
 export async function loadCandidateAgentDashboard(limit = 80): Promise<CandidateAgentDashboard> {
@@ -1995,22 +2155,755 @@ export async function generateCandidateProposalDraft(candidateId: string): Promi
   };
 }
 
-export async function generateSalesFollowUpDraft(candidateId: string): Promise<{
-  channel: "email";
+function appBaseUrl() {
+  const candidates = [
+    process.env.OUTBOUND_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL ||
+      null,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+    "https://www.home-reach.com",
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      if (!["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
+        return url.toString().replace(/\/$/, "");
+      }
+    } catch {
+      continue;
+    }
+  }
+  return "https://www.home-reach.com";
+}
+
+const PLACEHOLDER_EMAIL_DOMAINS = new Set([
+  "example.com",
+  "example.net",
+  "example.org",
+  "test.com",
+  "test.local",
+  "localhost",
+]);
+
+const PLACEHOLDER_EMAIL_LOCAL_PARTS = new Set([
+  "test",
+  "example",
+  "your_own_email",
+  "you",
+  "user",
+  "name",
+  "email",
+]);
+
+function normalizedOwnerEmails(): Set<string> {
+  const owner = getOwnerIdentity();
+  return new Set(
+    [
+      owner.personalEmail,
+      owner.secondaryEmail,
+      owner.domainEmail,
+      owner.defaultFromEmail,
+      owner.defaultReplyToEmail,
+      owner.fallbackReplyToEmail,
+    ]
+      .map((email) => email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email)),
+  );
+}
+
+export function isPlaceholderPoliticalEmail(email: string | null | undefined): boolean {
+  const normalized = email?.trim().toLowerCase() ?? "";
+  if (!normalized) return false;
+  const [local = "", domain = ""] = normalized.split("@");
+  if (!local || !domain) return false;
+  return (
+    PLACEHOLDER_EMAIL_DOMAINS.has(domain) ||
+    domain.endsWith(".example") ||
+    domain.endsWith(".invalid") ||
+    local.startsWith("test+") ||
+    local.startsWith("demo+") ||
+    local.includes("example") ||
+    PLACEHOLDER_EMAIL_LOCAL_PARTS.has(local)
+  );
+}
+
+export function isOwnerControlledPoliticalEmail(email: string | null | undefined): boolean {
+  const normalized = email?.trim().toLowerCase() ?? "";
+  return normalized ? normalizedOwnerEmails().has(normalized) : false;
+}
+
+export function normalizePoliticalOutreachEmail(value: string | null | undefined): string | null {
+  const email = value?.trim().toLowerCase() ?? "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  if (isPlaceholderPoliticalEmail(email)) return null;
+  if (isOwnerControlledPoliticalEmail(email)) return null;
+  return email;
+}
+
+function normalizeEmail(value: string | null | undefined): string | null {
+  return normalizePoliticalOutreachEmail(value);
+}
+
+export function politicalCandidateQualityBlockers(candidate: CandidateRow): string[] {
+  const owner = getOwnerIdentity();
+  const name = candidate.candidateName.trim().toLowerCase();
+  const notes = candidate.notes?.trim().toLowerCase() ?? "";
+  const sourceType = candidate.sourceType?.trim().toLowerCase() ?? "";
+  const sourceUrl = candidate.sourceUrl?.trim() ?? "";
+  const blockers: string[] = [];
+
+  if (
+    /\b(test candidate|sample candidate|demo candidate|placeholder candidate)\b/.test(name) ||
+    /\btest bootstrap\b/.test(notes) ||
+    /\bseed[_ -]?test\b/.test(sourceType)
+  ) {
+    blockers.push("Candidate appears to be a demo/test/bootstrap record.");
+  }
+
+  if (name === owner.name.trim().toLowerCase()) {
+    blockers.push("Candidate name matches the HomeReach owner; use the email test tool instead.");
+  }
+
+  const savedEmails = [candidate.campaignEmail, candidate.campaignManagerEmail].filter(Boolean);
+  if (savedEmails.some((email) => isPlaceholderPoliticalEmail(email))) {
+    blockers.push("Saved campaign email is a placeholder/example address.");
+  }
+  if (savedEmails.some((email) => isOwnerControlledPoliticalEmail(email))) {
+    blockers.push("Saved campaign email is a HomeReach/owner address, not an external campaign contact.");
+  }
+
+  if (!sourceUrl && sourceType === "" && name.includes("test")) {
+    blockers.push("Candidate has no public source and looks like a test record.");
+  }
+
+  return Array.from(new Set(blockers));
+}
+
+export function hasCandidateDirectPoliticalOutreachEmail(candidate: CandidateRow): boolean {
+  if (politicalCandidateQualityBlockers(candidate).length > 0) return false;
+  return Boolean(
+    normalizePoliticalOutreachEmail(candidate.campaignManagerEmail) ||
+      normalizePoliticalOutreachEmail(candidate.campaignEmail),
+  );
+}
+
+function candidateSlug(candidate: CandidateRow) {
+  return candidate.candidateName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 90) || candidate.id;
+}
+
+function publicPoliticalPlanUrl(baseUrl: string, slug: string) {
+  const url = new URL("/political", baseUrl);
+  url.searchParams.set("candidate", slug);
+  url.searchParams.set("utm_source", "political_email");
+  url.searchParams.set("utm_medium", "email");
+  url.hash = "campaign-options";
+  return url.toString();
+}
+
+function senderForCandidate(candidate: CandidateRow): {
+  senderEmail: SalesFollowUpDraft["senderEmail"];
+  senderName: SalesFollowUpDraft["senderName"];
+  persona: HomeReachPersona;
+} {
+  const persona = selectPoliticalSenderPersona(candidate);
+  return {
+    senderEmail: persona.email as SalesFollowUpDraft["senderEmail"],
+    senderName: persona.name as SalesFollowUpDraft["senderName"],
+    persona,
+  };
+}
+
+function resolveCampaignEmail(candidate: CandidateRow, contacts: ContactRow[]): {
+  toEmail: string | null;
+  recipientName: string | null;
+  recipientSource: string | null;
+  missingRequirements: string[];
+} {
+  const missingRequirements: string[] = [];
+  if (candidate.doNotContact || candidate.doNotEmail) {
+    return {
+      toEmail: null,
+      recipientName: candidate.campaignManagerName,
+      recipientSource: null,
+      missingRequirements: ["Candidate record is marked do-not-contact or do-not-email."],
+    };
+  }
+
+  const qualityBlockers = politicalCandidateQualityBlockers(candidate);
+  if (qualityBlockers.length > 0) {
+    return {
+      toEmail: null,
+      recipientName: candidate.campaignManagerName,
+      recipientSource: null,
+      missingRequirements: qualityBlockers,
+    };
+  }
+
+  const usableContact = contacts.find((contact) => {
+    return !contact.doNotContact && !contact.doNotEmail && normalizeEmail(contact.email);
+  });
+  if (usableContact) {
+    return {
+      toEmail: normalizeEmail(usableContact.email),
+      recipientName: usableContact.name,
+      recipientSource: usableContact.isPrimary ? "primary campaign contact" : "campaign contact",
+      missingRequirements,
+    };
+  }
+
+  const managerEmail = normalizeEmail(candidate.campaignManagerEmail);
+  if (managerEmail) {
+    return {
+      toEmail: managerEmail,
+      recipientName: candidate.campaignManagerName,
+      recipientSource: "campaign manager email",
+      missingRequirements,
+    };
+  }
+
+  const campaignEmail = normalizeEmail(candidate.campaignEmail);
+  if (campaignEmail) {
+    return {
+      toEmail: campaignEmail,
+      recipientName: candidate.campaignManagerName,
+      recipientSource: "campaign email",
+      missingRequirements,
+    };
+  }
+
+  missingRequirements.push("No saved campaign email, campaign manager email, or campaign contact email is available.");
+  return {
+    toEmail: null,
+    recipientName: candidate.campaignManagerName,
+    recipientSource: null,
+    missingRequirements,
+  };
+}
+
+async function upsertSalesFollowUpApproval(args: {
+  supabase: SupabaseLooseClient;
+  candidate: CandidateRow;
+  plan: CandidateLaunchPlanRow | null;
   subject: string;
   body: string;
+  toEmail: string;
+  recipientName: string | null;
+  recipientSource: string | null;
+  senderEmail: SalesFollowUpDraft["senderEmail"];
+  senderName: SalesFollowUpDraft["senderName"];
+  politicalOptionsImageUrl: string;
+  politicalPlanUrl: string;
+  outreachStage: "first_touch" | "follow_up";
+  previousEmailCount: number;
+  lastSentAt: string | null;
+  followUpDueAt: string | null;
+  copyVariantKey: string;
+  actorUserId?: string | null;
+}): Promise<{ id: string; status: "needs_review" }> {
+  const now = new Date().toISOString();
+  const persona = personaForEmail(args.senderEmail);
+  const metadata = {
+    workflow: "candidate_agent_sales_follow_up",
+    candidate_id: args.candidate.id,
+    candidate_name: args.candidate.candidateName,
+    campaign_name: args.candidate.candidateName,
+    organization_name: args.candidate.candidateName,
+    office_sought: args.candidate.officeSought,
+    geography: args.candidate.geographyValue,
+    state: args.candidate.state,
+    source_system: "campaign_candidates",
+    source_id: args.candidate.id,
+    contact_name: args.recipientName,
+    contact_email: args.toEmail,
+    to_email: args.toEmail,
+    recipient_source: args.recipientSource,
+    sender_email: args.senderEmail,
+    sender_name: args.senderName,
+    reply_to: args.senderEmail,
+    subject: args.subject,
+    candidate_slug: candidateSlug(args.candidate),
+    political_options_image_url: args.politicalOptionsImageUrl,
+    political_plan_url: args.politicalPlanUrl,
+    outreach_stage: args.outreachStage,
+    previous_email_count: args.previousEmailCount,
+    follow_up_number: args.outreachStage === "follow_up" ? args.previousEmailCount : 0,
+    last_sent_at: args.lastSentAt,
+    follow_up_due_at: args.outreachStage === "follow_up" ? args.followUpDueAt : null,
+    copy_variant_key: args.copyVariantKey,
+    ...communicationPolicyMetadata(persona),
+    plan_id: args.plan?.id ?? null,
+    plan_status: args.plan?.status ?? null,
+    human_approval_required: true,
+    updated_by_workflow_at: now,
+  };
+
+  const existing = await args.supabase
+    .from("revenue_message_approval_queue")
+    .select("id")
+    .eq("business_line", "political")
+    .eq("channel", "email")
+    .in("status", ["draft", "needs_review", "approved", "scheduled"])
+    .filter("metadata->>workflow", "eq", "candidate_agent_sales_follow_up")
+    .filter("metadata->>candidate_id", "eq", args.candidate.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing.error && !isSchemaMissingError(existing.error)) throw existing.error;
+
+  if (existing.data?.id) {
+    const { data, error } = await args.supabase
+      .from("revenue_message_approval_queue")
+      .update({
+        status: "needs_review",
+        title: args.subject,
+        message_body: args.body,
+        assigned_to: args.actorUserId ?? null,
+        requested_by: "candidate_launch_agent",
+        updated_at: now,
+        metadata,
+      })
+      .eq("id", existing.data.id)
+      .select("id,created_at,updated_at")
+      .single();
+    if (error) throw error;
+    const ledgerResult = await syncRevenueApprovalLedger(
+      {
+        id: data.id,
+        businessLine: "political",
+        channel: "email",
+        status: "needs_review",
+        title: args.subject,
+        messageBody: args.body,
+        metadata,
+        requestedBy: args.actorUserId ?? null,
+        assignedTo: args.actorUserId ?? null,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      },
+      {
+        actorId: args.actorUserId ?? null,
+        actorLabel: "candidate_launch_agent",
+        eventType: "revenue_approval_updated",
+      },
+    );
+    if (!ledgerResult.ok && ledgerResult.error) {
+      console.warn("[approval-ledger] candidate launch approval sync skipped:", ledgerResult.error);
+    }
+    return { id: data.id, status: "needs_review" };
+  }
+
+  const { data, error } = await args.supabase
+    .from("revenue_message_approval_queue")
+    .insert({
+      business_line: "political",
+      channel: "email",
+      status: "needs_review",
+      title: args.subject,
+      message_body: args.body,
+      requested_by: "candidate_launch_agent",
+      assigned_to: args.actorUserId ?? null,
+      metadata,
+    })
+    .select("id,created_at,updated_at")
+    .single();
+  if (error) throw error;
+  const ledgerResult = await syncRevenueApprovalLedger(
+    {
+      id: data.id,
+      businessLine: "political",
+      channel: "email",
+      status: "needs_review",
+      title: args.subject,
+      messageBody: args.body,
+      metadata,
+      requestedBy: args.actorUserId ?? null,
+      assignedTo: args.actorUserId ?? null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    },
+    {
+      actorId: args.actorUserId ?? null,
+      actorLabel: "candidate_launch_agent",
+      eventType: "revenue_approval_created",
+    },
+  );
+  if (!ledgerResult.ok && ledgerResult.error) {
+    console.warn("[approval-ledger] candidate launch approval sync skipped:", ledgerResult.error);
+  }
+  return { id: data.id, status: "needs_review" };
+}
+
+function stableIndex(seed: string, length: number): number {
+  if (length <= 0) return 0;
+  let hash = 0;
+  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % length;
+}
+
+function pickVariant(values: string[], seed: string): string {
+  return values[stableIndex(seed, values.length)] ?? values[0] ?? "";
+}
+
+function variantPart(values: string[], seed: string): string {
+  return String(stableIndex(seed, values.length) + 1);
+}
+
+const DEFAULT_POLITICAL_FOLLOW_UP_DAYS = 3;
+
+function followUpDueAt(lastSentAt: string | null, minimumFollowUpDays: number): string | null {
+  if (!lastSentAt) return null;
+  const due = new Date(lastSentAt);
+  due.setDate(due.getDate() + minimumFollowUpDays);
+  return due.toISOString();
+}
+
+async function loadPoliticalRecipientOutreachHistory(
+  supabase: SupabaseLooseClient,
+  toEmail: string | null,
+  minimumFollowUpDays = DEFAULT_POLITICAL_FOLLOW_UP_DAYS,
+): Promise<{
+  previousEmailCount: number;
+  lastSentAt: string | null;
+  followUpDueAt: string | null;
+  inboundAfterLastSend: boolean;
 }> {
+  if (!toEmail) {
+    return {
+      previousEmailCount: 0,
+      lastSentAt: null,
+      followUpDueAt: null,
+      inboundAfterLastSend: false,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("revenue_message_events")
+    .select("direction,created_at,contact_email,metadata")
+    .eq("business_line", "political")
+    .eq("channel", "email")
+    .eq("contact_email", toEmail)
+    .order("created_at", { ascending: false })
+    .limit(40);
+  if (error && !isSchemaMissingError(error)) throw error;
+
+  const events = ((data ?? []) as Array<{ direction: string | null; created_at: string | null }>).filter((event) =>
+    Boolean(event.created_at),
+  );
+  const outbound = events.filter((event) => event.direction === "outbound");
+  const lastSentAt = outbound[0]?.created_at ?? null;
+  const inboundAfterLastSend = Boolean(
+    lastSentAt &&
+      events.some((event) => event.direction === "inbound" && event.created_at && event.created_at > lastSentAt),
+  );
+
+  return {
+    previousEmailCount: outbound.length,
+    lastSentAt,
+    followUpDueAt: followUpDueAt(lastSentAt, minimumFollowUpDays),
+    inboundAfterLastSend,
+  };
+}
+
+function buildPoliticalEmailDraftCopy(args: {
+  candidate: CandidateRow;
+  plan: CandidateLaunchPlanRow | null;
+  recipientName: string;
+  senderFirstName: string;
+  personaVars: Record<string, string>;
+  politicalOptionsImageUrl: string;
+  politicalPlanUrl: string;
+  previousEmailCount: number;
+}): { subject: string; body: string; outreachStage: "first_touch" | "follow_up"; copyVariantKey: string } {
+  const seed = `${args.candidate.id}:${args.plan?.id ?? "new-plan"}:${args.previousEmailCount}`;
+  const outreachStage = args.previousEmailCount > 0 ? "follow_up" : "first_touch";
+  const candidateName = args.candidate.candidateName;
+  const office = args.candidate.officeSought ?? "the campaign";
+  const geography = args.candidate.geographyValue ?? args.candidate.state;
+
+  if (outreachStage === "follow_up") {
+    const subjectOptions = [
+      `Following up on ${candidateName} mail coverage`,
+      `${candidateName} route plan follow-up`,
+      `Should I adjust the ${candidateName} mail plan?`,
+      `${candidateName}: quick follow-up on coverage options`,
+    ];
+    const openerOptions = [
+      `I wanted to follow up on the four-option campaign mail view for ${candidateName}.`,
+      `Circling back with the campaign mail planning view for ${candidateName}.`,
+      `Quick follow-up on the route and coverage snapshot I sent for ${candidateName}.`,
+      `I wanted to make sure the ${office} team had the coverage options in front of them.`,
+    ];
+    const valueOptions = [
+      `The useful part is the side-by-side view: where mail would go, estimated reach, timing, and which option is easiest to approve.`,
+      `This is meant to shorten the back-and-forth before a proposal: geography, mail volume, and production timing in one review link.`,
+      `If the budget or geography is different, I can adjust the plan before it becomes a formal quote.`,
+      `The plan can be narrowed to ${geography}, expanded statewide, or converted into a cleaner approval package once the team is ready.`,
+    ];
+    const ctaOptions = [
+      "Should I revise this around a specific budget or district priority?",
+      "Would it help if I sent the shortest recommended option instead of all four?",
+      "Is there someone else on the campaign team who should review the map and timing?",
+      "Should I convert the best option into a clean proposal for approval?",
+    ];
+    const subjectSeed = `${seed}:follow-up-subject`;
+    const openerSeed = `${seed}:follow-up-opener`;
+    const valueSeed = `${seed}:follow-up-value`;
+    const ctaSeed = `${seed}:follow-up-cta`;
+    const subject = pickVariant(subjectOptions, subjectSeed);
+    const opener = pickVariant(openerOptions, openerSeed);
+    const value = pickVariant(valueOptions, valueSeed);
+    const cta = pickVariant(ctaOptions, ctaSeed);
+
+    return {
+      outreachStage,
+      subject,
+      copyVariantKey: `follow-up-s${variantPart(subjectOptions, subjectSeed)}-o${variantPart(openerOptions, openerSeed)}-v${variantPart(valueOptions, valueSeed)}-c${variantPart(ctaOptions, ctaSeed)}`,
+      body: [
+        `Hello ${args.recipientName},`,
+        `I'm ${args.senderFirstName} with HomeReach. ${opener}`,
+        value,
+        `[[image:${args.politicalOptionsImageUrl}|${candidateName} four campaign mail options]]`,
+        cta,
+        "Review link:",
+        args.politicalPlanUrl,
+        args.personaVars.persona_signoff,
+      ].join("\n\n"),
+    };
+  }
+
+  const subjectOptions = [
+    args.personaVars.persona_subject ?? `${candidateName} mail plan options ready`,
+    `${candidateName} campaign mail coverage options`,
+    `Four mail paths for ${candidateName}`,
+    `${candidateName}: coverage, timing, and mail reach`,
+  ];
+  const subjectSeed = `${seed}:first-subject`;
+  const proofOptions = [
+    "The four options compare cost per voter, geographic target, total voter reach, timing, and execution risk without listing price in the email.",
+    "The snapshot is built so the team can review coverage, timing, reach, and execution risk before asking for a formal quote.",
+    "It gives the campaign a fast way to compare a broad coverage plan, a tighter route plan, and a higher-frequency option.",
+  ];
+  const proofSeed = `${seed}:first-proof`;
+  const linkOptions = ["Review link:", "Mobile review link:", "Here is the campaign plan link:"];
+  const linkSeed = `${seed}:link-label`;
+  const subject = pickVariant(subjectOptions, subjectSeed);
+  const proofLine = args.plan
+    ? pickVariant(proofOptions, proofSeed)
+    : "Once the route plan is generated, the campaign can compare cost per voter, geographic target, total voter reach, and ballot-window timing before committing budget or production timing.";
+
+  return {
+    outreachStage,
+    subject,
+    copyVariantKey: `first-s${variantPart(subjectOptions, subjectSeed)}-p${args.plan ? variantPart(proofOptions, proofSeed) : "0"}-l${variantPart(linkOptions, linkSeed)}`,
+    body: [
+      `Hello ${args.recipientName},`,
+      `I'm ${args.senderFirstName} with HomeReach. ${args.personaVars.persona_opening_line}`,
+      args.personaVars.persona_value_line,
+      proofLine,
+      args.plan ? `[[image:${args.politicalOptionsImageUrl}|${candidateName} four campaign mail options]]` : null,
+      args.personaVars.persona_cta,
+      pickVariant(linkOptions, linkSeed),
+      args.politicalPlanUrl,
+      args.personaVars.persona_signoff,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n\n"),
+  };
+}
+
+export async function generateSalesFollowUpDraft(
+  candidateId: string,
+  actorUserId?: string | null,
+  options: SalesFollowUpDraftOptions = {},
+): Promise<SalesFollowUpDraft> {
   const workspace = await loadCandidateAgentWorkspace(candidateId);
   if (!workspace.candidate) throw new Error("Candidate not found.");
   const plan = workspace.latestPlan;
+  const contacts = await loadContactsForCandidate(candidateId);
+  const recipient = resolveCampaignEmail(workspace.candidate, contacts);
+  const sender = senderForCandidate(workspace.candidate);
+  const supabase = (await createClient()) as SupabaseLooseClient;
+  const minimumFollowUpDays = options.minimumFollowUpDays ?? DEFAULT_POLITICAL_FOLLOW_UP_DAYS;
+  const outreachHistory = await loadPoliticalRecipientOutreachHistory(
+    supabase,
+    recipient.toEmail,
+    minimumFollowUpDays,
+  );
+  const baseUrl = appBaseUrl();
+  const slug = candidateSlug(workspace.candidate);
+  const politicalOptionsImageUrl = `${baseUrl}/api/political/candidate-options-image?candidate=${encodeURIComponent(slug)}`;
+  const politicalPlanUrl = publicPoliticalPlanUrl(baseUrl, slug);
+  const candidateTeam = workspace.candidate.candidateName;
+  const firstLineName = recipient.recipientName ?? `${candidateTeam} campaign team`;
+  const outreachStage: SalesFollowUpDraft["outreachStage"] =
+    outreachHistory.previousEmailCount > 0 ? "follow_up" : "first_touch";
+  const allowedStages = options.allowedStages ?? ["first_touch", "follow_up"];
+  const missingStageLabel =
+    outreachStage === "follow_up"
+      ? "This contact already received an initial email. Use the due follow-up generator when the cadence is ready."
+      : "This contact has not received an initial political outreach email yet.";
+
+  if (!allowedStages.includes(outreachStage)) {
+    return {
+      channel: "email",
+      subject: `${workspace.candidate.candidateName} outreach stage not generated`,
+      body: missingStageLabel,
+      toEmail: recipient.toEmail,
+      recipientName: recipient.recipientName,
+      recipientSource: recipient.recipientSource,
+      senderEmail: sender.senderEmail,
+      senderName: sender.senderName,
+      approvalId: null,
+      sendReady: false,
+      missingRequirements: [...recipient.missingRequirements, missingStageLabel],
+      politicalOptionsImageUrl,
+      politicalPlanUrl,
+      outreachStage,
+      previousEmailCount: outreachHistory.previousEmailCount,
+      followUpDueAt: outreachHistory.followUpDueAt,
+      copyVariantKey: null,
+    };
+  }
+  if (outreachHistory.inboundAfterLastSend) {
+    return {
+      channel: "email",
+      subject: `${workspace.candidate.candidateName} reply needs manual review`,
+      body: `A reply was received after the last outbound political email to ${recipient.toEmail}. Review the thread manually before drafting another follow-up.`,
+      toEmail: recipient.toEmail,
+      recipientName: recipient.recipientName,
+      recipientSource: recipient.recipientSource,
+      senderEmail: sender.senderEmail,
+      senderName: sender.senderName,
+      approvalId: null,
+      sendReady: false,
+      missingRequirements: [
+        ...recipient.missingRequirements,
+        "Recipient replied after the last outbound email; review manually before generating a follow-up.",
+      ],
+      politicalOptionsImageUrl,
+      politicalPlanUrl,
+      outreachStage,
+      previousEmailCount: outreachHistory.previousEmailCount,
+      followUpDueAt: outreachHistory.followUpDueAt,
+      copyVariantKey: null,
+    };
+  }
+  if (
+    outreachStage === "follow_up" &&
+    !options.forceFollowUp &&
+    outreachHistory.followUpDueAt &&
+    new Date(outreachHistory.followUpDueAt).getTime() > Date.now()
+  ) {
+    return {
+      channel: "email",
+      subject: `${workspace.candidate.candidateName} follow-up not due yet`,
+      body: `The next follow-up for ${recipient.toEmail} is scheduled for ${outreachHistory.followUpDueAt}.`,
+      toEmail: recipient.toEmail,
+      recipientName: recipient.recipientName,
+      recipientSource: recipient.recipientSource,
+      senderEmail: sender.senderEmail,
+      senderName: sender.senderName,
+      approvalId: null,
+      sendReady: false,
+      missingRequirements: [
+        ...recipient.missingRequirements,
+        `Follow-up is not due until ${outreachHistory.followUpDueAt}.`,
+      ],
+      politicalOptionsImageUrl,
+      politicalPlanUrl,
+      outreachStage,
+      previousEmailCount: outreachHistory.previousEmailCount,
+      followUpDueAt: outreachHistory.followUpDueAt,
+      copyVariantKey: null,
+    };
+  }
+  const personaVars = personaTemplateVars(sender.persona, {
+    seed: `${workspace.candidate.id}:${slug}:${plan?.id ?? "new-plan"}:${outreachHistory.previousEmailCount}`,
+    candidateName: workspace.candidate.candidateName,
+  });
+  const draftCopy = buildPoliticalEmailDraftCopy({
+    candidate: workspace.candidate,
+    plan,
+    recipientName: firstLineName,
+    senderFirstName: sender.senderName.split(" ")[0] ?? sender.senderName,
+    personaVars,
+    politicalOptionsImageUrl,
+    politicalPlanUrl,
+    previousEmailCount: outreachHistory.previousEmailCount,
+  });
+  const subject = draftCopy.subject;
+  const body = draftCopy.body;
+
+  let approvalId: string | null = null;
+  let approvalStatus: string | null = null;
+  if (recipient.toEmail) {
+    const approval = await upsertSalesFollowUpApproval({
+      supabase,
+      candidate: workspace.candidate,
+      plan,
+      subject,
+      body,
+      toEmail: recipient.toEmail,
+      recipientName: recipient.recipientName,
+      recipientSource: recipient.recipientSource,
+      senderEmail: sender.senderEmail,
+      senderName: sender.senderName,
+      politicalOptionsImageUrl,
+      politicalPlanUrl,
+      outreachStage: draftCopy.outreachStage,
+      previousEmailCount: outreachHistory.previousEmailCount,
+      lastSentAt: outreachHistory.lastSentAt,
+      followUpDueAt: outreachHistory.followUpDueAt,
+      copyVariantKey: draftCopy.copyVariantKey,
+      actorUserId,
+    });
+    approvalId = approval.id;
+    approvalStatus = approval.status;
+    await logActivity(supabase, {
+      agentId: workspace.agent?.id ?? null,
+      candidateId: workspace.candidate.id,
+      campaignId: workspace.latestPlan?.campaignId ?? workspace.agent?.campaignId ?? null,
+      activityType: "sales_follow_up_ready",
+      message: `Sales follow-up queued for human-approved send to ${recipient.toEmail}.`,
+      payload: {
+        approvalId,
+        toEmail: recipient.toEmail,
+        senderEmail: sender.senderEmail,
+        communicationPersona: sender.persona.key,
+        politicalOptionsImageUrl,
+      },
+      actorUserId,
+    });
+    revalidatePath("/admin/political");
+    revalidatePath("/admin/revenue-operations");
+  }
+
   return {
     channel: "email",
-    subject: plan
-      ? `Next step: approve ${workspace.candidate.candidateName}'s postcard launch plan`
-      : `Next step: build ${workspace.candidate.candidateName}'s postcard launch plan`,
-    body: plan
-      ? `I have a ${plan.planJson.phases.length}-phase postcard plan ready for review. The next best step is to verify route counts, approve the compliance checklist, and turn it into a client-facing proposal draft.`
-      : "The Candidate Launch Agent is ready to research the public campaign record and build a multi-phase postcard plan. I recommend running research first, then generating the plan from the verified geography.",
+    subject,
+    body,
+    toEmail: recipient.toEmail,
+    recipientName: recipient.recipientName,
+    recipientSource: recipient.recipientSource,
+    senderEmail: sender.senderEmail,
+    senderName: sender.senderName,
+    approvalId,
+    approvalStatus,
+    sendReady: Boolean(approvalId && recipient.toEmail && approvalStatus === "approved"),
+    missingRequirements: recipient.missingRequirements,
+    politicalOptionsImageUrl,
+    politicalPlanUrl,
+    outreachStage: draftCopy.outreachStage,
+    previousEmailCount: outreachHistory.previousEmailCount,
+    followUpDueAt: outreachHistory.followUpDueAt,
+    copyVariantKey: draftCopy.copyVariantKey,
   };
 }
 

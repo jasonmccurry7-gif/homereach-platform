@@ -65,12 +65,12 @@ export function buildDeepLink(alertType: AlertType, leadId?: string): string {
   switch (alertType) {
     case "hot_lead":          return leadId ? `${base}/agent/leads/${leadId}` : `${base}/agent/hot-leads`;
     case "reply_waiting":     return leadId ? `${base}/agent/replies/${leadId}` : `${base}/agent/replies`;
-    case "payment_follow_up": return leadId ? `${base}/agent/payment-follow-up/${leadId}` : `${base}/agent/queue`;
+    case "payment_follow_up": return leadId ? `${base}/agent/payment-follow-up/${leadId}` : `${base}/agent/leads`;
     case "start_of_day":      return `${base}/agent/hot-leads`;
     case "quota_warning":     return `${base}/agent/activity`;
     case "system_failure":    return `${base}/admin/operator`;
     case "intake_issue":      return `${base}/admin/intake`;
-    default:                  return `${base}/agent/queue`;
+    default:                  return `${base}/agent/leads`;
   }
 }
 

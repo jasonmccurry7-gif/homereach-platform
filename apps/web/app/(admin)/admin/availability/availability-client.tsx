@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import type { CityAvailability, Reservation, SpotStatus } from "@/lib/engine/types";
-import { AvailabilityEngine } from "@/lib/engine/availability";
-import { ReservationEngine } from "@/lib/engine/reservation";
+import { AvailabilityEngine } from "@/lib/engine/availability-client";
+import { ReservationEngine } from "@/lib/engine/reservation-client";
 
 const STATUS_STYLES: Record<SpotStatus, { dot: string; badge: string; label: string }> = {
   available:    { dot: "bg-green-500",  badge: "bg-green-50 text-green-700 border-green-200",   label: "Available" },

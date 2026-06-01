@@ -33,8 +33,16 @@ import {
 } from "lucide-react";
 import { geoMercator, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
-import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
-import type { GeometryCollection as TopoGeometryCollection, Topology } from "topojson-specification";
+import type {
+  Feature,
+  FeatureCollection,
+  GeoJsonProperties,
+  Geometry,
+} from "geojson";
+import type {
+  GeometryCollection as TopoGeometryCollection,
+  Topology,
+} from "topojson-specification";
 import countiesTopologyRaw from "us-atlas/counties-10m.json";
 import statesTopologyRaw from "us-atlas/states-10m.json";
 import illinoisPoliticalDistrictsRaw from "../_data/illinois-political-districts.json";
@@ -46,17 +54,40 @@ import {
   POLITICAL_POSTCARD_PRINT_ESTIMATE_CENTS,
   resolvePoliticalPostcardPriceCents,
 } from "@/lib/political/pricing-config";
+import { ADDITIONAL_2024_PRESIDENTIAL_BY_COUNTY_FIPS, OHIO_2024_PRESIDENTIAL_BY_COUNTY_FIPS } from "@/lib/political/county-presidential-results-2024";
 
 type StateKey = "ohio" | "illinois" | "tennessee";
 type PoliticalMode = "county" | "zipcode" | "city" | "district";
-type OfficialDistrictLayerKey = "congressional" | "state_senate" | "state_house";
+type OfficialDistrictLayerKey =
+  | "congressional"
+  | "state_senate"
+  | "state_house";
 type PartyLean = "democrat" | "republican" | "mixed";
-type DataLabel = "Exact" | "Estimated" | "Demo/Sample" | "Public Aggregate" | "Paid Vendor Data" | "Unavailable";
+type DataLabel =
+  | "Exact"
+  | "Estimated"
+  | "Demo/Sample"
+  | "Public Aggregate"
+  | "Paid Vendor Data"
+  | "Unavailable";
 type SaveStatus = "idle" | "saving" | "database" | "local_only" | "error";
 type MapActionStatus = "idle" | "working" | "success" | "error";
 type HealthTone = "green" | "yellow" | "red";
-type WhatIfAction = "set-drops-1" | "set-drops-2" | "set-drops-3" | "expand-gap" | "saturate-top";
-type LayerSourceStatus = "ready" | "official" | "public" | "usps" | "internal" | "vendor" | "local" | "planned";
+type WhatIfAction =
+  | "set-drops-1"
+  | "set-drops-2"
+  | "set-drops-3"
+  | "expand-gap"
+  | "saturate-top";
+type LayerSourceStatus =
+  | "ready"
+  | "official"
+  | "public"
+  | "usps"
+  | "internal"
+  | "vendor"
+  | "local"
+  | "planned";
 
 type AtlasProperties = GeoJsonProperties & {
   name?: string;
@@ -133,31 +164,8 @@ interface RouteUnit {
   polygon: string;
   centroid: [number, number];
   confidence: DataLabel;
-  source: string | null;
-  importedAt: string | null;
-  geometryStatus: "demo_cell" | "approximate_imported_counts" | "licensed_polygon";
   overlaps: Record<PoliticalMode, string>;
 }
-
-interface RouteCatalogRecord {
-  id: string;
-  state: string;
-  zip5: string;
-  carrierRouteId: string;
-  routeType: string | null;
-  households: number;
-  deliveryPoints: number;
-  county: string | null;
-  city: string | null;
-  source: string | null;
-  importedAt: string | null;
-  label: string;
-}
-
-type RouteCatalogLoadState =
-  | { status: "idle" | "loading"; routes: RouteCatalogRecord[]; note: string | null }
-  | { status: "ready"; routes: RouteCatalogRecord[]; note: string | null }
-  | { status: "empty" | "error"; routes: RouteCatalogRecord[]; note: string | null };
 
 interface CampaignStats {
   households: number;
@@ -170,14 +178,6 @@ interface CampaignStats {
   total: number;
   margin: number;
   confidence: DataLabel;
-}
-
-interface RouteSourceStatus {
-  status: RouteCatalogLoadState["status"];
-  importedRouteCount: number;
-  sourceLabels: string[];
-  latestImportedAt: string | null;
-  note: string | null;
 }
 
 interface CampaignHealth {
@@ -219,6 +219,18 @@ interface WhatIfOption {
   detail: string;
 }
 
+export interface PoliticalMapPlanContext {
+  candidateId?: string;
+  candidateName: string;
+  office: string;
+  electionDate: string;
+  strategyId?: string;
+  strategyTitle?: string;
+  countiesIncluded?: string[];
+  citiesIncluded?: string[];
+  drops?: number;
+}
+
 interface MapViewState {
   x: number;
   y: number;
@@ -251,15 +263,29 @@ interface ActionFeedback {
 }
 
 type MapSearchHit =
-  | { kind: "route"; id: string; label: string; detail: string; route: RouteUnit }
-  | { kind: "geography"; id: string; label: string; detail: string; unitId: string; mode: PoliticalMode }
+  | {
+      kind: "route";
+      id: string;
+      label: string;
+      detail: string;
+      route: RouteUnit;
+    }
+  | {
+      kind: "geography";
+      id: string;
+      label: string;
+      detail: string;
+      unitId: string;
+      mode: PoliticalMode;
+    }
   | { kind: "city"; id: string; label: string; detail: string; unitId: string };
 
 const VIEWBOX = { width: 920, height: 640 };
 const DEFAULT_MAP_VIEW: MapViewState = { x: 0, y: 0, scale: 1 };
 const MIN_MAP_SCALE = 1;
 const MAX_MAP_SCALE = 6;
-const ILLINOIS_BOUNDARIES_URL = "https://gis1.dot.illinois.gov/arcgis/rest/services/MapBase/ILBoundaries/MapServer";
+const ILLINOIS_BOUNDARIES_URL =
+  "https://gis1.dot.illinois.gov/arcgis/rest/services/MapBase/ILBoundaries/MapServer";
 const ILLINOIS_CONGRESSIONAL_DISTRICTS_URL = `${ILLINOIS_BOUNDARIES_URL}/2`;
 const ILLINOIS_HOUSE_DISTRICTS_URL = `${ILLINOIS_BOUNDARIES_URL}/3`;
 const ILLINOIS_SENATE_DISTRICTS_URL = `${ILLINOIS_BOUNDARIES_URL}/4`;
@@ -272,7 +298,8 @@ const TENNESSEE_HOUSE_DISTRICTS_URL = `${TENNESSEE_LEGISLATIVE_DISTRICTS_URL}/1`
 const TENNESSEE_CONGRESSIONAL_DISTRICTS_URL = `${TENNESSEE_LEGISLATIVE_DISTRICTS_URL}/2`;
 const TENNESSEE_COMPTROLLER_REDISTRICTING_URL =
   "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps.html";
-const ILLINOIS_ELECTION_RESULTS_URL = "https://www.elections.il.gov/ElectionOperations/ElectionVoteTotals.aspx";
+const ILLINOIS_ELECTION_RESULTS_URL =
+  "https://www.elections.il.gov/ElectionOperations/ElectionVoteTotals.aspx";
 const TENNESSEE_ELECTION_RESULTS_URL = "https://sos.tn.gov/elections/results";
 const OHIO_CONGRESSIONAL_DISTRICT_SUMMARIES: Record<string, string> = {
   "1": "Clinton, Warren, and part of Hamilton County",
@@ -292,20 +319,13 @@ const OHIO_CONGRESSIONAL_DISTRICT_SUMMARIES: Record<string, string> = {
   "15": "Fayette, Highland, Madison, Pickaway, and parts of Clark, Franklin, and Miami Counties",
 };
 
-const DISTRICT_LAYER_BY_LABEL: Partial<Record<string, OfficialDistrictLayerKey>> = {
+const DISTRICT_LAYER_BY_LABEL: Partial<
+  Record<string, OfficialDistrictLayerKey>
+> = {
   "Congressional District": "congressional",
   "State Senate District": "state_senate",
   "State House District": "state_house",
 };
-
-const PRIMARY_POLITICAL_LAYER_BY_MODE: Record<PoliticalMode, string> = {
-  county: "County",
-  zipcode: "ZIP Code",
-  city: "City",
-  district: "Congressional District",
-};
-
-const PRIMARY_POLITICAL_MODE_LAYERS = new Set(Object.values(PRIMARY_POLITICAL_LAYER_BY_MODE));
 
 const DISTRICT_LAYER_MODE_BY_LABEL: Partial<Record<string, PoliticalMode>> = {
   "ZIP Code": "zipcode",
@@ -583,17 +603,27 @@ interface LayerSourceMeta {
   note: string;
 }
 
-const CENSUS_TIGER_URL = "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html";
-const CENSUS_TIGER_REST_URL = "https://tigerweb.geo.census.gov/tigerwebmain/TIGERweb_restmapservice.html";
-const CENSUS_TRACTS_BLOCKS_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer";
-const CENSUS_PLACES_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer/layers";
-const OHIO_SOS_DISTRICT_MAPS_URL = "https://www.ohiosos.gov/elections/district-maps";
-const OHIO_SCHOOL_DISTRICTS_URL = "https://maps.ohio.gov/arcgis/rest/services/Hosted/Ohio_School_Districts_2025/FeatureServer/0";
-const OHIO_MUNICIPAL_BOUNDARIES_URL = "https://maps.ohio.gov/arcgis/rest/services/Hosted/Ohio_Municipal_Boundaries/FeatureServer/0";
-const OHIO_TOWNSHIP_BOUNDARIES_URL = "https://maps.ohio.gov/arcgis/rest/services/Hosted/Ohio_Township_Boundaries/FeatureServer";
+const CENSUS_TIGER_URL =
+  "https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html";
+const CENSUS_TIGER_REST_URL =
+  "https://tigerweb.geo.census.gov/tigerwebmain/TIGERweb_restmapservice.html";
+const CENSUS_TRACTS_BLOCKS_URL =
+  "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer";
+const CENSUS_PLACES_URL =
+  "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer/layers";
+const OHIO_SOS_DISTRICT_MAPS_URL =
+  "https://www.ohiosos.gov/elections/district-maps";
+const OHIO_SCHOOL_DISTRICTS_URL =
+  "https://maps.ohio.gov/arcgis/rest/services/Hosted/Ohio_School_Districts_2025/FeatureServer/0";
+const OHIO_MUNICIPAL_BOUNDARIES_URL =
+  "https://maps.ohio.gov/arcgis/rest/services/Hosted/Ohio_Municipal_Boundaries/FeatureServer/0";
+const OHIO_TOWNSHIP_BOUNDARIES_URL =
+  "https://maps.ohio.gov/arcgis/rest/services/Hosted/Ohio_Township_Boundaries/FeatureServer";
 const USPS_EDDM_URL = "https://eddm.usps.com/eddm/select-routes.htm";
-const USPS_EDDM_BUSINESS_URL = "https://www.usps.com/business/every-door-direct-mail.htm";
-const FRANKLIN_BOE_GIS_URL = "https://vote.franklincountyohio.gov/Maps-Data/GIS-Shape-Files";
+const USPS_EDDM_BUSINESS_URL =
+  "https://www.usps.com/business/every-door-direct-mail.htm";
+const FRANKLIN_BOE_GIS_URL =
+  "https://vote.franklincountyohio.gov/Maps-Data/GIS-Shape-Files";
 
 const DEFAULT_LAYER_SOURCE: LayerSourceMeta = {
   badge: "plan",
@@ -655,21 +685,24 @@ const LAYER_SOURCE_META: Record<string, LayerSourceMeta> = {
   },
   "Congressional District": {
     badge: "ready",
-    sourceName: "Ohio Secretary of State 2026-2032 congressional district SHAPE files",
+    sourceName:
+      "Ohio Secretary of State 2026-2032 congressional district SHAPE files",
     status: "ready",
     url: OHIO_SOS_DISTRICT_MAPS_URL,
     note: "Ohio, Illinois, and Tennessee congressional polygons are loaded in District mode from official or state GIS sources.",
   },
   "State Senate District": {
     badge: "ready",
-    sourceName: "Ohio Secretary of State Ohio Senate Districts 2024-2032 SHAPE files",
+    sourceName:
+      "Ohio Secretary of State Ohio Senate Districts 2024-2032 SHAPE files",
     status: "ready",
     url: OHIO_SOS_DISTRICT_MAPS_URL,
     note: "Official Ohio Senate district polygons are loaded from the Ohio district FeatureServer.",
   },
   "State House District": {
     badge: "ready",
-    sourceName: "Ohio Secretary of State Ohio House Districts 2024-2032 SHAPE files",
+    sourceName:
+      "Ohio Secretary of State Ohio House Districts 2024-2032 SHAPE files",
     status: "ready",
     url: OHIO_SOS_DISTRICT_MAPS_URL,
     note: "Official Ohio House district polygons are loaded from the Ohio district FeatureServer.",
@@ -748,7 +781,8 @@ const LAYER_SOURCE_META: Record<string, LayerSourceMeta> = {
   },
   "General Election Voting History": {
     badge: "SOS",
-    sourceName: "Ohio Secretary of State election results and county BOE precinct returns",
+    sourceName:
+      "Ohio Secretary of State election results and county BOE precinct returns",
     status: "public",
     url: "https://www.ohiosos.gov/elections/election-results-and-data/",
     note: "Use certified aggregate results by geography where available.",
@@ -1220,7 +1254,9 @@ const LAYER_SOURCE_META: Record<string, LayerSourceMeta> = {
   },
 };
 
-const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, LayerSourceMeta>>>> = {
+const STATE_LAYER_SOURCE_META: Partial<
+  Record<StateKey, Partial<Record<string, LayerSourceMeta>>>
+> = {
   illinois: {
     City: {
       badge: "IL GIS",
@@ -1245,7 +1281,8 @@ const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, L
     },
     Precinct: {
       badge: "local",
-      sourceName: "Illinois county election authorities and Census voting districts",
+      sourceName:
+        "Illinois county election authorities and Census voting districts",
       status: "local",
       url: CENSUS_TIGER_URL,
       note: "Precincts are county-administered and must be imported county-by-county or from current election authority exports.",
@@ -1280,7 +1317,8 @@ const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, L
     },
     "School Board District": {
       badge: "Census",
-      sourceName: "Census school district TIGER/Line files plus local education GIS",
+      sourceName:
+        "Census school district TIGER/Line files plus local education GIS",
       status: "public",
       url: CENSUS_TIGER_URL,
       note: "School district geography is available from Census TIGER/Line; local school-board election boundaries may differ.",
@@ -1308,7 +1346,8 @@ const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, L
     },
     "Historical Vote Margin": {
       badge: "SBE",
-      sourceName: "Illinois State Board of Elections and MIT/JHK county aggregate history",
+      sourceName:
+        "Illinois State Board of Elections and MIT/JHK county aggregate history",
       status: "public",
       url: ILLINOIS_ELECTION_RESULTS_URL,
       note: "County aggregates can be imported; sub-county layers stay neutral until exact aggregate joins are loaded.",
@@ -1352,7 +1391,8 @@ const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, L
     },
     Precinct: {
       badge: "TN PA",
-      sourceName: "Tennessee Comptroller county redistricting data and county election commissions",
+      sourceName:
+        "Tennessee Comptroller county redistricting data and county election commissions",
       status: "local",
       url: TENNESSEE_COMPTROLLER_REDISTRICTING_URL,
       note: "The Comptroller provides county redistricting data/maps in PDF and KMZ formats; current precinct geometry remains county-by-county.",
@@ -1387,21 +1427,24 @@ const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, L
     },
     "School Board District": {
       badge: "Census",
-      sourceName: "Census school district TIGER/Line files plus county education GIS",
+      sourceName:
+        "Census school district TIGER/Line files plus county education GIS",
       status: "public",
       url: CENSUS_TIGER_URL,
       note: "School district geography is available from Census TIGER/Line; election-specific board seats need local verification.",
     },
     "Judicial District": {
       badge: "TN",
-      sourceName: "Tennessee courts and state/local judicial district references",
+      sourceName:
+        "Tennessee courts and state/local judicial district references",
       status: "local",
       url: "https://www.tncourts.gov/courts/circuit-criminal-chancery-courts/judicial-districts",
       note: "Judicial district boundaries require court-source validation before campaign planning.",
     },
     "Municipal District": {
       badge: "local",
-      sourceName: "Tennessee municipal GIS and Comptroller redistricting references",
+      sourceName:
+        "Tennessee municipal GIS and Comptroller redistricting references",
       status: "local",
       url: TENNESSEE_COMPTROLLER_REDISTRICTING_URL,
       note: "City council and municipal election districts are local-source imports, not a single statewide layer.",
@@ -1415,7 +1458,8 @@ const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, L
     },
     "Historical Vote Margin": {
       badge: "SOS",
-      sourceName: "Tennessee Secretary of State and MIT/JHK county aggregate history",
+      sourceName:
+        "Tennessee Secretary of State and MIT/JHK county aggregate history",
       status: "public",
       url: TENNESSEE_ELECTION_RESULTS_URL,
       note: "County aggregates can be imported; sub-county layers stay neutral until exact aggregate joins are loaded.",
@@ -1437,124 +1481,42 @@ const STATE_LAYER_SOURCE_META: Partial<Record<StateKey, Partial<Record<string, L
   },
 };
 
-function getLayerSourceMeta(layer: string, stateKey: StateKey): LayerSourceMeta {
-  return STATE_LAYER_SOURCE_META[stateKey]?.[layer] ?? LAYER_SOURCE_META[layer] ?? DEFAULT_LAYER_SOURCE;
+function getLayerSourceMeta(
+  layer: string,
+  stateKey: StateKey,
+): LayerSourceMeta {
+  return (
+    STATE_LAYER_SOURCE_META[stateKey]?.[layer] ??
+    LAYER_SOURCE_META[layer] ??
+    DEFAULT_LAYER_SOURCE
+  );
 }
 
 function layerSourceTone(status: LayerSourceStatus) {
-  if (status === "ready") return "border-emerald-300/25 bg-emerald-500/15 text-emerald-100";
-  if (status === "official") return "border-blue-300/25 bg-blue-500/15 text-blue-100";
-  if (status === "public") return "border-cyan-300/25 bg-cyan-500/15 text-cyan-100";
-  if (status === "usps") return "border-indigo-300/25 bg-indigo-500/15 text-indigo-100";
-  if (status === "internal") return "border-violet-300/25 bg-violet-500/15 text-violet-100";
-  if (status === "vendor") return "border-amber-300/25 bg-amber-500/15 text-amber-100";
-  if (status === "local") return "border-orange-300/25 bg-orange-500/15 text-orange-100";
+  if (status === "ready")
+    return "border-emerald-300/25 bg-emerald-500/15 text-emerald-100";
+  if (status === "official")
+    return "border-blue-300/25 bg-blue-500/15 text-blue-100";
+  if (status === "public")
+    return "border-cyan-300/25 bg-cyan-500/15 text-cyan-100";
+  if (status === "usps")
+    return "border-indigo-300/25 bg-indigo-500/15 text-indigo-100";
+  if (status === "internal")
+    return "border-violet-300/25 bg-violet-500/15 text-violet-100";
+  if (status === "vendor")
+    return "border-amber-300/25 bg-amber-500/15 text-amber-100";
+  if (status === "local")
+    return "border-orange-300/25 bg-orange-500/15 text-orange-100";
   return "border-slate-300/20 bg-slate-500/15 text-slate-200";
 }
 
-interface CountyPresidentialResult2024 {
-  county: string;
-  rep: number;
-  dem: number;
-  repPct: number;
-  demPct: number;
-}
-
 const PRESIDENTIAL_RESULT_SOURCE =
-  "2024 U.S. President county aggregate from MIT Election Lab/JHK Forecasts county-results.csv, with statewide totals cross-checked against FEC 2024 official results and Ohio Secretary of State data portal lineage.";
+  "2024 U.S. President county aggregate from JHK Forecasts county-results.csv / MIT Election Lab county history, with official state result references used where available.";
 
-const OHIO_2024_PRESIDENTIAL_BY_COUNTY_FIPS: Record<string, CountyPresidentialResult2024> = {
-  "39001": { county: "Adams", rep: 10269, dem: 2098, repPct: 82.62, demPct: 16.88 },
-  "39003": { county: "Allen", rep: 33201, dem: 12754, repPct: 71.6, demPct: 27.51 },
-  "39005": { county: "Ashland", rep: 19863, dem: 6544, repPct: 74.5, demPct: 24.54 },
-  "39007": { county: "Ashtabula", rep: 27656, dem: 15345, repPct: 63.76, demPct: 35.38 },
-  "39009": { county: "Athens", rep: 11369, dem: 14134, repPct: 44.11, demPct: 54.83 },
-  "39011": { county: "Auglaize", rep: 20988, dem: 4442, repPct: 81.89, demPct: 17.33 },
-  "39013": { county: "Belmont", rep: 22758, dem: 8080, repPct: 73.33, demPct: 26.03 },
-  "39015": { county: "Brown", rep: 17257, dem: 4069, repPct: 80.47, demPct: 18.98 },
-  "39017": { county: "Butler", rep: 114831, dem: 66713, repPct: 62.68, demPct: 36.42 },
-  "39019": { county: "Carroll", rep: 10634, dem: 3071, repPct: 76.95, demPct: 22.22 },
-  "39021": { county: "Champaign", rep: 15334, dem: 4944, repPct: 74.89, demPct: 24.15 },
-  "39023": { county: "Clark", rep: 40403, dem: 21847, repPct: 64.28, demPct: 34.76 },
-  "39025": { county: "Clermont", rep: 76964, dem: 36130, repPct: 67.43, demPct: 31.65 },
-  "39027": { county: "Clinton", rep: 15984, dem: 4633, repPct: 76.92, demPct: 22.3 },
-  "39029": { county: "Columbiana", rep: 35607, dem: 12064, repPct: 74.1, demPct: 25.11 },
-  "39031": { county: "Coshocton", rep: 12362, dem: 3835, repPct: 75.67, demPct: 23.47 },
-  "39033": { county: "Crawford", rep: 15402, dem: 4683, repPct: 76.08, demPct: 23.13 },
-  "39035": { county: "Cuyahoga", rep: 195164, dem: 376384, repPct: 33.85, demPct: 65.29 },
-  "39037": { county: "Darke", rep: 22234, dem: 4583, repPct: 82.34, demPct: 16.97 },
-  "39039": { county: "Defiance", rep: 13302, dem: 5667, repPct: 69.44, demPct: 29.58 },
-  "39041": { county: "Delaware", rep: 70448, dem: 61657, repPct: 52.81, demPct: 46.22 },
-  "39043": { county: "Erie", rep: 22493, dem: 16871, repPct: 56.59, demPct: 42.44 },
-  "39045": { county: "Fairfield", rep: 51999, dem: 31695, repPct: 61.57, demPct: 37.53 },
-  "39047": { county: "Fayette", rep: 9706, dem: 2773, repPct: 77.21, demPct: 22.06 },
-  "39049": { county: "Franklin", rep: 210830, dem: 380518, repPct: 35.24, demPct: 63.61 },
-  "39051": { county: "Fulton", rep: 15893, dem: 6374, repPct: 70.78, demPct: 28.39 },
-  "39053": { county: "Gallia", rep: 10314, dem: 2592, repPct: 79.33, demPct: 19.94 },
-  "39055": { county: "Geauga", rep: 33844, dem: 20604, repPct: 61.65, demPct: 37.53 },
-  "39057": { county: "Greene", rep: 53399, dem: 35575, repPct: 59.31, demPct: 39.51 },
-  "39059": { county: "Guernsey", rep: 13314, dem: 4154, repPct: 75.64, demPct: 23.6 },
-  "39061": { county: "Hamilton", rep: 172365, dem: 233360, repPct: 42.03, demPct: 56.91 },
-  "39063": { county: "Hancock", rep: 26052, dem: 11467, repPct: 68.66, demPct: 30.22 },
-  "39065": { county: "Hardin", rep: 9911, dem: 2863, repPct: 76.87, demPct: 22.21 },
-  "39067": { county: "Harrison", rep: 5484, dem: 1559, repPct: 77.13, demPct: 21.93 },
-  "39069": { county: "Henry", rep: 10873, dem: 3905, repPct: 72.91, demPct: 26.19 },
-  "39071": { county: "Highland", rep: 16269, dem: 3609, repPct: 81.4, demPct: 18.06 },
-  "39073": { county: "Hocking", rep: 9679, dem: 3704, repPct: 71.75, demPct: 27.46 },
-  "39075": { county: "Holmes", rep: 10384, dem: 1854, repPct: 84.18, demPct: 15.03 },
-  "39077": { county: "Huron", rep: 19484, dem: 7496, repPct: 71.59, demPct: 27.54 },
-  "39079": { county: "Jackson", rep: 11249, dem: 2953, repPct: 78.74, demPct: 20.67 },
-  "39081": { county: "Jefferson", rep: 22317, dem: 8592, repPct: 71.38, demPct: 27.48 },
-  "39083": { county: "Knox", rep: 23112, dem: 8698, repPct: 71.99, demPct: 27.09 },
-  "39085": { county: "Lake", rep: 72924, dem: 54484, repPct: 56.72, demPct: 42.37 },
-  "39087": { county: "Lawrence", rep: 20013, dem: 6514, repPct: 74.92, demPct: 24.39 },
-  "39089": { county: "Licking", rep: 61359, dem: 32832, repPct: 64.55, demPct: 34.54 },
-  "39091": { county: "Logan", rep: 18182, dem: 5027, repPct: 77.68, demPct: 21.48 },
-  "39093": { county: "Lorain", rep: 83297, dem: 74207, repPct: 52.39, demPct: 46.67 },
-  "39095": { county: "Lucas", rep: 82398, dem: 106320, repPct: 43.23, demPct: 55.78 },
-  "39097": { county: "Madison", rep: 14737, dem: 5713, repPct: 71.3, demPct: 27.64 },
-  "39099": { county: "Mahoning", rep: 61249, dem: 50636, repPct: 54.34, demPct: 44.93 },
-  "39101": { county: "Marion", rep: 19219, dem: 7902, repPct: 70.25, demPct: 28.88 },
-  "39103": { county: "Medina", rep: 66308, dem: 39771, repPct: 61.94, demPct: 37.15 },
-  "39105": { county: "Meigs", rep: 8127, dem: 2202, repPct: 78.14, demPct: 21.17 },
-  "39107": { county: "Mercer", rep: 19710, dem: 3865, repPct: 82.98, demPct: 16.27 },
-  "39109": { county: "Miami", rep: 42677, dem: 15969, repPct: 72.1, demPct: 26.98 },
-  "39111": { county: "Monroe", rep: 5396, dem: 1336, repPct: 79.4, demPct: 19.66 },
-  "39113": { county: "Montgomery", rep: 125566, dem: 126767, repPct: 49.27, demPct: 49.74 },
-  "39115": { county: "Morgan", rep: 5168, dem: 1560, repPct: 76.2, demPct: 23 },
-  "39117": { county: "Morrow", rep: 14609, dem: 4100, repPct: 77.47, demPct: 21.74 },
-  "39119": { county: "Muskingum", rep: 28147, dem: 10874, repPct: 71.56, demPct: 27.65 },
-  "39121": { county: "Noble", rep: 5050, dem: 1069, repPct: 81.97, demPct: 17.35 },
-  "39123": { county: "Ottawa", rep: 14872, dem: 8866, repPct: 62.07, demPct: 37 },
-  "39125": { county: "Paulding", rep: 7203, dem: 1987, repPct: 77.64, demPct: 21.42 },
-  "39127": { county: "Perry", rep: 13062, dem: 3800, repPct: 76.87, demPct: 22.36 },
-  "39129": { county: "Pickaway", rep: 21607, dem: 7397, repPct: 73.79, demPct: 25.26 },
-  "39131": { county: "Pike", rep: 9352, dem: 2793, repPct: 76.54, demPct: 22.86 },
-  "39133": { county: "Portage", rep: 47681, dem: 34759, repPct: 57.29, demPct: 41.76 },
-  "39135": { county: "Preble", rep: 17146, dem: 4343, repPct: 79.17, demPct: 20.05 },
-  "39137": { county: "Putnam", rep: 16576, dem: 2996, repPct: 83.9, demPct: 15.16 },
-  "39139": { county: "Richland", rep: 41298, dem: 16591, repPct: 70.76, demPct: 28.43 },
-  "39141": { county: "Ross", rep: 22801, dem: 9846, repPct: 69.24, demPct: 29.9 },
-  "39143": { county: "Sandusky", rep: 19311, dem: 10139, repPct: 64.99, demPct: 34.12 },
-  "39145": { county: "Scioto", rep: 22978, dem: 8021, repPct: 73.69, demPct: 25.72 },
-  "39147": { county: "Seneca", rep: 17241, dem: 7765, repPct: 68.25, demPct: 30.74 },
-  "39149": { county: "Shelby", rep: 20740, dem: 4350, repPct: 82.02, demPct: 17.2 },
-  "39151": { county: "Stark", rep: 111478, dem: 71090, repPct: 60.52, demPct: 38.6 },
-  "39153": { county: "Summit", rep: 125910, dem: 145005, repPct: 46.02, demPct: 53 },
-  "39155": { county: "Trumbull", rep: 55983, dem: 39758, repPct: 57.99, demPct: 41.19 },
-  "39157": { county: "Tuscarawas", rep: 30652, dem: 12032, repPct: 71.25, demPct: 27.97 },
-  "39159": { county: "Union", rep: 23982, dem: 12934, repPct: 64.29, demPct: 34.67 },
-  "39161": { county: "Van Wert", rep: 11616, dem: 3000, repPct: 78.86, demPct: 20.37 },
-  "39163": { county: "Vinton", rep: 4531, dem: 1169, repPct: 78.96, demPct: 20.37 },
-  "39165": { county: "Warren", rep: 91132, dem: 47128, repPct: 65.27, demPct: 33.75 },
-  "39167": { county: "Washington", rep: 22161, dem: 8600, repPct: 71.49, demPct: 27.74 },
-  "39169": { county: "Wayne", rep: 36764, dem: 15898, repPct: 69.17, demPct: 29.91 },
-  "39171": { county: "Williams", rep: 13461, dem: 4644, repPct: 73.66, demPct: 25.41 },
-  "39173": { county: "Wood", rep: 36877, dem: 30016, repPct: 54.56, demPct: 44.41 },
-  "39175": { county: "Wyandot", rep: 8564, dem: 2731, repPct: 75.19, demPct: 23.98 },
-};
-
-const MODE_CONFIG: Record<PoliticalMode, { label: string; icon: typeof MapIcon; source: DataLabel }> = {
+const MODE_CONFIG: Record<
+  PoliticalMode,
+  { label: string; icon: typeof MapIcon; source: DataLabel }
+> = {
   county: { label: "County", icon: MapIcon, source: "Public Aggregate" },
   zipcode: { label: "ZIP", icon: Layers3, source: "Estimated" },
   city: { label: "City", icon: Building2, source: "Estimated" },
@@ -1563,40 +1525,64 @@ const MODE_CONFIG: Record<PoliticalMode, { label: string; icon: typeof MapIcon; 
 
 const countiesTopology = countiesTopologyRaw as unknown as Topology;
 const statesTopology = statesTopologyRaw as unknown as Topology;
-type DistrictFeatureProperties = { district?: string; id?: number; label?: string };
+type DistrictFeatureProperties = {
+  district?: string;
+  id?: number;
+  label?: string;
+};
 interface StatePoliticalDistrictData {
   stateKey: string;
   sourceName: string;
   sourceUrl: string;
   sourceCycle: string;
-  layers: Partial<Record<
-    OfficialDistrictLayerKey,
-    {
-      label: string;
-      sourceUrl: string;
-      featureCount: number;
-      featureCollection: FeatureCollection<Geometry, DistrictFeatureProperties>;
-    }
-  >>;
+  layers: Partial<
+    Record<
+      OfficialDistrictLayerKey,
+      {
+        label: string;
+        sourceUrl: string;
+        featureCount: number;
+        featureCollection: FeatureCollection<
+          Geometry,
+          DistrictFeatureProperties
+        >;
+      }
+    >
+  >;
 }
 
-const ohioPoliticalDistricts = ohioPoliticalDistrictsRaw as StatePoliticalDistrictData;
-const illinoisPoliticalDistricts = illinoisPoliticalDistrictsRaw as StatePoliticalDistrictData;
-const tennesseePoliticalDistricts = tennesseePoliticalDistrictsRaw as StatePoliticalDistrictData;
-const OFFICIAL_DISTRICT_DATA_BY_STATE: Partial<Record<StateKey, StatePoliticalDistrictData>> = {
+const ohioPoliticalDistricts =
+  ohioPoliticalDistrictsRaw as StatePoliticalDistrictData;
+const illinoisPoliticalDistricts =
+  illinoisPoliticalDistrictsRaw as StatePoliticalDistrictData;
+const tennesseePoliticalDistricts =
+  tennesseePoliticalDistrictsRaw as StatePoliticalDistrictData;
+const OFFICIAL_DISTRICT_DATA_BY_STATE: Partial<
+  Record<StateKey, StatePoliticalDistrictData>
+> = {
   ohio: ohioPoliticalDistricts,
   illinois: illinoisPoliticalDistricts,
   tennessee: tennesseePoliticalDistricts,
 };
-const countiesObject = (countiesTopology.objects as Record<"counties", TopoGeometryCollection>).counties;
-const statesObject = (statesTopology.objects as Record<"states", TopoGeometryCollection>).states;
+const countiesObject = (
+  countiesTopology.objects as Record<"counties", TopoGeometryCollection>
+).counties;
+const statesObject = (
+  statesTopology.objects as Record<"states", TopoGeometryCollection>
+).states;
 
 const allCounties = (
-  feature(countiesTopology, countiesObject) as unknown as FeatureCollection<Geometry, AtlasProperties>
+  feature(countiesTopology, countiesObject) as unknown as FeatureCollection<
+    Geometry,
+    AtlasProperties
+  >
 ).features as AtlasFeature[];
 
 const allStates = (
-  feature(statesTopology, statesObject) as unknown as FeatureCollection<Geometry, AtlasProperties>
+  feature(statesTopology, statesObject) as unknown as FeatureCollection<
+    Geometry,
+    AtlasProperties
+  >
 ).features as AtlasFeature[];
 
 function normalizeId(id: string | number | undefined, length: number) {
@@ -1615,10 +1601,9 @@ function countyHouseholds(id: string) {
   return 9500 + (hashText(id) % 54000);
 }
 
-function neutralPartisanFields(source: string): Pick<
-  PoliticalUnit,
-  "lean" | "intensity" | "partisanDataReady" | "source"
-> {
+function neutralPartisanFields(
+  source: string,
+): Pick<PoliticalUnit, "lean" | "intensity" | "partisanDataReady" | "source"> {
   return {
     lean: "mixed",
     intensity: "light",
@@ -1633,11 +1618,21 @@ function intensityForMargin(absMarginPct: number): PoliticalUnit["intensity"] {
   return "light";
 }
 
-function countyElectionFields(countyId: string): Pick<
+function countyElectionFields(
+  countyId: string,
+): Pick<
   PoliticalUnit,
-  "lean" | "intensity" | "partisanDataReady" | "source" | "electionMarginPct" | "republicanPct" | "democraticPct"
+  | "lean"
+  | "intensity"
+  | "partisanDataReady"
+  | "source"
+  | "electionMarginPct"
+  | "republicanPct"
+  | "democraticPct"
 > {
-  const result = OHIO_2024_PRESIDENTIAL_BY_COUNTY_FIPS[countyId];
+  const result =
+    OHIO_2024_PRESIDENTIAL_BY_COUNTY_FIPS[countyId] ??
+    ADDITIONAL_2024_PRESIDENTIAL_BY_COUNTY_FIPS[countyId];
   if (!result) {
     return neutralPartisanFields(
       "No validated partisan result is loaded for this geography. It is intentionally neutral until a source-backed aggregate is imported.",
@@ -1648,7 +1643,8 @@ function countyElectionFields(countyId: string): Pick<
   const absMarginPct = Math.abs(marginPct);
 
   return {
-    lean: absMarginPct < 5 ? "mixed" : marginPct > 0 ? "republican" : "democrat",
+    lean:
+      absMarginPct < 5 ? "mixed" : marginPct > 0 ? "republican" : "democrat",
     intensity: intensityForMargin(absMarginPct),
     partisanDataReady: true,
     electionMarginPct: marginPct,
@@ -1659,14 +1655,19 @@ function countyElectionFields(countyId: string): Pick<
 }
 
 function slugifyMapLabel(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function cityUnitId(state: (typeof STATES)[StateKey], market: string) {
   return `${state.shortLabel}-city-${slugifyMapLabel(market)}`;
 }
 
-const CITY_MARKET_BY_STATE_AND_COUNTY: Partial<Record<StateKey, Record<string, string>>> = {
+const CITY_MARKET_BY_STATE_AND_COUNTY: Partial<
+  Record<StateKey, Record<string, string>>
+> = {
   ohio: {
     Hamilton: "Cincinnati Metro",
     Butler: "Cincinnati Metro",
@@ -1874,158 +1875,839 @@ const CITY_MARKET_BY_STATE_AND_COUNTY: Partial<Record<StateKey, Record<string, s
 
 const CITY_MARKERS_BY_STATE: Record<StateKey, CityMarkerSource[]> = {
   ohio: [
-    { label: "Columbus", market: "Columbus Metro", coordinates: [-82.9988, 39.9612], priority: 1 },
-    { label: "Cleveland", market: "Cleveland Metro", coordinates: [-81.6944, 41.4993], priority: 1 },
-    { label: "Cincinnati", market: "Cincinnati Metro", coordinates: [-84.512, 39.1031], priority: 1 },
-    { label: "Toledo", market: "Toledo Metro", coordinates: [-83.5552, 41.6528], priority: 1 },
-    { label: "Akron", market: "Akron Corridor", coordinates: [-81.519, 41.0814], priority: 1 },
-    { label: "Dayton", market: "Dayton Metro", coordinates: [-84.1916, 39.7589], priority: 1 },
-    { label: "Youngstown", market: "Youngstown Valley", coordinates: [-80.6495, 41.0998], priority: 1 },
-    { label: "Canton", market: "Akron Corridor", coordinates: [-81.3784, 40.7989], priority: 2 },
-    { label: "Lorain", market: "Cleveland Metro", coordinates: [-82.1824, 41.4528], priority: 2 },
-    { label: "Elyria", market: "Cleveland Metro", coordinates: [-82.1076, 41.3684], priority: 2 },
-    { label: "Parma", market: "Cleveland Metro", coordinates: [-81.7229, 41.4048], priority: 2 },
-    { label: "Lakewood", market: "Cleveland Metro", coordinates: [-81.7982, 41.4819], priority: 3 },
-    { label: "Mentor", market: "Cleveland Metro", coordinates: [-81.3396, 41.6662], priority: 2 },
-    { label: "Hamilton", market: "Cincinnati Metro", coordinates: [-84.5613, 39.3995], priority: 2 },
-    { label: "Middletown", market: "Cincinnati Metro", coordinates: [-84.3983, 39.5151], priority: 2 },
-    { label: "Springfield", market: "Dayton Metro", coordinates: [-83.8088, 39.9242], priority: 2 },
-    { label: "Kettering", market: "Dayton Metro", coordinates: [-84.1688, 39.6895], priority: 3 },
-    { label: "Beavercreek", market: "Dayton Metro", coordinates: [-84.0633, 39.7092], priority: 3 },
-    { label: "Xenia", market: "Dayton Metro", coordinates: [-83.9297, 39.6848], priority: 3 },
-    { label: "Dublin", market: "Columbus Metro", coordinates: [-83.1141, 40.0992], priority: 2 },
-    { label: "Westerville", market: "Columbus Metro", coordinates: [-82.9291, 40.1262], priority: 2 },
-    { label: "Hilliard", market: "Columbus Metro", coordinates: [-83.1582, 40.0334], priority: 3 },
-    { label: "Grove City", market: "Columbus Metro", coordinates: [-83.0929, 39.8815], priority: 3 },
-    { label: "Gahanna", market: "Columbus Metro", coordinates: [-82.8793, 40.0192], priority: 3 },
-    { label: "Reynoldsburg", market: "Columbus Metro", coordinates: [-82.8121, 39.9548], priority: 3 },
-    { label: "Delaware", market: "Columbus Metro", coordinates: [-83.068, 40.2987], priority: 2 },
-    { label: "Lancaster", market: "Columbus Metro", coordinates: [-82.5993, 39.7137], priority: 2 },
-    { label: "Newark", market: "Columbus Metro", coordinates: [-82.4013, 40.0581], priority: 2 },
-    { label: "Zanesville", market: "Zanesville-Newark Corridor", coordinates: [-82.0132, 39.9403], priority: 2 },
-    { label: "Cambridge", market: "Zanesville-Newark Corridor", coordinates: [-81.5885, 40.0312], priority: 3 },
-    { label: "Coshocton", market: "Zanesville-Newark Corridor", coordinates: [-81.8596, 40.272], priority: 3 },
-    { label: "Mansfield", market: "Mansfield-Marion", coordinates: [-82.5154, 40.7584], priority: 2 },
-    { label: "Marion", market: "Mansfield-Marion", coordinates: [-83.1285, 40.5887], priority: 2 },
-    { label: "Mount Vernon", market: "Mansfield-Marion", coordinates: [-82.4857, 40.3934], priority: 3 },
-    { label: "Bucyrus", market: "Mansfield-Marion", coordinates: [-82.9755, 40.8084], priority: 3 },
-    { label: "Lima", market: "Lima-Findlay Corridor", coordinates: [-84.1052, 40.7426], priority: 2 },
-    { label: "Findlay", market: "Lima-Findlay Corridor", coordinates: [-83.6502, 41.0442], priority: 2 },
-    { label: "Sidney", market: "Lima-Findlay Corridor", coordinates: [-84.1555, 40.2842], priority: 3 },
-    { label: "Troy", market: "Dayton Metro", coordinates: [-84.2033, 40.0395], priority: 3 },
-    { label: "Piqua", market: "Lima-Findlay Corridor", coordinates: [-84.2424, 40.1448], priority: 3 },
-    { label: "Van Wert", market: "Lima-Findlay Corridor", coordinates: [-84.5841, 40.8695], priority: 3 },
-    { label: "Bowling Green", market: "Toledo Metro", coordinates: [-83.6508, 41.3748], priority: 2 },
-    { label: "Fremont", market: "Sandusky-Erie Coast", coordinates: [-83.1149, 41.3503], priority: 3 },
-    { label: "Sandusky", market: "Sandusky-Erie Coast", coordinates: [-82.7079, 41.4489], priority: 2 },
-    { label: "Tiffin", market: "Sandusky-Erie Coast", coordinates: [-83.178, 41.1145], priority: 3 },
-    { label: "Defiance", market: "Northwest Ohio", coordinates: [-84.3558, 41.2845], priority: 3 },
-    { label: "Wooster", market: "Akron Corridor", coordinates: [-81.9351, 40.8051], priority: 2 },
-    { label: "Medina", market: "Cleveland Metro", coordinates: [-81.8637, 41.1384], priority: 2 },
-    { label: "Wadsworth", market: "Akron Corridor", coordinates: [-81.7299, 41.0256], priority: 3 },
-    { label: "Warren", market: "Youngstown Valley", coordinates: [-80.8184, 41.2376], priority: 2 },
-    { label: "Niles", market: "Youngstown Valley", coordinates: [-80.7654, 41.1828], priority: 3 },
-    { label: "Ashtabula", market: "Ashtabula-Lake Erie", coordinates: [-80.7898, 41.8651], priority: 2 },
-    { label: "Steubenville", market: "Ohio Valley", coordinates: [-80.634, 40.3698], priority: 2 },
-    { label: "Chillicothe", market: "Southern Ohio", coordinates: [-82.9824, 39.3331], priority: 2 },
-    { label: "Portsmouth", market: "Southern Ohio", coordinates: [-82.9977, 38.7317], priority: 2 },
-    { label: "Athens", market: "Southeast Ohio", coordinates: [-82.1013, 39.3292], priority: 2 },
-    { label: "Marietta", market: "Southeast Ohio", coordinates: [-81.4548, 39.4154], priority: 2 },
+    {
+      label: "Columbus",
+      market: "Columbus Metro",
+      coordinates: [-82.9988, 39.9612],
+      priority: 1,
+    },
+    {
+      label: "Cleveland",
+      market: "Cleveland Metro",
+      coordinates: [-81.6944, 41.4993],
+      priority: 1,
+    },
+    {
+      label: "Cincinnati",
+      market: "Cincinnati Metro",
+      coordinates: [-84.512, 39.1031],
+      priority: 1,
+    },
+    {
+      label: "Toledo",
+      market: "Toledo Metro",
+      coordinates: [-83.5552, 41.6528],
+      priority: 1,
+    },
+    {
+      label: "Akron",
+      market: "Akron Corridor",
+      coordinates: [-81.519, 41.0814],
+      priority: 1,
+    },
+    {
+      label: "Dayton",
+      market: "Dayton Metro",
+      coordinates: [-84.1916, 39.7589],
+      priority: 1,
+    },
+    {
+      label: "Youngstown",
+      market: "Youngstown Valley",
+      coordinates: [-80.6495, 41.0998],
+      priority: 1,
+    },
+    {
+      label: "Canton",
+      market: "Akron Corridor",
+      coordinates: [-81.3784, 40.7989],
+      priority: 2,
+    },
+    {
+      label: "Lorain",
+      market: "Cleveland Metro",
+      coordinates: [-82.1824, 41.4528],
+      priority: 2,
+    },
+    {
+      label: "Elyria",
+      market: "Cleveland Metro",
+      coordinates: [-82.1076, 41.3684],
+      priority: 2,
+    },
+    {
+      label: "Parma",
+      market: "Cleveland Metro",
+      coordinates: [-81.7229, 41.4048],
+      priority: 2,
+    },
+    {
+      label: "Lakewood",
+      market: "Cleveland Metro",
+      coordinates: [-81.7982, 41.4819],
+      priority: 3,
+    },
+    {
+      label: "Mentor",
+      market: "Cleveland Metro",
+      coordinates: [-81.3396, 41.6662],
+      priority: 2,
+    },
+    {
+      label: "Hamilton",
+      market: "Cincinnati Metro",
+      coordinates: [-84.5613, 39.3995],
+      priority: 2,
+    },
+    {
+      label: "Middletown",
+      market: "Cincinnati Metro",
+      coordinates: [-84.3983, 39.5151],
+      priority: 2,
+    },
+    {
+      label: "Springfield",
+      market: "Dayton Metro",
+      coordinates: [-83.8088, 39.9242],
+      priority: 2,
+    },
+    {
+      label: "Kettering",
+      market: "Dayton Metro",
+      coordinates: [-84.1688, 39.6895],
+      priority: 3,
+    },
+    {
+      label: "Beavercreek",
+      market: "Dayton Metro",
+      coordinates: [-84.0633, 39.7092],
+      priority: 3,
+    },
+    {
+      label: "Xenia",
+      market: "Dayton Metro",
+      coordinates: [-83.9297, 39.6848],
+      priority: 3,
+    },
+    {
+      label: "Dublin",
+      market: "Columbus Metro",
+      coordinates: [-83.1141, 40.0992],
+      priority: 2,
+    },
+    {
+      label: "Westerville",
+      market: "Columbus Metro",
+      coordinates: [-82.9291, 40.1262],
+      priority: 2,
+    },
+    {
+      label: "Hilliard",
+      market: "Columbus Metro",
+      coordinates: [-83.1582, 40.0334],
+      priority: 3,
+    },
+    {
+      label: "Grove City",
+      market: "Columbus Metro",
+      coordinates: [-83.0929, 39.8815],
+      priority: 3,
+    },
+    {
+      label: "Gahanna",
+      market: "Columbus Metro",
+      coordinates: [-82.8793, 40.0192],
+      priority: 3,
+    },
+    {
+      label: "Reynoldsburg",
+      market: "Columbus Metro",
+      coordinates: [-82.8121, 39.9548],
+      priority: 3,
+    },
+    {
+      label: "Delaware",
+      market: "Columbus Metro",
+      coordinates: [-83.068, 40.2987],
+      priority: 2,
+    },
+    {
+      label: "Lancaster",
+      market: "Columbus Metro",
+      coordinates: [-82.5993, 39.7137],
+      priority: 2,
+    },
+    {
+      label: "Newark",
+      market: "Columbus Metro",
+      coordinates: [-82.4013, 40.0581],
+      priority: 2,
+    },
+    {
+      label: "Zanesville",
+      market: "Zanesville-Newark Corridor",
+      coordinates: [-82.0132, 39.9403],
+      priority: 2,
+    },
+    {
+      label: "Cambridge",
+      market: "Zanesville-Newark Corridor",
+      coordinates: [-81.5885, 40.0312],
+      priority: 3,
+    },
+    {
+      label: "Coshocton",
+      market: "Zanesville-Newark Corridor",
+      coordinates: [-81.8596, 40.272],
+      priority: 3,
+    },
+    {
+      label: "Mansfield",
+      market: "Mansfield-Marion",
+      coordinates: [-82.5154, 40.7584],
+      priority: 2,
+    },
+    {
+      label: "Marion",
+      market: "Mansfield-Marion",
+      coordinates: [-83.1285, 40.5887],
+      priority: 2,
+    },
+    {
+      label: "Mount Vernon",
+      market: "Mansfield-Marion",
+      coordinates: [-82.4857, 40.3934],
+      priority: 3,
+    },
+    {
+      label: "Bucyrus",
+      market: "Mansfield-Marion",
+      coordinates: [-82.9755, 40.8084],
+      priority: 3,
+    },
+    {
+      label: "Lima",
+      market: "Lima-Findlay Corridor",
+      coordinates: [-84.1052, 40.7426],
+      priority: 2,
+    },
+    {
+      label: "Findlay",
+      market: "Lima-Findlay Corridor",
+      coordinates: [-83.6502, 41.0442],
+      priority: 2,
+    },
+    {
+      label: "Sidney",
+      market: "Lima-Findlay Corridor",
+      coordinates: [-84.1555, 40.2842],
+      priority: 3,
+    },
+    {
+      label: "Troy",
+      market: "Dayton Metro",
+      coordinates: [-84.2033, 40.0395],
+      priority: 3,
+    },
+    {
+      label: "Piqua",
+      market: "Lima-Findlay Corridor",
+      coordinates: [-84.2424, 40.1448],
+      priority: 3,
+    },
+    {
+      label: "Van Wert",
+      market: "Lima-Findlay Corridor",
+      coordinates: [-84.5841, 40.8695],
+      priority: 3,
+    },
+    {
+      label: "Bowling Green",
+      market: "Toledo Metro",
+      coordinates: [-83.6508, 41.3748],
+      priority: 2,
+    },
+    {
+      label: "Fremont",
+      market: "Sandusky-Erie Coast",
+      coordinates: [-83.1149, 41.3503],
+      priority: 3,
+    },
+    {
+      label: "Sandusky",
+      market: "Sandusky-Erie Coast",
+      coordinates: [-82.7079, 41.4489],
+      priority: 2,
+    },
+    {
+      label: "Tiffin",
+      market: "Sandusky-Erie Coast",
+      coordinates: [-83.178, 41.1145],
+      priority: 3,
+    },
+    {
+      label: "Defiance",
+      market: "Northwest Ohio",
+      coordinates: [-84.3558, 41.2845],
+      priority: 3,
+    },
+    {
+      label: "Wooster",
+      market: "Akron Corridor",
+      coordinates: [-81.9351, 40.8051],
+      priority: 2,
+    },
+    {
+      label: "Medina",
+      market: "Cleveland Metro",
+      coordinates: [-81.8637, 41.1384],
+      priority: 2,
+    },
+    {
+      label: "Wadsworth",
+      market: "Akron Corridor",
+      coordinates: [-81.7299, 41.0256],
+      priority: 3,
+    },
+    {
+      label: "Warren",
+      market: "Youngstown Valley",
+      coordinates: [-80.8184, 41.2376],
+      priority: 2,
+    },
+    {
+      label: "Niles",
+      market: "Youngstown Valley",
+      coordinates: [-80.7654, 41.1828],
+      priority: 3,
+    },
+    {
+      label: "Ashtabula",
+      market: "Ashtabula-Lake Erie",
+      coordinates: [-80.7898, 41.8651],
+      priority: 2,
+    },
+    {
+      label: "Steubenville",
+      market: "Ohio Valley",
+      coordinates: [-80.634, 40.3698],
+      priority: 2,
+    },
+    {
+      label: "Chillicothe",
+      market: "Southern Ohio",
+      coordinates: [-82.9824, 39.3331],
+      priority: 2,
+    },
+    {
+      label: "Portsmouth",
+      market: "Southern Ohio",
+      coordinates: [-82.9977, 38.7317],
+      priority: 2,
+    },
+    {
+      label: "Athens",
+      market: "Southeast Ohio",
+      coordinates: [-82.1013, 39.3292],
+      priority: 2,
+    },
+    {
+      label: "Marietta",
+      market: "Southeast Ohio",
+      coordinates: [-81.4548, 39.4154],
+      priority: 2,
+    },
   ],
   illinois: [
-    { label: "Chicago", market: "Chicago Metro", coordinates: [-87.6298, 41.8781], priority: 1 },
-    { label: "Aurora", market: "Aurora-Joliet Corridor", coordinates: [-88.3201, 41.7606], priority: 1 },
-    { label: "Joliet", market: "Aurora-Joliet Corridor", coordinates: [-88.0817, 41.525], priority: 1 },
-    { label: "Naperville", market: "Chicago Metro", coordinates: [-88.1535, 41.7508], priority: 1 },
-    { label: "Elgin", market: "Chicago Metro", coordinates: [-88.2826, 42.0354], priority: 2 },
-    { label: "Waukegan", market: "Chicago Metro", coordinates: [-87.8448, 42.3636], priority: 2 },
-    { label: "Cicero", market: "Chicago Metro", coordinates: [-87.7539, 41.8456], priority: 2 },
-    { label: "Schaumburg", market: "Chicago Metro", coordinates: [-88.0834, 42.0334], priority: 2 },
-    { label: "Evanston", market: "Chicago Metro", coordinates: [-87.6877, 42.0451], priority: 2 },
-    { label: "Arlington Heights", market: "Chicago Metro", coordinates: [-87.9806, 42.0884], priority: 3 },
-    { label: "Bolingbrook", market: "Aurora-Joliet Corridor", coordinates: [-88.0684, 41.6986], priority: 3 },
-    { label: "Palatine", market: "Chicago Metro", coordinates: [-88.0342, 42.1103], priority: 3 },
-    { label: "Skokie", market: "Chicago Metro", coordinates: [-87.7334, 42.0324], priority: 3 },
-    { label: "Des Plaines", market: "Chicago Metro", coordinates: [-87.8878, 42.0334], priority: 3 },
-    { label: "Orland Park", market: "Chicago Metro", coordinates: [-87.8539, 41.6303], priority: 3 },
-    { label: "Oak Lawn", market: "Chicago Metro", coordinates: [-87.7581, 41.7199], priority: 3 },
-    { label: "Kankakee", market: "Kankakee-Iroquois", coordinates: [-87.8612, 41.1200], priority: 2 },
-    { label: "DeKalb", market: "Northwest Illinois", coordinates: [-88.7504, 41.9295], priority: 2 },
-    { label: "Crystal Lake", market: "Chicago Metro", coordinates: [-88.3162, 42.2411], priority: 3 },
-    { label: "Rockford", market: "Rockford Region", coordinates: [-89.094, 42.2711], priority: 1 },
-    { label: "Peoria", market: "Peoria Region", coordinates: [-89.589, 40.6936], priority: 1 },
-    { label: "Springfield", market: "Springfield Region", coordinates: [-89.6501, 39.7817], priority: 1 },
-    { label: "Champaign", market: "Champaign-Urbana", coordinates: [-88.2434, 40.1164], priority: 1 },
-    { label: "Urbana", market: "Champaign-Urbana", coordinates: [-88.2073, 40.1106], priority: 2 },
-    { label: "Bloomington", market: "Bloomington-Normal", coordinates: [-88.9937, 40.4842], priority: 1 },
-    { label: "Normal", market: "Bloomington-Normal", coordinates: [-88.9906, 40.5142], priority: 2 },
-    { label: "Decatur", market: "Champaign-Urbana", coordinates: [-88.9548, 39.8403], priority: 2 },
-    { label: "Quincy", market: "Quincy-Western Illinois", coordinates: [-91.4099, 39.9356], priority: 2 },
-    { label: "Moline", market: "Quad Cities", coordinates: [-90.5151, 41.5067], priority: 2 },
-    { label: "Rock Island", market: "Quad Cities", coordinates: [-90.5787, 41.5095], priority: 2 },
-    { label: "Galesburg", market: "Peoria Region", coordinates: [-90.3712, 40.9478], priority: 3 },
-    { label: "Danville", market: "Champaign-Urbana", coordinates: [-87.6300, 40.1245], priority: 3 },
-    { label: "East St. Louis", market: "Metro East", coordinates: [-90.1509, 38.6245], priority: 1 },
-    { label: "Belleville", market: "Metro East", coordinates: [-89.9840, 38.5201], priority: 2 },
-    { label: "Edwardsville", market: "Metro East", coordinates: [-89.9532, 38.8114], priority: 2 },
-    { label: "Alton", market: "Metro East", coordinates: [-90.1843, 38.8906], priority: 3 },
-    { label: "O'Fallon", market: "Metro East", coordinates: [-89.9112, 38.5923], priority: 3 },
-    { label: "Carbondale", market: "Southern Illinois", coordinates: [-89.2168, 37.7273], priority: 2 },
-    { label: "Marion", market: "Southern Illinois", coordinates: [-88.9331, 37.7306], priority: 2 },
-    { label: "Centralia", market: "Southern Illinois", coordinates: [-89.1334, 38.5250], priority: 3 },
+    {
+      label: "Chicago",
+      market: "Chicago Metro",
+      coordinates: [-87.6298, 41.8781],
+      priority: 1,
+    },
+    {
+      label: "Aurora",
+      market: "Aurora-Joliet Corridor",
+      coordinates: [-88.3201, 41.7606],
+      priority: 1,
+    },
+    {
+      label: "Joliet",
+      market: "Aurora-Joliet Corridor",
+      coordinates: [-88.0817, 41.525],
+      priority: 1,
+    },
+    {
+      label: "Naperville",
+      market: "Chicago Metro",
+      coordinates: [-88.1535, 41.7508],
+      priority: 1,
+    },
+    {
+      label: "Elgin",
+      market: "Chicago Metro",
+      coordinates: [-88.2826, 42.0354],
+      priority: 2,
+    },
+    {
+      label: "Waukegan",
+      market: "Chicago Metro",
+      coordinates: [-87.8448, 42.3636],
+      priority: 2,
+    },
+    {
+      label: "Cicero",
+      market: "Chicago Metro",
+      coordinates: [-87.7539, 41.8456],
+      priority: 2,
+    },
+    {
+      label: "Schaumburg",
+      market: "Chicago Metro",
+      coordinates: [-88.0834, 42.0334],
+      priority: 2,
+    },
+    {
+      label: "Evanston",
+      market: "Chicago Metro",
+      coordinates: [-87.6877, 42.0451],
+      priority: 2,
+    },
+    {
+      label: "Arlington Heights",
+      market: "Chicago Metro",
+      coordinates: [-87.9806, 42.0884],
+      priority: 3,
+    },
+    {
+      label: "Bolingbrook",
+      market: "Aurora-Joliet Corridor",
+      coordinates: [-88.0684, 41.6986],
+      priority: 3,
+    },
+    {
+      label: "Palatine",
+      market: "Chicago Metro",
+      coordinates: [-88.0342, 42.1103],
+      priority: 3,
+    },
+    {
+      label: "Skokie",
+      market: "Chicago Metro",
+      coordinates: [-87.7334, 42.0324],
+      priority: 3,
+    },
+    {
+      label: "Des Plaines",
+      market: "Chicago Metro",
+      coordinates: [-87.8878, 42.0334],
+      priority: 3,
+    },
+    {
+      label: "Orland Park",
+      market: "Chicago Metro",
+      coordinates: [-87.8539, 41.6303],
+      priority: 3,
+    },
+    {
+      label: "Oak Lawn",
+      market: "Chicago Metro",
+      coordinates: [-87.7581, 41.7199],
+      priority: 3,
+    },
+    {
+      label: "Kankakee",
+      market: "Kankakee-Iroquois",
+      coordinates: [-87.8612, 41.12],
+      priority: 2,
+    },
+    {
+      label: "DeKalb",
+      market: "Northwest Illinois",
+      coordinates: [-88.7504, 41.9295],
+      priority: 2,
+    },
+    {
+      label: "Crystal Lake",
+      market: "Chicago Metro",
+      coordinates: [-88.3162, 42.2411],
+      priority: 3,
+    },
+    {
+      label: "Rockford",
+      market: "Rockford Region",
+      coordinates: [-89.094, 42.2711],
+      priority: 1,
+    },
+    {
+      label: "Peoria",
+      market: "Peoria Region",
+      coordinates: [-89.589, 40.6936],
+      priority: 1,
+    },
+    {
+      label: "Springfield",
+      market: "Springfield Region",
+      coordinates: [-89.6501, 39.7817],
+      priority: 1,
+    },
+    {
+      label: "Champaign",
+      market: "Champaign-Urbana",
+      coordinates: [-88.2434, 40.1164],
+      priority: 1,
+    },
+    {
+      label: "Urbana",
+      market: "Champaign-Urbana",
+      coordinates: [-88.2073, 40.1106],
+      priority: 2,
+    },
+    {
+      label: "Bloomington",
+      market: "Bloomington-Normal",
+      coordinates: [-88.9937, 40.4842],
+      priority: 1,
+    },
+    {
+      label: "Normal",
+      market: "Bloomington-Normal",
+      coordinates: [-88.9906, 40.5142],
+      priority: 2,
+    },
+    {
+      label: "Decatur",
+      market: "Champaign-Urbana",
+      coordinates: [-88.9548, 39.8403],
+      priority: 2,
+    },
+    {
+      label: "Quincy",
+      market: "Quincy-Western Illinois",
+      coordinates: [-91.4099, 39.9356],
+      priority: 2,
+    },
+    {
+      label: "Moline",
+      market: "Quad Cities",
+      coordinates: [-90.5151, 41.5067],
+      priority: 2,
+    },
+    {
+      label: "Rock Island",
+      market: "Quad Cities",
+      coordinates: [-90.5787, 41.5095],
+      priority: 2,
+    },
+    {
+      label: "Galesburg",
+      market: "Peoria Region",
+      coordinates: [-90.3712, 40.9478],
+      priority: 3,
+    },
+    {
+      label: "Danville",
+      market: "Champaign-Urbana",
+      coordinates: [-87.63, 40.1245],
+      priority: 3,
+    },
+    {
+      label: "East St. Louis",
+      market: "Metro East",
+      coordinates: [-90.1509, 38.6245],
+      priority: 1,
+    },
+    {
+      label: "Belleville",
+      market: "Metro East",
+      coordinates: [-89.984, 38.5201],
+      priority: 2,
+    },
+    {
+      label: "Edwardsville",
+      market: "Metro East",
+      coordinates: [-89.9532, 38.8114],
+      priority: 2,
+    },
+    {
+      label: "Alton",
+      market: "Metro East",
+      coordinates: [-90.1843, 38.8906],
+      priority: 3,
+    },
+    {
+      label: "O'Fallon",
+      market: "Metro East",
+      coordinates: [-89.9112, 38.5923],
+      priority: 3,
+    },
+    {
+      label: "Carbondale",
+      market: "Southern Illinois",
+      coordinates: [-89.2168, 37.7273],
+      priority: 2,
+    },
+    {
+      label: "Marion",
+      market: "Southern Illinois",
+      coordinates: [-88.9331, 37.7306],
+      priority: 2,
+    },
+    {
+      label: "Centralia",
+      market: "Southern Illinois",
+      coordinates: [-89.1334, 38.525],
+      priority: 3,
+    },
   ],
   tennessee: [
-    { label: "Nashville", market: "Nashville Metro", coordinates: [-86.7816, 36.1627], priority: 1 },
-    { label: "Memphis", market: "Memphis Metro", coordinates: [-90.049, 35.1495], priority: 1 },
-    { label: "Knoxville", market: "Knoxville Metro", coordinates: [-83.9207, 35.9606], priority: 1 },
-    { label: "Chattanooga", market: "Chattanooga Metro", coordinates: [-85.3097, 35.0456], priority: 1 },
-    { label: "Clarksville", market: "Clarksville Region", coordinates: [-87.3595, 36.5298], priority: 1 },
-    { label: "Murfreesboro", market: "Murfreesboro-Franklin Corridor", coordinates: [-86.3903, 35.8456], priority: 1 },
-    { label: "Franklin", market: "Murfreesboro-Franklin Corridor", coordinates: [-86.8689, 35.9251], priority: 1 },
-    { label: "Hendersonville", market: "Nashville Metro", coordinates: [-86.6200, 36.3048], priority: 2 },
-    { label: "Gallatin", market: "Nashville Metro", coordinates: [-86.4467, 36.3884], priority: 2 },
-    { label: "Lebanon", market: "Nashville Metro", coordinates: [-86.2911, 36.2081], priority: 2 },
-    { label: "Smyrna", market: "Murfreesboro-Franklin Corridor", coordinates: [-86.5186, 35.9828], priority: 2 },
-    { label: "Brentwood", market: "Murfreesboro-Franklin Corridor", coordinates: [-86.7828, 36.0331], priority: 3 },
-    { label: "Columbia", market: "Columbia-Shelbyville Corridor", coordinates: [-87.0353, 35.6151], priority: 2 },
-    { label: "Spring Hill", market: "Columbia-Shelbyville Corridor", coordinates: [-86.93, 35.7512], priority: 3 },
-    { label: "Shelbyville", market: "Columbia-Shelbyville Corridor", coordinates: [-86.4603, 35.4834], priority: 3 },
-    { label: "Jackson", market: "Jackson Region", coordinates: [-88.8139, 35.6145], priority: 1 },
-    { label: "Bartlett", market: "Memphis Metro", coordinates: [-89.8739, 35.2045], priority: 2 },
-    { label: "Germantown", market: "Memphis Metro", coordinates: [-89.7930, 35.0868], priority: 2 },
-    { label: "Collierville", market: "Memphis Metro", coordinates: [-89.6645, 35.0420], priority: 2 },
-    { label: "Dyersburg", market: "Jackson Region", coordinates: [-89.3856, 36.0345], priority: 3 },
-    { label: "Union City", market: "Jackson Region", coordinates: [-89.0570, 36.4242], priority: 3 },
-    { label: "Martin", market: "Jackson Region", coordinates: [-88.8503, 36.3434], priority: 3 },
-    { label: "Paris", market: "Jackson Region", coordinates: [-88.3267, 36.3020], priority: 3 },
-    { label: "Johnson City", market: "Tri-Cities", coordinates: [-82.3535, 36.3134], priority: 1 },
-    { label: "Kingsport", market: "Tri-Cities", coordinates: [-82.5618, 36.5484], priority: 2 },
-    { label: "Bristol", market: "Tri-Cities", coordinates: [-82.1887, 36.5951], priority: 2 },
-    { label: "Morristown", market: "Tri-Cities", coordinates: [-83.2949, 36.2139], priority: 3 },
-    { label: "Greeneville", market: "Tri-Cities", coordinates: [-82.8309, 36.1632], priority: 3 },
-    { label: "Cleveland", market: "Cleveland-Athens Corridor", coordinates: [-84.8766, 35.1595], priority: 2 },
-    { label: "Athens", market: "Cleveland-Athens Corridor", coordinates: [-84.59299, 35.4429], priority: 3 },
-    { label: "Tullahoma", market: "Columbia-Shelbyville Corridor", coordinates: [-86.2094, 35.3620], priority: 3 },
-    { label: "Cookeville", market: "Cookeville-Cumberland Plateau", coordinates: [-85.5016, 36.1628], priority: 2 },
-    { label: "Crossville", market: "Cookeville-Cumberland Plateau", coordinates: [-85.0269, 35.9489], priority: 3 },
-    { label: "Maryville", market: "Knoxville Metro", coordinates: [-83.9705, 35.7565], priority: 2 },
-    { label: "Oak Ridge", market: "Knoxville Metro", coordinates: [-84.2696, 36.0104], priority: 2 },
-    { label: "Sevierville", market: "Knoxville Metro", coordinates: [-83.5618, 35.8681], priority: 3 },
-    { label: "Dickson", market: "Nashville Metro", coordinates: [-87.3878, 36.0770], priority: 3 },
+    {
+      label: "Nashville",
+      market: "Nashville Metro",
+      coordinates: [-86.7816, 36.1627],
+      priority: 1,
+    },
+    {
+      label: "Memphis",
+      market: "Memphis Metro",
+      coordinates: [-90.049, 35.1495],
+      priority: 1,
+    },
+    {
+      label: "Knoxville",
+      market: "Knoxville Metro",
+      coordinates: [-83.9207, 35.9606],
+      priority: 1,
+    },
+    {
+      label: "Chattanooga",
+      market: "Chattanooga Metro",
+      coordinates: [-85.3097, 35.0456],
+      priority: 1,
+    },
+    {
+      label: "Clarksville",
+      market: "Clarksville Region",
+      coordinates: [-87.3595, 36.5298],
+      priority: 1,
+    },
+    {
+      label: "Murfreesboro",
+      market: "Murfreesboro-Franklin Corridor",
+      coordinates: [-86.3903, 35.8456],
+      priority: 1,
+    },
+    {
+      label: "Franklin",
+      market: "Murfreesboro-Franklin Corridor",
+      coordinates: [-86.8689, 35.9251],
+      priority: 1,
+    },
+    {
+      label: "Hendersonville",
+      market: "Nashville Metro",
+      coordinates: [-86.62, 36.3048],
+      priority: 2,
+    },
+    {
+      label: "Gallatin",
+      market: "Nashville Metro",
+      coordinates: [-86.4467, 36.3884],
+      priority: 2,
+    },
+    {
+      label: "Lebanon",
+      market: "Nashville Metro",
+      coordinates: [-86.2911, 36.2081],
+      priority: 2,
+    },
+    {
+      label: "Smyrna",
+      market: "Murfreesboro-Franklin Corridor",
+      coordinates: [-86.5186, 35.9828],
+      priority: 2,
+    },
+    {
+      label: "Brentwood",
+      market: "Murfreesboro-Franklin Corridor",
+      coordinates: [-86.7828, 36.0331],
+      priority: 3,
+    },
+    {
+      label: "Columbia",
+      market: "Columbia-Shelbyville Corridor",
+      coordinates: [-87.0353, 35.6151],
+      priority: 2,
+    },
+    {
+      label: "Spring Hill",
+      market: "Columbia-Shelbyville Corridor",
+      coordinates: [-86.93, 35.7512],
+      priority: 3,
+    },
+    {
+      label: "Shelbyville",
+      market: "Columbia-Shelbyville Corridor",
+      coordinates: [-86.4603, 35.4834],
+      priority: 3,
+    },
+    {
+      label: "Jackson",
+      market: "Jackson Region",
+      coordinates: [-88.8139, 35.6145],
+      priority: 1,
+    },
+    {
+      label: "Bartlett",
+      market: "Memphis Metro",
+      coordinates: [-89.8739, 35.2045],
+      priority: 2,
+    },
+    {
+      label: "Germantown",
+      market: "Memphis Metro",
+      coordinates: [-89.793, 35.0868],
+      priority: 2,
+    },
+    {
+      label: "Collierville",
+      market: "Memphis Metro",
+      coordinates: [-89.6645, 35.042],
+      priority: 2,
+    },
+    {
+      label: "Dyersburg",
+      market: "Jackson Region",
+      coordinates: [-89.3856, 36.0345],
+      priority: 3,
+    },
+    {
+      label: "Union City",
+      market: "Jackson Region",
+      coordinates: [-89.057, 36.4242],
+      priority: 3,
+    },
+    {
+      label: "Martin",
+      market: "Jackson Region",
+      coordinates: [-88.8503, 36.3434],
+      priority: 3,
+    },
+    {
+      label: "Paris",
+      market: "Jackson Region",
+      coordinates: [-88.3267, 36.302],
+      priority: 3,
+    },
+    {
+      label: "Johnson City",
+      market: "Tri-Cities",
+      coordinates: [-82.3535, 36.3134],
+      priority: 1,
+    },
+    {
+      label: "Kingsport",
+      market: "Tri-Cities",
+      coordinates: [-82.5618, 36.5484],
+      priority: 2,
+    },
+    {
+      label: "Bristol",
+      market: "Tri-Cities",
+      coordinates: [-82.1887, 36.5951],
+      priority: 2,
+    },
+    {
+      label: "Morristown",
+      market: "Tri-Cities",
+      coordinates: [-83.2949, 36.2139],
+      priority: 3,
+    },
+    {
+      label: "Greeneville",
+      market: "Tri-Cities",
+      coordinates: [-82.8309, 36.1632],
+      priority: 3,
+    },
+    {
+      label: "Cleveland",
+      market: "Cleveland-Athens Corridor",
+      coordinates: [-84.8766, 35.1595],
+      priority: 2,
+    },
+    {
+      label: "Athens",
+      market: "Cleveland-Athens Corridor",
+      coordinates: [-84.59299, 35.4429],
+      priority: 3,
+    },
+    {
+      label: "Tullahoma",
+      market: "Columbia-Shelbyville Corridor",
+      coordinates: [-86.2094, 35.362],
+      priority: 3,
+    },
+    {
+      label: "Cookeville",
+      market: "Cookeville-Cumberland Plateau",
+      coordinates: [-85.5016, 36.1628],
+      priority: 2,
+    },
+    {
+      label: "Crossville",
+      market: "Cookeville-Cumberland Plateau",
+      coordinates: [-85.0269, 35.9489],
+      priority: 3,
+    },
+    {
+      label: "Maryville",
+      market: "Knoxville Metro",
+      coordinates: [-83.9705, 35.7565],
+      priority: 2,
+    },
+    {
+      label: "Oak Ridge",
+      market: "Knoxville Metro",
+      coordinates: [-84.2696, 36.0104],
+      priority: 2,
+    },
+    {
+      label: "Sevierville",
+      market: "Knoxville Metro",
+      coordinates: [-83.5618, 35.8681],
+      priority: 3,
+    },
+    {
+      label: "Dickson",
+      market: "Nashville Metro",
+      coordinates: [-87.3878, 36.077],
+      priority: 3,
+    },
   ],
 };
 
-function resolveCityMarket(stateKey: StateKey, countyName: string, hash: number): string {
+function resolveCityMarket(
+  stateKey: StateKey,
+  countyName: string,
+  hash: number,
+): string {
   const state = STATES[stateKey];
   const mappedMarket = CITY_MARKET_BY_STATE_AND_COUNTY[stateKey]?.[countyName];
   if (mappedMarket) return mappedMarket;
   if (CITY_MARKET_BY_STATE_AND_COUNTY[stateKey]) {
     return state.cityMarkets.at(-1) ?? `${state.label} Market`;
   }
-  return state.cityMarkets[hash % state.cityMarkets.length] ?? `${state.label} Market`;
+  return (
+    state.cityMarkets[hash % state.cityMarkets.length] ??
+    `${state.label} Market`
+  );
 }
 
-function politicalUnitForCounty(county: AtlasFeature, mode: PoliticalMode, stateKey: StateKey): PoliticalUnit {
+function politicalUnitForCounty(
+  county: AtlasFeature,
+  mode: PoliticalMode,
+  stateKey: StateKey,
+): PoliticalUnit {
   const state = STATES[stateKey];
   const countyId = normalizeId(county.id, 5);
   const countyName = county.properties?.name ?? `County ${countyId}`;
@@ -2042,7 +2724,9 @@ function politicalUnitForCounty(county: AtlasFeature, mode: PoliticalMode, state
       countyIds: [countyId],
       households,
       ...partisanFields,
-      confidence: partisanFields.partisanDataReady ? "Public Aggregate" : "Unavailable",
+      confidence: partisanFields.partisanDataReady
+        ? "Public Aggregate"
+        : "Unavailable",
     };
   }
 
@@ -2055,7 +2739,9 @@ function politicalUnitForCounty(county: AtlasFeature, mode: PoliticalMode, state
       mode,
       countyIds: [countyId],
       households: Math.round(households * 0.82),
-      ...neutralPartisanFields("ZIP coloring is neutral until USPS ZIP/ZCTA geometry is joined to source-backed aggregate election results."),
+      ...neutralPartisanFields(
+        "ZIP coloring is neutral until USPS ZIP/ZCTA geometry is joined to source-backed aggregate election results.",
+      ),
       confidence: "Estimated",
     };
   }
@@ -2069,7 +2755,9 @@ function politicalUnitForCounty(county: AtlasFeature, mode: PoliticalMode, state
       mode,
       countyIds: [countyId],
       households: Math.round(households * 0.9),
-      ...neutralPartisanFields("City/metro coloring is neutral until municipal polygons are joined to source-backed aggregate election results."),
+      ...neutralPartisanFields(
+        "City/metro coloring is neutral until municipal polygons are joined to source-backed aggregate election results.",
+      ),
       confidence: "Estimated",
     };
   }
@@ -2082,41 +2770,41 @@ function politicalUnitForCounty(county: AtlasFeature, mode: PoliticalMode, state
     mode,
     countyIds: [countyId],
     households: Math.round(households * 1.04),
-    ...neutralPartisanFields("District coloring is neutral until official district boundaries are joined to source-backed aggregate election results."),
+    ...neutralPartisanFields(
+      "District coloring is neutral until official district boundaries are joined to source-backed aggregate election results.",
+    ),
     confidence: "Estimated",
   };
 }
 
-function districtUnitId(state: (typeof STATES)[StateKey], layerKey: OfficialDistrictLayerKey, district: string) {
+function districtUnitId(
+  state: (typeof STATES)[StateKey],
+  layerKey: OfficialDistrictLayerKey,
+  district: string,
+) {
   return `${state.shortLabel}-${layerKey.replace("_", "-")}-district-${district}`;
 }
 
-function resolveActiveDistrictLayer(activePoliticalLayers: string[]): OfficialDistrictLayerKey {
-  if (activePoliticalLayers.includes("State House District")) return "state_house";
-  if (activePoliticalLayers.includes("State Senate District")) return "state_senate";
-  if (activePoliticalLayers.includes("Congressional District")) return "congressional";
+function resolveActiveDistrictLayer(
+  activePoliticalLayers: string[],
+): OfficialDistrictLayerKey {
+  if (activePoliticalLayers.includes("State House District"))
+    return "state_house";
+  if (activePoliticalLayers.includes("State Senate District"))
+    return "state_senate";
+  if (activePoliticalLayers.includes("Congressional District"))
+    return "congressional";
   return "congressional";
-}
-
-function activeLayersForMode(current: string[], nextMode: PoliticalMode) {
-  const primaryLayer = PRIMARY_POLITICAL_LAYER_BY_MODE[nextMode];
-  const hasActiveDistrictSource = current.some((layer) => Boolean(DISTRICT_LAYER_BY_LABEL[layer]));
-
-  if (nextMode === "district" && hasActiveDistrictSource) return current;
-  if (current.includes(primaryLayer)) return current;
-
-  return [
-    ...current.filter(
-      (layer) => !PRIMARY_POLITICAL_MODE_LAYERS.has(layer) && !DISTRICT_LAYER_BY_LABEL[layer],
-    ),
-    primaryLayer,
-  ];
 }
 
 function getOfficialDistrictLayer(
   stateKey: StateKey,
   layerKey: OfficialDistrictLayerKey,
-): (OfficialDistrictLayerInfo & { featureCollection: FeatureCollection<Geometry, DistrictFeatureProperties> }) | null {
+):
+  | (OfficialDistrictLayerInfo & {
+      featureCollection: FeatureCollection<Geometry, DistrictFeatureProperties>;
+    })
+  | null {
   const stateData = OFFICIAL_DISTRICT_DATA_BY_STATE[stateKey];
   const layer = stateData?.layers[layerKey];
   if (!stateData || !layer) return null;
@@ -2145,7 +2833,8 @@ function projectRing(
 ): Array<[number, number]> {
   return ring.flatMap((position) => {
     const [longitude, latitude] = position;
-    if (typeof longitude !== "number" || typeof latitude !== "number") return [];
+    if (typeof longitude !== "number" || typeof latitude !== "number")
+      return [];
 
     const projected = projection([longitude, latitude]);
     return projected ? [projected as [number, number]] : [];
@@ -2177,22 +2866,34 @@ function pointInRing(point: [number, number], ring: Array<[number, number]>) {
   let inside = false;
   const [x, y] = point;
 
-  for (let index = 0, previousIndex = ring.length - 1; index < ring.length; previousIndex = index, index += 1) {
+  for (
+    let index = 0, previousIndex = ring.length - 1;
+    index < ring.length;
+    previousIndex = index, index += 1
+  ) {
     const current = ring[index];
     const previous = ring[previousIndex];
     if (!current || !previous) continue;
 
     const [xi, yi] = current;
     const [xj, yj] = previous;
-    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi || Number.EPSILON) + xi;
+    const intersects =
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi || Number.EPSILON) + xi;
     if (intersects) inside = !inside;
   }
 
   return inside;
 }
 
-function pointInProjectedRings(point: [number, number], rings: Array<Array<[number, number]>>) {
-  return rings.reduce((inside, ring) => (pointInRing(point, ring) ? !inside : inside), false);
+function pointInProjectedRings(
+  point: [number, number],
+  rings: Array<Array<[number, number]>>,
+) {
+  return rings.reduce(
+    (inside, ring) => (pointInRing(point, ring) ? !inside : inside),
+    false,
+  );
 }
 
 function reversePolygonWinding(geometry: Geometry): Geometry {
@@ -2206,14 +2907,18 @@ function reversePolygonWinding(geometry: Geometry): Geometry {
   if (geometry.type === "MultiPolygon") {
     return {
       ...geometry,
-      coordinates: geometry.coordinates.map((polygon) => polygon.map((ring) => [...ring].reverse())),
+      coordinates: geometry.coordinates.map((polygon) =>
+        polygon.map((ring) => [...ring].reverse()),
+      ),
     };
   }
 
   return geometry;
 }
 
-function hasUsableProjectedBounds(bounds: [[number, number], [number, number]]) {
+function hasUsableProjectedBounds(
+  bounds: [[number, number], [number, number]],
+) {
   const [[minX, minY], [maxX, maxY]] = bounds;
   const values = [minX, minY, maxX, maxY];
 
@@ -2232,20 +2937,30 @@ function normalizeDistrictFeatureForProjection(
   districtFeature: Feature<Geometry, DistrictFeatureProperties>,
   path: ReturnType<typeof geoPath>,
 ) {
-  if (hasUsableProjectedBounds(path.bounds(districtFeature))) return districtFeature;
+  if (hasUsableProjectedBounds(path.bounds(districtFeature)))
+    return districtFeature;
 
   const rewoundFeature = {
     ...districtFeature,
     geometry: reversePolygonWinding(districtFeature.geometry),
   };
 
-  return hasUsableProjectedBounds(path.bounds(rewoundFeature)) ? rewoundFeature : districtFeature;
+  return hasUsableProjectedBounds(path.bounds(rewoundFeature))
+    ? rewoundFeature
+    : districtFeature;
 }
 
 function buildOfficialDistrictShapes(
   stateKey: StateKey,
   state: (typeof STATES)[StateKey],
-  layer: (OfficialDistrictLayerInfo & { featureCollection: FeatureCollection<Geometry, DistrictFeatureProperties> }) | null,
+  layer:
+    | (OfficialDistrictLayerInfo & {
+        featureCollection: FeatureCollection<
+          Geometry,
+          DistrictFeatureProperties
+        >;
+      })
+    | null,
   projection: ReturnType<typeof geoMercator>,
   path: ReturnType<typeof geoPath>,
 ): OfficialDistrictShape[] {
@@ -2253,12 +2968,20 @@ function buildOfficialDistrictShapes(
 
   return layer.featureCollection.features
     .flatMap((districtFeature) => {
-      const district = String(districtFeature.properties?.district ?? "").trim();
+      const district = String(
+        districtFeature.properties?.district ?? "",
+      ).trim();
       if (!district || !districtFeature.geometry) return [];
 
-      const projectedFeature = normalizeDistrictFeatureForProjection(districtFeature, path);
+      const projectedFeature = normalizeDistrictFeatureForProjection(
+        districtFeature,
+        path,
+      );
       const districtPath = path(projectedFeature) ?? "";
-      const projectedRings = projectedRingsForGeometry(projectedFeature.geometry, projection);
+      const projectedRings = projectedRingsForGeometry(
+        projectedFeature.geometry,
+        projection,
+      );
       if (!districtPath || projectedRings.length === 0) return [];
 
       return [
@@ -2268,9 +2991,11 @@ function buildOfficialDistrictShapes(
           district,
           label: `${state.shortLabel} ${districtLayerNoun(layer.key)} ${district}`,
           summary:
-            stateKey === "ohio" && layer.key === "congressional"
-              ? OHIO_CONGRESSIONAL_DISTRICT_SUMMARIES[district] ?? "Official congressional district boundary"
-              : districtFeature.properties?.label ?? "Official district boundary",
+            stateKey === "ohio"
+              ? (OHIO_CONGRESSIONAL_DISTRICT_SUMMARIES[district] ??
+                "Official congressional district boundary")
+              : (districtFeature.properties?.label ??
+                "Official district boundary"),
           layerKey: layer.key,
           layerLabel: layer.label,
           sourceName: layer.sourceName,
@@ -2284,8 +3009,15 @@ function buildOfficialDistrictShapes(
     .sort((a, b) => Number(a.district) - Number(b.district));
 }
 
-function officialDistrictUnitIdAtPoint(point: [number, number], districts: OfficialDistrictShape[]) {
-  return districts.find((district) => pointInProjectedRings(point, district.projectedRings))?.unitId ?? null;
+function officialDistrictUnitIdAtPoint(
+  point: [number, number],
+  districts: OfficialDistrictShape[],
+) {
+  return (
+    districts.find((district) =>
+      pointInProjectedRings(point, district.projectedRings),
+    )?.unitId ?? null
+  );
 }
 
 function buildCityMarkers(
@@ -2317,63 +3049,6 @@ function routePolygon([x, y]: [number, number], seed: number, size: number) {
   });
 
   return points.join(" ");
-}
-
-function normalizeRoutePlace(value: string | null | undefined) {
-  return (value ?? "")
-    .toLowerCase()
-    .replace(/\bcounty\b/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function routeTypeForMap(routeType: string | null): RouteUnit["routeType"] {
-  const normalized = (routeType ?? "").toLowerCase();
-  if (normalized.includes("rural") || normalized === "r" || normalized.includes("highway")) return "rural";
-  if (normalized.includes("city") || normalized === "c") return "city";
-  return "general";
-}
-
-function confidenceForImportedRoute(route: RouteCatalogRecord): DataLabel {
-  const source = (route.source ?? "").toLowerCase();
-  if (source.includes("usps") || source.includes("eddm")) return "Exact";
-  if (source.includes("vendor") || source.includes("partner") || source.includes("licensed")) return "Paid Vendor Data";
-  return "Estimated";
-}
-
-function combinedRouteConfidence(routes: RouteUnit[]): DataLabel {
-  if (routes.length === 0) return "Unavailable";
-  const weights: Record<DataLabel, number> = {
-    Exact: 6,
-    "Paid Vendor Data": 5,
-    "Public Aggregate": 4,
-    Estimated: 3,
-    "Demo/Sample": 2,
-    Unavailable: 1,
-  };
-  return routes.reduce<DataLabel>(
-    (lowest, route) => (weights[route.confidence] < weights[lowest] ? route.confidence : lowest),
-    "Exact",
-  );
-}
-
-function routeSourceStatus(catalog: RouteCatalogLoadState): RouteSourceStatus {
-  const sourceLabels = Array.from(
-    new Set(catalog.routes.map((route) => route.source).filter((source): source is string => Boolean(source))),
-  ).slice(0, 4);
-  const latestImportedAt = catalog.routes
-    .map((route) => route.importedAt)
-    .filter((date): date is string => Boolean(date))
-    .sort()
-    .at(-1) ?? null;
-
-  return {
-    status: catalog.status,
-    importedRouteCount: catalog.routes.length,
-    sourceLabels,
-    latestImportedAt,
-    note: catalog.note,
-  };
 }
 
 function formatNumber(value: number) {
@@ -2431,7 +3106,11 @@ function zoomMapViewAt(
   });
 }
 
-function colorForLean(lean: PartyLean, intensity: PoliticalUnit["intensity"], selected: boolean) {
+function colorForLean(
+  lean: PartyLean,
+  intensity: PoliticalUnit["intensity"],
+  selected: boolean,
+) {
   if (selected) {
     if (lean === "democrat") return "#2563eb";
     if (lean === "republican") return "#dc2626";
@@ -2439,17 +3118,29 @@ function colorForLean(lean: PartyLean, intensity: PoliticalUnit["intensity"], se
   }
 
   if (lean === "democrat") {
-    return intensity === "strong" ? "#93c5fd" : intensity === "medium" ? "#bfdbfe" : "#dbeafe";
+    return intensity === "strong"
+      ? "#93c5fd"
+      : intensity === "medium"
+        ? "#bfdbfe"
+        : "#dbeafe";
   }
 
   if (lean === "republican") {
-    return intensity === "strong" ? "#fca5a5" : intensity === "medium" ? "#fecaca" : "#fee2e2";
+    return intensity === "strong"
+      ? "#fca5a5"
+      : intensity === "medium"
+        ? "#fecaca"
+        : "#fee2e2";
   }
 
   return "#e5e7eb";
 }
 
-function colorForPoliticalUnit(unit: PoliticalUnit, selected: boolean, showPartisanColor: boolean) {
+function colorForPoliticalUnit(
+  unit: PoliticalUnit,
+  selected: boolean,
+  showPartisanColor: boolean,
+) {
   if (!showPartisanColor || !unit.partisanDataReady) {
     return selected ? "#f59e0b" : "#e5e7eb";
   }
@@ -2468,11 +3159,23 @@ function estimatePostcardPricing(printQuantity: number) {
     };
   }
 
-  const billablePieces = Math.max(MINIMUM_TOTAL_PIECES, Math.floor(printQuantity));
-  const pricePerPieceCents = resolvePoliticalPostcardPriceCents("local", billablePieces);
+  const billablePieces = Math.max(
+    MINIMUM_TOTAL_PIECES,
+    Math.floor(printQuantity),
+  );
+  const pricePerPieceCents = resolvePoliticalPostcardPriceCents(
+    "local",
+    billablePieces,
+  );
   const total = (billablePieces * pricePerPieceCents) / 100;
-  const printCost = (billablePieces * Math.min(POLITICAL_POSTCARD_PRINT_ESTIMATE_CENTS, pricePerPieceCents)) / 100;
-  const postage = (billablePieces * Math.min(POLITICAL_POSTCARD_POSTAGE_ESTIMATE_CENTS, pricePerPieceCents)) / 100;
+  const printCost =
+    (billablePieces *
+      Math.min(POLITICAL_POSTCARD_PRINT_ESTIMATE_CENTS, pricePerPieceCents)) /
+    100;
+  const postage =
+    (billablePieces *
+      Math.min(POLITICAL_POSTCARD_POSTAGE_ESTIMATE_CENTS, pricePerPieceCents)) /
+    100;
 
   return {
     printCost,
@@ -2485,7 +3188,10 @@ function estimatePostcardPricing(printQuantity: number) {
 
 function estimateCostForRoutes(routes: RouteUnit[], drops: number) {
   const households = routes.reduce((sum, route) => sum + route.households, 0);
-  const deliveryPoints = routes.reduce((sum, route) => sum + route.deliveryPoints, 0);
+  const deliveryPoints = routes.reduce(
+    (sum, route) => sum + route.deliveryPoints,
+    0,
+  );
   const printQuantity = households * drops;
   const pricing = estimatePostcardPricing(printQuantity);
 
@@ -2504,11 +3210,14 @@ function buildPlanReadiness(
   selectedRoutes: RouteUnit[],
   selectedUnits: PoliticalUnit[],
 ): PlanReadinessItem[] {
-  const hasRouteSelection = selectedRoutes.length > 0 || selectedUnits.length > 0;
-  const priceComplete = stats.printQuantity > 0 && stats.total > 0 && Number.isFinite(stats.total);
+  const hasRouteSelection =
+    selectedRoutes.length > 0 || selectedUnits.length > 0;
+  const priceComplete =
+    stats.printQuantity > 0 && stats.total > 0 && Number.isFinite(stats.total);
   const printComplete = stats.printCost > 0 && Number.isFinite(stats.printCost);
   const postageComplete = stats.postage > 0 && Number.isFinite(stats.postage);
-  const productionDataReady = stats.confidence === "Exact" || stats.confidence === "Paid Vendor Data";
+  const productionDataReady =
+    stats.confidence === "Exact" || stats.confidence === "Paid Vendor Data";
 
   return [
     {
@@ -2524,10 +3233,14 @@ function buildPlanReadiness(
     {
       id: "households",
       label: "Household and delivery counts greater than zero",
-      complete: stats.households > 0 && stats.deliveryPoints > 0 && stats.printQuantity > 0,
-      detail: stats.households > 0
-        ? `${formatNumber(stats.households)} households and ${formatNumber(stats.deliveryPoints)} delivery points in the preview.`
-        : "The plan needs non-zero households, delivery points, and mail pieces.",
+      complete:
+        stats.households > 0 &&
+        stats.deliveryPoints > 0 &&
+        stats.printQuantity > 0,
+      detail:
+        stats.households > 0
+          ? `${formatNumber(stats.households)} households and ${formatNumber(stats.deliveryPoints)} delivery points in the preview.`
+          : "The plan needs non-zero households, delivery points, and mail pieces.",
       blocksProposal: true,
       blocksCheckout: true,
     },
@@ -2545,7 +3258,9 @@ function buildPlanReadiness(
       id: "print",
       label: "Print estimate calculated",
       complete: printComplete,
-      detail: printComplete ? `${formatCurrency(stats.printCost)} print estimate.` : "Print estimate is missing.",
+      detail: printComplete
+        ? `${formatCurrency(stats.printCost)} print estimate.`
+        : "Print estimate is missing.",
       blocksProposal: true,
       blocksCheckout: true,
     },
@@ -2553,7 +3268,9 @@ function buildPlanReadiness(
       id: "postage",
       label: "Postage estimate calculated",
       complete: postageComplete,
-      detail: postageComplete ? `${formatCurrency(stats.postage)} postage estimate.` : "Postage estimate is missing.",
+      detail: postageComplete
+        ? `${formatCurrency(stats.postage)} postage estimate.`
+        : "Postage estimate is missing.",
       blocksProposal: true,
       blocksCheckout: true,
     },
@@ -2561,7 +3278,8 @@ function buildPlanReadiness(
       id: "campaign-contact",
       label: "Campaign and contact details collected",
       complete: false,
-      detail: "Complete the Plan tab so the proposal has candidate, race, contact, election date, and approval details.",
+      detail:
+        "Complete the Plan tab so the proposal has candidate, race, contact, election date, and approval details.",
       blocksProposal: true,
       blocksCheckout: true,
     },
@@ -2577,9 +3295,14 @@ function buildPlanReadiness(
   ];
 }
 
-function actionBlockers(readiness: PlanReadinessItem[], action: "proposal" | "checkout") {
+function actionBlockers(
+  readiness: PlanReadinessItem[],
+  action: "proposal" | "checkout",
+) {
   return readiness.filter((item) =>
-    action === "proposal" ? item.blocksProposal && !item.complete : item.blocksCheckout && !item.complete,
+    action === "proposal"
+      ? item.blocksProposal && !item.complete
+      : item.blocksCheckout && !item.complete,
   );
 }
 
@@ -2592,40 +3315,52 @@ function matchesSearch(value: string | null | undefined, query: string) {
   return Boolean(value && value.toLowerCase().includes(query));
 }
 
-function buildMapSearchHits(query: string, mapData: ReturnType<typeof buildMapData>): MapSearchHit[] {
+function buildMapSearchHits(
+  query: string,
+  mapData: ReturnType<typeof buildMapData>,
+): MapSearchHit[] {
   const normalized = query.trim().toLowerCase();
   if (normalized.length < 2) return [];
 
   const routeHits = mapData.routes
-    .filter((route) =>
-      matchesSearch(route.label, normalized) ||
-      matchesSearch(route.carrierRouteId, normalized) ||
-      matchesSearch(route.zip5, normalized) ||
-      matchesSearch(route.countyName, normalized),
+    .filter(
+      (route) =>
+        matchesSearch(route.label, normalized) ||
+        matchesSearch(route.carrierRouteId, normalized) ||
+        matchesSearch(route.zip5, normalized) ||
+        matchesSearch(route.countyName, normalized),
     )
     .slice(0, 5)
     .map<MapSearchHit>((route) => ({
       kind: "route",
       id: `route-${route.id}`,
       label: route.label,
-      detail: `${route.zip5}-${route.carrierRouteId} · ${formatNumber(route.households)} households`,
+      detail: `${route.zip5}-${route.carrierRouteId} Â· ${formatNumber(route.households)} households`,
       route,
     }));
 
   const geographyHits = Array.from(mapData.units.values())
-    .filter((unit) => matchesSearch(unit.label, normalized) || matchesSearch(unit.source, normalized))
+    .filter(
+      (unit) =>
+        matchesSearch(unit.label, normalized) ||
+        matchesSearch(unit.source, normalized),
+    )
     .slice(0, 5)
     .map<MapSearchHit>((unit) => ({
       kind: "geography",
       id: `geo-${unit.id}`,
       label: unit.label,
-      detail: `${MODE_CONFIG[unit.mode].label} · ${formatNumber(unit.households)} estimated households`,
+      detail: `${MODE_CONFIG[unit.mode].label} Â· ${formatNumber(unit.households)} estimated households`,
       unitId: unit.id,
       mode: unit.mode,
     }));
 
   const cityHits = mapData.cityMarkers
-    .filter((marker) => matchesSearch(marker.label, normalized) || matchesSearch(marker.market, normalized))
+    .filter(
+      (marker) =>
+        matchesSearch(marker.label, normalized) ||
+        matchesSearch(marker.market, normalized),
+    )
     .slice(0, 5)
     .map<MapSearchHit>((marker) => ({
       kind: "city",
@@ -2674,27 +3409,54 @@ function buildCampaignHealth(
   selectedUnits: PoliticalUnit[],
   dropCount: number,
 ): CampaignHealth {
-  const routeEfficiency = selectedRoutes.length > 0
-    ? selectedRoutes.reduce((sum, route) => sum + route.households / Math.max(1, route.deliveryPoints), 0) / selectedRoutes.length
-    : 0;
-  const costPerHousehold = stats.households > 0 ? stats.total / stats.households : 0;
+  const routeEfficiency =
+    selectedRoutes.length > 0
+      ? selectedRoutes.reduce(
+          (sum, route) =>
+            sum + route.households / Math.max(1, route.deliveryPoints),
+          0,
+        ) / selectedRoutes.length
+      : 0;
+  const costPerHousehold =
+    stats.households > 0 ? stats.total / stats.households : 0;
   const coverageScore = Math.min(34, stats.coveragePct * 0.55);
-  const cadenceScore = dropCount >= 3 ? 20 : dropCount === 2 ? 15 : dropCount === 1 && stats.households > 0 ? 8 : 0;
-  const efficiencyScore = selectedRoutes.length > 0 ? Math.min(18, routeEfficiency * 19) : 0;
-  const budgetScore = costPerHousehold > 0 ? Math.max(0, Math.min(16, 18 - costPerHousehold * 7)) : 0;
-  const dataScore = stats.confidence === "Exact"
-    ? 12
-    : stats.confidence === "Public Aggregate" || stats.confidence === "Paid Vendor Data"
-      ? 10
-      : stats.confidence === "Estimated"
-        ? 7
-        : stats.confidence === "Demo/Sample"
-          ? 4
+  const cadenceScore =
+    dropCount >= 3
+      ? 20
+      : dropCount === 2
+        ? 15
+        : dropCount === 1 && stats.households > 0
+          ? 8
           : 0;
-  const rawScore = Math.round(coverageScore + cadenceScore + efficiencyScore + budgetScore + dataScore);
+  const efficiencyScore =
+    selectedRoutes.length > 0 ? Math.min(18, routeEfficiency * 19) : 0;
+  const budgetScore =
+    costPerHousehold > 0
+      ? Math.max(0, Math.min(16, 18 - costPerHousehold * 7))
+      : 0;
+  const dataScore =
+    stats.confidence === "Exact"
+      ? 12
+      : stats.confidence === "Public Aggregate" ||
+          stats.confidence === "Paid Vendor Data"
+        ? 10
+        : stats.confidence === "Estimated"
+          ? 7
+          : stats.confidence === "Demo/Sample"
+            ? 4
+            : 0;
+  const rawScore = Math.round(
+    coverageScore + cadenceScore + efficiencyScore + budgetScore + dataScore,
+  );
   const score = Math.min(100, rawScore);
-  const tone: HealthTone = score >= 75 ? "green" : score >= 45 ? "yellow" : "red";
-  const label = tone === "green" ? "Strong" : tone === "yellow" ? "Vulnerable" : "Weak coverage";
+  const tone: HealthTone =
+    score >= 75 ? "green" : score >= 45 ? "yellow" : "red";
+  const label =
+    tone === "green"
+      ? "Strong"
+      : tone === "yellow"
+        ? "Vulnerable"
+        : "Weak coverage";
   const summary =
     selectedRoutes.length === 0
       ? "Select geography to convert the map into an executable campaign plan."
@@ -2713,7 +3475,12 @@ function buildCampaignHealth(
       {
         label: "Coverage",
         value: `${stats.coveragePct}%`,
-        tone: stats.coveragePct >= 70 ? "green" : stats.coveragePct >= 35 ? "yellow" : "red",
+        tone:
+          stats.coveragePct >= 70
+            ? "green"
+            : stats.coveragePct >= 35
+              ? "yellow"
+              : "red",
       },
       {
         label: "Drop cadence",
@@ -2722,24 +3489,46 @@ function buildCampaignHealth(
       },
       {
         label: "Route efficiency",
-        value: selectedRoutes.length > 0 ? `${Math.round(routeEfficiency * 100)}%` : "0%",
-        tone: routeEfficiency >= 0.92 ? "green" : routeEfficiency >= 0.85 ? "yellow" : "red",
+        value:
+          selectedRoutes.length > 0
+            ? `${Math.round(routeEfficiency * 100)}%`
+            : "0%",
+        tone:
+          routeEfficiency >= 0.92
+            ? "green"
+            : routeEfficiency >= 0.85
+              ? "yellow"
+              : "red",
       },
       {
         label: "Geo units",
         value: formatNumber(selectedUnits.length),
-        tone: selectedUnits.length >= 5 ? "green" : selectedUnits.length >= 2 ? "yellow" : "red",
+        tone:
+          selectedUnits.length >= 5
+            ? "green"
+            : selectedUnits.length >= 2
+              ? "yellow"
+              : "red",
       },
       {
         label: "Data readiness",
         value: stats.confidence,
-        tone: stats.confidence === "Exact" || stats.confidence === "Paid Vendor Data" ? "green" : stats.confidence === "Unavailable" ? "red" : "yellow",
+        tone:
+          stats.confidence === "Exact" ||
+          stats.confidence === "Paid Vendor Data"
+            ? "green"
+            : stats.confidence === "Unavailable"
+              ? "red"
+              : "yellow",
       },
     ],
   };
 }
 
-function buildTimeline(stats: CampaignStats, dropCount: number): TimelineItem[] {
+function buildTimeline(
+  stats: CampaignStats,
+  dropCount: number,
+): TimelineItem[] {
   const today = new Date();
   const electionDay = new Date("2026-11-03T12:00:00");
   const earlyVoting = new Date("2026-10-06T12:00:00");
@@ -2753,7 +3542,10 @@ function buildTimeline(stats: CampaignStats, dropCount: number): TimelineItem[] 
       label: "Next action",
       dateLabel: "Now",
       status: stats.households > 0 ? "ready" : "next",
-      detail: stats.households > 0 ? "Verify live USPS counts and convert this plan into a proposal." : "Select political geography or USPS routes.",
+      detail:
+        stats.households > 0
+          ? "Verify live USPS counts and convert this plan into a proposal."
+          : "Select political geography or USPS routes.",
     },
     {
       label: "Printer deadline",
@@ -2765,19 +3557,22 @@ function buildTimeline(stats: CampaignStats, dropCount: number): TimelineItem[] 
       label: "USPS prep / BMEU",
       dateLabel: formatShortDate(mailPrep),
       status: "warning",
-      detail: "Prepare bundles, trays/sacks, facing slips, and route documentation.",
+      detail:
+        "Prepare bundles, trays/sacks, facing slips, and route documentation.",
     },
     {
       label: "Estimated in-home",
       dateLabel: `${formatShortDate(inHomeStart)}-${formatShortDate(inHomeEnd)}`,
       status: "ready",
-      detail: "Marketing Mail delivery window estimate; confirm with production schedule.",
+      detail:
+        "Marketing Mail delivery window estimate; confirm with production schedule.",
     },
     {
       label: "Early voting",
       dateLabel: formatShortDate(earlyVoting),
       status: "next",
-      detail: "Recommended planning anchor for absentee and early-vote visibility.",
+      detail:
+        "Recommended planning anchor for absentee and early-vote visibility.",
     },
     {
       label: "Election Day",
@@ -2796,20 +3591,28 @@ function buildRecommendations(
   mapData: ReturnType<typeof buildMapData>,
 ): OpsRecommendation[] {
   const denseRoutes = mapData.routes
-    .filter((route) => !selectedRoutes.some((selected) => selected.id === route.id))
+    .filter(
+      (route) => !selectedRoutes.some((selected) => selected.id === route.id),
+    )
     .sort((a, b) => b.households - a.households)
     .slice(0, 4);
-  const mixedUnits = selectedUnits.filter((unit) => unit.partisanDataReady && unit.lean === "mixed").length;
-  const unvalidatedPartisanUnits = selectedUnits.filter((unit) => !unit.partisanDataReady).length;
+  const mixedUnits = selectedUnits.filter(
+    (unit) => unit.partisanDataReady && unit.lean === "mixed",
+  ).length;
+  const unvalidatedPartisanUnits = selectedUnits.filter(
+    (unit) => !unit.partisanDataReady,
+  ).length;
   const recs: OpsRecommendation[] = [];
 
   if (selectedRoutes.length === 0) {
     recs.push({
       title: "Start with the densest route bundle",
-      body: denseRoutes.length > 0
-        ? `Open with ${denseRoutes[0]?.countyName ?? "the highest-density area"} and adjacent routes to create immediate reach.`
-        : "Import USPS route data to identify the densest launch bundle.",
-      reason: "Campaigns move faster when the first plan is concrete, priced, and geographically obvious.",
+      body:
+        denseRoutes.length > 0
+          ? `Open with ${denseRoutes[0]?.countyName ?? "the highest-density area"} and adjacent routes to create immediate reach.`
+          : "Import USPS route data to identify the densest launch bundle.",
+      reason:
+        "Campaigns move faster when the first plan is concrete, priced, and geographically obvious.",
       tone: "blue",
     });
   }
@@ -2818,7 +3621,8 @@ function buildRecommendations(
     recs.push({
       title: "Close the visible coverage gap",
       body: "Add adjacent routes before proposal so the campaign sees a stronger district-wide presence.",
-      reason: "The current plan is below the coverage level most campaigns expect for a command-center proposal.",
+      reason:
+        "The current plan is below the coverage level most campaigns expect for a command-center proposal.",
       tone: "gold",
     });
   }
@@ -2827,7 +3631,8 @@ function buildRecommendations(
     recs.push({
       title: "Recommend a second mail wave",
       body: "Position this as visibility plus reinforcement instead of a one-time postcard buy.",
-      reason: "Multiple touchpoints improve message recall and increase average order value without individual voter prediction.",
+      reason:
+        "Multiple touchpoints improve message recall and increase average order value without individual voter prediction.",
       tone: "green",
     });
   }
@@ -2836,7 +3641,8 @@ function buildRecommendations(
     recs.push({
       title: "Use mixed aggregate areas as review zones",
       body: `${mixedUnits} selected geography ${mixedUnits === 1 ? "is" : "are"} gray/mixed. Review campaign-provided context before finalizing copy and cadence.`,
-      reason: "Gray areas mean aggregate data is mixed, nonpartisan, or unavailable, not that individuals are unaffiliated.",
+      reason:
+        "Gray areas mean aggregate data is mixed, nonpartisan, or unavailable, not that individuals are unaffiliated.",
       tone: "blue",
     });
   }
@@ -2845,7 +3651,8 @@ function buildRecommendations(
     recs.push({
       title: "Keep unsourced toggles neutral",
       body: `${unvalidatedPartisanUnits} selected ${unvalidatedPartisanUnits === 1 ? "area needs" : "areas need"} a validated aggregate election source before red/blue coloring is shown.`,
-      reason: "The map now avoids hash-based or demo partisan color on city, ZIP, district, and route layers.",
+      reason:
+        "The map now avoids hash-based or demo partisan color on city, ZIP, district, and route layers.",
       tone: "gold",
     });
   }
@@ -2854,7 +3661,8 @@ function buildRecommendations(
     recs.push({
       title: "Verify live USPS counts before checkout",
       body: "Use the map to sell the strategy, then replace demo route cells with official EDDM or licensed route counts for production.",
-      reason: "Production confidence depends on current USPS route and deliverable-address data.",
+      reason:
+        "Production confidence depends on current USPS route and deliverable-address data.",
       tone: "red",
     });
   }
@@ -2863,7 +3671,8 @@ function buildRecommendations(
     recs.push({
       title: "Package into a proposal",
       body: "This plan is ready for a proposal draft once data confidence is upgraded from demo/sample.",
-      reason: "Coverage, route count, and cost are clear enough for sales follow-up.",
+      reason:
+        "Coverage, route count, and cost are clear enough for sales follow-up.",
       tone: "green",
     });
   }
@@ -2879,33 +3688,56 @@ function buildLiveFeed(
 ): LiveFeedItem[] {
   return [
     {
-      label: selectedRoutes.length > 0 ? "Routes selected" : "Plan awaiting selection",
-      detail: selectedRoutes.length > 0
-        ? `${formatNumber(selectedRoutes.length)} USPS routes staged for overlap review.`
-        : "No routes selected yet.",
+      label:
+        selectedRoutes.length > 0
+          ? "Routes selected"
+          : "Plan awaiting selection",
+      detail:
+        selectedRoutes.length > 0
+          ? `${formatNumber(selectedRoutes.length)} USPS routes staged for overlap review.`
+          : "No routes selected yet.",
       tone: selectedRoutes.length > 0 ? "green" : "gold",
     },
     {
       label: "Campaign health updated",
       detail: `${health.score}/100, ${health.label.toLowerCase()}.`,
-      tone: health.tone === "green" ? "green" : health.tone === "yellow" ? "gold" : "red",
+      tone:
+        health.tone === "green"
+          ? "green"
+          : health.tone === "yellow"
+            ? "gold"
+            : "red",
     },
     {
       label: "Proposal value",
-      detail: stats.total > 0 ? `${formatCurrency(stats.total)} estimated plan value.` : "Select coverage to calculate deal value.",
+      detail:
+        stats.total > 0
+          ? `${formatCurrency(stats.total)} estimated plan value.`
+          : "Select coverage to calculate deal value.",
       tone: stats.total > 0 ? "blue" : "gold",
     },
     {
       label: "Data source status",
-      detail: stats.confidence === "Demo/Sample"
-        ? "Demo USPS routes active; production source verification required."
-        : `${stats.confidence} data active.`,
+      detail:
+        stats.confidence === "Demo/Sample"
+          ? "Demo USPS routes active; production source verification required."
+          : `${stats.confidence} data active.`,
       tone: stats.confidence === "Demo/Sample" ? "gold" : "green",
     },
     {
       label: "Save state",
-      detail: saveStatus === "database" ? "Plan stored in Supabase." : saveStatus === "local_only" || saveStatus === "error" ? "Plan stored locally until Supabase migration is live." : "No saved snapshot in this session.",
-      tone: saveStatus === "database" ? "green" : saveStatus === "idle" ? "gold" : "blue",
+      detail:
+        saveStatus === "database"
+          ? "Plan stored in Supabase."
+          : saveStatus === "local_only" || saveStatus === "error"
+            ? "Plan stored locally until Supabase migration is live."
+            : "No saved snapshot in this session.",
+      tone:
+        saveStatus === "database"
+          ? "green"
+          : saveStatus === "idle"
+            ? "gold"
+            : "blue",
     },
   ];
 }
@@ -2924,12 +3756,19 @@ function buildWhatIfOptions(
   const saturationRoutes = mapData.routes
     .sort((a, b) => b.households - a.households)
     .slice(0, Math.max(12, selectedRoutes.length));
-  const baseRoutes = selectedRoutes.length > 0 ? selectedRoutes : mapData.routes.slice(0, 6);
+  const baseRoutes =
+    selectedRoutes.length > 0 ? selectedRoutes : mapData.routes.slice(0, 6);
   const oneDrop = estimateCostForRoutes(baseRoutes, 1);
   const twoDrop = estimateCostForRoutes(baseRoutes, 2);
   const threeDrop = estimateCostForRoutes(baseRoutes, 3);
-  const gapFill = estimateCostForRoutes([...selectedRoutes, ...gapFillRoutes], dropCount || 1);
-  const saturation = estimateCostForRoutes(saturationRoutes, Math.max(dropCount, 2));
+  const gapFill = estimateCostForRoutes(
+    [...selectedRoutes, ...gapFillRoutes],
+    dropCount || 1,
+  );
+  const saturation = estimateCostForRoutes(
+    saturationRoutes,
+    Math.max(dropCount, 2),
+  );
 
   return [
     {
@@ -2989,12 +3828,18 @@ function buildMapData(
   stateKey: StateKey,
   mode: PoliticalMode,
   activeDistrictLayer: OfficialDistrictLayerKey,
-  routeCatalog: RouteCatalogRecord[] = [],
 ) {
   const state = STATES[stateKey];
-  const counties = allCounties.filter((county) => normalizeId(county.id, 5).startsWith(state.fips));
-  const selectedState = allStates.find((candidate) => normalizeId(candidate.id, 2) === state.fips);
-  const officialDistrictLayer = getOfficialDistrictLayer(stateKey, activeDistrictLayer);
+  const counties = allCounties.filter((county) =>
+    normalizeId(county.id, 5).startsWith(state.fips),
+  );
+  const selectedState = allStates.find(
+    (candidate) => normalizeId(candidate.id, 2) === state.fips,
+  );
+  const officialDistrictLayer = getOfficialDistrictLayer(
+    stateKey,
+    activeDistrictLayer,
+  );
   const fallbackGeometry = {
     type: "Feature",
     properties: {},
@@ -3016,7 +3861,13 @@ function buildMapData(
   );
   const path = geoPath(projection);
   const cityMarkers = buildCityMarkers(stateKey, projection);
-  const officialDistrictShapes = buildOfficialDistrictShapes(stateKey, state, officialDistrictLayer, projection, path);
+  const officialDistrictShapes = buildOfficialDistrictShapes(
+    stateKey,
+    state,
+    officialDistrictLayer,
+    projection,
+    path,
+  );
   const units = new Map<string, PoliticalUnit>();
   const countyRows = counties.map((county) => {
     const countyId = normalizeId(county.id, 5);
@@ -3044,70 +3895,7 @@ function buildMapData(
     };
   });
 
-  const importedRouteUsageByCounty = new Map<string, number>();
-  const importedRoutes: RouteUnit[] = routeCatalog.flatMap((route, routeIndex) => {
-    if (route.state.toUpperCase() !== state.shortLabel) return [];
-
-    const routeCounty = normalizeRoutePlace(route.county);
-    const routeCity = normalizeRoutePlace(route.city);
-    const matchedCounty =
-      countyRows.find((countyRow) => normalizeRoutePlace(countyRow.countyName) === routeCounty) ??
-      countyRows.find((countyRow) => {
-        const countyName = normalizeRoutePlace(countyRow.countyName);
-        return Boolean(routeCounty && (countyName.includes(routeCounty) || routeCounty.includes(countyName)));
-      }) ??
-      countyRows.find((countyRow) => {
-        const countyName = normalizeRoutePlace(countyRow.countyName);
-        return Boolean(routeCity && (countyName.includes(routeCity) || routeCity.includes(countyName)));
-      }) ??
-      countyRows[Math.abs(hashText(route.id || route.label || `${route.zip5}-${route.carrierRouteId}`)) % Math.max(1, countyRows.length)];
-
-    if (!matchedCounty) return [];
-
-    const usageIndex = importedRouteUsageByCounty.get(matchedCounty.countyId) ?? 0;
-    importedRouteUsageByCounty.set(matchedCounty.countyId, usageIndex + 1);
-
-    const seed = hashText(`${route.id}-${route.zip5}-${route.carrierRouteId}`);
-    const ring = Math.floor(usageIndex / 10);
-    const angle = (Math.PI * 2 * (usageIndex % 10)) / 10 + (seed % 13) * 0.04;
-    const distance = 10 + (usageIndex % 4) * 7 + ring * 3;
-    const centroid: [number, number] = [
-      matchedCounty.centroid[0] + Math.cos(angle) * distance,
-      matchedCounty.centroid[1] + Math.sin(angle) * distance,
-    ];
-    const officialDistrictUnitId =
-      officialDistrictShapes.length > 0 ? officialDistrictUnitIdAtPoint(centroid, officialDistrictShapes) : null;
-    const households = Math.max(0, Math.round(route.households));
-    const deliveryPoints = Math.max(households, Math.round(route.deliveryPoints || route.households));
-
-    return [
-      {
-        id: `imported-${route.id || `${route.state}-${route.zip5}-${route.carrierRouteId}-${routeIndex}`}`,
-        label: route.label || `${route.zip5}-${route.carrierRouteId}`,
-        countyId: matchedCounty.countyId,
-        countyName: route.county || matchedCounty.countyName,
-        zip5: route.zip5,
-        carrierRouteId: route.carrierRouteId,
-        routeType: routeTypeForMap(route.routeType),
-        households,
-        deliveryPoints,
-        polygon: routePolygon(centroid, seed, 11),
-        centroid,
-        confidence: confidenceForImportedRoute(route),
-        source: route.source,
-        importedAt: route.importedAt,
-        geometryStatus: "approximate_imported_counts" as const,
-        overlaps: {
-          county: matchedCounty.unitByMode.county.id,
-          zipcode: matchedCounty.unitByMode.zipcode.id,
-          city: matchedCounty.unitByMode.city.id,
-          district: officialDistrictUnitId ?? matchedCounty.unitByMode.district.id,
-        },
-      },
-    ];
-  });
-
-  const demoRoutes: RouteUnit[] = countyRows.flatMap((countyRow) => {
+  const routes: RouteUnit[] = countyRows.flatMap((countyRow) => {
     const routeCount = 2 + (hashText(countyRow.countyId) % 3);
     return Array.from({ length: routeCount }, (_, index) => {
       const seed = hashText(`${countyRow.countyId}-${index}`);
@@ -3118,10 +3906,14 @@ function buildMapData(
         countyRow.centroid[1] + Math.sin(angle) * distance,
       ];
       const officialDistrictUnitId =
-        officialDistrictShapes.length > 0 ? officialDistrictUnitIdAtPoint(centroid, officialDistrictShapes) : null;
+        officialDistrictShapes.length > 0
+          ? officialDistrictUnitIdAtPoint(centroid, officialDistrictShapes)
+          : null;
       const carrierRouteNumber = String((seed % 899) + 1).padStart(3, "0");
       const zip5 = `${state.zipSeed}${String(seed % 100).padStart(2, "0")}`;
-      const households = Math.round(countyHouseholds(countyRow.countyId) / routeCount);
+      const households = Math.round(
+        countyHouseholds(countyRow.countyId) / routeCount,
+      );
 
       return {
         id: `${state.shortLabel}-${countyRow.countyId}-CR${carrierRouteNumber}`,
@@ -3130,15 +3922,13 @@ function buildMapData(
         countyName: countyRow.countyName,
         zip5,
         carrierRouteId: `C${carrierRouteNumber}`,
-        routeType: seed % 4 === 0 ? "rural" : seed % 5 === 0 ? "general" : "city",
+        routeType:
+          seed % 4 === 0 ? "rural" : seed % 5 === 0 ? "general" : "city",
         households,
         deliveryPoints: Math.round(households * 1.08),
         polygon: routePolygon(centroid, seed, 13),
         centroid,
         confidence: "Demo/Sample",
-        source: "HomeReach demo route-cell generator",
-        importedAt: null,
-        geometryStatus: "demo_cell",
         overlaps: {
           county: countyRow.unitByMode.county.id,
           zipcode: countyRow.unitByMode.zipcode.id,
@@ -3148,14 +3938,20 @@ function buildMapData(
       };
     });
   });
-  const routes = importedRoutes.length > 0 ? importedRoutes : demoRoutes;
 
   if (mode === "district" && officialDistrictShapes.length > 0) {
     units.clear();
-    const routeHouseholdsByDistrict = routes.reduce((districtHouseholds, route) => {
-      districtHouseholds.set(route.overlaps.district, (districtHouseholds.get(route.overlaps.district) ?? 0) + route.households);
-      return districtHouseholds;
-    }, new Map<string, number>());
+    const routeHouseholdsByDistrict = routes.reduce(
+      (districtHouseholds, route) => {
+        districtHouseholds.set(
+          route.overlaps.district,
+          (districtHouseholds.get(route.overlaps.district) ?? 0) +
+            route.households,
+        );
+        return districtHouseholds;
+      },
+      new Map<string, number>(),
+    );
 
     for (const district of officialDistrictShapes) {
       units.set(district.unitId, {
@@ -3174,7 +3970,7 @@ function buildMapData(
 
   return {
     state,
-    statePath: selectedState ? path(selectedState) ?? "" : "",
+    statePath: selectedState ? (path(selectedState) ?? "") : "",
     counties: countyRows,
     cityMarkers,
     officialDistrictLayer,
@@ -3184,45 +3980,53 @@ function buildMapData(
   };
 }
 
-export function PoliticalInteractiveMap() {
+export function PoliticalInteractiveMap({
+  initialPlanContext = null,
+}: {
+  initialPlanContext?: PoliticalMapPlanContext | null;
+} = {}) {
   const [stateKey, setStateKey] = useState<StateKey>("ohio");
   const [mode, setMode] = useState<PoliticalMode>("county");
   const [dropCount, setDropCount] = useState(1);
   const [selectedRouteIds, setSelectedRouteIds] = useState<string[]>([]);
-  const [selectedPoliticalUnitDirectIds, setSelectedPoliticalUnitDirectIds] = useState<string[]>([]);
-  const [hoveredPoliticalId, setHoveredPoliticalId] = useState<string | null>(null);
+  const [selectedPoliticalUnitDirectIds, setSelectedPoliticalUnitDirectIds] =
+    useState<string[]>([]);
+  const [hoveredPoliticalId, setHoveredPoliticalId] = useState<string | null>(
+    null,
+  );
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
-  const [activePoliticalLayers, setActivePoliticalLayers] = useState<string[]>(["County", "Historical Vote Margin"]);
-  const [activeUspsLayers, setActiveUspsLayers] = useState<string[]>(["Carrier Route Overlay", "Deliverable Address Count"]);
+  const [activePoliticalLayers, setActivePoliticalLayers] = useState<string[]>([
+    "County",
+    "Historical Vote Margin",
+  ]);
+  const [activeUspsLayers, setActiveUspsLayers] = useState<string[]>([
+    "Carrier Route Overlay",
+    "Deliverable Address Count",
+  ]);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [warRoomOpen, setWarRoomOpen] = useState(false);
   const [mapSearch, setMapSearch] = useState("");
-  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(
+    null,
+  );
   const [proposalStatus, setProposalStatus] = useState<MapActionStatus>("idle");
   const [checkoutStatus, setCheckoutStatus] = useState<MapActionStatus>("idle");
   const [exportStatus, setExportStatus] = useState<MapActionStatus>("idle");
-  const [routeCatalog, setRouteCatalog] = useState<RouteCatalogLoadState>({
-    status: "idle",
-    routes: [],
-    note: null,
-  });
-
-  function changeMapMode(nextMode: PoliticalMode) {
-    setMode(nextMode);
-    setActivePoliticalLayers((current) => activeLayersForMode(current, nextMode));
-  }
+  const appliedPlanContextKey = useRef<string | null>(null);
 
   const activeDistrictLayer = useMemo(
     () => resolveActiveDistrictLayer(activePoliticalLayers),
     [activePoliticalLayers],
   );
   const mapData = useMemo(
-    () => buildMapData(stateKey, mode, activeDistrictLayer, routeCatalog.status === "ready" ? routeCatalog.routes : []),
-    [activeDistrictLayer, routeCatalog.routes, routeCatalog.status, stateKey, mode],
+    () => buildMapData(stateKey, mode, activeDistrictLayer),
+    [activeDistrictLayer, stateKey, mode],
   );
-  const routeSource = useMemo(() => routeSourceStatus(routeCatalog), [routeCatalog]);
-  const selectedRouteSet = useMemo(() => new Set(selectedRouteIds), [selectedRouteIds]);
+  const selectedRouteSet = useMemo(
+    () => new Set(selectedRouteIds),
+    [selectedRouteIds],
+  );
   const selectedPoliticalUnitDirectSet = useMemo(
     () => new Set(selectedPoliticalUnitDirectIds),
     [selectedPoliticalUnitDirectIds],
@@ -3232,7 +4036,11 @@ export function PoliticalInteractiveMap() {
     [mapData.routes, selectedRouteSet],
   );
   const selectedPoliticalUnitIds = useMemo(
-    () => new Set([...selectedPoliticalUnitDirectSet, ...selectedRoutes.map((route) => route.overlaps[mode])]),
+    () =>
+      new Set([
+        ...selectedPoliticalUnitDirectSet,
+        ...selectedRoutes.map((route) => route.overlaps[mode]),
+      ]),
     [mode, selectedPoliticalUnitDirectSet, selectedRoutes],
   );
   const selectedUnits = useMemo(
@@ -3244,12 +4052,24 @@ export function PoliticalInteractiveMap() {
   );
 
   const stats = useMemo<CampaignStats>(() => {
-    const households = selectedRoutes.reduce((sum, route) => sum + route.households, 0);
-    const deliveryPoints = selectedRoutes.reduce((sum, route) => sum + route.deliveryPoints, 0);
-    const totalHouseholds = Array.from(mapData.units.values()).reduce((sum, unit) => sum + unit.households, 0);
+    const households = selectedRoutes.reduce(
+      (sum, route) => sum + route.households,
+      0,
+    );
+    const deliveryPoints = selectedRoutes.reduce(
+      (sum, route) => sum + route.deliveryPoints,
+      0,
+    );
+    const totalHouseholds = Array.from(mapData.units.values()).reduce(
+      (sum, unit) => sum + unit.households,
+      0,
+    );
     const printQuantity = households * dropCount;
     const pricing = estimatePostcardPricing(printQuantity);
-    const coveragePct = totalHouseholds > 0 ? Math.round((households / totalHouseholds) * 100) : 0;
+    const coveragePct =
+      totalHouseholds > 0
+        ? Math.round((households / totalHouseholds) * 100)
+        : 0;
 
     return {
       households,
@@ -3261,16 +4081,29 @@ export function PoliticalInteractiveMap() {
       postage: pricing.postage,
       total: pricing.total,
       margin: pricing.service,
-      confidence: combinedRouteConfidence(selectedRoutes),
+      confidence:
+        selectedRoutes.length > 0
+          ? ("Demo/Sample" as DataLabel)
+          : ("Unavailable" as DataLabel),
     };
   }, [dropCount, mapData.units, selectedRoutes]);
   const health = useMemo(
     () => buildCampaignHealth(stats, selectedRoutes, selectedUnits, dropCount),
     [dropCount, selectedRoutes, selectedUnits, stats],
   );
-  const timeline = useMemo(() => buildTimeline(stats, dropCount), [dropCount, stats]);
+  const timeline = useMemo(
+    () => buildTimeline(stats, dropCount),
+    [dropCount, stats],
+  );
   const recommendations = useMemo(
-    () => buildRecommendations(stats, selectedRoutes, selectedUnits, dropCount, mapData),
+    () =>
+      buildRecommendations(
+        stats,
+        selectedRoutes,
+        selectedUnits,
+        dropCount,
+        mapData,
+      ),
     [dropCount, mapData, selectedRoutes, selectedUnits, stats],
   );
   const liveFeed = useMemo(
@@ -3285,89 +4118,83 @@ export function PoliticalInteractiveMap() {
     () => buildPlanReadiness(stats, selectedRoutes, selectedUnits),
     [selectedRoutes, selectedUnits, stats],
   );
-  const searchHits = useMemo(() => buildMapSearchHits(mapSearch, mapData), [mapData, mapSearch]);
+  const searchHits = useMemo(
+    () => buildMapSearchHits(mapSearch, mapData),
+    [mapData, mapSearch],
+  );
+  const planContextKey = useMemo(() => {
+    if (!initialPlanContext) return null;
+    return [
+      initialPlanContext.candidateId,
+      initialPlanContext.strategyId,
+      initialPlanContext.candidateName,
+      initialPlanContext.countiesIncluded?.join(","),
+      initialPlanContext.citiesIncluded?.join(","),
+      initialPlanContext.drops,
+    ].join("|");
+  }, [initialPlanContext]);
 
-  const hoveredPolitical = hoveredPoliticalId ? mapData.units.get(hoveredPoliticalId) ?? null : null;
-  const hoveredRoute = hoveredRouteId ? mapData.routes.find((route) => route.id === hoveredRouteId) ?? null : null;
-
-  useEffect(() => {
-    let cancelled = false;
-    const state = STATES[stateKey];
-    setRouteCatalog({ status: "loading", routes: [], note: "Checking imported USPS route catalog." });
-
-    fetch(`/api/political/routes/coverage?state=${state.shortLabel}&limit=250`, {
-      cache: "no-store",
-    })
-      .then((response) => response.json())
-      .then((result: {
-        ok?: boolean;
-        routes?: Array<{
-          id?: string;
-          state?: string;
-          zip5?: string;
-          carrierRouteId?: string;
-          routeType?: string | null;
-          households?: number;
-          deliveryPoints?: number;
-          county?: string | null;
-          city?: string | null;
-          source?: string | null;
-          importedAt?: string | null;
-          label?: string;
-        }>;
-        note?: string | null;
-      }) => {
-        if (cancelled) return;
-        const routes = (result.routes ?? [])
-          .filter((route) => route.state && route.zip5 && route.carrierRouteId)
-          .map<RouteCatalogRecord>((route) => {
-            const households = Math.max(0, Math.round(Number(route.households ?? 0)));
-            const deliveryPoints = Math.max(households, Math.round(Number(route.deliveryPoints ?? households)));
-
-            return {
-              id: String(route.id ?? `${route.state}-${route.zip5}-${route.carrierRouteId}`),
-              state: String(route.state ?? state.shortLabel).toUpperCase(),
-              zip5: String(route.zip5 ?? ""),
-              carrierRouteId: String(route.carrierRouteId ?? ""),
-              routeType: route.routeType ?? null,
-              households,
-              deliveryPoints,
-              county: route.county ?? null,
-              city: route.city ?? null,
-              source: route.source ?? null,
-              importedAt: route.importedAt ?? null,
-              label: String(route.label ?? `${route.zip5}-${route.carrierRouteId}`),
-            };
-          });
-
-        setRouteCatalog({
-          status: result.ok && routes.length > 0 ? "ready" : "empty",
-          routes,
-          note: result.note ?? (routes.length > 0 ? null : "No imported USPS route catalog rows were found for this state."),
-        });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRouteCatalog({
-          status: "error",
-          routes: [],
-          note: "Imported USPS route catalog could not be loaded. Demo route cells remain active.",
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [stateKey]);
-
-  useEffect(() => {
-    setSelectedRouteIds([]);
-    setHoveredRouteId(null);
-  }, [routeCatalog.status, stateKey]);
+  const hoveredPolitical = hoveredPoliticalId
+    ? (mapData.units.get(hoveredPoliticalId) ?? null)
+    : null;
+  const hoveredRoute = hoveredRouteId
+    ? (mapData.routes.find((route) => route.id === hoveredRouteId) ?? null)
+    : null;
 
   useEffect(() => {
     setSelectedPoliticalUnitDirectIds([]);
   }, [activeDistrictLayer, mode, stateKey]);
+
+  useEffect(() => {
+    if (
+      !initialPlanContext ||
+      !planContextKey ||
+      appliedPlanContextKey.current === planContextKey
+    )
+      return;
+
+    if (stateKey !== "ohio") {
+      setStateKey("ohio");
+      return;
+    }
+
+    const countyNames = new Set(
+      (initialPlanContext.countiesIncluded ?? [])
+        .map((label) =>
+          label
+            .replace(/\s+County$/i, "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    );
+    const countyUnitIds = mapData.counties
+      .filter((row) => countyNames.has(row.countyName.toLowerCase()))
+      .map((row) => row.unitByMode.county.id);
+    const countyUnitSet = new Set(countyUnitIds);
+    const routeIds = mapData.routes
+      .filter((route) => countyUnitSet.has(route.overlaps.county))
+      .map((route) => route.id);
+
+    setMode("county");
+    setSelectedPoliticalUnitDirectIds(countyUnitIds);
+    setSelectedRouteIds(routeIds);
+    setDropCount(Math.max(1, initialPlanContext.drops ?? 1));
+    setMapSearch(
+      initialPlanContext.citiesIncluded?.[0] ??
+        initialPlanContext.countiesIncluded?.[0] ??
+        "",
+    );
+    setActionFeedback({
+      tone: routeIds.length > 0 ? "success" : "warning",
+      title: `${initialPlanContext.candidateName} context loaded`,
+      body:
+        routeIds.length > 0
+          ? `${initialPlanContext.strategyTitle ?? "Selected strategy"} preselected ${countyUnitIds.length} county layers and ${routeIds.length} demo route cells. USPS route counts still require source verification.`
+          : "The candidate context loaded, but no matching Ohio county layer was found. Use search or select counties manually.",
+    });
+    appliedPlanContextKey.current = planContextKey;
+  }, [initialPlanContext, mapData, planContextKey, stateKey]);
 
   function markPlanEdited(clearFeedback = true) {
     if (clearFeedback) setActionFeedback(null);
@@ -3389,7 +4216,9 @@ export function PoliticalInteractiveMap() {
       .filter((route) => route.overlaps[selectionMode] === unitId)
       .map((route) => route.id);
     const directlySelected = selectedPoliticalUnitDirectSet.has(unitId);
-    const routesSelected = matchingRouteIds.length > 0 && matchingRouteIds.every((id) => selectedRouteSet.has(id));
+    const routesSelected =
+      matchingRouteIds.length > 0 &&
+      matchingRouteIds.every((id) => selectedRouteSet.has(id));
     const shouldDeselect = directlySelected || routesSelected;
 
     setSelectedPoliticalUnitDirectIds((current) => {
@@ -3456,11 +4285,13 @@ export function PoliticalInteractiveMap() {
       stats,
       totalCost: stats.total,
       dataConfidence: stats.confidence,
-      routeSource,
       generatedAt: new Date().toISOString(),
     };
 
-    window.localStorage.setItem("homereach:political-map-plan", JSON.stringify(snapshot));
+    window.localStorage.setItem(
+      "homereach:political-map-plan",
+      JSON.stringify(snapshot),
+    );
     setSavedAt(new Date().toLocaleTimeString());
 
     try {
@@ -3469,7 +4300,10 @@ export function PoliticalInteractiveMap() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snapshot),
       });
-      const result = await response.json().catch(() => null) as { ok?: boolean; stored?: SaveStatus } | null;
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        stored?: SaveStatus;
+      } | null;
       if (result?.ok && result.stored === "database") {
         setSaveStatus("database");
       } else {
@@ -3567,9 +4401,6 @@ export function PoliticalInteractiveMap() {
       "households",
       "delivery_points",
       "data_confidence",
-      "source",
-      "imported_at",
-      "geometry_status",
     ];
     const rows = selectedRoutes.map((route) => [
       route.id,
@@ -3579,12 +4410,15 @@ export function PoliticalInteractiveMap() {
       route.households,
       route.deliveryPoints,
       route.confidence,
-      route.source ?? "",
-      route.importedAt ?? "",
-      route.geometryStatus,
     ]);
-    const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
-    downloadTextFile("homereach-political-routes.csv", csv, "text/csv;charset=utf-8");
+    const csv = [header, ...rows]
+      .map((row) => row.map(csvEscape).join(","))
+      .join("\n");
+    downloadTextFile(
+      "homereach-political-routes.csv",
+      csv,
+      "text/csv;charset=utf-8",
+    );
     setExportStatus("success");
     setActionFeedback({
       tone: "success",
@@ -3610,11 +4444,8 @@ export function PoliticalInteractiveMap() {
       drops: dropCount,
       generatedAt: new Date().toISOString(),
       dataConfidence: stats.confidence,
-      routeSource,
       warning:
-        stats.confidence === "Demo/Sample"
-          ? "Public map summary only. Demo/sample counts are not production checkout values."
-          : "Route counts are imported, but route polygons remain approximate until licensed carrier-route geometry is loaded.",
+        "Public map summary only. Demo/sample counts are not production checkout values.",
       stats,
       selectedRoutes: selectedRoutes.map((route) => ({
         id: route.id,
@@ -3624,14 +4455,15 @@ export function PoliticalInteractiveMap() {
         households: route.households,
         deliveryPoints: route.deliveryPoints,
         confidence: route.confidence,
-        source: route.source,
-        importedAt: route.importedAt,
-        geometryStatus: route.geometryStatus,
       })),
       readiness,
     };
 
-    downloadTextFile("homereach-political-plan-summary.json", JSON.stringify(summary, null, 2), "application/json;charset=utf-8");
+    downloadTextFile(
+      "homereach-political-plan-summary.json",
+      JSON.stringify(summary, null, 2),
+      "application/json;charset=utf-8",
+    );
     setExportStatus("success");
     setActionFeedback({
       tone: "success",
@@ -3643,28 +4475,45 @@ export function PoliticalInteractiveMap() {
   function applyWhatIf(action: WhatIfAction) {
     markPlanEdited(false);
     const actionText: Record<WhatIfAction, string> = {
-      "set-drops-1": "Mail drops changed to 1. This updates the preview only and does not save a production commitment.",
-      "set-drops-2": "Mail drops changed to 2. This updates the preview only and does not save a production commitment.",
-      "set-drops-3": "Mail drops changed to 3. This updates the preview only and does not save a production commitment.",
-      "expand-gap": "Added the next highest-household demo route cells to model gap coverage. Verify USPS data before quoting.",
-      "saturate-top": "Selected the densest demo route cells and set at least 2 drops. Verify USPS data before quoting.",
+      "set-drops-1":
+        "Mail drops changed to 1. This updates the preview only and does not save a production commitment.",
+      "set-drops-2":
+        "Mail drops changed to 2. This updates the preview only and does not save a production commitment.",
+      "set-drops-3":
+        "Mail drops changed to 3. This updates the preview only and does not save a production commitment.",
+      "expand-gap":
+        "Added the next highest-household demo route cells to model gap coverage. Verify USPS data before quoting.",
+      "saturate-top":
+        "Selected the densest demo route cells and set at least 2 drops. Verify USPS data before quoting.",
     };
 
     if (action === "set-drops-1") {
       setDropCount(1);
-      setActionFeedback({ tone: "success", title: "Simulation applied", body: actionText[action] });
+      setActionFeedback({
+        tone: "success",
+        title: "Simulation applied",
+        body: actionText[action],
+      });
       return;
     }
 
     if (action === "set-drops-2") {
       setDropCount(2);
-      setActionFeedback({ tone: "success", title: "Simulation applied", body: actionText[action] });
+      setActionFeedback({
+        tone: "success",
+        title: "Simulation applied",
+        body: actionText[action],
+      });
       return;
     }
 
     if (action === "set-drops-3") {
       setDropCount(3);
-      setActionFeedback({ tone: "success", title: "Simulation applied", body: actionText[action] });
+      setActionFeedback({
+        tone: "success",
+        title: "Simulation applied",
+        body: actionText[action],
+      });
       return;
     }
 
@@ -3675,8 +4524,14 @@ export function PoliticalInteractiveMap() {
         .sort((a, b) => b.households - a.households)
         .slice(0, 5)
         .map((route) => route.id);
-      setSelectedRouteIds(Array.from(new Set([...selectedRouteIds, ...additions])));
-      setActionFeedback({ tone: "success", title: "Simulation applied", body: actionText[action] });
+      setSelectedRouteIds(
+        Array.from(new Set([...selectedRouteIds, ...additions])),
+      );
+      setActionFeedback({
+        tone: "success",
+        title: "Simulation applied",
+        body: actionText[action],
+      });
       return;
     }
 
@@ -3686,12 +4541,17 @@ export function PoliticalInteractiveMap() {
       .map((route) => route.id);
     setDropCount((current) => Math.max(current, 2));
     setSelectedRouteIds(saturationRoutes);
-    setActionFeedback({ tone: "success", title: "Simulation applied", body: actionText[action] });
+    setActionFeedback({
+      tone: "success",
+      title: "Simulation applied",
+      body: actionText[action],
+    });
   }
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#071426] text-white shadow-2xl shadow-blue-950/30">
       <TopBar
+        planContext={initialPlanContext}
         stateLabel={mapData.state.label}
         households={stats.households}
         totalCost={stats.total}
@@ -3717,7 +4577,7 @@ export function PoliticalInteractiveMap() {
           searchResults={searchHits}
           onSearchChange={setMapSearch}
           onSelectSearchHit={selectSearchHit}
-          onModeChange={changeMapMode}
+          onModeChange={setMode}
           politicalLayers={activePoliticalLayers}
           uspsLayers={activeUspsLayers}
           onTogglePolitical={(layer) => {
@@ -3725,18 +4585,24 @@ export function PoliticalInteractiveMap() {
               const isActive = current.includes(layer);
               if (DISTRICT_LAYER_BY_LABEL[layer]) {
                 const withoutDistrictLayers = current.filter(
-                  (item) => !DISTRICT_LAYER_BY_LABEL[item] && !PRIMARY_POLITICAL_MODE_LAYERS.has(item),
+                  (item) => !DISTRICT_LAYER_BY_LABEL[item],
                 );
-                return [...withoutDistrictLayers, layer];
+                return isActive
+                  ? withoutDistrictLayers
+                  : [...withoutDistrictLayers, layer];
               }
-              return isActive ? current.filter((item) => item !== layer) : [...current, layer];
+              return isActive
+                ? current.filter((item) => item !== layer)
+                : [...current, layer];
             });
             const nextMode = DISTRICT_LAYER_MODE_BY_LABEL[layer];
             if (nextMode) setMode(nextMode);
           }}
           onToggleUsps={(layer) =>
             setActiveUspsLayers((current) =>
-              current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer],
+              current.includes(layer)
+                ? current.filter((item) => item !== layer)
+                : [...current, layer],
             )
           }
         />
@@ -3759,7 +4625,6 @@ export function PoliticalInteractiveMap() {
           hoveredRoute={hoveredRoute}
           activePoliticalLayers={activePoliticalLayers}
           activeUspsLayers={activeUspsLayers}
-          routeSource={routeSource}
           onPoliticalHover={setHoveredPoliticalId}
           onRouteHover={setHoveredRouteId}
           onPoliticalSelect={selectPoliticalUnit}
@@ -3794,14 +4659,13 @@ export function PoliticalInteractiveMap() {
         onApplyWhatIf={applyWhatIf}
       />
 
-        <CampaignPlanDrawer
-          selectedRoutes={selectedRoutes}
-          stats={stats}
-          confidence={stats.confidence}
-          routeSource={routeSource}
-          readiness={readiness}
-          actionFeedback={actionFeedback}
-          exportStatus={exportStatus}
+      <CampaignPlanDrawer
+        selectedRoutes={selectedRoutes}
+        stats={stats}
+        confidence={stats.confidence}
+        readiness={readiness}
+        actionFeedback={actionFeedback}
+        exportStatus={exportStatus}
         onExportCsv={exportRoutesCsv}
         onExportSummary={exportPlanSummary}
       />
@@ -3825,7 +4689,6 @@ export function PoliticalInteractiveMap() {
           hoveredRoute={hoveredRoute}
           activePoliticalLayers={activePoliticalLayers}
           activeUspsLayers={activeUspsLayers}
-          routeSource={routeSource}
           health={health}
           stats={stats}
           timeline={timeline}
@@ -3846,6 +4709,7 @@ export function PoliticalInteractiveMap() {
 }
 
 function TopBar({
+  planContext,
   stateLabel,
   households,
   totalCost,
@@ -3862,6 +4726,7 @@ function TopBar({
   onCheckout,
   onWarRoom,
 }: {
+  planContext?: PoliticalMapPlanContext | null;
   stateLabel: string;
   households: number;
   totalCost: number;
@@ -3898,10 +4763,18 @@ function TopBar({
             Political geography synced to USPS mail execution
           </h2>
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-200">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Campaign: Demo Planning Session</span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Candidate: Not selected</span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Office: Pending intake</span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Election date: Add in plan</span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              Campaign: {planContext?.strategyTitle ?? "Demo Planning Session"}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              Candidate: {planContext?.candidateName ?? "Not selected"}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              Office: {planContext?.office ?? "Pending intake"}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              Election date: {planContext?.electionDate ?? "Add in plan"}
+            </span>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[620px]">
@@ -3927,17 +4800,33 @@ function TopBar({
           <ActionButton icon={Save} label={saveLabel} onClick={onSave} />
           <ActionButton
             icon={FileText}
-            label={proposalStatus === "working" ? "Checking proposal" : "Generate proposal"}
+            label={
+              proposalStatus === "working"
+                ? "Checking review"
+                : "Prepare review handoff"
+            }
             state={proposalStatus === "working" ? "loading" : proposalStatus}
             onClick={onProposal}
-            disabledReason={actionBlockers(readiness, "proposal").length > 0 ? "Complete the readiness checklist before proposal handoff." : undefined}
+            disabledReason={
+              actionBlockers(readiness, "proposal").length > 0
+                ? "Complete the readiness checklist before proposal handoff."
+                : undefined
+            }
           />
           <ActionButton
             icon={CreditCard}
-            label={checkoutStatus === "working" ? "Checking checkout" : "Create Stripe checkout"}
+            label={
+              checkoutStatus === "working"
+                ? "Checking checkout"
+                : "Check checkout lock"
+            }
             state={checkoutStatus === "working" ? "loading" : checkoutStatus}
             onClick={onCheckout}
-            disabledReason={actionBlockers(readiness, "checkout").length > 0 ? "Checkout requires verified production data and campaign details." : undefined}
+            disabledReason={
+              actionBlockers(readiness, "checkout").length > 0
+                ? "Checkout requires verified production data and campaign details."
+                : undefined
+            }
           />
         </div>
       </div>
@@ -3948,7 +4837,9 @@ function TopBar({
 function TopMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.06] p-3">
-      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</div>
+      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+        {label}
+      </div>
       <div className="mt-1 truncate text-lg font-black text-white">{value}</div>
     </div>
   );
@@ -3963,7 +4854,9 @@ function HealthPill({ health }: { health: CampaignHealth }) {
         : "border-red-300/30 bg-red-500/10 text-red-100";
 
   return (
-    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${tone}`}>
+    <span
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${tone}`}
+    >
       <Activity className="h-3.5 w-3.5" />
       {health.label}
     </span>
@@ -4031,8 +4924,12 @@ function LayerTogglePanel({
                     onClick={() => onSelectSearchHit(hit)}
                     className="w-full rounded-md px-2 py-2 text-left transition hover:bg-blue-500/15"
                   >
-                    <span className="block text-xs font-black text-white">{hit.label}</span>
-                    <span className="block text-[11px] leading-4 text-slate-400">{hit.detail}</span>
+                    <span className="block text-xs font-black text-white">
+                      {hit.label}
+                    </span>
+                    <span className="block text-[11px] leading-4 text-slate-400">
+                      {hit.detail}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -4046,7 +4943,9 @@ function LayerTogglePanel({
       </div>
 
       <div className="mt-4">
-        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Selection Toggle</h3>
+        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+          Selection Toggle
+        </h3>
         <div className="mt-3 grid grid-cols-2 gap-2">
           {(Object.keys(MODE_CONFIG) as PoliticalMode[]).map((key) => {
             const Icon = MODE_CONFIG[key].icon;
@@ -4055,7 +4954,6 @@ function LayerTogglePanel({
                 key={key}
                 type="button"
                 aria-pressed={mode === key}
-                data-testid={`political-mode-${key}`}
                 onClick={() => onModeChange(key)}
                 className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-black transition ${
                   mode === key
@@ -4104,7 +5002,9 @@ function ScrollableLayerGroup({
 }) {
   return (
     <div className="mt-5">
-      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{title}</h3>
+      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+        {title}
+      </h3>
       <div className="mt-3 max-h-72 space-y-4 overflow-y-auto pr-1">
         {groups.map((group) => (
           <div key={group.group}>
@@ -4138,8 +5038,12 @@ function ScrollableLayerGroup({
                     {source.url && (
                       <a
                         href={source.url}
-                        target={source.url.startsWith("/") ? undefined : "_blank"}
-                        rel={source.url.startsWith("/") ? undefined : "noreferrer"}
+                        target={
+                          source.url.startsWith("/") ? undefined : "_blank"
+                        }
+                        rel={
+                          source.url.startsWith("/") ? undefined : "noreferrer"
+                        }
                         title={`Open source: ${source.sourceName}`}
                         aria-label={`Open source for ${layer}`}
                         className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-white/10 text-slate-400 transition hover:border-blue-300/40 hover:text-blue-100"
@@ -4175,7 +5079,6 @@ function SyncedMapController({
   hoveredRoute,
   activePoliticalLayers,
   activeUspsLayers,
-  routeSource,
   onPoliticalHover,
   onRouteHover,
   onPoliticalSelect,
@@ -4192,7 +5095,6 @@ function SyncedMapController({
   hoveredRoute: RouteUnit | null;
   activePoliticalLayers: string[];
   activeUspsLayers: string[];
-  routeSource: RouteSourceStatus;
   onPoliticalHover: (id: string | null) => void;
   onRouteHover: (id: string | null) => void;
   onPoliticalSelect: (id: string) => void;
@@ -4201,8 +5103,10 @@ function SyncedMapController({
 }) {
   const [mapView, setMapView] = useState<MapViewState>(DEFAULT_MAP_VIEW);
   const viewResetKey = `${stateKey}-${mode}-${mapData.officialDistrictLayer?.key ?? "none"}`;
-  const zoomIn = () => setMapView((current) => zoomMapViewAt(current, current.scale * 1.35));
-  const zoomOut = () => setMapView((current) => zoomMapViewAt(current, current.scale / 1.35));
+  const zoomIn = () =>
+    setMapView((current) => zoomMapViewAt(current, current.scale * 1.35));
+  const zoomOut = () =>
+    setMapView((current) => zoomMapViewAt(current, current.scale / 1.35));
   const resetView = () => setMapView(DEFAULT_MAP_VIEW);
 
   useEffect(() => {
@@ -4218,7 +5122,6 @@ function SyncedMapController({
               key={key}
               type="button"
               aria-pressed={stateKey === key}
-              data-testid={`political-state-${key}`}
               onClick={() => {
                 setStateKey(key);
                 resetView();
@@ -4268,7 +5171,6 @@ function SyncedMapController({
           selectedPoliticalUnitIds={selectedPoliticalUnitIds}
           selectedRouteSet={selectedRouteSet}
           activeUspsLayers={activeUspsLayers}
-          routeSource={routeSource}
           onViewChange={setMapView}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
@@ -4281,13 +5183,23 @@ function SyncedMapController({
       <div className="grid gap-3 md:grid-cols-2">
         <HoverCard
           title="Political selection"
-          value={hoveredPolitical?.label ?? "Hover or click a political geography"}
-          detail={hoveredPolitical ? `${formatNumber(hoveredPolitical.households)} estimated households, ${hoveredPolitical.confidence}` : "Selecting an area highlights overlapping USPS routes."}
+          value={
+            hoveredPolitical?.label ?? "Hover or click a political geography"
+          }
+          detail={
+            hoveredPolitical
+              ? `${formatNumber(hoveredPolitical.households)} estimated households, ${hoveredPolitical.confidence}`
+              : "Selecting an area highlights overlapping USPS routes."
+          }
         />
         <HoverCard
           title="USPS route"
           value={hoveredRoute?.label ?? "Hover or click a carrier route"}
-          detail={hoveredRoute ? `${formatNumber(hoveredRoute.deliveryPoints)} delivery points in ${hoveredRoute.countyName}` : "Selecting a route highlights its matching political geography."}
+          detail={
+            hoveredRoute
+              ? `${formatNumber(hoveredRoute.deliveryPoints)} delivery points in ${hoveredRoute.countyName}`
+              : "Selecting a route highlights its matching political geography."
+          }
         />
       </div>
     </main>
@@ -4314,9 +5226,11 @@ function OperationalCommandDeck({
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-red-200">
-            Political Mail Command Center
+            PoliticalReach Mail Command Center
           </p>
-          <h3 className="mt-1 text-xl font-black text-white">Operational intelligence</h3>
+          <h3 className="mt-1 text-xl font-black text-white">
+            Operational intelligence
+          </h3>
         </div>
         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-100">
           <Radio className="h-3.5 w-3.5" />
@@ -4346,18 +5260,24 @@ function CampaignHealthPanel({ health }: { health: CampaignHealth }) {
         : "border-red-300/25 bg-red-500/10";
 
   return (
-    <section className={`rounded-2xl border p-4 shadow-xl shadow-slate-950/30 ${tone}`}>
+    <section
+      className={`rounded-2xl border p-4 shadow-xl shadow-slate-950/30 ${tone}`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-sm font-black text-white">
             <BarChart3 className="h-4 w-4 text-blue-200" />
             Campaign Health Score
           </div>
-          <p className="mt-2 text-sm leading-6 text-slate-300">{health.summary}</p>
+          <p className="mt-2 text-sm leading-6 text-slate-300">
+            {health.summary}
+          </p>
         </div>
         <div className="text-right">
           <div className="text-4xl font-black text-white">{health.score}</div>
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">of 100</div>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+            of 100
+          </div>
         </div>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -4369,7 +5289,11 @@ function CampaignHealthPanel({ health }: { health: CampaignHealth }) {
   );
 }
 
-function HealthFactor({ factor }: { factor: CampaignHealth["factors"][number] }) {
+function HealthFactor({
+  factor,
+}: {
+  factor: CampaignHealth["factors"][number];
+}) {
   const tone =
     factor.tone === "green"
       ? "bg-emerald-400"
@@ -4380,7 +5304,9 @@ function HealthFactor({ factor }: { factor: CampaignHealth["factors"][number] })
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/60 p-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{factor.label}</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+          {factor.label}
+        </span>
         <span className={`h-2.5 w-2.5 rounded-full ${tone}`} />
       </div>
       <div className="mt-1 text-sm font-black text-white">{factor.value}</div>
@@ -4399,13 +5325,21 @@ function TimelinePanel({ timeline }: { timeline: TimelineItem[] }) {
         {timeline.map((item) => (
           <div key={item.label} className="grid grid-cols-[88px_1fr] gap-3">
             <div className="text-right">
-              <div className="text-xs font-black text-white">{item.dateLabel}</div>
-              <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">{item.status}</div>
+              <div className="text-xs font-black text-white">
+                {item.dateLabel}
+              </div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                {item.status}
+              </div>
             </div>
             <div className="relative border-l border-white/10 pl-4">
-              <span className={`absolute -left-1.5 top-1 h-3 w-3 rounded-full ${item.status === "ready" ? "bg-emerald-300" : item.status === "warning" ? "bg-amber-300" : "bg-blue-300"}`} />
+              <span
+                className={`absolute -left-1.5 top-1 h-3 w-3 rounded-full ${item.status === "ready" ? "bg-emerald-300" : item.status === "warning" ? "bg-amber-300" : "bg-blue-300"}`}
+              />
               <div className="text-sm font-black text-white">{item.label}</div>
-              <p className="mt-1 text-xs leading-5 text-slate-400">{item.detail}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                {item.detail}
+              </p>
             </div>
           </div>
         ))}
@@ -4414,7 +5348,11 @@ function TimelinePanel({ timeline }: { timeline: TimelineItem[] }) {
   );
 }
 
-function AiDirectorPanel({ recommendations }: { recommendations: OpsRecommendation[] }) {
+function AiDirectorPanel({
+  recommendations,
+}: {
+  recommendations: OpsRecommendation[];
+}) {
   return (
     <section className="rounded-2xl border border-white/10 bg-slate-950/80 p-4 shadow-xl shadow-slate-950/30">
       <div className="flex items-center gap-2 text-sm font-black text-white">
@@ -4427,14 +5365,19 @@ function AiDirectorPanel({ recommendations }: { recommendations: OpsRecommendati
         ))}
       </div>
       <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-xs leading-5 text-slate-400">
-        Recommendations use geography, aggregate context, route density, timing, and cost only. No individual ideology,
-        persuasion, or turnout prediction is created.
+        Recommendations use geography, aggregate context, route density, timing,
+        and cost only. No individual ideology, persuasion, or turnout prediction
+        is created.
       </p>
     </section>
   );
 }
 
-function RecommendationCard({ recommendation }: { recommendation: OpsRecommendation }) {
+function RecommendationCard({
+  recommendation,
+}: {
+  recommendation: OpsRecommendation;
+}) {
   const tone =
     recommendation.tone === "green"
       ? "border-emerald-300/20 bg-emerald-500/10"
@@ -4446,9 +5389,15 @@ function RecommendationCard({ recommendation }: { recommendation: OpsRecommendat
 
   return (
     <article className={`rounded-xl border p-3 ${tone}`}>
-      <div className="text-sm font-black text-white">{recommendation.title}</div>
-      <p className="mt-1 text-sm leading-5 text-slate-300">{recommendation.body}</p>
-      <p className="mt-2 text-xs leading-5 text-slate-500">Why: {recommendation.reason}</p>
+      <div className="text-sm font-black text-white">
+        {recommendation.title}
+      </div>
+      <p className="mt-1 text-sm leading-5 text-slate-300">
+        {recommendation.body}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        Why: {recommendation.reason}
+      </p>
     </article>
   );
 }
@@ -4510,21 +5459,33 @@ function WhatIfSimulator({
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 2xl:grid-cols-5">
         {options.map((option) => (
-          <article key={option.label} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+          <article
+            key={option.label}
+            className="rounded-xl border border-white/10 bg-white/[0.04] p-3"
+          >
             <div className="text-sm font-black text-white">{option.label}</div>
-            <p className="mt-1 min-h-10 text-xs leading-5 text-slate-400">{option.detail}</p>
+            <p className="mt-1 min-h-10 text-xs leading-5 text-slate-400">
+              {option.detail}
+            </p>
             <div className="mt-3 space-y-1 text-xs text-slate-300">
               <div className="flex justify-between gap-3">
                 <span>Pieces</span>
-                <strong className="text-white">{formatNumber(option.printQuantity)}</strong>
+                <strong className="text-white">
+                  {formatNumber(option.printQuantity)}
+                </strong>
               </div>
               <div className="flex justify-between gap-3">
                 <span>Households</span>
-                <strong className="text-white">{option.householdDelta >= 0 ? "+" : ""}{formatNumber(option.householdDelta)}</strong>
+                <strong className="text-white">
+                  {option.householdDelta >= 0 ? "+" : ""}
+                  {formatNumber(option.householdDelta)}
+                </strong>
               </div>
               <div className="flex justify-between gap-3">
                 <span>Total</span>
-                <strong className="text-white">{formatCurrency(option.total)}</strong>
+                <strong className="text-white">
+                  {formatCurrency(option.total)}
+                </strong>
               </div>
             </div>
             <button
@@ -4552,7 +5513,6 @@ function WarRoomOverlay({
   hoveredRoute,
   activePoliticalLayers,
   activeUspsLayers,
-  routeSource,
   health,
   stats,
   timeline,
@@ -4577,7 +5537,6 @@ function WarRoomOverlay({
   hoveredRoute: RouteUnit | null;
   activePoliticalLayers: string[];
   activeUspsLayers: string[];
-  routeSource: RouteSourceStatus;
   health: CampaignHealth;
   stats: CampaignStats;
   timeline: TimelineItem[];
@@ -4607,7 +5566,10 @@ function WarRoomOverlay({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <TopMetric label="Health" value={`${health.score}/100`} />
-              <TopMetric label="Households" value={formatNumber(stats.households)} />
+              <TopMetric
+                label="Households"
+                value={formatNumber(stats.households)}
+              />
               <TopMetric label="Estimate" value={formatCurrency(stats.total)} />
               <button
                 type="button"
@@ -4633,7 +5595,6 @@ function WarRoomOverlay({
             hoveredRoute={hoveredRoute}
             activePoliticalLayers={activePoliticalLayers}
             activeUspsLayers={activeUspsLayers}
-            routeSource={routeSource}
             onPoliticalHover={onPoliticalHover}
             onRouteHover={onRouteHover}
             onPoliticalSelect={onPoliticalSelect}
@@ -4682,9 +5643,14 @@ function PoliticalMap({
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
 }) {
-  const showPartisanLayer = activePoliticalLayers.some((layer) => layer.includes("Historical") || layer.includes("Party"));
-  const hasSourcedPartisanColor = showPartisanLayer && Array.from(mapData.units.values()).some((unit) => unit.partisanDataReady);
-  const hasOfficialDistrictLayer = mode === "district" && mapData.officialDistrictShapes.length > 0;
+  const showPartisanLayer = activePoliticalLayers.some(
+    (layer) => layer.includes("Historical") || layer.includes("Party"),
+  );
+  const hasSourcedPartisanColor =
+    showPartisanLayer &&
+    Array.from(mapData.units.values()).some((unit) => unit.partisanDataReady);
+  const hasOfficialDistrictLayer =
+    mode === "district" && mapData.officialDistrictShapes.length > 0;
   const districtLayer = mapData.officialDistrictLayer;
 
   return (
@@ -4697,7 +5663,13 @@ function PoliticalMap({
             ? `${MODE_CONFIG[mode].label} layer colored from source-backed 2024 county presidential aggregates`
             : `${MODE_CONFIG[mode].label} layer with neutral coloring until this toggle has a validated partisan source`
       }
-      badge={hasSourcedPartisanColor ? "2024 sourced" : hasOfficialDistrictLayer ? "Boundary only" : "Neutral"}
+      badge={
+        hasSourcedPartisanColor
+          ? "2024 sourced"
+          : hasOfficialDistrictLayer
+            ? "Boundary only"
+            : "Neutral"
+      }
       icon={Flag}
       mapView={mapView}
       onZoomIn={onZoomIn}
@@ -4712,120 +5684,141 @@ function PoliticalMap({
       >
         {({ shouldSuppressClick }) => (
           <>
-            <path d={mapData.statePath} fill="#f8fafc" stroke="#ffffff" strokeWidth={5} />
-            {hasOfficialDistrictLayer
-              ? (
-                  <>
-                    {mapData.counties.map((row) => (
-                      <path
-                        key={row.countyId}
-                        d={row.path}
-                        fill="none"
-                        stroke="#94a3b8"
-                        strokeWidth={0.45}
-                        opacity={0.42}
-                        pointerEvents="none"
-                      />
-                    ))}
-                    {mapData.officialDistrictShapes.map((district) => {
-                      const unit = mapData.units.get(district.unitId);
-                      const selected = selectedPoliticalUnitIds.has(district.unitId);
-                      const synced = mapData.routes.some(
-                        (route) => route.overlaps.district === district.unitId && selectedRouteSet.has(route.id),
-                      );
-                      const fill = unit
-                        ? colorForPoliticalUnit(unit, selected || synced, showPartisanLayer)
-                        : selected || synced
-                          ? "#f59e0b"
-                          : "#eef2f7";
-
-                      return (
-                        <g key={district.id}>
-                          <path
-                            d={district.path}
-                            fill={fill}
-                            stroke={selected || synced ? "#ffffff" : "#111827"}
-                            strokeWidth={selected || synced ? 2.6 : 1.35}
-                            opacity={selected || synced ? 0.98 : 0.92}
-                            pointerEvents="all"
-                            className="cursor-pointer transition hover:opacity-100"
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (shouldSuppressClick()) return;
-                              onSelect(district.unitId);
-                            }}
-                            onMouseEnter={() => onHover(district.unitId)}
-                            onMouseLeave={() => onHover(null)}
-                          >
-                            <title>{`${district.label} - ${district.summary}. ${unit?.source ?? ""}`}</title>
-                          </path>
-                          <text
-                            x={district.centroid[0]}
-                            y={district.centroid[1]}
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            paintOrder="stroke"
-                            stroke="#0f172a"
-                            strokeWidth={4}
-                            fill="#ffffff"
-                            fontSize={20}
-                            fontWeight={900}
-                            pointerEvents="none"
-                          >
-                            {district.district}
-                          </text>
-                        </g>
-                      );
-                    })}
-                    <path
-                      d={mapData.statePath}
-                      fill="none"
-                      stroke="#020617"
-                      strokeWidth={2.6}
-                      pointerEvents="none"
-                    />
-                  </>
-                )
-              : mapData.counties.map((row) => {
-                  const unit = mapData.units.get(row.unitId);
-                  const selected = selectedPoliticalUnitIds.has(row.unitId);
-                  const synced = mapData.routes.some((route) => route.countyId === row.countyId && selectedRouteSet.has(route.id));
+            <path
+              d={mapData.statePath}
+              fill="#f8fafc"
+              stroke="#ffffff"
+              strokeWidth={5}
+            />
+            {hasOfficialDistrictLayer ? (
+              <>
+                {mapData.counties.map((row) => (
+                  <path
+                    key={row.countyId}
+                    d={row.path}
+                    fill="none"
+                    stroke="#94a3b8"
+                    strokeWidth={0.45}
+                    opacity={0.42}
+                    pointerEvents="none"
+                  />
+                ))}
+                {mapData.officialDistrictShapes.map((district) => {
+                  const unit = mapData.units.get(district.unitId);
+                  const selected = selectedPoliticalUnitIds.has(
+                    district.unitId,
+                  );
+                  const synced = mapData.routes.some(
+                    (route) =>
+                      route.overlaps.district === district.unitId &&
+                      selectedRouteSet.has(route.id),
+                  );
                   const fill = unit
-                    ? colorForPoliticalUnit(unit, selected || synced, showPartisanLayer)
+                    ? colorForPoliticalUnit(
+                        unit,
+                        selected || synced,
+                        showPartisanLayer,
+                      )
                     : selected || synced
                       ? "#f59e0b"
                       : "#eef2f7";
 
                   return (
-                    <path
-                      key={row.countyId}
-                      d={row.path}
-                      fill={fill}
-                      stroke={selected || synced ? "#ffffff" : "#cbd5e1"}
-                      strokeWidth={selected || synced ? 2 : 0.9}
-                      opacity={selected || synced ? 0.96 : 0.9}
-                      pointerEvents="all"
-                      className="cursor-pointer transition hover:opacity-100"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (shouldSuppressClick()) return;
-                        onSelect(row.unitId);
-                      }}
-                      onMouseEnter={() => onHover(row.unitId)}
-                      onMouseLeave={() => onHover(null)}
-                    >
-                      <title>{unit ? `${unit.label}. ${unit.source}` : row.countyName}</title>
-                    </path>
+                    <g key={district.id}>
+                      <path
+                        d={district.path}
+                        fill={fill}
+                        stroke={selected || synced ? "#ffffff" : "#111827"}
+                        strokeWidth={selected || synced ? 2.6 : 1.35}
+                        opacity={selected || synced ? 0.98 : 0.92}
+                        pointerEvents="all"
+                        className="cursor-pointer transition hover:opacity-100"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (shouldSuppressClick()) return;
+                          onSelect(district.unitId);
+                        }}
+                        onMouseEnter={() => onHover(district.unitId)}
+                        onMouseLeave={() => onHover(null)}
+                      >
+                        <title>{`${district.label} - ${district.summary}. ${unit?.source ?? ""}`}</title>
+                      </path>
+                      <text
+                        x={district.centroid[0]}
+                        y={district.centroid[1]}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        paintOrder="stroke"
+                        stroke="#0f172a"
+                        strokeWidth={4}
+                        fill="#ffffff"
+                        fontSize={20}
+                        fontWeight={900}
+                        pointerEvents="none"
+                      >
+                        {district.district}
+                      </text>
+                    </g>
                   );
                 })}
+                <path
+                  d={mapData.statePath}
+                  fill="none"
+                  stroke="#020617"
+                  strokeWidth={2.6}
+                  pointerEvents="none"
+                />
+              </>
+            ) : (
+              mapData.counties.map((row) => {
+                const unit = mapData.units.get(row.unitId);
+                const selected = selectedPoliticalUnitIds.has(row.unitId);
+                const synced = mapData.routes.some(
+                  (route) =>
+                    route.countyId === row.countyId &&
+                    selectedRouteSet.has(route.id),
+                );
+                const fill = unit
+                  ? colorForPoliticalUnit(
+                      unit,
+                      selected || synced,
+                      showPartisanLayer,
+                    )
+                  : selected || synced
+                    ? "#f59e0b"
+                    : "#eef2f7";
+
+                return (
+                  <path
+                    key={row.countyId}
+                    d={row.path}
+                    fill={fill}
+                    stroke={selected || synced ? "#ffffff" : "#cbd5e1"}
+                    strokeWidth={selected || synced ? 2 : 0.9}
+                    opacity={selected || synced ? 0.96 : 0.9}
+                    pointerEvents="all"
+                    className="cursor-pointer transition hover:opacity-100"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (shouldSuppressClick()) return;
+                      onSelect(row.unitId);
+                    }}
+                    onMouseEnter={() => onHover(row.unitId)}
+                    onMouseLeave={() => onHover(null)}
+                  >
+                    <title>{unit ? `${unit.label}. ${unit.source}` : row.countyName}</title>
+                  </path>
+                );
+              })
+            )}
             {mode === "city" &&
               mapData.cityMarkers.map((marker) => {
                 const unit = mapData.units.get(marker.unitId);
                 const selected = selectedPoliticalUnitIds.has(marker.unitId);
                 const showLabel = marker.priority <= 2 || mapView.scale >= 2;
-                const markerFill = unit ? colorForPoliticalUnit(unit, selected, showPartisanLayer) : "#f8fafc";
+                const markerFill = unit
+                  ? colorForPoliticalUnit(unit, selected, showPartisanLayer)
+                  : "#f8fafc";
                 const [x, y] = marker.position;
 
                 return (
@@ -4833,7 +5826,6 @@ function PoliticalMap({
                     key={marker.id}
                     transform={`translate(${x},${y})`}
                     className="cursor-pointer"
-                    onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (shouldSuppressClick()) return;
@@ -4879,6 +5871,14 @@ function PoliticalMap({
         )}
       </InteractiveMapSvg>
       <MapLegend hasSourcedPartisanColor={hasSourcedPartisanColor} />
+      {mode !== "city" && !hasOfficialDistrictLayer && (
+        <GeographyCoverageIndex
+          mode={mode}
+          units={Array.from(mapData.units.values())}
+          selectedPoliticalUnitIds={selectedPoliticalUnitIds}
+          onSelect={onSelect}
+        />
+      )}
       {mode === "city" && (
         <CityCoverageIndex
           markers={mapData.cityMarkers}
@@ -4905,7 +5905,6 @@ function USPSMap({
   selectedPoliticalUnitIds,
   selectedRouteSet,
   activeUspsLayers,
-  routeSource,
   onViewChange,
   onZoomIn,
   onZoomOut,
@@ -4919,7 +5918,6 @@ function USPSMap({
   selectedPoliticalUnitIds: Set<string>;
   selectedRouteSet: Set<string>;
   activeUspsLayers: string[];
-  routeSource: RouteSourceStatus;
   onViewChange: (view: MapViewState) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -4927,24 +5925,15 @@ function USPSMap({
   onHover: (id: string | null) => void;
   onSelect: (route: RouteUnit) => void;
 }) {
-  const showRoutes = activeUspsLayers.includes("Carrier Route Overlay") || activeUspsLayers.includes("EDDM Route Overlay");
-  const hasImportedRoutes = routeSource.status === "ready" && routeSource.importedRouteCount > 0;
-  const latestImportLabel = routeSource.latestImportedAt
-    ? new Date(routeSource.latestImportedAt).toLocaleDateString()
-    : null;
-  const sourceLabel = routeSource.sourceLabels.length > 0 ? routeSource.sourceLabels.join(", ") : "No imported source";
+  const showRoutes =
+    activeUspsLayers.includes("Carrier Route Overlay") ||
+    activeUspsLayers.includes("EDDM Route Overlay");
 
   return (
     <MapContainer
       title="USPS Mail Execution Map"
-      subtitle={
-        hasImportedRoutes
-          ? `${formatNumber(routeSource.importedRouteCount)} imported USPS route-count rows loaded. Visual cells remain approximate until licensed polygons are imported.`
-          : routeSource.status === "loading"
-            ? "Checking imported USPS route catalog before falling back to demo planning cells."
-            : "Demo carrier-route cells synchronized to political geography selection"
-      }
-      badge={hasImportedRoutes ? "USPS counts loaded" : "Demo, not USPS boundaries"}
+      subtitle="Demo carrier-route cells synchronized to political geography selection"
+      badge="Demo, not USPS boundaries"
       icon={Mail}
       mapView={mapView}
       onZoomIn={onZoomIn}
@@ -4959,25 +5948,41 @@ function USPSMap({
       >
         {({ shouldSuppressClick }) => (
           <>
-            <path d={mapData.statePath} fill="#f1f5f9" stroke="#ffffff" strokeWidth={5} opacity={0.95} />
+            <path
+              d={mapData.statePath}
+              fill="#f1f5f9"
+              stroke="#ffffff"
+              strokeWidth={5}
+              opacity={0.95}
+            />
             {mapData.counties.map((row) => (
-              <path key={row.countyId} d={row.path} fill="#f8fafc" stroke="#cbd5e1" strokeWidth={0.8} opacity={0.42} />
+              <path
+                key={row.countyId}
+                d={row.path}
+                fill="#f8fafc"
+                stroke="#cbd5e1"
+                strokeWidth={0.8}
+                opacity={0.42}
+              />
             ))}
             {showRoutes &&
               mapData.routes.map((route) => {
                 const selected = selectedRouteSet.has(route.id);
-                const synced = selectedPoliticalUnitIds.has(route.overlaps[mode]);
+                const synced = selectedPoliticalUnitIds.has(
+                  route.overlaps[mode],
+                );
                 return (
                   <polygon
                     key={route.id}
                     points={route.polygon}
                     fill={selected ? "#f59e0b" : synced ? "#38bdf8" : "#e0f2fe"}
-                    stroke={selected ? "#fff7ed" : synced ? "#bae6fd" : "#0f172a"}
+                    stroke={
+                      selected ? "#fff7ed" : synced ? "#bae6fd" : "#0f172a"
+                    }
                     strokeWidth={selected || synced ? 2.2 : 0.8}
                     opacity={selected || synced ? 0.96 : 0.78}
                     pointerEvents="all"
                     className="cursor-pointer transition hover:opacity-100"
-                    onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (shouldSuppressClick()) return;
@@ -4986,11 +5991,7 @@ function USPSMap({
                     onMouseEnter={() => onHover(route.id)}
                     onMouseLeave={() => onHover(null)}
                   >
-                    <title>
-                      {hasImportedRoutes
-                        ? `${route.label} - ${formatNumber(route.deliveryPoints)} delivery points from ${route.source ?? "imported route catalog"}${route.importedAt ? `, imported ${new Date(route.importedAt).toLocaleDateString()}` : ""}. Geometry is approximate until licensed polygons are loaded.`
-                        : `${route.label} - demo/sample planning cell`}
-                    </title>
+                    <title>{route.label}</title>
                   </polygon>
                 );
               })}
@@ -4998,33 +5999,20 @@ function USPSMap({
         )}
       </InteractiveMapSvg>
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-bold">
-        <LegendChip color="#f59e0b" label={hasImportedRoutes ? "Selected route count" : "Selected demo cell"} />
-        <LegendChip color="#38bdf8" label={hasImportedRoutes ? "Synced imported count" : "Synced demo cell"} />
-        <LegendChip color="#e0f2fe" label={hasImportedRoutes ? "Approx route cell" : "Demo cell"} />
+        <LegendChip color="#f59e0b" label="Selected demo cell" />
+        <LegendChip color="#38bdf8" label="Synced demo cell" />
+        <LegendChip color="#e0f2fe" label="Demo cell" />
       </div>
-      <div
-        className={`mt-3 rounded-xl border p-3 text-xs leading-5 ${
-          hasImportedRoutes
-            ? "border-blue-300/20 bg-blue-500/10 text-blue-100/85"
-            : "border-amber-300/20 bg-amber-500/10 text-amber-100/85"
-        }`}
-      >
-        <div className={`flex items-center gap-2 font-black ${hasImportedRoutes ? "text-blue-100" : "text-amber-100"}`}>
-          {hasImportedRoutes ? <Database className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-          {hasImportedRoutes ? "USPS route counts loaded" : "Route geometry is demo/sample"}
+      <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100/85">
+        <div className="flex items-center gap-2 font-black text-amber-100">
+          <AlertTriangle className="h-4 w-4" />
+          Route geometry is demo/sample
         </div>
-        {hasImportedRoutes ? (
-          <p className="mt-1">
-            Counts are coming from {sourceLabel}
-            {latestImportLabel ? `, last imported ${latestImportLabel}` : ""}. The map draws approximate cells because
-            production carrier-route boundary polygons are a separate licensed import.
-          </p>
-        ) : (
-          <p className="mt-1">
-            These cells are planning placeholders. Production mail counts must use USPS EDDM or licensed carrier-route
-            polygons, deliverable address counts, and exclusions before quoting or checkout.
-          </p>
-        )}
+        <p className="mt-1">
+          These cells are planning placeholders. Production mail counts must use
+          USPS EDDM or licensed carrier-route polygons, deliverable address
+          counts, and exclusions before quoting or checkout.
+        </p>
       </div>
     </MapContainer>
   );
@@ -5169,7 +6157,9 @@ function InteractiveMapSvg({
       clampMapView({
         ...drag.startView,
         x: drag.startView.x - deltaX * (visibleWidth / Math.max(1, rect.width)),
-        y: drag.startView.y - deltaY * (visibleHeight / Math.max(1, rect.height)),
+        y:
+          drag.startView.y -
+          deltaY * (visibleHeight / Math.max(1, rect.height)),
       }),
     );
   }
@@ -5262,18 +6252,32 @@ function SelectionSummaryPanel({
           <Database className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Selected Areas</p>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+            Selected Areas
+          </p>
           <h3 className="text-lg font-black text-white">Plan summary</h3>
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <Metric label="Political units" value={formatNumber(selectedUnits.length)} />
-        <Metric label="USPS routes" value={formatNumber(selectedRoutes.length)} />
+        <Metric
+          label="Political units"
+          value={formatNumber(selectedUnits.length)}
+        />
+        <Metric
+          label="USPS routes"
+          value={formatNumber(selectedRoutes.length)}
+        />
         <Metric label="Households" value={formatNumber(stats.households)} />
-        <Metric label="Delivery points" value={formatNumber(stats.deliveryPoints)} />
+        <Metric
+          label="Delivery points"
+          value={formatNumber(stats.deliveryPoints)}
+        />
         <Metric label="Mail pieces" value={formatNumber(stats.printQuantity)} />
-        <Metric label="Per postcard" value={formatPerPostcard(stats.total, stats.printQuantity)} />
+        <Metric
+          label="Per postcard"
+          value={formatPerPostcard(stats.total, stats.printQuantity)}
+        />
         <Metric label="Coverage" value={`${stats.coveragePct}%`} />
       </div>
 
@@ -5301,10 +6305,28 @@ function SelectionSummaryPanel({
       </div>
 
       <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/[0.04] p-4">
-        <CostRow label="Print estimate" value={formatCurrency(stats.printCost)} />
-        <CostRow label="Postage estimate" value={formatCurrency(stats.postage)} />
-        <CostRow label="Total estimate" value={formatCurrency(stats.total)} strong />
-        <CostRow label="Estimate status" value={stats.confidence === "Demo/Sample" ? "Preview only" : stats.confidence} muted />
+        <CostRow
+          label="Print estimate"
+          value={formatCurrency(stats.printCost)}
+        />
+        <CostRow
+          label="Postage estimate"
+          value={formatCurrency(stats.postage)}
+        />
+        <CostRow
+          label="Total estimate"
+          value={formatCurrency(stats.total)}
+          strong
+        />
+        <CostRow
+          label="Estimate status"
+          value={
+            stats.confidence === "Demo/Sample"
+              ? "Preview only"
+              : stats.confidence
+          }
+          muted
+        />
       </div>
 
       <DataConfidenceBadge label={stats.confidence} className="mt-4" />
@@ -5317,17 +6339,33 @@ function SelectionSummaryPanel({
         <ActionButton icon={Save} label={saveLabel} onClick={onSave} full />
         <ActionButton
           icon={FileText}
-          label={proposalStatus === "working" ? "Checking proposal" : "Send to proposal"}
+          label={
+            proposalStatus === "working"
+              ? "Checking review"
+              : "Prepare review handoff"
+          }
           state={proposalStatus === "working" ? "loading" : proposalStatus}
-          disabledReason={actionBlockers(readiness, "proposal").length > 0 ? "Complete the checklist before proposal handoff." : undefined}
+          disabledReason={
+            actionBlockers(readiness, "proposal").length > 0
+              ? "Complete the checklist before proposal handoff."
+              : undefined
+          }
           onClick={onProposal}
           full
         />
         <ActionButton
           icon={CreditCard}
-          label={checkoutStatus === "working" ? "Checking checkout" : "Create checkout"}
+          label={
+            checkoutStatus === "working"
+              ? "Checking checkout"
+              : "Check checkout lock"
+          }
           state={checkoutStatus === "working" ? "loading" : checkoutStatus}
-          disabledReason={actionBlockers(readiness, "checkout").length > 0 ? "Checkout is blocked until the quote is verified." : undefined}
+          disabledReason={
+            actionBlockers(readiness, "checkout").length > 0
+              ? "Checkout is blocked until the quote is verified."
+              : undefined
+          }
           onClick={onCheckout}
           full
         />
@@ -5339,15 +6377,20 @@ function SelectionSummaryPanel({
           Missing data warning
         </div>
         <p className="mt-2 text-xs text-amber-100/80">
-          {MODE_CONFIG[mode].label} selections are synced to demo USPS route cells until authoritative carrier-route
-          polygons, live delivery counts, and postal exclusions are imported.
+          {MODE_CONFIG[mode].label} selections are synced to demo USPS route
+          cells until authoritative carrier-route polygons, live delivery
+          counts, and postal exclusions are imported.
         </p>
       </div>
       <div className="mt-4 rounded-xl border border-blue-300/20 bg-blue-500/10 p-4 text-xs leading-5 text-blue-50">
-        <div className="font-black uppercase tracking-[0.16em]">Plain-English terms</div>
+        <div className="font-black uppercase tracking-[0.16em]">
+          Plain-English terms
+        </div>
         <p className="mt-2">
-          Households are estimated residential mail targets. Delivery points are mail delivery stops. Mail pieces equal
-          households multiplied by drops. Coverage is the share of loaded geography reached by selected route cells.
+          Households are estimated residential mail targets. Delivery points are
+          mail delivery stops. Mail pieces equal households multiplied by drops.
+          Coverage is the share of loaded geography reached by selected route
+          cells.
         </p>
       </div>
     </aside>
@@ -5365,7 +6408,10 @@ function ReadinessChecklist({ items }: { items: PlanReadinessItem[] }) {
       </div>
       <div className="mt-3 space-y-2">
         {items.map((item) => (
-          <div key={item.id} className="flex gap-2 rounded-lg border border-white/10 bg-slate-950/70 p-2">
+          <div
+            key={item.id}
+            className="flex gap-2 rounded-lg border border-white/10 bg-slate-950/70 p-2"
+          >
             {item.complete ? (
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
             ) : (
@@ -5373,7 +6419,9 @@ function ReadinessChecklist({ items }: { items: PlanReadinessItem[] }) {
             )}
             <div>
               <div className="text-xs font-black text-white">{item.label}</div>
-              <div className="mt-0.5 text-[11px] leading-4 text-slate-400">{item.detail}</div>
+              <div className="mt-0.5 text-[11px] leading-4 text-slate-400">
+                {item.detail}
+              </div>
             </div>
           </div>
         ))}
@@ -5397,7 +6445,10 @@ function ActionFeedbackPanel({ feedback }: { feedback: ActionFeedback }) {
       {feedback.checklist && feedback.checklist.length > 0 && (
         <div className="mt-3 space-y-1.5">
           {feedback.checklist.map((item) => (
-            <div key={item.id} className="rounded-md border border-white/10 bg-slate-950/60 px-2 py-1.5 text-xs">
+            <div
+              key={item.id}
+              className="rounded-md border border-white/10 bg-slate-950/60 px-2 py-1.5 text-xs"
+            >
               {item.label}
             </div>
           ))}
@@ -5419,7 +6470,6 @@ function CampaignPlanDrawer({
   selectedRoutes,
   stats,
   confidence,
-  routeSource,
   readiness,
   actionFeedback,
   exportStatus,
@@ -5427,9 +6477,13 @@ function CampaignPlanDrawer({
   onExportSummary,
 }: {
   selectedRoutes: RouteUnit[];
-  stats: { households: number; deliveryPoints: number; printQuantity: number; total: number };
+  stats: {
+    households: number;
+    deliveryPoints: number;
+    printQuantity: number;
+    total: number;
+  };
   confidence: DataLabel;
-  routeSource: RouteSourceStatus;
   readiness: PlanReadinessItem[];
   actionFeedback: ActionFeedback | null;
   exportStatus: MapActionStatus;
@@ -5439,8 +6493,8 @@ function CampaignPlanDrawer({
   return (
     <footer className="border-t border-white/10 bg-slate-950 p-4">
       <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr_1fr]">
-        <DataSourcePanel confidence={confidence} routeSource={routeSource} />
-        <MissingDataPanel routeSource={routeSource} />
+        <DataSourcePanel confidence={confidence} />
+        <MissingDataPanel />
         <ProposalActionPanel
           selectedRoutes={selectedRoutes}
           stats={stats}
@@ -5455,7 +6509,7 @@ function CampaignPlanDrawer({
   );
 }
 
-function DataSourcePanel({ confidence, routeSource }: { confidence: DataLabel; routeSource: RouteSourceStatus }) {
+function DataSourcePanel({ confidence }: { confidence: DataLabel }) {
   const sourceLinks = [
     { label: "Ohio SOS districts", href: OHIO_SOS_DISTRICT_MAPS_URL },
     { label: "Illinois boundaries", href: ILLINOIS_BOUNDARIES_URL },
@@ -5465,7 +6519,6 @@ function DataSourcePanel({ confidence, routeSource }: { confidence: DataLabel; r
     { label: "Ohio GIS boundaries", href: OHIO_MUNICIPAL_BOUNDARIES_URL },
     { label: "USPS EDDM", href: USPS_EDDM_URL },
   ];
-  const hasImportedRoutes = routeSource.status === "ready" && routeSource.importedRouteCount > 0;
 
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
@@ -5474,27 +6527,22 @@ function DataSourcePanel({ confidence, routeSource }: { confidence: DataLabel; r
         Data sources and methodology
       </div>
       <p className="mt-2 text-sm leading-6 text-slate-300">
-        County boundaries are public aggregate geometry. Ohio county red/blue/mixed coloring uses 2024 presidential
-        county returns and is only shown on source-backed county mode. City, ZIP, district, and USPS route toggles stay
-        neutral until matching aggregate election results are imported for that exact geography.
-      </p>
-      <p className="mt-2 rounded-lg border border-white/10 bg-slate-950/60 p-3 text-xs leading-5 text-slate-300">
-        USPS route counts:{" "}
-        <span className="font-black text-white">
-          {hasImportedRoutes
-            ? `${formatNumber(routeSource.importedRouteCount)} imported rows active`
-            : routeSource.status === "loading"
-              ? "checking route catalog"
-              : "demo/sample cells active"}
-        </span>
-        . {hasImportedRoutes
-          ? "Imported counts can support route-count planning; licensed polygons are still required for production boundary display."
-          : "Import USPS EDDM or licensed carrier-route rows before using this map as a production quote source."}
+        County boundaries are public aggregate geometry. Ohio county
+        red/blue/mixed coloring uses 2024 presidential county returns and is
+        only shown on source-backed county mode. City, ZIP, district, and USPS
+        route toggles stay neutral until matching aggregate election results are
+        imported for that exact geography.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
-        {["Public Aggregate", "Estimated", "Demo/Sample", confidence].map((label, index) => (
-          <DataConfidenceBadge key={`${label}-${index}`} label={label as DataLabel} compact />
-        ))}
+        {["Public Aggregate", "Estimated", "Demo/Sample", confidence].map(
+          (label, index) => (
+            <DataConfidenceBadge
+              key={`${label}-${index}`}
+              label={label as DataLabel}
+              compact
+            />
+          ),
+        )}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {sourceLinks.map((source) => (
@@ -5514,8 +6562,7 @@ function DataSourcePanel({ confidence, routeSource }: { confidence: DataLabel; r
   );
 }
 
-function MissingDataPanel({ routeSource }: { routeSource: RouteSourceStatus }) {
-  const hasImportedRoutes = routeSource.status === "ready" && routeSource.importedRouteCount > 0;
+function MissingDataPanel() {
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
       <div className="flex items-center gap-2 text-sm font-black text-white">
@@ -5523,21 +6570,24 @@ function MissingDataPanel({ routeSource }: { routeSource: RouteSourceStatus }) {
         API and source requirements
       </div>
       <ul className="mt-2 space-y-1.5 text-sm text-slate-300">
-        <li>Refresh Ohio, Illinois, and Tennessee district layers on a scheduled source-check cadence.</li>
-        <li>Import Ohio municipal, township, and school district FeatureServer layers.</li>
+        <li>
+          Refresh Ohio, Illinois, and Tennessee district layers on a scheduled
+          source-check cadence.
+        </li>
+        <li>
+          Import Ohio municipal, township, and school district FeatureServer
+          layers.
+        </li>
         <li>Load Census tract, block group, place, and ZCTA geometry.</li>
         <li>
-          {hasImportedRoutes
-            ? "Import licensed USPS carrier-route polygons when exact route boundary display is required."
-            : "Import USPS EDDM route counts or licensed carrier-route data before production pricing."}
+          Verify USPS EDDM or licensed carrier-route polygons before production
+          pricing.
         </li>
-        <li>Use county BOE precinct/ward files with source lineage and compliance review.</li>
+        <li>
+          Use county BOE precinct/ward files with source lineage and compliance
+          review.
+        </li>
       </ul>
-      {routeSource.note && (
-        <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100/85">
-          {routeSource.note}
-        </p>
-      )}
     </section>
   );
 }
@@ -5552,7 +6602,12 @@ function ProposalActionPanel({
   onExportSummary,
 }: {
   selectedRoutes: RouteUnit[];
-  stats: { households: number; deliveryPoints: number; printQuantity: number; total: number };
+  stats: {
+    households: number;
+    deliveryPoints: number;
+    printQuantity: number;
+    total: number;
+  };
   readiness: PlanReadinessItem[];
   actionFeedback: ActionFeedback | null;
   exportStatus: MapActionStatus;
@@ -5573,7 +6628,8 @@ function ProposalActionPanel({
           : "Select political geography or USPS routes to stage a campaign map plan."}
       </p>
       <p className="mt-2 text-xs leading-5 text-slate-500">
-        Checkout blockers: {checkoutBlockers}. Demo/sample route cells are planning previews only.
+        Checkout blockers: {checkoutBlockers}. Demo/sample route cells are
+        planning previews only.
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <ActionButton
@@ -5601,17 +6657,39 @@ function ProposalActionPanel({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</div>
+      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+        {label}
+      </div>
       <div className="mt-2 text-lg font-black text-white">{value}</div>
     </div>
   );
 }
 
-function CostRow({ label, value, strong, muted }: { label: string; value: string; strong?: boolean; muted?: boolean }) {
+function CostRow({
+  label,
+  value,
+  strong,
+  muted,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  muted?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
-      <span className={muted ? "text-slate-500" : "text-slate-300"}>{label}</span>
-      <span className={strong ? "text-lg font-black text-white" : muted ? "font-bold text-slate-500" : "font-bold text-slate-100"}>
+      <span className={muted ? "text-slate-500" : "text-slate-300"}>
+        {label}
+      </span>
+      <span
+        className={
+          strong
+            ? "text-lg font-black text-white"
+            : muted
+              ? "font-bold text-slate-500"
+              : "font-bold text-slate-100"
+        }
+      >
         {value}
       </span>
     </div>
@@ -5671,32 +6749,130 @@ function ActionButton({
   );
 }
 
-function HoverCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+function HoverCard({
+  title,
+  value,
+  detail,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+}) {
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950 p-4">
-      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{title}</div>
+      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+        {title}
+      </div>
       <div className="mt-1 text-sm font-black text-white">{value}</div>
       <div className="mt-1 text-xs leading-5 text-slate-400">{detail}</div>
     </div>
   );
 }
 
-function MapLegend({ hasSourcedPartisanColor }: { hasSourcedPartisanColor: boolean }) {
+function MapLegend({
+  hasSourcedPartisanColor,
+}: {
+  hasSourcedPartisanColor: boolean;
+}) {
   return (
     <div className="mt-3 grid gap-2 text-xs font-bold sm:grid-cols-3">
       {hasSourcedPartisanColor ? (
         <>
-          <LegendChip color="#2563eb" label="Blue: Democratic aggregate advantage" />
-          <LegendChip color="#dc2626" label="Red: Republican aggregate advantage" />
-          <LegendChip color="#64748b" label="Gray: margin under 5 pts or unavailable" />
+          <LegendChip
+            color="#2563eb"
+            label="Blue: Democratic aggregate advantage"
+          />
+          <LegendChip
+            color="#dc2626"
+            label="Red: Republican aggregate advantage"
+          />
+          <LegendChip
+            color="#64748b"
+            label="Gray: margin under 5 pts or unavailable"
+          />
         </>
       ) : (
         <>
-          <LegendChip color="#e5e7eb" label="Neutral: source not loaded for this toggle" />
+          <LegendChip
+            color="#e5e7eb"
+            label="Neutral: source not loaded for this toggle"
+          />
           <LegendChip color="#f59e0b" label="Selected geography" />
           <LegendChip color="#64748b" label="No partisan inference shown" />
         </>
       )}
+    </div>
+  );
+}
+
+function GeographyCoverageIndex({
+  mode,
+  units,
+  selectedPoliticalUnitIds,
+  onSelect,
+}: {
+  mode: PoliticalMode;
+  units: PoliticalUnit[];
+  selectedPoliticalUnitIds: Set<string>;
+  onSelect: (id: string) => void;
+}) {
+  const sortedUnits = [...units].sort((a, b) => a.label.localeCompare(b.label));
+
+  return (
+    <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
+            {MODE_CONFIG[mode].label} Selection Index
+          </div>
+          <p className="mt-1 text-xs leading-5 text-slate-400">
+            Click a row here or a shape on the map. Each selection syncs the
+            matching demo USPS route cells into the plan summary.
+          </p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-slate-950 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">
+          {sortedUnits.length} areas
+        </span>
+      </div>
+      <div className="mt-3 grid max-h-48 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+        {sortedUnits.map((unit) => {
+          const selected = selectedPoliticalUnitIds.has(unit.id);
+
+          return (
+            <button
+              key={unit.id}
+              type="button"
+              onClick={() => onSelect(unit.id)}
+              className={`rounded-lg border p-2 text-left transition ${
+                selected
+                  ? "border-amber-200 bg-amber-300 text-slate-950"
+                  : "border-white/10 bg-slate-950/80 text-slate-200 hover:border-blue-300/30 hover:bg-blue-500/10"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-black uppercase tracking-[0.1em]">
+                  {unit.label}
+                </span>
+                <span
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                    selected
+                      ? "border-slate-900/20 bg-slate-950/10 text-slate-900"
+                      : "border-white/10 bg-white/[0.04] text-slate-400"
+                  }`}
+                >
+                  {selected ? "Selected" : "Select"}
+                </span>
+              </span>
+              <span
+                className={`mt-1 block text-xs leading-5 ${selected ? "text-slate-800" : "text-slate-400"}`}
+              >
+                {formatNumber(unit.households)} estimated households Â·{" "}
+                {unit.confidence}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -5720,7 +6896,8 @@ function OfficialDistrictIndex({
             {layer?.label ?? "Official Districts"}
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-300">
-            Official district polygons are loaded for this state/layer. Click a district to sync demo route cells.
+            Official district polygons are loaded for this state/layer. Click a
+            district to sync demo route cells.
           </p>
         </div>
         <a
@@ -5750,7 +6927,9 @@ function OfficialDistrictIndex({
               <span className="block text-xs font-black uppercase tracking-[0.12em]">
                 District {district.district}
               </span>
-              <span className={`mt-1 block text-xs leading-5 ${selected ? "text-slate-800" : "text-slate-400"}`}>
+              <span
+                className={`mt-1 block text-xs leading-5 ${selected ? "text-slate-800" : "text-slate-400"}`}
+              >
                 {district.summary}
               </span>
             </button>
@@ -5847,7 +7026,9 @@ function DataConfidenceBadge({
           : "border-blue-300/30 bg-blue-500/10 text-blue-100";
 
   return (
-    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${tone} ${className}`}>
+    <span
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${tone} ${className}`}
+    >
       {!compact && <Database className="h-3.5 w-3.5" />}
       {label}
     </span>

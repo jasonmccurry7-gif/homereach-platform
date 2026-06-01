@@ -1,11 +1,11 @@
 {
-  "name": "HomeReach OS",
-  "short_name": "HR OS",
-  "description": "HomeReach Operator Control Center",
+  "name": "HomeReach",
+  "short_name": "HomeReach",
+  "description": "Geographic intelligence and operational execution for businesses and campaigns",
   "start_url": "/os",
   "display": "standalone",
   "background_color": "#030712",
-  "theme_color": "#2563eb",
+  "theme_color": "#0f3b82",
   "orientation": "portrait-primary",
   "scope": "/",
   "icons": [

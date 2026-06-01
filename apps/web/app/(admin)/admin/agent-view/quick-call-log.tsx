@@ -35,24 +35,26 @@ const getOutcomeColor = (
   selected: boolean
 ): string => {
   if (!selected) {
+    const fallbackColor = "bg-gray-100 text-gray-700 hover:bg-gray-200";
     const colorMap: Record<string, string> = {
       blue: "bg-blue-100 text-blue-700 hover:bg-blue-200",
       green: "bg-green-100 text-green-700 hover:bg-green-200",
       yellow: "bg-yellow-100 text-yellow-700 hover:bg-yellow-200",
       red: "bg-red-100 text-red-700 hover:bg-red-200",
-      gray: "bg-gray-100 text-gray-700 hover:bg-gray-200",
+      gray: fallbackColor,
     };
-    return colorMap[color] || colorMap.gray;
+    return colorMap[color] ?? fallbackColor;
   }
 
+  const selectedFallbackColor = "bg-gray-600 text-white";
   const selectedMap: Record<string, string> = {
     blue: "bg-blue-600 text-white",
     green: "bg-green-600 text-white",
     yellow: "bg-yellow-600 text-white",
     red: "bg-red-600 text-white",
-    gray: "bg-gray-600 text-white",
+    gray: selectedFallbackColor,
   };
-  return selectedMap[color] || selectedMap.gray;
+  return selectedMap[color] ?? selectedFallbackColor;
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -82,7 +84,7 @@ export default function QuickCallLog({
   const [selectedLead, setSelectedLead] = useState<LeadMatch | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Debounced search

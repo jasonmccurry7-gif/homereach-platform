@@ -20,11 +20,17 @@ export default function robots(): MetadataRoute.Robots {
         "/admin/",
         "/agent/",
         "/dashboard/",
+        "/operations-copilot",
+        "/operations-copilot/",
+        "/login",
+        "/signup",
         "/intake/",
+        "/checkout/",
+        "/intelligence/checkout",
         "/get-started/*/checkout",
         "/targeted/checkout",
       ],
     },
-    sitemap: `${base}/sitemap.xml`,
+    sitemap: [`${base}/sitemap.xml`, `${base}/image-sitemap.xml`],
   };
 }

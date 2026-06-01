@@ -3,7 +3,7 @@ import { generateCampaignStrategy } from "@/lib/political/strategy-engine";
 import { CommandPanel, PublicHero, TimelinePreview } from "../_components/PublicCommand";
 
 export const metadata: Metadata = {
-  title: "Political Mail Calendar - HomeReach Political",
+  title: "PoliticalReach Mail Calendar - HomeReach",
   description: "Plan print deadlines, mail cutoffs, drop waves, and in-home delivery windows.",
 };
 

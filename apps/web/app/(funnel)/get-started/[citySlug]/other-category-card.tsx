@@ -22,7 +22,7 @@ export function OtherCategoryCard({ citySlug }: { citySlug: string }) {
         onClick={() => setExpanded(true)}
         className="group relative flex flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md text-left w-full"
       >
-        <div className="mb-3 text-3xl">➕</div>
+        <div className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Other</div>
         <h3 className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
           Other
         </h3>
@@ -41,7 +41,7 @@ export function OtherCategoryCard({ citySlug }: { citySlug: string }) {
 
   return (
     <div className="relative flex flex-col rounded-2xl border border-blue-300 bg-white p-5 shadow-md col-span-full sm:col-span-2">
-      <div className="mb-3 text-3xl">➕</div>
+      <div className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Other</div>
       <h3 className="font-semibold text-gray-900 leading-tight mb-3">
         What type of business are you?
       </h3>
@@ -60,7 +60,7 @@ export function OtherCategoryCard({ citySlug }: { citySlug: string }) {
           disabled={!value.trim()}
           className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          Continue →
+          Continue
         </button>
         <button
           onClick={() => { setExpanded(false); setValue(""); }}

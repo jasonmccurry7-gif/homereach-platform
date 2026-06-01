@@ -11,6 +11,19 @@ import {
   sendEmail,
   sendSms,
 } from "@homereach/services/outreach";
+import { recordOutboundRevenueMessage } from "@/lib/revenue-messaging/outbound";
+import {
+  auditDeliverabilityCopy,
+  buildOutreachSourceAttribution,
+  evaluateOutboundApprovalGate,
+} from "@/lib/sales-engine/outreach-governance";
+import {
+  evaluateOutboundReputation,
+  logReputationDecision,
+  type OutreachChannel,
+  type RevenueBusinessLine,
+  type ReputationResult,
+} from "@/lib/deliverability/reputation-control";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/event
@@ -29,8 +42,131 @@ type OutreachSystemControls = {
   email_paused?: boolean;
   facebook_paused?: boolean;
   outreach_test_mode?: boolean;
+  manual_approval_mode?: boolean;
   sms_prospecting_live_enabled?: boolean;
 };
+
+type SalesEventMetadata = Record<string, unknown>;
+
+function metadataObject(value: unknown): SalesEventMetadata {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as SalesEventMetadata)
+    : {};
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function inferRevenueBusinessLine(
+  category: unknown,
+  metadata: unknown,
+): RevenueBusinessLine {
+  const data = metadataObject(metadata);
+  const haystack = `${category ?? ""} ${data.business_line ?? ""} ${data.campaign_type ?? ""} ${data.workflow ?? ""}`;
+  if (/\bpolitical|campaign|candidate|governor|senate|attorney general\b/i.test(haystack)) {
+    return "political";
+  }
+  if (/\bprocurement|inventory|supplier|vendor|savings\b/i.test(haystack)) {
+    return "inventory_procurement";
+  }
+  return "targeted_mailing";
+}
+
+async function verifyPoliticalApprovalQueueSend(args: {
+  supabase: ReturnType<typeof createServiceClient>;
+  metadata: unknown;
+  leadId: string;
+  channel: "sms" | "email" | "facebook";
+}) {
+  const data = metadataObject(args.metadata);
+  const approvalId = firstString(
+    data.revenue_approval_id,
+    data.approval_id,
+    data.approvalId,
+    data.approval_queue_id,
+  );
+
+  if (!approvalId) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        {
+          error: "Political outbound sends must use an approved revenue_message_approval_queue item.",
+          approval_status: "needs_review",
+          next_action: "Create or approve the political outreach draft in Revenue Operations, then send from the approval queue.",
+        },
+        { status: 409 },
+      ),
+    };
+  }
+
+  const { data: approval, error } = await args.supabase
+    .from("revenue_message_approval_queue")
+    .select("id,business_line,channel,status,message_body,metadata")
+    .eq("id", approvalId)
+    .maybeSingle<{
+      id: string;
+      business_line: string | null;
+      channel: string | null;
+      status: string | null;
+      message_body: string | null;
+      metadata: Record<string, unknown> | null;
+    }>();
+
+  if (error) {
+    return { ok: false as const, response: NextResponse.json({ error: error.message }, { status: 500 }) };
+  }
+  if (!approval) {
+    return { ok: false as const, response: NextResponse.json({ error: "Political approval item not found." }, { status: 404 }) };
+  }
+  if (approval.business_line !== "political" || approval.status !== "approved") {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        {
+          error: "Political approval item must be approved before sending.",
+          approval_status: approval.status,
+        },
+        { status: 409 },
+      ),
+    };
+  }
+  const expectedChannel = args.channel === "facebook" ? "facebook_dm" : args.channel;
+  if (approval.channel && approval.channel !== expectedChannel) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: `Political approval item is for ${approval.channel}, not ${expectedChannel}.` },
+        { status: 409 },
+      ),
+    };
+  }
+  const approvalMetadata = metadataObject(approval.metadata);
+  const approvedLeadId = firstString(approvalMetadata.lead_id, approvalMetadata.source_id);
+  if (approvedLeadId && approvedLeadId !== args.leadId) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Political approval item does not match this lead." },
+        { status: 409 },
+      ),
+    };
+  }
+
+  return { ok: true as const, approvalId };
+}
+
+type SendLimitResult = {
+  allowed?: boolean;
+  reason?: string;
+  limit?: number;
+  remaining?: number;
+  sent?: number;
+} | null;
 
 // ─── Direct Twilio SMS (supports per-agent from number) ───────────────────────
 async function sendViaTwilio(
@@ -174,7 +310,22 @@ export async function POST(request: Request) {
       provider?: string;
       testMode?: boolean;
     } | null = null;
+    let sendLimit: SendLimitResult = null;
     let actualSent = false;
+    let approvalGate: ReturnType<typeof evaluateOutboundApprovalGate> | null = null;
+    let sourceAttribution: ReturnType<typeof buildOutreachSourceAttribution> | null = null;
+    let deliverability: ReturnType<typeof auditDeliverabilityCopy> | null = null;
+    let reputation: ReputationResult | null = null;
+    let resolvedBusinessLine: RevenueBusinessLine = inferRevenueBusinessLine(category, metadata);
+    let outboundRevenueLog: {
+      channel: "sms" | "email" | "facebook_dm";
+      to: string;
+      subject?: string | null;
+      body: string;
+      provider?: string | null;
+      providerMessageId?: string | null;
+      metadata?: Record<string, unknown>;
+    } | null = null;
 
     // ── Actually send outbound messages ─────────────────────────────────────
     if (SEND_ACTIONS.has(action_type) && lead_id && message) {
@@ -196,6 +347,16 @@ export async function POST(request: Request) {
           : channel === "facebook" || action_type === "facebook_sent" || action_type === "fb_message_sent"
             ? "facebook"
             : "email";
+      resolvedBusinessLine = inferRevenueBusinessLine(category, metadata);
+      if (resolvedBusinessLine === "political") {
+        const politicalApproval = await verifyPoliticalApprovalQueueSend({
+          supabase,
+          metadata,
+          leadId: lead_id,
+          channel: outboundChannel,
+        });
+        if (!politicalApproval.ok) return politicalApproval.response;
+      }
 
       if (outboundChannel === "sms" && sysCtrl?.sms_paused) {
         return NextResponse.json({ error: "SMS outreach is paused." }, { status: 403 });
@@ -216,6 +377,22 @@ export async function POST(request: Request) {
         }, { status: 403 });
       }
 
+      approvalGate = evaluateOutboundApprovalGate({
+        metadata,
+        channel: outboundChannel,
+        actionType: action_type,
+        isAuthenticatedHuman: true,
+      });
+
+      if (!approvalGate.allowed) {
+        return NextResponse.json({
+          error: approvalGate.reason,
+          approval_status: approvalGate.approval_status,
+          approval_gate: approvalGate,
+          next_action: "Save the draft to AI Outputs or approve this one-to-one message before sending.",
+        }, { status: 409 });
+      }
+
       // Get lead contact info
       const { data: lead } = await supabase
         .from("sales_leads")
@@ -230,11 +407,11 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Lead is DNC. Cannot send." }, { status: 403 });
       if (lead?.is_quarantined)
         return NextResponse.json({ error: "Lead is quarantined. Cannot send." }, { status: 403 });
-      if (channel === "sms" && lead?.sms_opt_out)
+      if (outboundChannel === "sms" && lead?.sms_opt_out)
         return NextResponse.json({ error: "Lead has opted out of SMS." }, { status: 403 });
       if (
-        channel === "email" &&
-        ["bounced_permanent", "complained", "unsubscribed"].includes(String(lead?.email_status ?? ""))
+        outboundChannel === "email" &&
+        ["bounced_permanent", "complained", "unsubscribed"].includes(String(lead?.email_status ?? "").toLowerCase())
       ) {
         return NextResponse.json({ error: "Lead email is suppressed." }, { status: 403 });
       }
@@ -269,23 +446,8 @@ export async function POST(request: Request) {
           if (identity.reply_to_email) replyToEmail = identity.reply_to_email;
           if (identity.twilio_phone) agentPhone = identity.twilio_phone;
         }
-
-        if (!testMode && outboundChannel !== "facebook") {
-          // Daily rate limit check
-          const sendChannel = outboundChannel === "sms" ? "sms" : "email";
-          const { data: limitCheck } = await supabase.rpc("check_and_increment_send_count", {
-            p_agent_id: agent_id,
-            p_channel:  sendChannel,
-          });
-          const limit = limitCheck as { allowed: boolean; reason?: string; limit?: number } | null;
-          if (limit && !limit.allowed) {
-            return NextResponse.json({
-              error: `Daily ${sendChannel} limit reached (${limit.limit}/day). Try again tomorrow.`,
-              limit_info: limit,
-            }, { status: 429 });
-          }
-        }
-        // Note: dedup hash is inserted AFTER successful send (see below)
+        // Note: rate-limit counters and dedup hashes are consumed only after
+        // approval, suppression, deliverability, and reputation gates pass.
       }
 
       // Resolve destination address
@@ -299,11 +461,104 @@ export async function POST(request: Request) {
       // Send
       const isSms = outboundChannel === "sms";
       const isEmail = outboundChannel === "email";
+      let outboundSubject: string | null = null;
       message = renderOwnerTemplate(message, {
         business_name: lead?.business_name ?? "",
         city: city ?? "",
         category: category ?? "",
       });
+      sourceAttribution = buildOutreachSourceAttribution({
+        workflow: "admin_sales_event",
+        channel: outboundChannel,
+        lead: {
+          id: lead_id,
+          business_name: lead?.business_name ?? "",
+          city,
+          category,
+          status: undefined,
+          email_status: lead?.email_status ?? null,
+          sms_opt_out: lead?.sms_opt_out ?? null,
+          do_not_contact: lead?.do_not_contact ?? null,
+          is_quarantined: lead?.is_quarantined ?? null,
+        },
+        destination: dest,
+        templateId: String(metadata?.template_id ?? metadata?.templateId ?? action_type),
+        action: action_type,
+        nextAction: "If sent, monitor for reply speed; otherwise keep the draft in needs_review.",
+        approvalStatus: approvalGate?.approval_status ?? "approved",
+        sources: ["sales_events", "sales_leads", "agent_identities", "system_controls"],
+      });
+      deliverability = auditDeliverabilityCopy(
+        isEmail ? `${subject ?? ""}\n\n${message}` : message,
+        outboundChannel,
+      );
+      if (deliverability.status === "blocked" && approvalGate?.autonomous) {
+        return NextResponse.json({
+          error: "Deliverability guard blocked an autonomous outbound message with unsupported claims.",
+          approval_status: "needs_review",
+          deliverability,
+          source_attribution: sourceAttribution,
+        }, { status: 422 });
+      }
+      const reputationChannel: OutreachChannel = isSms ? "sms" : isEmail ? "email" : "facebook_dm";
+      const evaluatedSubject = isEmail
+        ? (subject ?? `HomeReach - grow your business in ${city ?? "your area"}`)
+        : null;
+      const reputationInput = {
+        supabase,
+        senderEmail: fromEmail,
+        senderName: fromName,
+        channel: reputationChannel,
+        recipient: dest,
+        businessLine: resolvedBusinessLine,
+        sourceSystem: "sales_leads",
+        sourceId: lead_id,
+        subject: evaluatedSubject,
+        body: message,
+        templateKey: String(metadata?.template_id ?? metadata?.templateId ?? action_type),
+        humanApproved: approvalGate?.approval_status === "approved",
+        autonomous: Boolean(approvalGate?.autonomous),
+        recipientSource: resolvedBusinessLine === "political" ? "public_campaign_contact" as const : "unknown" as const,
+        smsConsent: Boolean(metadata?.sms_consent || metadata?.opt_in_source || metadata?.requested_follow_up),
+        smsPurpose: isSms ? "marketing" as const : undefined,
+        deliverabilityStatus: deliverability.status,
+        deliverabilityFlags: deliverability.flags,
+        metadata: {
+          action_type,
+          approval_gate: approvalGate,
+          source_attribution: sourceAttribution,
+        },
+      };
+      reputation = await evaluateOutboundReputation(reputationInput);
+      await logReputationDecision(supabase, reputationInput, reputation);
+
+      if (!reputation.allowed) {
+        return NextResponse.json({
+          error: "Reputation control blocked this outbound action.",
+          approval_status: "needs_review",
+          deliverability,
+          reputation,
+          source_attribution: sourceAttribution,
+        }, { status: 409 });
+      }
+
+      if (agent_id && !testMode && outboundChannel !== "facebook") {
+        const sendChannel = outboundChannel === "sms" ? "sms" : "email";
+        const { data: limitCheck, error: limitError } = await supabase.rpc("check_and_increment_send_count", {
+          p_agent_id: agent_id,
+          p_channel: sendChannel,
+        });
+        if (limitError) {
+          return NextResponse.json({ error: limitError.message }, { status: 500 });
+        }
+        sendLimit = limitCheck as SendLimitResult;
+        if (sendLimit?.allowed === false) {
+          return NextResponse.json({
+            error: `Daily ${sendChannel} limit reached (${sendLimit.limit ?? "configured cap"}/day). Try again tomorrow.`,
+            limit_info: sendLimit,
+          }, { status: 429 });
+        }
+      }
 
       if (isSms) {
         const smsBody = appendSmsCompliance(message);
@@ -315,7 +570,8 @@ export async function POST(request: Request) {
           testMode,
         });
       } else if (isEmail) {
-        const emailSubject = subject ?? `HomeReach — grow your business in ${city ?? "your area"}`;
+        const emailSubject = evaluatedSubject ?? `HomeReach - grow your business in ${city ?? "your area"}`;
+        outboundSubject = emailSubject;
         const emailContentHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
             <p>${message.replace(/\n/g, "<br>")}</p>
@@ -335,6 +591,24 @@ export async function POST(request: Request) {
       }
 
       actualSent = sendResult?.success ?? false;
+      if (actualSent && (isSms || isEmail)) {
+        outboundRevenueLog = {
+          channel: isSms ? "sms" : "email",
+          to: dest,
+          subject: outboundSubject,
+          body: message,
+          provider: sendResult?.provider ?? null,
+          providerMessageId: sendResult?.externalId ?? null,
+          metadata: {
+            sales_action_type: action_type,
+            test_mode: sendResult?.testMode ?? testMode,
+            approval_status: approvalGate?.approval_status ?? "approved",
+            source_attribution: sourceAttribution,
+            deliverability,
+            reputation,
+          },
+        };
+      }
 
       if (sendResult && !sendResult.success) {
         console.error(`[sales/event] send failed for lead ${lead_id}:`, sendResult.error);
@@ -376,6 +650,11 @@ export async function POST(request: Request) {
       ...(actualSent ? { actually_sent: true } : {}),
       ...(sendResult?.provider ? { provider: sendResult.provider } : {}),
       ...(sendResult?.testMode ? { test_mode: true } : {}),
+      ...(approvalGate ? { approval_gate: approvalGate, approval_status: approvalGate.approval_status } : {}),
+      ...(sourceAttribution ? { source_attribution: sourceAttribution } : {}),
+      ...(deliverability ? { deliverability } : {}),
+      ...(reputation ? { reputation } : {}),
+      ...(sendLimit ? { send_limit: sendLimit } : {}),
     };
 
     // ── Insert sales_event ────────────────────────────────────────────────────
@@ -397,6 +676,33 @@ export async function POST(request: Request) {
 
     if (eventError) {
       return NextResponse.json({ error: eventError.message }, { status: 500 });
+    }
+
+    if (actualSent && lead_id && outboundRevenueLog) {
+      try {
+        await recordOutboundRevenueMessage({
+          businessLine: resolvedBusinessLine,
+          sourceSystem: "sales_leads",
+          sourceId: lead_id,
+          channel: outboundRevenueLog.channel,
+          to: outboundRevenueLog.to,
+          subject: outboundRevenueLog.subject,
+          body: outboundRevenueLog.body,
+          provider: outboundRevenueLog.provider,
+          providerMessageId: outboundRevenueLog.providerMessageId,
+          city,
+          category,
+          assignedTo: agent_id ?? null,
+          metadata: {
+            ...(outboundRevenueLog.metadata ?? {}),
+            sales_event_id: event.id,
+            logged_from: "admin_sales_event",
+            reputation,
+          },
+        });
+      } catch (revenueLogError) {
+        console.warn("[sales/event] revenue messaging outbound log skipped:", revenueLogError);
+      }
     }
 
     // ── Update lead status ────────────────────────────────────────────────────
@@ -439,6 +745,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       event,
       sent: actualSent,
+      approval_status: approvalGate?.approval_status ?? (SEND_ACTIONS.has(action_type) ? "approved" : "not_required"),
+      source_attribution: sourceAttribution,
+      deliverability,
       send_error: sendResult?.success === false ? sendResult.error : undefined,
     });
   } catch (err) {

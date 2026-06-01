@@ -51,15 +51,54 @@ interface CoverageApiResponse {
   note?: string | null;
 }
 
-export function CampaignStrategyPlanner() {
+interface CampaignStrategyPlannerProps {
+  initialBudgetDollars?: number;
+  initialDaysUntilElection?: number;
+  initialState?: string;
+  initialGeographyType?: "county" | "city" | "district";
+  initialGeographyValue?: string;
+  initialDistrictType?: "local" | "state" | "federal";
+  initialDrops?: number;
+}
+
+function cleanStateCode(value: string | undefined) {
+  const next = value?.trim().toUpperCase().slice(0, 2);
+  return next && next.length === 2 ? next : "OH";
+}
+
+function cleanPositiveNumber(value: number | undefined, fallback: number) {
+  return Number.isFinite(value) && value !== undefined && value >= 0
+    ? value
+    : fallback;
+}
+
+export function CampaignStrategyPlanner({
+  initialBudgetDollars,
+  initialDaysUntilElection,
+  initialState,
+  initialGeographyType = "county",
+  initialGeographyValue,
+  initialDistrictType = "local",
+  initialDrops,
+}: CampaignStrategyPlannerProps = {}) {
   const [goal, setGoal] = useState<CampaignGoal>("awareness");
-  const [budgetDollars, setBudgetDollars] = useState(25_000);
-  const [daysUntilElection, setDaysUntilElection] = useState(60);
-  const [state, setState] = useState("OH");
-  const [geographyType, setGeographyType] = useState<"county" | "city" | "district">("county");
-  const [geographyValue, setGeographyValue] = useState("Franklin");
-  const [districtType, setDistrictType] = useState<"local" | "state" | "federal">("local");
-  const [drops, setDrops] = useState(2);
+  const [budgetDollars, setBudgetDollars] = useState(() =>
+    cleanPositiveNumber(initialBudgetDollars, 25_000),
+  );
+  const [daysUntilElection, setDaysUntilElection] = useState(() =>
+    cleanPositiveNumber(initialDaysUntilElection, 60),
+  );
+  const [state, setState] = useState(() => cleanStateCode(initialState));
+  const [geographyType, setGeographyType] =
+    useState<"county" | "city" | "district">(initialGeographyType);
+  const [geographyValue, setGeographyValue] = useState(
+    initialGeographyValue?.trim() || "Franklin",
+  );
+  const [districtType, setDistrictType] =
+    useState<"local" | "state" | "federal">(initialDistrictType);
+  const [drops, setDrops] = useState(() =>
+    Math.min(5, Math.max(1, cleanPositiveNumber(initialDrops, 2))),
+  );
   const [listAddresses, setListAddresses] = useState(7_500);
   const [coverageRoutes, setCoverageRoutes] = useState<PoliticalRouteSummary[]>([]);
   const [selectedRouteIds, setSelectedRouteIds] = useState<string[]>([]);
@@ -240,6 +279,17 @@ export function CampaignStrategyPlanner() {
     gapRouteCount: coverageSummary.gapRouteCount,
     gapHouseholds: coverageSummary.gapHouseholds,
     zipCount: coverageSummary.zipCount,
+    dataConfidence: coverageRoutes.length > 0 ? "Estimated" : "Unavailable",
+    sourceStatus: "public_planner_estimate",
+    approvalStatus: "needs_human_review",
+    checkoutEligible: false,
+    requiresHumanApproval: true,
+    selectedRouteSources: Array.from(
+      new Set(selectedRoutes.map((route) => route.source ?? "source not labeled")),
+    ).slice(0, 20),
+    selectedRouteImportedAt: Array.from(
+      new Set(selectedRoutes.map((route) => route.importedAt ?? "import timestamp missing")),
+    ).slice(0, 20),
     selectedRouteIds: selectedRouteIds.slice(0, 200),
   });
 
@@ -256,10 +306,20 @@ export function CampaignStrategyPlanner() {
     setSelectedScenarioKind(kind);
   }
 
+  const routeReadinessLabel = routesLoading
+    ? "Loading route catalog"
+    : coverageRoutes.length > 0
+      ? "Imported route estimates"
+      : "No verified route import";
+  const routeReadinessDetail =
+    coverageRoutes.length > 0
+      ? "Counts still need source timestamp and operator review."
+      : "Calculator is using modeled planning assumptions until route data loads.";
+
   return (
     <aside
       aria-label="Campaign strategy planner"
-      className="sticky top-24 space-y-4 rounded-lg border border-gray-800 bg-gray-900/70 p-5"
+      className="space-y-4 rounded-2xl border border-gray-800 bg-gray-900/70 p-4 sm:p-5 lg:sticky lg:top-24"
     >
       <input type="hidden" name="strategySnapshot" value={snapshot} />
       <input type="hidden" name="selectedScenarioKind" value={selectedScenario?.kind ?? ""} />
@@ -269,7 +329,7 @@ export function CampaignStrategyPlanner() {
       <input type="hidden" name="selectedRouteIds" value={selectedRouteIds.join(",")} />
 
       <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+        <p className="text-xs font-bold text-emerald-400">
           Strategy engine
         </p>
         <h2 className="mt-1 text-xl font-black tracking-tight text-white">
@@ -278,6 +338,26 @@ export function CampaignStrategyPlanner() {
         <p className="mt-2 text-xs leading-relaxed text-gray-400">
           {result.whyThisPlan}
         </p>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+        <ReadinessNote
+          label="Geography"
+          value={`${geographyValue || "Unspecified"} / ${state || "State needed"}`}
+          detail={`${geographyType} planning level`}
+        />
+        <ReadinessNote
+          label="Route data"
+          value={routeReadinessLabel}
+          detail={routeReadinessDetail}
+          tone={coverageRoutes.length > 0 ? "blue" : "amber"}
+        />
+        <ReadinessNote
+          label="Proposal status"
+          value="Human review required"
+          detail="Not checkout-ready or production-approved."
+          tone="amber"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-3">
@@ -428,7 +508,7 @@ export function CampaignStrategyPlanner() {
         onSelectScenario={selectScenario}
       />
 
-      <div className="grid grid-cols-2 gap-2 text-sm">
+      <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-2">
         <Metric label="Reach" value={(selectedScenario?.households ?? result.combined.totalReach).toLocaleString()} />
         <Metric label="Cost" value={fmtUsd(selectedScenario?.totalCostCents ?? result.combined.totalCostCents)} />
         <Metric label="Coverage" value={fmtPct(selectedScenario?.coveragePct ?? result.coverageLayer.coveragePct)} />
@@ -454,6 +534,12 @@ export function CampaignStrategyPlanner() {
       <p className="text-[11px] leading-relaxed text-gray-500">
         {result.complianceNote}
       </p>
+
+      <p className="rounded-md border border-amber-900/60 bg-amber-950/30 p-3 text-[11px] leading-relaxed text-amber-100">
+        Public planner outputs are proposal-review requests, not checkout-ready quotes.
+        Final proposal links require verified USPS or licensed route counts, source timestamps,
+        pricing review, and human approval.
+      </p>
     </aside>
   );
 }
@@ -462,7 +548,32 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-gray-800 bg-gray-950/70 p-3">
       <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-1 truncate font-mono font-semibold text-white">{value}</div>
+      <div className="mt-1 break-words font-mono font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
+function ReadinessNote({
+  label,
+  value,
+  detail,
+  tone = "blue",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "blue" | "amber";
+}) {
+  const toneClass =
+    tone === "amber"
+      ? "border-amber-900/60 bg-amber-950/30 text-amber-100"
+      : "border-blue-900/60 bg-blue-950/30 text-blue-100";
+
+  return (
+    <div className={`rounded-lg border p-3 ${toneClass}`}>
+      <div className="text-[11px] font-semibold text-white/70">{label}</div>
+      <div className="mt-1 text-sm font-black text-white">{value}</div>
+      <p className="mt-1 text-[11px] leading-5 text-white/65">{detail}</p>
     </div>
   );
 }
@@ -512,7 +623,7 @@ function BudgetOptimizerPanel({
         aria-label="Budget to coverage"
       />
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+      <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3">
         {full && (
           <OptimizerOption label="Coverage" scenario={full} onSelect={onSelectScenario} />
         )}
@@ -543,7 +654,7 @@ function OptimizerOption({
       className="rounded border border-gray-800 bg-gray-900/60 p-2 text-left hover:border-gray-700"
     >
       <div className="uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-1 truncate font-mono font-semibold text-gray-100">
+      <div className="mt-1 break-words font-mono font-semibold text-gray-100">
         {fmtUsd(scenario.totalCostCents)}
       </div>
       <div className="mt-0.5 truncate text-gray-500">
@@ -613,7 +724,7 @@ function ScenarioBuilderPanel({
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-4 gap-2 text-[11px]">
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
                 <MiniStat label="Reach" value={scenario.households.toLocaleString()} />
                 <MiniStat label="Cost" value={fmtUsd(scenario.totalCostCents)} />
                 <MiniStat label="Cover" value={fmtPct(scenario.coveragePct)} />
@@ -666,7 +777,7 @@ function RouteCoveragePanel({
               ? "Loading routes..."
               : routes.length > 0
                 ? `${summary.selectedRouteCount} of ${summary.availableRouteCount} routes selected`
-                : "No imported routes found"}
+                : "No verified route import loaded"}
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -690,7 +801,7 @@ function RouteCoveragePanel({
       </div>
 
       {routes.length > 0 && (
-        <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+        <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3">
           <MiniStat label="Households" value={summary.selectedHouseholds.toLocaleString()} />
           <MiniStat label="Coverage" value={fmtPct(summary.coveragePct)} />
           <MiniStat label="Gaps" value={summary.gapRouteCount.toLocaleString()} />
@@ -715,7 +826,7 @@ function RouteCoveragePanel({
                   {route.label}
                 </span>
                 <span className="mt-0.5 block text-[11px] text-gray-500">
-                  {route.households.toLocaleString()} households / density {route.densityScore}/100
+                  {route.households.toLocaleString()} households / estimated density {route.densityScore}/100
                 </span>
               </span>
             </label>
@@ -736,7 +847,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded border border-gray-800 bg-gray-900/60 p-2">
       <div className="uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-1 truncate font-mono font-semibold text-gray-100">{value}</div>
+      <div className="mt-1 break-words font-mono font-semibold text-gray-100">{value}</div>
     </div>
   );
 }

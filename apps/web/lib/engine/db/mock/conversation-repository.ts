@@ -17,6 +17,7 @@ function seedConversations(): Map<string, ConversationContext> {
   const map = new Map<string, ConversationContext>();
   MOCK_CONVERSATIONS.forEach((c, i) => {
     const ctx: ConversationContext = {
+      id:             c.id,
       leadId:         c.leadId,
       leadName:       c.leadName,
       businessName:   c.businessName,
@@ -73,6 +74,7 @@ export class MockConversationRepository implements IConversationRepository {
     const existing = input.id ? (this.store.get(input.id) ?? null) : null;
 
     const ctx: ConversationContext = {
+      id,
       leadId:         input.leadId,
       leadName:       input.leadName,
       businessName:   input.businessName,

@@ -56,7 +56,7 @@ export class MultiMonthDiscountEngine {
   static getTierForMonths(months: number): DiscountTier | null {
     const matching = COMMITMENT_TIERS.filter((t) => t.months <= months);
     if (matching.length === 0) return null;
-    return matching[matching.length - 1];
+    return matching[matching.length - 1]!;
   }
 
   /**

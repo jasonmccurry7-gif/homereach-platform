@@ -41,8 +41,9 @@ export async function GET() {
     .in("sequence_id", seqIds);
 
   const countMap = (counts ?? []).reduce<Record<string, Record<string, number>>>((acc, r) => {
-    if (!acc[r.sequence_id]) acc[r.sequence_id] = {};
-    acc[r.sequence_id][r.status] = (acc[r.sequence_id][r.status] ?? 0) + 1;
+    const sequenceCounts = acc[r.sequence_id] ?? {};
+    sequenceCounts[r.status] = (sequenceCounts[r.status] ?? 0) + 1;
+    acc[r.sequence_id] = sequenceCounts;
     return acc;
   }, {});
 

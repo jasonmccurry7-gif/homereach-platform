@@ -50,7 +50,8 @@ function planHasUspsSource(plan: CandidateLaunchPlanRow | null): boolean {
   const sources = plan?.planJson?.data_sources ?? [];
   return sources.some((source) => {
     const label = `${source.label ?? ""} ${source.url ?? ""}`.toLowerCase();
-    return label.includes("usps") || label.includes("eddm") || label.includes("bmeu");
+    const isPending = /required|pending|estimate|estimated|verification needed|before production|placeholder/.test(label);
+    return !isPending && (label.includes("usps") || label.includes("eddm") || label.includes("bmeu"));
   });
 }
 

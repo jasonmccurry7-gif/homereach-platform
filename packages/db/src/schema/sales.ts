@@ -14,7 +14,7 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { profiles } from "./users";
+import { profiles } from "./users.js";
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -83,9 +83,25 @@ export const salesLeads = pgTable("sales_leads", {
   notes:          text("notes"),
   lastContactedAt:    timestamp("last_contacted_at",  { withTimezone: true }),
   lastReplyAt:        timestamp("last_reply_at",      { withTimezone: true }),
+  nextFollowUpAt:     timestamp("next_follow_up_at",  { withTimezone: true }),
   assignedAgentId:    uuid("assigned_agent_id").references(() => profiles.id),
   totalMessagesSent:  integer("total_messages_sent").default(0),
   totalReplies:       integer("total_replies").default(0),
+  revenueStage:       text("revenue_stage").notNull().default("New Lead"),
+  assignedOwnerKey:   text("assigned_owner_key"),
+  nextAction:         text("next_action"),
+  nextActionDueAt:    timestamp("next_action_due_at", { withTimezone: true }),
+  estimatedValueCents: integer("estimated_value_cents").notNull().default(0),
+  engagementScore:    integer("engagement_score").notNull().default(0),
+  responseLikelihoodScore: integer("response_likelihood_score").notNull().default(0),
+  urgencyScore:       integer("urgency_score").notNull().default(0),
+  conversionProbabilityScore: integer("conversion_probability_score").notNull().default(0),
+  revenuePriorityScore: integer("revenue_priority_score").notNull().default(0),
+  latestOutreachChannel: text("latest_outreach_channel"),
+  latestOutreachAt:  timestamp("latest_outreach_at", { withTimezone: true }),
+  nextRecommendedChannel: text("next_recommended_channel"),
+  revenuePipelineUpdatedAt: timestamp("revenue_pipeline_updated_at", { withTimezone: true }).notNull().defaultNow(),
+  revenueMetadata: jsonb("revenue_metadata").$type<Record<string, unknown>>().default({}),
   createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

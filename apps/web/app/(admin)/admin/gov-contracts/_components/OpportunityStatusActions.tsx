@@ -4,16 +4,27 @@ import { useState, useTransition } from "react";
 import type { GovContractPipelineStatus } from "@/lib/gov-contracts/types";
 
 const STATUS_LABELS: Record<GovContractPipelineStatus, string> = {
+  discovered: "Discovered",
   new: "New",
+  saved: "Saved",
   reviewing: "Reviewing",
+  qualifying: "Qualifying",
   strong_fit: "Strong Fit",
   need_subcontractor: "Need Subcontractor",
   bid_prep: "Bid Prep",
+  waiting_on_documents: "Waiting on Documents",
+  waiting_on_subcontractor_quote: "Waiting on Subcontractor Quote",
+  pricing_review: "Pricing Review",
+  compliance_review: "Compliance Review",
   awaiting_approval: "Awaiting Approval",
+  ready_for_approval: "Ready for Approval",
+  ready_to_submit: "Ready to Submit",
   submitted: "Submitted",
+  under_evaluation: "Under Evaluation",
   awarded: "Awarded",
   lost: "Lost",
   no_bid: "No Bid",
+  cancelled: "Cancelled",
   archived: "Archived",
 };
 
@@ -52,10 +63,34 @@ export function OpportunityStatusActions({
         <button
           type="button"
           disabled={isPending}
-          onClick={() => updateStatus("reviewing")}
+          onClick={() => updateStatus("saved")}
           className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-900 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60"
         >
-          Save for Review
+          Save
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => updateStatus("qualifying")}
+          className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100 disabled:opacity-60"
+        >
+          Evaluate Fit
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => updateStatus("bid_prep")}
+          className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-60"
+        >
+          Set Bid Prep
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => updateStatus("need_subcontractor")}
+          className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-100 disabled:opacity-60"
+        >
+          Find Subcontractor
         </button>
         <button
           type="button"

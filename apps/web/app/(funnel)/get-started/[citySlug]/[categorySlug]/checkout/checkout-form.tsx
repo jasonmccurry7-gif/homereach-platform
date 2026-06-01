@@ -1,15 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface CheckoutFormProps {
   bundleId: string;
   bundleName: string;
-  resolvedPriceCents: number;
-  pricingType: 'founding' | 'standard';
-  isFoundingOpen: boolean;
-  standardPriceCents: number;
+  bundlePrice: string;
   cityId: string;
   cityName: string;
   categoryId: string;
@@ -20,154 +17,10 @@ interface CheckoutFormProps {
   userEmail: string | null;
 }
 
-// ── Add-on catalog ────────────────────────────────────────────────────────────
-
-type AddonCategory = "print" | "digital" | "automation" | "bundle";
-
-const ADDONS: {
-  id: string;
-  category: AddonCategory;
-  name: string;
-  description: string;
-  price: number;
-  unit: string;
-  recurring: boolean;
-  badge?: string;
-  icon: string;
-}[] = [
-  // ── Print Products ──────────────────────────────────────────────────────────
-  {
-    id: "door_hangers",
-    category: "print",
-    name: "Door Hangers",
-    description: "500 professionally designed door hangers distributed in your target area.",
-    price: 400,
-    unit: "500 · 3.5\" × 8.5\"",
-    recurring: false,
-    icon: "🚪",
-  },
-  {
-    id: "fliers",
-    category: "print",
-    name: "Fliers (500)",
-    description: "500 full-color fliers — 8.5\" × 11\". Great for events, bulletin boards, and local distribution.",
-    price: 225,
-    unit: "500 · 8.5\" × 11\"",
-    recurring: false,
-    icon: "📄",
-  },
-  {
-    id: "yard_signs",
-    category: "print",
-    name: "Yard Signs (10)",
-    description: "10 branded yard signs with stakes — 18\" × 24\". Perfect for job sites, events, and high-traffic areas.",
-    price: 300,
-    unit: "10 · 18\" × 24\"",
-    recurring: false,
-    icon: "🪧",
-  },
-  {
-    id: "business_cards",
-    category: "print",
-    name: "Business Cards (500)",
-    description: "500 premium business cards — standard 3.5\" × 2\". Professionally designed and printed.",
-    price: 105,
-    unit: "500 · 3.5\" × 2\"",
-    recurring: false,
-    icon: "🪪",
-  },
-  // ── Digital ─────────────────────────────────────────────────────────────────
-  {
-    id: "website_setup",
-    category: "digital",
-    name: "Website Design (Setup)",
-    description: "Professional mobile-friendly website designed and built for your business. One-time setup fee.",
-    price: 497,
-    unit: "one-time",
-    recurring: false,
-    badge: "Popular",
-    icon: "🌐",
-  },
-  {
-    id: "website_maintenance",
-    category: "digital",
-    name: "Website Hosting & Maintenance",
-    description: "Ongoing hosting, updates, and support for your HomeReach website. Requires website setup.",
-    price: 97,
-    unit: "/mo",
-    recurring: true,
-    icon: "🖥️",
-  },
-  // ── Automation ───────────────────────────────────────────────────────────────
-  {
-    id: "sms_automation",
-    category: "automation",
-    name: "SMS Follow-Up Automation",
-    description: "Automated text sequences follow up with every lead from your postcard campaign.",
-    price: 49,
-    unit: "/mo",
-    recurring: true,
-    badge: "New",
-    icon: "📱",
-  },
-  {
-    id: "email_automation",
-    category: "automation",
-    name: "Email Automation",
-    description: "Drip email sequences nurture postcard leads until they're ready to buy.",
-    price: 49,
-    unit: "/mo",
-    recurring: true,
-    icon: "📧",
-  },
-  {
-    id: "full_automation",
-    category: "automation",
-    name: "Full Automation Bundle",
-    description: "SMS + Email automation together. Our system contacts, follows up, and converts leads automatically.",
-    price: 79,
-    unit: "/mo",
-    recurring: true,
-    badge: "Best Value",
-    icon: "🤖",
-  },
-  // ── Nonprofit Sponsorship ────────────────────────────────────────────────────
-  {
-    id: "nonprofit",
-    category: "bundle",
-    name: "Sponsor a Local Nonprofit",
-    description: "Feature a local nonprofit cause on your ad. We donate $25/mo on your behalf — great for community goodwill.",
-    price: 25,
-    unit: "/mo",
-    recurring: true,
-    badge: "Community",
-    icon: "❤️",
-  },
-];
-
-const CATEGORY_LABELS: Record<AddonCategory, string> = {
-  print:      "Print Products",
-  digital:    "Digital",
-  automation: "Marketing Automation",
-  bundle:     "Community & Bundles",
-};
-
-const CATEGORY_ORDER: AddonCategory[] = ["print", "digital", "automation", "bundle"];
-
-const BADGE_STYLES: Record<string, string> = {
-  "Popular":    "bg-blue-100 text-blue-700",
-  "New":        "bg-purple-100 text-purple-700",
-  "Best Value": "bg-amber-100 text-amber-700",
-  "Community":  "bg-emerald-100 text-emerald-700",
-};
-
 export function CheckoutForm({
   bundleId,
   bundleName,
-  resolvedPriceCents,
-  pricingType,
-  isFoundingOpen,
-  standardPriceCents,
+  bundlePrice,
   cityId,
   cityName,
   categoryId,
@@ -178,43 +31,56 @@ export function CheckoutForm({
   userEmail,
 }: CheckoutFormProps) {
   const [businessName, setBusinessName] = useState("");
-  const [email, setEmail]               = useState(userEmail ?? "");
-  const [phone, setPhone]               = useState("");
-  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
-  const [loading, setLoading]           = useState(false);
-  const [error, setError]               = useState<string | null>(null);
+  const [email, setEmail] = useState(userEmail ?? "");
+  const [phone, setPhone] = useState("");
+  const [approvalAccepted, setApprovalAccepted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const draftKey = `homereach:shared-checkout:${citySlug}:${categorySlug}:${bundleId}`;
 
-  function toggleAddon(id: string) {
-    // full_automation replaces individual sms/email automation
-    if (id === "full_automation") {
-      setSelectedAddons(prev => {
-        const without = prev.filter(a => a !== "sms_automation" && a !== "email_automation");
-        return without.includes("full_automation")
-          ? without.filter(a => a !== "full_automation")
-          : [...without, "full_automation"];
-      });
-      return;
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(draftKey);
+      if (!saved) return;
+      const draft = JSON.parse(saved) as {
+        businessName?: string;
+        email?: string;
+        phone?: string;
+      };
+      if (draft.businessName) setBusinessName(draft.businessName);
+      if (!userEmail && draft.email) setEmail(draft.email);
+      if (draft.phone) setPhone(draft.phone);
+    } catch {
+      // Ignore malformed local drafts; checkout can continue normally.
     }
-    if ((id === "sms_automation" || id === "email_automation") && selectedAddons.includes("full_automation")) {
-      return; // already covered by bundle
-    }
-    setSelectedAddons(prev =>
-      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
-    );
-  }
+  }, [draftKey, userEmail]);
 
-  // Calculate totals
-  const selectedItems = ADDONS.filter(a => selectedAddons.includes(a.id));
-  const monthlyAddons  = selectedItems.filter(a => a.recurring).reduce((s, a) => s + a.price * 100, 0);
-  const oneTimeAddons  = selectedItems.filter(a => !a.recurring).reduce((s, a) => s + a.price * 100, 0);
-  const monthlyTotal   = resolvedPriceCents + monthlyAddons;
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(
+        draftKey,
+        JSON.stringify({ businessName, email, phone }),
+      );
+    } catch {
+      // Session storage is a convenience only.
+    }
+  }, [businessName, draftKey, email, phone]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    // If not authenticated, redirect to signup with return URL
     if (!isAuthenticated) {
+      try {
+        window.sessionStorage.setItem(
+          draftKey,
+          JSON.stringify({ businessName, email, phone }),
+        );
+      } catch {
+        // Session storage is a convenience only.
+      }
       const returnUrl = encodeURIComponent(
         `/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`
       );
@@ -223,30 +89,42 @@ export function CheckoutForm({
     }
 
     try {
+      if (!approvalAccepted) {
+        setError("Please acknowledge the shared postcard terms before payment.");
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch("/api/spots/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bundleId,
+          businessName,
+          phone,
           cityId,
           categoryId,
           citySlug,
           categorySlug,
-          businessName,
-          phone: phone || undefined,
-          addons: selectedAddons,
-          nonprofitId: selectedAddons.includes("nonprofit") ? "local" : null,
-          pricingType,
-          lockedPrice: resolvedPriceCents,
+          addons: [],
         }),
       });
 
       const data = await res.json();
+
       if (!res.ok) {
         setError(data.error ?? "Something went wrong. Please try again.");
         setLoading(false);
         return;
       }
+
+      if (!data.checkoutUrl) {
+        setError("Checkout could not be created. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // Redirect to Stripe Checkout
       window.location.href = data.checkoutUrl;
     } catch {
       setError("Network error. Please check your connection and try again.");
@@ -255,199 +133,132 @@ export function CheckoutForm({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="mb-1 font-bold text-gray-900">Your business information</h2>
+      <p className="mb-6 text-sm text-gray-500">
+        Tell us a bit about your business so we can set up your campaign.
+      </p>
 
-      {/* ── Business info ── */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="font-bold text-gray-900 mb-1">Your business information</h2>
-        <p className="text-sm text-gray-500 mb-5">Tell us about your business to get started.</p>
+      {!isAuthenticated && (
+        <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm">
+          <p className="font-medium text-blue-800">You&apos;ll create an account at checkout</p>
+          <p className="mt-0.5 text-blue-700">
+            Your account gives you access to your campaign dashboard and results.{" "}
+            <Link href={`/login?redirect=${encodeURIComponent(`/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`)}`} className="font-semibold underline">
+              Already have one? Sign in
+            </Link>
+          </p>
+        </div>
+      )}
 
-        {!isAuthenticated && (
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm mb-5">
-            <p className="font-medium text-blue-800">You&apos;ll create an account at checkout</p>
-            <p className="mt-0.5 text-blue-700">
-              <Link
-                href={`/login?redirect=${encodeURIComponent(`/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`)}`}
-                className="font-semibold underline"
-              >
-                Already have an account? Sign in
-              </Link>
-            </p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
           </div>
         )}
 
-        <form id="checkout-form" onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="businessName" className="block text-sm font-medium text-gray-700">
-              Business name <span className="text-red-500">*</span>
-            </label>
-            <input id="businessName" type="text" required
-              placeholder={`Your ${categoryName.toLowerCase()} business name`}
-              value={businessName} onChange={(e) => setBusinessName(e.target.value)}
-              className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email address <span className="text-red-500">*</span>
-            </label>
-            <input id="email" type="email" required placeholder="you@yourbusiness.com"
-              value={email} onChange={(e) => setEmail(e.target.value)}
-              disabled={isAuthenticated && !!userEmail}
-              className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-              Phone <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
-            </label>
-            <input id="phone" type="tel" placeholder="(330) 555-0100"
-              value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-        </form>
-      </div>
-
-      {/* ── Add-ons ── */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="font-bold text-gray-900 mb-1">Add more to your campaign</h2>
-        <p className="text-sm text-gray-500 mb-5">
-          Supercharge your results with print, digital, and automation products.
-        </p>
-
-        <div className="space-y-6">
-          {CATEGORY_ORDER.map(cat => {
-            const items = ADDONS.filter(a => a.category === cat);
-            return (
-              <div key={cat}>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
-                  {CATEGORY_LABELS[cat]}
-                </p>
-                <div className="space-y-2">
-                  {items.map(addon => {
-                    const selected = selectedAddons.includes(addon.id);
-                    const coveredByBundle = (addon.id === "sms_automation" || addon.id === "email_automation")
-                      && selectedAddons.includes("full_automation");
-                    return (
-                      <button
-                        key={addon.id}
-                        type="button"
-                        onClick={() => !coveredByBundle && toggleAddon(addon.id)}
-                        disabled={coveredByBundle}
-                        className={`w-full text-left rounded-xl border px-4 py-3.5 transition-all ${
-                          coveredByBundle
-                            ? "border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed"
-                            : selected
-                              ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
-                              : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3 flex-1">
-                            <span className="text-xl shrink-0 mt-0.5">{addon.icon}</span>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                                <span className="text-sm font-semibold text-gray-900">{addon.name}</span>
-                                {addon.badge && (
-                                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${BADGE_STYLES[addon.badge] ?? "bg-gray-100 text-gray-600"}`}>
-                                    {addon.badge}
-                                  </span>
-                                )}
-                                {coveredByBundle && (
-                                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                                    Included in bundle
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-gray-500 leading-snug">{addon.description}</p>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-sm font-bold text-gray-900">+${addon.price}</p>
-                            <p className="text-xs text-gray-400">{addon.unit}</p>
-                          </div>
-                        </div>
-                        {selected && !coveredByBundle && (
-                          <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-600">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                            </svg>
-                            Added
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+        <div>
+          <label htmlFor="businessName" className="block text-sm font-medium text-gray-700">
+            Business name <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="businessName"
+            type="text"
+            required
+            autoComplete="organization"
+            placeholder={`Your ${categoryName.toLowerCase()} business name`}
+            value={businessName}
+            onChange={(e) => setBusinessName(e.target.value)}
+            className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
         </div>
-      </div>
 
-      {/* ── Price summary + CTA ── */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="space-y-2 text-sm mb-5">
-          <div className="flex justify-between">
-            <span className="text-gray-600">{bundleName} · {cityName}</span>
-            <span className="font-medium">${(resolvedPriceCents / 100).toLocaleString()}/mo</span>
-          </div>
-          {selectedItems.map(addon => (
-            <div key={addon.id} className="flex justify-between text-gray-500">
-              <span className="flex items-center gap-1.5">
-                <span>{addon.icon}</span> {addon.name}
-              </span>
-              <span>+${addon.price}{addon.unit}</span>
-            </div>
-          ))}
-          {isFoundingOpen && (
-            <div className="flex items-center gap-1.5 text-green-700 text-xs font-semibold pt-1">
-              🎉 Founding Member Rate — locked in for life
-            </div>
-          )}
-          <div className="flex justify-between border-t border-gray-100 pt-3 font-bold text-gray-900">
-            <span>Monthly total</span>
-            <span>${(monthlyTotal / 100).toLocaleString()}/mo</span>
-          </div>
-          {oneTimeAddons > 0 && (
-            <div className="flex justify-between text-gray-500 text-xs">
-              <span>One-time charges today</span>
-              <span>+${(oneTimeAddons / 100).toLocaleString()}</span>
-            </div>
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            Email address <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            autoComplete="email"
+            inputMode="email"
+            placeholder="you@yourbusiness.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isAuthenticated && !!userEmail}
+            className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+          />
+          {isAuthenticated && (
+            <p className="mt-1 text-xs text-gray-400">Signed in as {email}</p>
           )}
         </div>
+
+        <div>
+          <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+            Phone number
+            <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+          </label>
+          <input
+            id="phone"
+            type="tel"
+            autoComplete="tel"
+            inputMode="tel"
+            placeholder="(512) 555-0100"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Summary row */}
+        <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 text-sm">
+          <div>
+            <span className="font-medium text-gray-700">{bundleName}</span>
+            <span className="mx-1 text-gray-400">|</span>
+            <span className="text-gray-500">{cityName}</span>
+          </div>
+          <span className="font-bold text-gray-900">
+            ${Number(bundlePrice).toLocaleString()}/mo
+          </span>
+        </div>
+
+        <label className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-900">
+          <input
+            type="checkbox"
+            checked={approvalAccepted}
+            onChange={(event) => setApprovalAccepted(event.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span>
+            I understand HomeReach will recheck city/category availability at checkout, prepare a proof for approval before print, and that shared postcard visibility does not guarantee leads, calls, sales, delivery dates beyond vendor/USPS estimates, or category exclusivity unless the inventory check passes.
+          </span>
+        </label>
 
         <button
           type="submit"
-          form="checkout-form"
-          disabled={loading || !businessName.trim()}
+          disabled={loading || !businessName.trim() || !email.trim() || !approvalAccepted}
           className="w-full rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-blue-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
               <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Taking you to checkout…
+              Taking you to checkout...
             </span>
           ) : (
-            `Continue to payment → $${(monthlyTotal / 100).toLocaleString()}/mo`
+            `Continue to payment - $${Number(bundlePrice).toLocaleString()}/mo`
           )}
         </button>
-        <p className="mt-3 text-center text-xs text-gray-400">
-          Secure Stripe checkout · Card details never stored on our servers
+
+        <p className="text-center text-xs text-gray-400">
+          You&apos;ll be redirected to Stripe&apos;s secure checkout page.
+          Your card details are never stored on our servers.
         </p>
-      </div>
+      </form>
     </div>
   );
 }

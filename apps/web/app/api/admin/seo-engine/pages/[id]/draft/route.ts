@@ -12,6 +12,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { seoDraftFlagGate, requireAdmin } from "@/lib/seo/guards";
+import { syncSeoPageLedger } from "@/lib/approvals/seo-ledger";
 import { getAnthropicKey, getDraftModel } from "@/lib/seo/env";
 
 export const runtime = "nodejs";
@@ -189,10 +190,35 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .from("seo_pages")
     .update(update)
     .eq("id", id)
-    .select("id, slug, title_tag, h1")
+    .select("*")
     .maybeSingle();
   if (updErr || !updated) {
     return NextResponse.json({ ok: false, error: updErr?.message ?? "update_failed" }, { status: 500 });
+  }
+
+  const ledgerResult = await syncSeoPageLedger({
+    id: String(updated.id),
+    slug: String(updated.slug),
+    pageType: String(updated.page_type),
+    status: String(updated.status) as "draft" | "review" | "approved" | "published" | "archived",
+    titleTag: typeof updated.title_tag === "string" ? updated.title_tag : null,
+    metaDescription: typeof updated.meta_description === "string" ? updated.meta_description : null,
+    h1: typeof updated.h1 === "string" ? updated.h1 : null,
+    cityId: typeof updated.city_id === "string" ? updated.city_id : null,
+    categoryId: typeof updated.category_id === "string" ? updated.category_id : null,
+    approvedBy: typeof updated.approved_by === "string" ? updated.approved_by : null,
+    approvedAt: typeof updated.approved_at === "string" ? updated.approved_at : null,
+    approvalNotes: typeof updated.approval_notes === "string" ? updated.approval_notes : null,
+    publishedAt: typeof updated.published_at === "string" ? updated.published_at : null,
+    createdAt: typeof updated.created_at === "string" ? updated.created_at : null,
+    updatedAt: typeof updated.updated_at === "string" ? updated.updated_at : null,
+  }, {
+    actorId: admin.adminId,
+    actorLabel: "seo_page_draft_generation",
+    eventType: "seo_page_drafted",
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] seo page draft sync skipped:", ledgerResult.error);
   }
 
   console.log(`[seo.page.drafted] id=${id} model=${model} ms=${Date.now() - startedAt} actor=${admin.adminId}`);
