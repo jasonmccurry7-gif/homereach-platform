@@ -875,17 +875,18 @@
     "offerType": "recurring_service",
     "productionStatus": "manual_sellable",
     "price": {
-      "public": "$399/month for 8 draft posts; $699/month for 16 draft posts; publishing remains manual/approval-led",
+      "public": "Draft-only $399/month for 8 posts or $699/month for 16 posts. Managed Social Content + Auto-Publishing founder rates: ~~$699~~ $599/month for 8 approved posts or ~~$1,099~~ $899/month for 16 approved posts; optional setup ~~$299~~ $199.",
       "billingMode": "Manual invoice or future Stripe product",
-      "stripeStatus": "No native auto-post checkout"
+      "stripeStatus": "No native auto-post checkout yet"
     },
     "primaryOwner": "Content Operations",
     "publicPath": "/services/social-content",
     "startPath": "/waitlist?product=social-content",
     "adminPath": "/admin/content-intel",
-    "customerPath": "/dashboard",
+    "customerPath": "/dashboard/social-publishing",
     "docs": [
       "docs/SOCIAL_CONTENT_DRAFTING_SERVICE_KIT.md",
+      "docs/META_CONNECTED_PUBLISHING_SERVICE_KIT.md",
       "docs/SOCIAL_CONTENT_DRAFTING_PRODUCTION_SOP.md",
       "docs/HOMEREACH_AUTONOMOUS_CONTENT_ENGINE_2026-05-25.md",
       "docs/HOMEREACH_AI_CREATIVE_PRODUCTION_STUDIO.md"
@@ -895,6 +896,8 @@
       "Draft posts",
       "Creative briefs",
       "Approval queue",
+      "Meta OAuth connection for managed publishing",
+      "Approved scheduled publishing queue",
       "Manual publishing checklist",
       "Monthly performance notes"
     ],
@@ -904,19 +907,26 @@
       "Draft content calendar",
       "Prepare posts and creative briefs",
       "Route for approval",
-      "Log manual publish status and engagement"
+      "Connect Meta account by OAuth if client buys managed publishing",
+      "Schedule approved posts through the Meta publication queue",
+      "Log manual publish status and engagement if API publishing is unavailable"
     ],
     "reportingMetrics": [
       "Drafts created",
       "Drafts approved",
       "Drafts revised",
+      "Connected Meta accounts",
+      "Posts scheduled",
       "Posts manually published",
+      "Posts auto-published after approval",
       "Engagement manually entered",
       "Leads, DMs, calls, or clicks when known",
       "Top themes"
     ],
     "approvalGates": [
       "No auto-publishing by default",
+      "Meta publishing requires client OAuth authorization",
+      "Approved content only; unapproved posts never publish",
       "No political content without compliance review",
       "No unsupported claims",
       "Brand approval required"
@@ -926,18 +936,27 @@
       "/waitlist?product=social-content",
       "/admin/content-intel",
       "/admin/content-review",
+      "/dashboard/social-publishing",
+      "/api/social-content/meta/connections",
+      "/api/social-content/meta/oauth/start",
+      "/api/social-content/meta/publications",
+      "/api/social-content/meta/publish",
+      "/api/admin/social-content/meta/publish-due",
       "/api/admin/social-content/metrics",
       "/api/admin/social-content/metrics/sync",
+      "pnpm smoke:meta-connected-publishing",
       "pnpm smoke:social-content"
     ],
     "issueHandling": [
       "If brand assets are missing, use text-only drafts until assets are approved",
       "If content is time-sensitive, require approval before publishing window",
       "If approval owner is missing, hold drafts in review",
-      "If native publishing fails, use manual copy/export"
+      "If native publishing fails, use manual copy/export",
+      "If Meta permissions or app review are unavailable, keep publication records in manual mode",
+      "If a token expires or is revoked, request the business reconnect through OAuth"
     ],
     "renewalMotion": "Monthly content performance review and next calendar.",
-    "readinessNotes": "Production-ready manual service: public request form, Content Strategy Agent handoff task, content review queue, Social Content service kit/SOP, metrics import guardrails, publication ledger tables, and live smoke coverage. Sell as draft-and-approve content support, not auto-posting."
+    "readinessNotes": "Production-ready manual service with a connected publishing foundation: public request form, Content Strategy Agent handoff task, content review queue, Meta OAuth storage, approved publication queue, Social Content service kit/SOP, metrics import guardrails, publication ledger tables, and live smoke coverage. Sell managed auto-publishing only after Meta app credentials, permissions/app review, feature flags, and SOCIAL_PUBLISHING_MODE=live are configured."
   },
   {
     "id": "ai-website-assistant",

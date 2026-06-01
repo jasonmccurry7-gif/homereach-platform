@@ -5,12 +5,18 @@ on:
     paths:
       - "apps/web/app/(admin)/admin/agent-mini-apps/**"
       - "apps/web/app/api/admin/agent-mini-apps/**"
+      - "apps/web/app/api/admin/agent-integrations/**"
       - "apps/web/components/agent-mini-apps/**"
+      - "apps/web/lib/agent-integrations/**"
       - "apps/web/lib/agent-mini-apps/**"
       - "packages/db/src/schema/agentMiniApps.ts"
       - "packages/db/src/schema/agentExecution.ts"
+      - "packages/db/src/schema/agentIntegrations.ts"
+      - "packages/db/src/schema/index.ts"
       - "scripts/agent-mini-apps-*.mjs"
+      - "scripts/agent-integrations-*.mjs"
       - "supabase/migrations/*agent_mini_apps*"
+      - "supabase/migrations/*agent_connector_policy*"
       - "docs/AGENT_MINI_APPS_AUTHENTICATED_E2E.md"
       - "docs/AGENT_MINI_APPS_WORLD_CLASS_INTEGRATION_STACK.md"
       - "package.json"
@@ -22,12 +28,18 @@ on:
     paths:
       - "apps/web/app/(admin)/admin/agent-mini-apps/**"
       - "apps/web/app/api/admin/agent-mini-apps/**"
+      - "apps/web/app/api/admin/agent-integrations/**"
       - "apps/web/components/agent-mini-apps/**"
+      - "apps/web/lib/agent-integrations/**"
       - "apps/web/lib/agent-mini-apps/**"
       - "packages/db/src/schema/agentMiniApps.ts"
       - "packages/db/src/schema/agentExecution.ts"
+      - "packages/db/src/schema/agentIntegrations.ts"
+      - "packages/db/src/schema/index.ts"
       - "scripts/agent-mini-apps-*.mjs"
+      - "scripts/agent-integrations-*.mjs"
       - "supabase/migrations/*agent_mini_apps*"
+      - "supabase/migrations/*agent_connector_policy*"
       - "docs/AGENT_MINI_APPS_AUTHENTICATED_E2E.md"
       - "docs/AGENT_MINI_APPS_WORLD_CLASS_INTEGRATION_STACK.md"
       - "package.json"
@@ -111,6 +123,9 @@ jobs:
 
       - name: Agent Mini Apps lifecycle smoke
         run: pnpm smoke:agent-mini-apps
+
+      - name: Agent Integrations policy smoke
+        run: pnpm smoke:agent-integrations-policy
 
       - name: Agent Mini Apps DB preflight
         run: pnpm preflight:agent-mini-apps-db

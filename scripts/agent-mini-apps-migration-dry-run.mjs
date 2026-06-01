@@ -5,12 +5,10 @@ import process from "node:process";
 import postgres from "postgres";
 
 const root = process.cwd();
-const migrationPath = path.join(
-  root,
-  "supabase",
-  "migrations",
+const migrationFiles = [
   "20260601021915_agent_mini_apps_layer.sql",
-);
+  "20260601170624_agent_connector_policy_layer.sql",
+];
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return {};
@@ -48,7 +46,10 @@ if (!url) {
   process.exit(1);
 }
 
-const migrationSql = fs.readFileSync(migrationPath, "utf8");
+const migrations = migrationFiles.map((file) => ({
+  file,
+  sql: fs.readFileSync(path.join(root, "supabase", "migrations", file), "utf8"),
+}));
 const db = postgres(url, {
   max: 1,
   prepare: false,
@@ -61,9 +62,11 @@ try {
   await db.unsafe("begin");
   await db.unsafe("set local lock_timeout = '5s'");
   await db.unsafe("set local statement_timeout = '120s'");
-  await db.unsafe(migrationSql);
+  for (const migration of migrations) {
+    await db.unsafe(migration.sql);
+  }
   await db.unsafe("rollback");
-  console.log("Agent Mini Apps migration dry-run passed. Transaction rolled back.");
+  console.log(`Agent Mini Apps migration dry-run passed for ${migrations.length} migrations. Transaction rolled back.`);
 } catch (error) {
   try {
     await db.unsafe("rollback");

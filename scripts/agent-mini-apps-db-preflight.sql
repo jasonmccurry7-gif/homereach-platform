@@ -10,6 +10,10 @@ with required_relations as (
       ('public', 'agent_execution_audit_log', 'table'),
       ('public', 'agent_mini_apps', 'table'),
       ('public', 'agent_mini_app_events', 'table'),
+      ('public', 'integration_connections', 'table'),
+      ('public', 'agent_tool_permissions', 'table'),
+      ('public', 'external_action_intents', 'table'),
+      ('public', 'agent_execution_attempts', 'table'),
       ('public', 'browser_session_registry', 'view')
   ) as required(schema_name, relation_name, relation_kind)
 ),
@@ -50,7 +54,20 @@ required_columns as (
       ('agent_execution_queue', 'execution_log_json'),
       ('agent_execution_queue', 'manual_takeover_required'),
       ('agent_browser_session_registry', 'allowed_actions_json'),
-      ('agent_browser_session_registry', 'blocked_actions_json')
+      ('agent_browser_session_registry', 'blocked_actions_json'),
+      ('integration_connections', 'provider'),
+      ('integration_connections', 'connection_type'),
+      ('integration_connections', 'status'),
+      ('integration_connections', 'credential_reference'),
+      ('agent_tool_permissions', 'tool_key'),
+      ('agent_tool_permissions', 'permission_scope'),
+      ('agent_tool_permissions', 'requires_human_approval'),
+      ('external_action_intents', 'permission_scope'),
+      ('external_action_intents', 'approval_event_id'),
+      ('external_action_intents', 'approved_payload_json'),
+      ('agent_execution_attempts', 'execution_queue_id'),
+      ('agent_execution_attempts', 'attempt_number'),
+      ('agent_execution_attempts', 'log_json')
   ) as required(table_name, column_name)
 ),
 column_status as (
@@ -71,7 +88,14 @@ policy_status as (
     count(*)::int as policy_count
   from pg_policies
   where schemaname = 'public'
-    and tablename in ('agent_mini_apps', 'agent_mini_app_events')
+    and tablename in (
+      'agent_mini_apps',
+      'agent_mini_app_events',
+      'integration_connections',
+      'agent_tool_permissions',
+      'external_action_intents',
+      'agent_execution_attempts'
+    )
   group by schemaname, tablename
 ),
 trigger_status as (
@@ -95,6 +119,20 @@ secret_column_status as (
   where table_schema = 'public'
     and table_name in ('browser_session_registry', 'agent_browser_session_registry')
     and lower(column_name) ~ '(password|secret|token|api_key|apikey|mfa_code|credential)'
+),
+connector_secret_column_status as (
+  select
+    table_name,
+    column_name
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name in (
+      'integration_connections',
+      'agent_tool_permissions',
+      'external_action_intents',
+      'agent_execution_attempts'
+    )
+    and lower(column_name) ~ '(password|secret|token|api_key|apikey|mfa_code)'
 ),
 seed_status as (
   select
@@ -124,7 +162,11 @@ select jsonb_pretty(jsonb_build_object(
   'rls', (
     select jsonb_build_object(
       'agent_mini_apps', coalesce((select rls_enabled from relation_status where relation_name = 'agent_mini_apps'), false),
-      'agent_mini_app_events', coalesce((select rls_enabled from relation_status where relation_name = 'agent_mini_app_events'), false)
+      'agent_mini_app_events', coalesce((select rls_enabled from relation_status where relation_name = 'agent_mini_app_events'), false),
+      'integration_connections', coalesce((select rls_enabled from relation_status where relation_name = 'integration_connections'), false),
+      'agent_tool_permissions', coalesce((select rls_enabled from relation_status where relation_name = 'agent_tool_permissions'), false),
+      'external_action_intents', coalesce((select rls_enabled from relation_status where relation_name = 'external_action_intents'), false),
+      'agent_execution_attempts', coalesce((select rls_enabled from relation_status where relation_name = 'agent_execution_attempts'), false)
     )
   ),
   'policy_counts', (
@@ -143,6 +185,10 @@ select jsonb_pretty(jsonb_build_object(
   'secret_like_registry_columns', (
     select coalesce(jsonb_agg(table_name || '.' || column_name order by table_name, column_name), '[]'::jsonb)
     from secret_column_status
+  ),
+  'secret_like_connector_columns', (
+    select coalesce(jsonb_agg(table_name || '.' || column_name order by table_name, column_name), '[]'::jsonb)
+    from connector_secret_column_status
   ),
   'seed_count', (
     select mini_app_estimated_count

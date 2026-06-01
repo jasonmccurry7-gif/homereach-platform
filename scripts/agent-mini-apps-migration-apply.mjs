@@ -5,10 +5,21 @@ import process from "node:process";
 import postgres from "postgres";
 
 const root = process.cwd();
-const migrationFile = "20260601021915_agent_mini_apps_layer.sql";
-const migrationVersion = "20260601021915";
-const migrationName = "agent_mini_apps_layer";
-const migrationPath = path.join(root, "supabase", "migrations", migrationFile);
+const migrations = [
+  {
+    file: "20260601021915_agent_mini_apps_layer.sql",
+    version: "20260601021915",
+    name: "agent_mini_apps_layer",
+  },
+  {
+    file: "20260601170624_agent_connector_policy_layer.sql",
+    version: "20260601170624",
+    name: "agent_connector_policy_layer",
+  },
+].map((migration) => ({
+  ...migration,
+  sql: fs.readFileSync(path.join(root, "supabase", "migrations", migration.file), "utf8"),
+}));
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return {};
@@ -46,7 +57,6 @@ if (!url) {
   process.exit(1);
 }
 
-const migrationSql = fs.readFileSync(migrationPath, "utf8");
 const db = postgres(url, {
   max: 1,
   prepare: false,
@@ -56,39 +66,41 @@ const db = postgres(url, {
 });
 
 try {
-  const existing = await db`
-    select version
-    from supabase_migrations.schema_migrations
-    where version = ${migrationVersion}
-    limit 1
-  `;
-  if (existing.length > 0) {
-    console.log(`Migration ${migrationVersion}_${migrationName} is already recorded. No changes applied.`);
-    process.exit(0);
-  }
+  for (const migration of migrations) {
+    const existing = await db`
+      select version
+      from supabase_migrations.schema_migrations
+      where version = ${migration.version}
+      limit 1
+    `;
+    if (existing.length > 0) {
+      console.log(`Migration ${migration.version}_${migration.name} is already recorded. Skipping.`);
+      continue;
+    }
 
-  await db.unsafe("begin");
-  await db.unsafe("set local lock_timeout = '5s'");
-  await db.unsafe("set local statement_timeout = '120s'");
-  await db.unsafe(migrationSql);
-  await db`
-    insert into supabase_migrations.schema_migrations (
-      version,
-      statements,
-      name,
-      created_by,
-      idempotency_key
-    )
-    values (
-      ${migrationVersion},
-      ${[migrationSql]},
-      ${migrationName},
-      ${"codex"},
-      ${`${migrationVersion}_${migrationName}`}
-    )
-  `;
-  await db.unsafe("commit");
-  console.log(`Migration ${migrationVersion}_${migrationName} applied and recorded.`);
+    await db.unsafe("begin");
+    await db.unsafe("set local lock_timeout = '5s'");
+    await db.unsafe("set local statement_timeout = '120s'");
+    await db.unsafe(migration.sql);
+    await db`
+      insert into supabase_migrations.schema_migrations (
+        version,
+        statements,
+        name,
+        created_by,
+        idempotency_key
+      )
+      values (
+        ${migration.version},
+        ${[migration.sql]},
+        ${migration.name},
+        ${"codex"},
+        ${`${migration.version}_${migration.name}`}
+      )
+    `;
+    await db.unsafe("commit");
+    console.log(`Migration ${migration.version}_${migration.name} applied and recorded.`);
+  }
 } catch (error) {
   try {
     await db.unsafe("rollback");
