@@ -4,6 +4,7 @@ import {
   getCanvaAccessToken,
   type CanvaExportType,
 } from "./config";
+import { getStoredCanvaAccessToken } from "./repository";
 
 export class CanvaApiError extends Error {
   constructor(
@@ -57,10 +58,10 @@ export class CanvaConnectClient {
   constructor(private readonly token = getCanvaAccessToken()) {}
 
   private async request<T>(path: string, options: CanvaRequestOptions = {}): Promise<T> {
-    const accessToken = getCanvaAccessToken(options.token ?? this.token);
+    const accessToken = getCanvaAccessToken(options.token ?? this.token) ?? await getStoredCanvaAccessToken();
     if (!accessToken) {
       throw new CanvaApiError("Canva access token is not configured", 503, {
-        env: "CANVA_ACCESS_TOKEN",
+        env: "CANVA_ACCESS_TOKEN or stored canva_connections OAuth token",
       });
     }
 

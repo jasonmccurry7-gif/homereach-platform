@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   AlertTriangle,
-  CheckCircle2,
   ClipboardCheck,
   Clock3,
   DollarSign,
@@ -34,22 +33,25 @@ export function BestPriceDeliveryDashboard({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">
-              Best Price + Delivery Intelligence
+              Delivered-Cost Intelligence
             </p>
             <h1 className="mt-3 max-w-4xl text-3xl font-bold text-white md:text-4xl">
-              Today&apos;s practical savings command center
+              Margin-protecting delivery decisions
             </h1>
             <p className="mt-3 max-w-4xl text-sm leading-6 text-neutral-300">
-              HomeReach compares the normal buying baseline against the best available
-              supplier option, delivery cost, estimated arrival, and approval workflow.
-              The owner sees the recommendation, not the spreadsheet.
+              Supplify compares the normal spend baseline against the best available
+              supplier option, delivery cost, estimated arrival, and approval path.
+              The owner sees the decision, not the spreadsheet.
+            </p>
+            <p className="mt-2 text-sm font-semibold text-neutral-400">
+              Data as of {formatDateTime(board.asOfDate)}. Supplier prices remain snapshots, benchmarks, or estimates until verified.
             </p>
             <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm font-semibold text-emerald-50">
               Recommended next step: {board.recommendedNextStep}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4 lg:min-w-[520px]">
-            <Metric label="Monthly savings" value={formatMoney(board.totalMonthlySavingsCents)} />
+            <Metric label="Est. monthly savings" value={formatMoney(board.totalMonthlySavingsCents)} />
             <Metric label="Top opportunity" value={formatMoney(board.topSavingsCents)} />
             <Metric label="Delivered options" value={String(board.deliveryReadyCount)} />
             <Metric label="Needs review" value={String(board.needsReviewCount)} />
@@ -84,6 +86,7 @@ export function BestPriceDeliveryDashboard({
             <RecommendationCard
               key={recommendation.id}
               recommendation={recommendation}
+              updatedAt={board.asOfDate}
             />
           ))
         ) : (
@@ -103,7 +106,7 @@ export function BestPriceDeliveryDashboard({
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
           <div>
-            <p className="font-bold">Safe procurement mode</p>
+            <p className="font-bold">Safe profitability mode</p>
             <ul className="mt-2 grid gap-1">
               {board.dataNotices.map((notice) => (
                 <li key={notice}>{notice}</li>
@@ -202,8 +205,10 @@ function RecommendationSummary({ board }: { board: BestPriceDeliveryBoard }) {
 
 function RecommendationCard({
   recommendation,
+  updatedAt,
 }: {
   recommendation: BestPriceDeliveryRecommendation;
+  updatedAt: Date;
 }) {
   const urgencyClass = urgencyStyles[recommendation.urgency];
 
@@ -220,6 +225,10 @@ function RecommendationCard({
             </span>
             <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-neutral-200">
               {formatLabel(recommendation.status)}
+            </span>
+            <DataQualityBadge quality={recommendation.savingsAudit.dataQuality} />
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-neutral-200">
+              Updated {formatDateTime(updatedAt)}
             </span>
           </div>
           <h2 className="mt-3 text-2xl font-bold text-white">{recommendation.title}</h2>
@@ -434,8 +443,38 @@ function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function DataQualityBadge({
+  quality,
+}: {
+  quality: BestPriceDeliveryRecommendation["savingsAudit"]["dataQuality"];
+}) {
+  const label =
+    quality === "verified" ? "Verified" : quality === "benchmark" ? "Observed" : "Estimated";
+  const className =
+    quality === "verified"
+      ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+      : quality === "benchmark"
+        ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100"
+        : "border-amber-300/30 bg-amber-300/10 text-amber-100";
+
+  return (
+    <span className={`rounded-full border px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] ${className}`}>
+      {label}
+    </span>
+  );
 }
 
 const urgencyStyles: Record<RecommendationUrgency, string> = {

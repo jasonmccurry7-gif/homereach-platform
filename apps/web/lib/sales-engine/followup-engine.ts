@@ -20,39 +20,39 @@ export const FOLLOW_UP_SCHEDULE: FollowUpVariant[] = [
   {
     attemptNumber: 1,
     delayHours:    24,
-    body: "Hey {{firstName}}, just circling back — the {{city}} spot for {{category}} is still available. Worth a quick look?",
+    body: "Hi {{firstName}}, quick follow-up on the {{city}} {{category}} visibility option. Want me to send the simple coverage and pricing breakdown?",
   },
   {
     attemptNumber: 2,
     delayHours:    48,
-    body: "Hi {{firstName}}! One more check-in on the {{city}} {{category}} spot. No pressure — just don't want you to miss it if timing's right.",
+    body: "Hi {{firstName}}, one more check-in. If staying visible in {{city}} is still on your list, I can make the next step very simple.",
   },
   {
     attemptNumber: 3,
     delayHours:    72,
-    body: "Last one, promise. If the timing's not right for {{businessName}} right now, totally get it. I'll keep you in mind when {{city}} reopens.",
+    body: "Last note from me for now. If the timing is not right for {{businessName}}, I understand. I can close the loop or send the details for later.",
   },
 ];
 
 // Category-specific follow-up variants for higher relevance
 const CATEGORY_FOLLOW_UPS: Record<string, string[]> = {
   roofing: [
-    "Hey {{firstName}}, storm season is picking up — homeowners are actively looking for roofers in {{city}}. Spot's still open.",
-    "Quick follow-up — homeowners in {{city}} are searching for roofing right now. Still have your category open.",
+    "Hi {{firstName}}, storm season makes local trust matter. Want me to send the {{city}} roofing visibility option before the category changes?",
+    "Quick follow-up: homeowners in {{city}} are making roofing decisions with real urgency. I can send a clean local coverage view.",
   ],
   hvac: [
-    "Hey {{firstName}}, HVAC demand is high in {{city}} right now — the postcard campaign could drive calls this week.",
-    "Quick check-in — seasonal demand for HVAC is peaking. {{city}} spot still available.",
+    "Hi {{firstName}}, HVAC demand gets stressful fast for homeowners. Want the {{city}} visibility option so they remember a local name?",
+    "Quick check-in: seasonal HVAC demand is rising in {{city}}. I can send the simple coverage and cost view.",
   ],
   landscaping: [
-    "Hey {{firstName}}, spring season is here — landscaping inquiries in {{city}} are climbing. Spot still open.",
-    "Quick follow-up — homeowners in {{city}} are planning their yards. Your spot's still available.",
+    "Hi {{firstName}}, homeowners in {{city}} are planning outdoor work. Want the landscaping visibility breakdown?",
+    "Quick follow-up: this is a good window for {{city}} landscaping visibility. I can send the simple plan.",
   ],
   plumbing: [
-    "Hey {{firstName}}, plumbing emergencies happen year-round — homeowners in {{city}} need a reliable local name. Spot's open.",
+    "Hi {{firstName}}, plumbing is one of those services people need to remember before there is a problem. Want the {{city}} visibility option?",
   ],
   painting: [
-    "Hey {{firstName}}, spring and summer are peak painting months. Homeowners in {{city}} are looking right now.",
+    "Hi {{firstName}}, painting decisions are picking up in {{city}}. Want me to send the local visibility plan?",
   ],
 };
 

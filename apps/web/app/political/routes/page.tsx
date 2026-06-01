@@ -4,7 +4,7 @@ import { CommandPanel, PublicHero } from "../_components/PublicCommand";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Campaign Mail Routes - HomeReach Political",
+  title: "PoliticalReach Campaign Mail Routes - HomeReach",
   description: "Live carrier-route coverage catalog used by the campaign planner.",
 };
 

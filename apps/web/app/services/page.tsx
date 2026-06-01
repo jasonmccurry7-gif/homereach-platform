@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteHeader } from "@/components/marketing/site-header";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { listGrowthServiceModules, type GrowthServiceCategory } from "@/lib/growth-execution/services";
+import { buildBreadcrumbLd, buildItemListLd, buildServiceCatalogLd, type JsonLd as JsonLdShape } from "@/lib/seo/schema";
 
 export const metadata: Metadata = {
   title: "HomeReach Services | Multi-Channel Local Growth Execution",
@@ -40,9 +42,37 @@ const categoryIcons: Record<GrowthServiceCategory, typeof Mail> = {
 export default function ServicesPage() {
   const services = listGrowthServiceModules();
   const publicServices = services.filter((service) => service.publicExposure !== "admin_only");
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+  const schemas: JsonLdShape[] = [
+    buildBreadcrumbLd([
+      { name: "Home", url: `${base}/` },
+      { name: "Services", url: `${base}/services` },
+    ]),
+    buildItemListLd({
+      name: "HomeReach public service pages",
+      url: `${base}/services`,
+      items: publicServices.map((service) => ({
+        name: service.shortTitle,
+        url: `${base}${service.publicPath}`,
+      })),
+    }),
+    buildServiceCatalogLd({
+      name: "HomeReach growth execution services",
+      description:
+        "Direct mail, AI website assistant, local SEO, reputation, social content, procurement, and government contract support services.",
+      url: `${base}/services`,
+      services: publicServices.map((service) => ({
+        name: service.title,
+        description: service.outcome,
+        url: `${base}${service.publicPath}`,
+        category: service.category,
+      })),
+    }),
+  ];
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <JsonLd schemas={schemas} />
       <SiteHeader />
       <main>
         <section className="relative overflow-hidden bg-slate-950 text-white">
@@ -68,10 +98,10 @@ export default function ServicesPage() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
                 <Link
-                  href="/waitlist"
+                  href="/waitlist?product=growth-services"
                   className="inline-flex min-h-12 items-center justify-center rounded-lg border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15"
                 >
-                  Request Demo
+                  Request Growth Plan
                 </Link>
               </div>
             </div>
@@ -156,7 +186,7 @@ export default function ServicesPage() {
                 </p>
               </div>
               <Link
-                href="/waitlist"
+                href="/waitlist?product=growth-services"
                 className="inline-flex min-h-12 items-center justify-center rounded-lg bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-blue-50"
               >
                 Get My Growth Plan

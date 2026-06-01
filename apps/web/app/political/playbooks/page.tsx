@@ -3,7 +3,7 @@ import { generateCampaignStrategy, type CampaignGoal } from "@/lib/political/str
 import { CommandPanel, PublicHero } from "../_components/PublicCommand";
 
 export const metadata: Metadata = {
-  title: "Campaign Mail Playbooks - HomeReach Political",
+  title: "PoliticalReach Campaign Mail Playbooks - HomeReach",
   description: "Campaign mail structures for awareness, persuasion, GOTV, and hybrid execution.",
 };
 

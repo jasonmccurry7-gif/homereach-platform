@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -64,9 +64,64 @@ const priorityStyles = {
 
 type Props = {
   userEmail: string;
+  approvedSocialSources: ApprovedSocialSource[];
 };
 
-export function GrowthEngineClient({ userEmail }: Props) {
+export type ApprovedSocialSource = {
+  id: string;
+  type: "daily_video_platform_post" | "ai_output";
+  label: string;
+  detail: string;
+  dailyVideoId?: string;
+  platformPostId?: string;
+  aiOutputId?: string;
+  platform: string;
+  text: string;
+};
+
+type RuntimeIntegrationStatus = {
+  vendor: "arvow" | "blotato" | "rss_cms";
+  label: string;
+  state: "ready" | "review_only" | "needs_config" | "blocked";
+  mode: string;
+  canCallApi: boolean;
+  canPublish: boolean;
+  env: Array<{ name: string; required: boolean; present: boolean }>;
+  lastCheckedAt: string;
+  issue: string | null;
+  nextAction: string;
+};
+
+type RuntimeStatusPayload = {
+  generatedAt: string;
+  integrations: RuntimeIntegrationStatus[];
+};
+
+type IntegrationActionResult = {
+  ok?: boolean;
+  message?: string;
+  dryRun?: boolean;
+  items?: unknown[];
+  payload?: unknown;
+  data?: unknown;
+  status?: RuntimeIntegrationStatus;
+};
+
+type BlotatoAccount = {
+  id: string;
+  name: string;
+  platform: string;
+  pages: Array<{ id: string; name: string }>;
+};
+
+const runtimeStatusStyles: Record<RuntimeIntegrationStatus["state"], string> = {
+  ready: "border-emerald-300/30 bg-emerald-400/10 text-emerald-100",
+  review_only: "border-blue-300/30 bg-blue-400/10 text-blue-100",
+  needs_config: "border-amber-300/30 bg-amber-400/10 text-amber-100",
+  blocked: "border-rose-300/30 bg-rose-400/10 text-rose-100",
+};
+
+export function GrowthEngineClient({ userEmail, approvedSocialSources }: Props) {
   const [activeSection, setActiveSection] = useState("overview");
   const [copied, setCopied] = useState<string | null>(null);
   const topFive = useMemo(() => getTopFiveRevenueOpportunities(), []);
@@ -184,7 +239,7 @@ export function GrowthEngineClient({ userEmail }: Props) {
           {activeSection === "sections" && <SectionsPanel setActiveSection={setActiveSection} />}
           {activeSection === "top-revenue-pages" && <TopRevenuePagesPanel />}
           {activeSection === "review-queue" && <ReviewQueuePanel copyText={copyText} copied={copied} />}
-          {activeSection === "integrations" && <IntegrationsPanel />}
+          {activeSection === "integrations" && <IntegrationsPanel approvedSocialSources={approvedSocialSources} />}
           {activeSection === "cta-audit" && <CtaAuditPanel />}
           {activeSection === "revenue-path" && <RevenuePathPanel />}
           {activeSection === "agents" && <AgentsPanel />}
@@ -508,65 +563,463 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function IntegrationsPanel() {
+function vendorKeyFor(label: string): RuntimeIntegrationStatus["vendor"] {
+  const normalized = label.toLowerCase();
+  if (normalized.includes("arvow")) return "arvow";
+  if (normalized.includes("blotato")) return "blotato";
+  return "rss_cms";
+}
+
+function runtimeLabel(state: RuntimeIntegrationStatus["state"]) {
+  return state.replaceAll("_", " ");
+}
+
+function IntegrationsPanel({ approvedSocialSources }: { approvedSocialSources: ApprovedSocialSource[] }) {
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatusPayload | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [runningAction, setRunningAction] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<Record<string, IntegrationActionResult>>({});
+  const [selectedSourceId, setSelectedSourceId] = useState(approvedSocialSources[0]?.id ?? "");
+  const [blotatoAccounts, setBlotatoAccounts] = useState<BlotatoAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selectedPageId, setSelectedPageId] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<"next_slot" | "specific_time">("next_slot");
+  const [scheduledLocalTime, setScheduledLocalTime] = useState("");
+
+  const selectedSource = approvedSocialSources.find((source) => source.id === selectedSourceId) ?? approvedSocialSources[0] ?? null;
+  const selectedAccount = blotatoAccounts.find((account) => account.id === selectedAccountId) ?? blotatoAccounts[0] ?? null;
+  const selectedPage = selectedAccount?.pages.find((page) => page.id === selectedPageId) ?? selectedAccount?.pages[0] ?? null;
+
+  async function refreshStatus() {
+    setLoadingStatus(true);
+    try {
+      const response = await fetch("/api/admin/growth-engine/integrations/status", {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as RuntimeStatusPayload;
+      if (response.ok) {
+        setRuntimeStatus(data);
+      } else {
+        setActionResult((current) => ({
+          ...current,
+          status: { ok: false, message: "Unable to load integration status." },
+        }));
+      }
+    } catch (err) {
+      setActionResult((current) => ({
+        ...current,
+        status: {
+          ok: false,
+          message: err instanceof Error ? err.message : "Unable to load integration status.",
+        },
+      }));
+    } finally {
+      setLoadingStatus(false);
+    }
+  }
+
+  async function runAction(action: "arvow-batch" | "blotato-accounts" | "blotato-schedule") {
+    setRunningAction(action);
+    try {
+      const response =
+        action === "blotato-accounts"
+          ? await fetch("/api/admin/growth-engine/integrations/blotato/accounts", { cache: "no-store" })
+          : await fetch(
+              action === "arvow-batch"
+                ? "/api/admin/growth-engine/integrations/arvow/batch"
+                : "/api/admin/growth-engine/integrations/blotato/schedule",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(
+                  action === "arvow-batch"
+                    ? {
+                        dryRun: true,
+                        keyword: "AI-powered local growth execution platform",
+                        title: "How HomeReach Turns Local Operations Into Growth",
+                      }
+                    : buildBlotatoScheduleBody(selectedSource, {
+                        accountId: selectedAccount?.id,
+                        pageId: selectedPage?.id,
+                        scheduledLocalTime,
+                        useNextFreeSlot: scheduleMode === "next_slot",
+                      }),
+                ),
+              },
+            );
+      const data = (await response.json()) as IntegrationActionResult;
+      setActionResult((current) => ({ ...current, [action]: data }));
+      if (action === "blotato-accounts" && Array.isArray(data.items)) {
+        const accounts = data.items.map(normalizeBlotatoAccount).filter((item): item is BlotatoAccount => Boolean(item));
+        setBlotatoAccounts(accounts);
+        if (!selectedAccountId && accounts[0]) setSelectedAccountId(accounts[0].id);
+        if (!selectedPageId && accounts[0]?.pages[0]) setSelectedPageId(accounts[0].pages[0].id);
+      }
+      await refreshStatus();
+    } catch (err) {
+      setActionResult((current) => ({
+        ...current,
+        [action]: {
+          ok: false,
+          message: err instanceof Error ? err.message : "Integration action failed.",
+        },
+      }));
+    } finally {
+      setRunningAction(null);
+    }
+  }
+
+  useEffect(() => {
+    void refreshStatus();
+  }, []);
+
   return (
     <PanelShell
       eyebrow="Integrations"
       title="Prepared SEO, RSS, and social integrations"
-      description="No API keys are hardcoded. These connectors are documented as review-first lanes until credentials and vendor setup are complete."
+      description="No API keys are hardcoded. These connectors now expose live readiness checks, safe dry-run actions, webhook intake, and review-first gates before anything publishes."
     >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/35 p-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Connector runtime</p>
+          <p className="mt-1 text-sm text-slate-300">
+            Last checked:{" "}
+            {runtimeStatus?.generatedAt ? new Date(runtimeStatus.generatedAt).toLocaleString() : "not checked yet"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => refreshStatus()}
+          disabled={loadingStatus}
+          className="rounded-lg bg-white px-3 py-2 text-xs font-black text-slate-950 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loadingStatus ? "Checking..." : "Check status"}
+        </button>
+      </div>
       <div id="integrations" className="grid gap-4">
-        {integrationRequirements.map((integration) => (
-          <article key={integration.vendor} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-black text-white">{integration.vendor}</h3>
-                <p className="mt-1 text-sm text-slate-300">{integration.purpose}</p>
-              </div>
-              <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-xs font-black text-amber-100">
-                {integration.mode.replaceAll("_", " ")}
-              </span>
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Workflow</p>
-                <ol className="mt-2 space-y-2">
-                  {integration.workflow.map((step, index) => (
-                    <li key={step} className="flex gap-2 text-sm leading-6 text-slate-300">
-                      <span className="font-black text-blue-200">{index + 1}.</span>
-                      {step}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Environment</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {integration.envVars.map((envVar) => (
-                    <code key={envVar} className="rounded-lg border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-sky-100">
-                      {envVar}
-                    </code>
-                  ))}
+        {integrationRequirements.map((integration) => {
+          const vendorKey = vendorKeyFor(integration.vendor);
+          const live = runtimeStatus?.integrations.find((item) => item.vendor === vendorKey);
+          const resultKeys =
+            vendorKey === "arvow"
+              ? ["arvow-batch"]
+              : vendorKey === "blotato"
+                ? ["blotato-accounts", "blotato-schedule"]
+                : [];
+
+          return (
+            <article key={integration.vendor} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black text-white">{integration.vendor}</h3>
+                  <p className="mt-1 text-sm text-slate-300">{integration.purpose}</p>
                 </div>
-                <p className="mt-4 text-sm leading-6 text-slate-300">{integration.notes}</p>
-                {integration.sourceUrl !== "internal" ? (
-                  <a
-                    href={integration.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-blue-200 hover:text-blue-100"
-                  >
-                    Source documentation
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                ) : null}
+                <span
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-black",
+                    live ? runtimeStatusStyles[live.state] : "border-amber-300/30 bg-amber-400/10 text-amber-100",
+                  )}
+                >
+                  {live ? runtimeLabel(live.state) : integration.mode.replaceAll("_", " ")}
+                </span>
               </div>
-            </div>
-          </article>
-        ))}
+
+              {live ? (
+                <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/35 p-3">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Row label="Mode" value={live.mode} />
+                    <Row label="API call" value={live.canCallApi ? "Ready" : "Blocked"} />
+                    <Row label="Publish" value={live.canPublish ? "Approval-gated" : "Review-only"} />
+                  </div>
+                  <p className={cn("mt-3 text-xs font-bold", live.issue ? "text-amber-100" : "text-emerald-100")}>
+                    {live.issue ?? live.nextAction}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Workflow</p>
+                  <ol className="mt-2 space-y-2">
+                    {integration.workflow.map((step, index) => (
+                      <li key={step} className="flex gap-2 text-sm leading-6 text-slate-300">
+                        <span className="font-black text-blue-200">{index + 1}.</span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Environment</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(live?.env ?? integration.envVars.map((envVar) => ({ name: envVar, present: false, required: false }))).map(
+                      (envVar) => (
+                        <code
+                          key={envVar.name}
+                          className={cn(
+                            "rounded-lg border px-2 py-1 text-xs",
+                            envVar.present
+                              ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100"
+                              : envVar.required
+                                ? "border-amber-300/20 bg-amber-400/10 text-amber-100"
+                                : "border-white/10 bg-slate-950/60 text-sky-100",
+                          )}
+                        >
+                          {envVar.name}
+                        </code>
+                      ),
+                    )}
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-slate-300">{integration.notes}</p>
+                  {integration.sourceUrl !== "internal" ? (
+                    <a
+                      href={integration.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-blue-200 hover:text-blue-100"
+                    >
+                      Source documentation
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+
+              {vendorKey !== "rss_cms" ? (
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+                  {vendorKey === "arvow" ? (
+                    <button
+                      type="button"
+                      onClick={() => runAction("arvow-batch")}
+                      disabled={runningAction === "arvow-batch"}
+                      className="rounded-lg bg-blue-500 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {runningAction === "arvow-batch" ? "Preparing..." : "Prepare Arvow batch"}
+                    </button>
+                  ) : null}
+                  {vendorKey === "blotato" ? (
+                    <>
+                      <div className="w-full rounded-lg border border-blue-300/15 bg-blue-400/10 p-3">
+                        <label className="block">
+                          <span className="text-xs font-black uppercase tracking-[0.14em] text-blue-100">
+                            Approved source for Blotato dry-run
+                          </span>
+                          <select
+                            value={selectedSource?.id ?? ""}
+                            onChange={(event) => setSelectedSourceId(event.target.value)}
+                            className="mt-2 min-h-11 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-blue-300"
+                          >
+                            {approvedSocialSources.length ? (
+                              approvedSocialSources.map((source) => (
+                                <option key={source.id} value={source.id}>
+                                  {source.label}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="">No approved social sources available</option>
+                            )}
+                          </select>
+                        </label>
+                        <p className="mt-2 text-xs font-semibold leading-5 text-blue-100/80">
+                          {selectedSource
+                            ? selectedSource.detail
+                            : "Approve a Daily Content platform post or verified AI Asset before preparing a scheduling payload."}
+                        </p>
+                      </div>
+                      <div className="w-full rounded-lg border border-white/10 bg-slate-950/35 p-3">
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <label className="block">
+                            <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                              Blotato account
+                            </span>
+                            <select
+                              value={selectedAccount?.id ?? ""}
+                              onChange={(event) => {
+                                const accountId = event.target.value;
+                                const account = blotatoAccounts.find((item) => item.id === accountId);
+                                setSelectedAccountId(accountId);
+                                setSelectedPageId(account?.pages[0]?.id ?? "");
+                              }}
+                              className="mt-2 min-h-11 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-blue-300"
+                            >
+                              {blotatoAccounts.length ? (
+                                blotatoAccounts.map((account) => (
+                                  <option key={account.id} value={account.id}>
+                                    {account.name} ({account.platform})
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">Fetch accounts to select destination</option>
+                              )}
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                              Page / destination
+                            </span>
+                            <select
+                              value={selectedPage?.id ?? ""}
+                              onChange={(event) => setSelectedPageId(event.target.value)}
+                              className="mt-2 min-h-11 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-blue-300"
+                            >
+                              {selectedAccount?.pages.length ? (
+                                selectedAccount.pages.map((page) => (
+                                  <option key={page.id} value={page.id}>
+                                    {page.name}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">Default account target</option>
+                              )}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="mt-3 grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
+                          <label className="block">
+                            <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                              Schedule mode
+                            </span>
+                            <select
+                              value={scheduleMode}
+                              onChange={(event) => setScheduleMode(event.target.value === "specific_time" ? "specific_time" : "next_slot")}
+                              className="mt-2 min-h-11 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-blue-300"
+                            >
+                              <option value="next_slot">Use next free slot</option>
+                              <option value="specific_time">Specific time</option>
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                              Specific time
+                            </span>
+                            <input
+                              type="datetime-local"
+                              value={scheduledLocalTime}
+                              disabled={scheduleMode !== "specific_time"}
+                              onChange={(event) => setScheduledLocalTime(event.target.value)}
+                              className="mt-2 min-h-11 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+                            />
+                          </label>
+                        </div>
+                        <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
+                          Live scheduling still requires `SOCIAL_PUBLISHING_MODE=live`, a connected account, and persisted approval from the selected source.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => runAction("blotato-accounts")}
+                        disabled={runningAction === "blotato-accounts"}
+                        className="rounded-lg bg-blue-500 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {runningAction === "blotato-accounts" ? "Fetching..." : "Fetch Blotato accounts"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runAction("blotato-schedule")}
+                        disabled={runningAction === "blotato-schedule" || !selectedSource}
+                        className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-white transition hover:bg-white hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {runningAction === "blotato-schedule" ? "Preparing..." : "Dry-run approved payload"}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {resultKeys.map((key) => {
+                const result = actionResult[key];
+                if (!result) return null;
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      "mt-3 rounded-lg border px-3 py-2 text-xs font-bold",
+                      result.ok
+                        ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100"
+                        : "border-amber-300/20 bg-amber-400/10 text-amber-100",
+                    )}
+                  >
+                    {result.message ?? (result.ok ? "Action completed." : "Action needs review.")}
+                    {typeof result.items?.length === "number" ? ` Accounts: ${result.items.length}.` : ""}
+                    {result.dryRun ? " Dry run only." : ""}
+                  </div>
+                );
+              })}
+            </article>
+          );
+        })}
       </div>
     </PanelShell>
   );
+}
+
+function buildBlotatoScheduleBody(
+  source: ApprovedSocialSource | null,
+  options: {
+    accountId?: string;
+    pageId?: string;
+    scheduledLocalTime?: string;
+    useNextFreeSlot: boolean;
+  },
+) {
+  const scheduledTime = options.useNextFreeSlot ? undefined : toIsoDateTime(options.scheduledLocalTime);
+  const base = {
+    dryRun: true,
+    useNextFreeSlot: options.useNextFreeSlot || !scheduledTime,
+    accountId: options.accountId,
+    pageId: options.pageId,
+    platform: source?.platform ?? "linkedin",
+    text: source?.text || "Approved HomeReach social content prepared for review-first scheduling.",
+    scheduledTime,
+  };
+
+  if (!source) return base;
+  if (source.type === "daily_video_platform_post") {
+    return {
+      ...base,
+      dailyVideoId: source.dailyVideoId,
+      platformPostId: source.platformPostId,
+    };
+  }
+
+  return {
+    ...base,
+    aiOutputId: source.aiOutputId,
+  };
+}
+
+function normalizeBlotatoAccount(value: unknown): BlotatoAccount | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const id = stringValue(record.id) || stringValue(record.accountId) || stringValue(record._id);
+  if (!id) return null;
+  const name = stringValue(record.name) || stringValue(record.username) || stringValue(record.label) || "Blotato account";
+  const platform = stringValue(record.platform) || stringValue(record.type) || "social";
+  const rawPages = Array.isArray(record.pages) ? record.pages : Array.isArray(record.targets) ? record.targets : [];
+  const pages = rawPages
+    .map((page) => {
+      if (!page || typeof page !== "object") return null;
+      const pageRecord = page as Record<string, unknown>;
+      const pageId = stringValue(pageRecord.id) || stringValue(pageRecord.pageId) || stringValue(pageRecord.targetId);
+      if (!pageId) return null;
+      return {
+        id: pageId,
+        name: stringValue(pageRecord.name) || stringValue(pageRecord.title) || stringValue(pageRecord.handle) || "Default page",
+      };
+    })
+    .filter((page): page is { id: string; name: string } => Boolean(page));
+
+  return { id, name, platform, pages };
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function toIsoDateTime(value?: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 function CtaAuditPanel() {

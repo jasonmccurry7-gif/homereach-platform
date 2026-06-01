@@ -8,7 +8,7 @@ const ARTIFACT_OPTIONS = [
   { value: "pricing_script", label: "Pricing script" },
   { value: "bundle_configuration", label: "Bundle config" },
   { value: "staffing_schedule", label: "Staffing rec" },
-  { value: "customer_message", label: "Customer message" },
+  { value: "customer_message", label: "Customer message draft" },
 ] as const;
 
 type Artifact = {
@@ -79,11 +79,15 @@ export function ActionGeneratorPanel() {
         </span>
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">
-            Action Generator
+            Draft Generator
           </p>
           <h2 className="text-xl font-bold text-gray-950">
-            Create execution artifact
+            Create review-ready instructions
           </h2>
+          <p className="mt-1 text-sm leading-6 text-gray-600">
+            Generates copyable plans and scripts. Nothing is sent, posted, or
+            changed until a person approves it.
+          </p>
         </div>
       </div>
 
@@ -114,7 +118,7 @@ export function ActionGeneratorPanel() {
           ) : (
             <FileText className="h-4 w-4" aria-hidden="true" />
           )}
-          Generate
+          Draft for review
         </button>
       </div>
 
@@ -144,6 +148,10 @@ export function ActionGeneratorPanel() {
           <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 text-sm leading-6 text-gray-700">
             {artifact.content}
           </pre>
+          <p className="mt-3 text-xs font-medium leading-5 text-gray-500">
+            Review facts, pricing, and customer-facing claims before using this
+            draft in the business.
+          </p>
         </div>
       ) : null}
       {error ? <p className="mt-2 text-sm font-medium text-red-600">{error}</p> : null}

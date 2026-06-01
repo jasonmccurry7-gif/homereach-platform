@@ -9,6 +9,15 @@ import {
   opcopilotSuppliers,
 } from "@homereach/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import {
+  approvalLockedPayload,
+  sanitizeActionType,
+  sanitizeConfidence,
+  sanitizeMoneyCents,
+  sanitizeRiskScore,
+  sanitizeText,
+} from "@/lib/operations-copilot/governance";
+import { syncProcurementActionRequestLedger } from "@/lib/approvals/procurement-ledger";
 import type {
   BusinessMemorySummary,
   CopilotInsight,
@@ -17,6 +26,7 @@ import type {
   CostHealthCard,
   EmergencyProcurementItem,
   InventoryForecast,
+  ProcurementSavingsLedger,
   ProcurementRiskAlert,
   SavingsFeedEvent,
   SmartBuyRecommendation,
@@ -53,7 +63,7 @@ export async function buildOperationsCopilotSnapshot(
     .where(eq(opcopilotBusinessContexts.userId, userId))
     .limit(1);
 
-  const [inventory, suppliers, quotes, openEvents, actionRequests] =
+  const [inventory, suppliers, quotes, openEvents, allActionRequests] =
     await Promise.all([
       db
         .select()
@@ -93,10 +103,10 @@ export async function buildOperationsCopilotSnapshot(
         .from(opcopilotActionRequests)
         .where(eq(opcopilotActionRequests.userId, userId))
         .orderBy(desc(opcopilotActionRequests.createdAt))
-        .limit(20),
+        .limit(1000),
     ]);
 
-  const pendingActions = actionRequests.filter(
+  const pendingActions = allActionRequests.filter(
     (action) => action.status === "pending_approval"
   );
   const generatedInsights = generateDeterministicInsights({
@@ -157,9 +167,13 @@ export async function buildOperationsCopilotSnapshot(
   });
   const weeklyReport = buildWeeklyReport({
     insights,
-    actionRequests,
+    actionRequests: allActionRequests,
     atRiskInventoryCount,
     vendorScorecards,
+  });
+  const savingsLedger = buildSavingsLedger({
+    actionRequests: allActionRequests,
+    context,
   });
   const businessMemory = buildBusinessMemorySummary(context);
   const emergencyItems = buildEmergencyItems({
@@ -203,6 +217,7 @@ export async function buildOperationsCopilotSnapshot(
     vendorScorecards,
     riskAlerts,
     weeklyReport,
+    savingsLedger,
     emergencyItems,
     businessMemory,
     insights,
@@ -222,36 +237,98 @@ export async function createOperationsCopilotActionRequest({
   title: string;
   payload?: Record<string, unknown>;
 }) {
+  const safeActionType = sanitizeActionType(actionType);
+  if (!safeActionType) return null;
+
   const [context] = await db
     .select()
     .from(opcopilotBusinessContexts)
     .where(eq(opcopilotBusinessContexts.userId, userId))
     .limit(1);
   const autonomyLevel = context?.approvalPolicy?.autonomyLevel ?? 1;
-  const approvalRequired = autonomyLevel < 3;
+  const approvalRequired = true;
+  const safePayload = approvalLockedPayload(payload);
+  const estimatedSpendCents = readNumberFromPayload(payload, "estimatedSpendCents");
+  const estimatedSavingsCents = readNumberFromPayload(payload, "estimatedSavingsCents");
+  const riskScore = readNumberFromPayload(payload, "riskScore", 50);
+  const confidence = readStringFromPayload(payload, "confidence", "medium");
 
   const [request] = await db
     .insert(opcopilotActionRequests)
     .values({
       userId,
-      actionType,
-      title,
+      actionType: safeActionType,
+      title: sanitizeText(title, safeActionType.replaceAll("_", " "), 180),
       autonomyLevel,
       approvalRequired,
-      status: approvalRequired ? "pending_approval" : "queued",
-      requestPayload: payload ?? {},
+      status: "pending_approval",
+      estimatedSpendCents,
+      estimatedSavingsCents,
+      confidence,
+      riskScore,
+      requestPayload: safePayload,
       auditLog: [
         {
           at: new Date().toISOString(),
           actor: "ai",
           event: "action_request_created",
           approvalRequired,
+          governanceMode: "human_approval_required_no_spend_commitment",
         },
       ],
     })
     .returning();
 
+  if (request) {
+    const ledgerResult = await syncProcurementActionRequestLedger(
+      {
+        id: request.id,
+        userId: request.userId,
+        actionType: request.actionType,
+        title: request.title,
+        status: request.status,
+        estimatedSpendCents: request.estimatedSpendCents,
+        estimatedSavingsCents: request.estimatedSavingsCents,
+        confidence: request.confidence,
+        riskScore: request.riskScore,
+        approvalRequired: request.approvalRequired,
+        requestPayload: request.requestPayload,
+        auditLog: request.auditLog,
+        createdAt: request.createdAt,
+        updatedAt: request.updatedAt,
+      },
+      {
+        actorId: userId,
+        actorLabel: "operations_copilot",
+        eventType: "procurement_action_request_created",
+      },
+    );
+    if (!ledgerResult.ok && ledgerResult.error) {
+      console.warn("[approval-ledger] procurement action request create sync skipped:", ledgerResult.error);
+    }
+  }
+
   return request;
+}
+
+function readNumberFromPayload(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+  fallback = 0
+) {
+  const value = payload?.[key];
+  if (key === "riskScore") return sanitizeRiskScore(value, fallback);
+  return sanitizeMoneyCents(value, fallback);
+}
+
+function readStringFromPayload(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+  fallback: string
+) {
+  const value = payload?.[key];
+  if (key === "confidence") return sanitizeConfidence(value);
+  return sanitizeText(value, fallback, 120);
 }
 
 export async function listOperationsCopilotData(userId: string) {
@@ -314,7 +391,7 @@ export async function resolveOperationsCopilotActionRequest({
     )
     .limit(1);
 
-  if (!existing) return null;
+  if (!existing || existing.status !== "pending_approval") return null;
 
   const [updated] = await db
     .update(opcopilotActionRequests)
@@ -337,6 +414,38 @@ export async function resolveOperationsCopilotActionRequest({
       )
     )
     .returning();
+
+  if (updated) {
+    const ledgerResult = await syncProcurementActionRequestLedger(
+      {
+        id: updated.id,
+        userId: updated.userId,
+        actionType: updated.actionType,
+        title: updated.title,
+        status: updated.status,
+        estimatedSpendCents: updated.estimatedSpendCents,
+        estimatedSavingsCents: updated.estimatedSavingsCents,
+        confidence: updated.confidence,
+        riskScore: updated.riskScore,
+        approvalRequired: updated.approvalRequired,
+        requestPayload: updated.requestPayload,
+        auditLog: updated.auditLog,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+      },
+      {
+        actorId: userId,
+        actorLabel: "operations_copilot_owner",
+        eventType:
+          decision === "approved"
+            ? "procurement_action_request_approved"
+            : "procurement_action_request_rejected",
+      },
+    );
+    if (!ledgerResult.ok && ledgerResult.error) {
+      console.warn("[approval-ledger] procurement action request decision sync skipped:", ledgerResult.error);
+    }
+  }
 
   return updated;
 }
@@ -1242,6 +1351,65 @@ function buildWeeklyReport({
         ? "Stabilize low-stock items, then approve the highest-confidence savings order."
         : "Load more supplier quotes and purchase history to expand verified savings.",
   };
+}
+
+function buildSavingsLedger({
+  actionRequests,
+  context,
+}: {
+  actionRequests: ActionRequestRow[];
+  context: ContextRow;
+}): ProcurementSavingsLedger {
+  const now = new Date();
+  const weekStart = startOfBusinessWeek(now);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const savingsActions = actionRequests.filter(
+    (action) => action.estimatedSavingsCents > 0
+  );
+  const identifiedActions = savingsActions.filter(
+    (action) => action.status !== "rejected" && action.status !== "ignored"
+  );
+  const approvedActions = savingsActions.filter(
+    (action) => action.status === "approved"
+  );
+  const pendingActions = savingsActions.filter((action) =>
+    ["draft", "queued", "pending", "pending_approval", "needs_approval", "needs_review"].includes(action.status)
+  );
+  const earliestActionDate = savingsActions
+    .map((action) => action.createdAt)
+    .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+
+  return {
+    enrolledAt: context?.createdAt ?? earliestActionDate,
+    lastUpdatedAt: now,
+    foundThisWeekCents: sumSavingsSince(identifiedActions, weekStart),
+    foundThisMonthCents: sumSavingsSince(identifiedActions, monthStart),
+    pendingApprovalCents: sumSavings(pendingActions),
+    capturedThisWeekCents: sumSavingsSince(approvedActions, weekStart),
+    capturedThisMonthCents: sumSavingsSince(approvedActions, monthStart),
+    capturedSinceEnrollmentCents: sumSavings(approvedActions),
+    totalIdentifiedSinceEnrollmentCents: sumSavings(identifiedActions),
+  };
+}
+
+function startOfBusinessWeek(date: Date) {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + diff);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function sumSavings(actions: ActionRequestRow[]) {
+  return actions.reduce(
+    (sum, action) => sum + Math.max(0, action.estimatedSavingsCents),
+    0
+  );
+}
+
+function sumSavingsSince(actions: ActionRequestRow[], since: Date) {
+  return sumSavings(actions.filter((action) => action.createdAt >= since));
 }
 
 function buildBusinessMemorySummary(context: ContextRow): BusinessMemorySummary {

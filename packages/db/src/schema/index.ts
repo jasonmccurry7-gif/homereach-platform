@@ -80,6 +80,9 @@ export * from "./conversations.js";
 // Sales execution
 export * from "./sales.js";
 
+// Executive Revenue Operating System
+export * from "./revenueOs.js";
+
 // Growth tracking
 export * from "./growth.js";
 
@@ -91,6 +94,51 @@ export * from "./opcopilot.js";
 
 // AI conversational intake
 export * from "./aiIntake.js";
+
+// AI Assets Command Center
+export * from "./aiAssets.js";
+
+// AI Workforce Operating System
+export * from "./aiWorkforce.js";
+
+// Agent Execution Readiness
+export * from "./agentExecution.js";
+
+// Agent-Native Mini Apps
+export * from "./agentMiniApps.js";
+
+// Canonical approval spine
+export * from "./approvalLedger.js";
+
+// AI Creative Production Studio
+export * from "./creativeStudio.js";
+
+// Neighborhood Digital Targeting
+export * from "./digitalTargeting.js";
+
+// Market Capture Sales Engine
+export * from "./marketCapture.js";
+
+// AI COO Recommendation Engine
+export * from "./aiCoo.js";
+
+// Business Memory
+export * from "./businessMemory.js";
+
+// Cost Control Engine
+export * from "./costControl.js";
+
+// Reputation Engine
+export * from "./reputation.js";
+
+// Website Management
+export * from "./websiteManagement.js";
+
+// Growth Intelligence Engine
+export * from "./growthIntelligence.js";
+
+// Ad-Tech Integration Layer
+export * from "./adTech.js";
 
 // Provider observability
 export * from "./twilioObservability.js";

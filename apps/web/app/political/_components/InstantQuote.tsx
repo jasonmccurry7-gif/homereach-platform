@@ -87,9 +87,8 @@ export function InstantQuote({
           Instant estimate
         </p>
         <p className="mt-1 text-xs text-gray-500">
-          A live, conservative cost range. Final quote (with multi-band
-          discounting and your specific routes) is generated when our team
-          confirms your district.
+          A live planning estimate. Final quote lock requires verified route
+          counts, source timestamps, production pricing, and human approval.
         </p>
       </div>
 
@@ -189,9 +188,9 @@ export function InstantQuote({
       </div>
 
       <p className="text-[11px] leading-relaxed text-gray-500">
-        Range based on standard postcard rates for {districtType}-level
-        districts. Multi-band discounts and route-level optimization can
-        lower this materially. Final pricing confirmed in your proposal.
+        Preview based on standard postcard rates for {districtType}-level
+        districts. Multi-band pricing and route-level review may change the
+        total. Final pricing is confirmed only after source verification.
       </p>
     </aside>
   );

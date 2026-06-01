@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { createServiceClient } from "@/lib/supabase/service";
+import { listGrowthServiceModules } from "@/lib/growth-execution/services";
 import { listPublishedPages } from "@/lib/seo/registry";
 import { listAllAuthorityRoutes } from "@/lib/seo/authority";
 
@@ -41,18 +42,37 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`,              lastModified: now, changeFrequency: "monthly", priority: 1.0 },
     { url: `${base}/how-it-works`,  lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${base}/shared-postcards`, lastModified: now, changeFrequency: "monthly", priority: 0.84 },
     { url: `${base}/targeted`,      lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${base}/digital-targeting`, lastModified: now, changeFrequency: "monthly", priority: 0.82 },
     { url: `${base}/political`,     lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/ohio`,          lastModified: now, changeFrequency: "weekly", priority: 0.9 },
-    { url: `${base}/campaign-mail`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${base}/political-mail`, lastModified: now, changeFrequency: "weekly", priority: 0.86 },
+    { url: `${base}/contractos`, lastModified: now, changeFrequency: "weekly", priority: 0.82 },
+    { url: `${base}/contractos/dashboard`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+    { url: `${base}/local-growth-os`, lastModified: now, changeFrequency: "monthly", priority: 0.82 },
     { url: `${base}/inventory-purchasing`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${base}/local-visibility`, lastModified: now, changeFrequency: "monthly", priority: 0.76 },
+    { url: `${base}/services/ai-website-assistant`, lastModified: now, changeFrequency: "monthly", priority: 0.76 },
+    { url: `${base}/property-intelligence`, lastModified: now, changeFrequency: "monthly", priority: 0.66 },
     { url: `${base}/intelligence`,  lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${base}/services`,      lastModified: now, changeFrequency: "monthly", priority: 0.78 },
     { url: `${base}/nonprofit`,     lastModified: now, changeFrequency: "monthly", priority: 0.6 },
     { url: `${base}/refer`,         lastModified: now, changeFrequency: "monthly", priority: 0.5 },
     { url: `${base}/waitlist`,      lastModified: now, changeFrequency: "monthly", priority: 0.5 },
     { url: `${base}/privacy`,       lastModified: now, changeFrequency: "yearly",  priority: 0.2 },
+    { url: `${base}/terms`,         lastModified: now, changeFrequency: "yearly",  priority: 0.2 },
     { url: `${base}/os`,            lastModified: now, changeFrequency: "monthly", priority: 0.3 },
   ];
+
+  const serviceRoutes: MetadataRoute.Sitemap = listGrowthServiceModules()
+    .filter((service) => service.publicExposure !== "admin_only")
+    .map((service) => ({
+      url: `${base}${service.publicPath}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: service.publicExposure === "core_public" ? 0.84 : 0.72,
+    }));
 
   let slugRoutes: MetadataRoute.Sitemap = [];
   try {
@@ -115,5 +135,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     seoEngineRoutes = [];
   }
 
-  return [...staticRoutes, ...slugRoutes, ...authorityRoutes, ...seoEngineRoutes];
+  return dedupeSitemap([...staticRoutes, ...serviceRoutes, ...slugRoutes, ...authorityRoutes, ...seoEngineRoutes]);
+}
+
+function dedupeSitemap(routes: MetadataRoute.Sitemap): MetadataRoute.Sitemap {
+  const byUrl = new Map<string, MetadataRoute.Sitemap[number]>();
+  for (const route of routes) {
+    const existing = byUrl.get(route.url);
+    if (!existing || Number(route.priority ?? 0) > Number(existing.priority ?? 0)) {
+      byUrl.set(route.url, route);
+    }
+  }
+  return Array.from(byUrl.values());
 }

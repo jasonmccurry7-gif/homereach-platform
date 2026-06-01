@@ -2,6 +2,7 @@ import {
   pgTable,
   uuid,
   text,
+  jsonb,
   boolean,
   numeric,
   timestamp,
@@ -51,6 +52,8 @@ export const waitlistEntries = pgTable("waitlist_entries", {
   categoryId: uuid("category_id").references(() => categories.id, {
     onDelete: "set null",
   }),
+  productIntent: text("product_intent"),
+  productContext: jsonb("product_context").$type<Record<string, unknown>>(),
   businessName: text("business_name"),
   convertedToBusinessId: uuid("converted_to_business_id").references(
     () => businesses.id,

@@ -47,7 +47,8 @@ const EVENT_ICONS: Record<string, string> = {
 };
 
 export default function ReplyDetailPage() {
-  const { leadId } = useParams<{ leadId: string }>();
+  const params = useParams<{ leadId: string }>();
+  const leadId = params?.leadId;
   const router     = useRouter();
 
   const [data,    setData]    = useState<LeadDetailResponse | null>(null);
@@ -55,6 +56,7 @@ export default function ReplyDetailPage() {
   const [logging, setLogging] = useState(false);
 
   const load = async () => {
+    if (!leadId) return;
     const res  = await fetch(`/api/agent/leads/${leadId}`);
     const json = await res.json();
     setData(json);

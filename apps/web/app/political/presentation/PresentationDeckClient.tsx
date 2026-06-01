@@ -6,12 +6,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  ExternalLink,
   FileText,
   Maximize2,
   MonitorPlay,
   ShieldCheck,
 } from "lucide-react";
+import { OhioCountyMap, type OhioCountyMapCounty } from "../_components/OhioCountyMap";
 import type {
   AmyActonCampaignPhase,
   AmyActonPostcardConcept,
@@ -277,15 +277,33 @@ function SlideVisual({
 }
 
 function TargetingVisual({ targetingAreas }: { targetingAreas: AmyActonTargetingArea[] }) {
+  const highlightedCounties: OhioCountyMapCounty[] = [
+    { name: "Franklin", tone: "primary" },
+    { name: "Cuyahoga", tone: "primary" },
+    { name: "Hamilton", tone: "primary" },
+    { name: "Summit", tone: "primary" },
+    { name: "Lucas", tone: "primary" },
+    { name: "Lake", tone: "secondary" },
+    { name: "Stark", tone: "secondary" },
+    { name: "Mahoning", tone: "secondary" },
+    { name: "Delaware", tone: "watch" },
+    { name: "Union", tone: "watch" },
+    { name: "Warren", tone: "watch" },
+  ];
+
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.06] p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {targetingAreas.slice(0, 4).map((area) => (
+    <div className="grid gap-3 lg:grid-cols-[1fr_0.82fr]">
+      <OhioCountyMap
+        counties={highlightedCounties}
+        title="Amy Acton aggregate Ohio county targeting"
+      />
+      <div className="space-y-2">
+        {targetingAreas.map((area) => (
           <div key={area.name} className="rounded-lg border border-white/10 bg-slate-950/70 p-3">
-            <div className="text-sm font-black text-white">{area.name}</div>
-            <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-300">{area.whyItMatters}</p>
-            <div className="mt-3 rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100">
-              {area.estimatedReach}
+            <div className="text-xs font-black text-white">{area.name}</div>
+            <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-300">{area.geography}</p>
+            <div className="mt-2 rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-[9px] font-black uppercase text-amber-100">
+              {area.routeStatus === "needs_usps" ? "USPS route lock required" : "Planning"}
             </div>
           </div>
         ))}

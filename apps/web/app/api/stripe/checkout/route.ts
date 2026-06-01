@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { db, orders, bundles, businesses } from "@homereach/db";
+import { db, orders, businesses } from "@homereach/db";
 import { and, eq } from "drizzle-orm";
 import { createCheckoutSession } from "@homereach/services/stripe";
+import { getBundlesWithAvailability } from "@/lib/funnel/queries";
 import { checkCanonicalAvailability } from "@/lib/spots/canonical-availability";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/stripe/checkout
@@ -33,6 +35,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const limited = checkRateLimit(req, {
+      key: "shared-checkout-create",
+      limit: 10,
+      windowMs: 10 * 60 * 1000,
+      identifier: user.id,
+    });
+    if (limited) return limited;
+
     const body = await req.json();
     const parsed = CheckoutSchema.safeParse(body);
 
@@ -46,15 +56,31 @@ export async function POST(req: Request) {
     const { bundleId, addonIds, businessId, businessName, cityId, categoryId } =
       parsed.data;
 
-    // ── Fetch bundle ──────────────────────────────────────────────────────────
-    const [bundle] = await db
-      .select()
-      .from(bundles)
-      .where(eq(bundles.id, bundleId))
-      .limit(1);
+    if (addonIds.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Add-ons are not available in this checkout flow until server-side add-on pricing is enabled.",
+        },
+        { status: 400 },
+      );
+    }
 
-    if (!bundle || !bundle.isActive) {
+    const availableBundles = await getBundlesWithAvailability(cityId, categoryId);
+    const bundle = availableBundles.find((candidate) => candidate.id === bundleId);
+
+    if (!bundle) {
       return NextResponse.json({ error: "Bundle not found" }, { status: 404 });
+    }
+
+    if (bundle.isSoldOut || bundle.spotsRemaining <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This bundle is no longer available for the selected city and category. Please choose another option or join the waitlist.",
+        },
+        { status: 409 }
+      );
     }
 
     const availability = await checkCanonicalAvailability({ cityId, categoryId });

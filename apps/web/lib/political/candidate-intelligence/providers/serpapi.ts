@@ -8,6 +8,7 @@ import {
   sha256Json,
 } from "../normalization";
 import type { CandidateIntelProviderResult, NormalizedCandidateIntelRecord } from "../types";
+import { resolveEnvAlias } from "@/lib/app-url";
 
 const SOURCE_KEY = "serpapi_candidate_search_v1";
 
@@ -236,7 +237,7 @@ export async function fetchSerpapiCandidateIntel(args: {
   cycle?: number;
   maxRecords?: number;
 }): Promise<CandidateIntelProviderResult> {
-  const key = process.env.SERPAPI_KEY;
+  const key = resolveEnvAlias("SERPAPI_KEY", "SERP_API", "SERPAPI_API_KEY");
   if (isSerpApiPaused()) {
     return {
       sourceKey: SOURCE_KEY,
@@ -257,7 +258,7 @@ export async function fetchSerpapiCandidateIntel(args: {
     return {
       sourceKey: SOURCE_KEY,
       skipped: true,
-      reason: "SERPAPI_KEY is not configured.",
+      reason: "SERPAPI_KEY, SERP_API, or SERPAPI_API_KEY is not configured.",
       records: [],
     };
   }

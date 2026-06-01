@@ -4,48 +4,42 @@
 
 import { NextResponse } from "next/server";
 import { db, leads, targetedRouteCampaigns } from "@homereach/db";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   notifyAdminIntakeReceived,
   sendIntakeConfirmationToCustomer,
 } from "@homereach/services/targeted";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { signPublicFlowToken } from "@/lib/security/signed-token";
+import {
+  isTargetedHomesCount,
+  resolveTargetedCampaignPriceCents,
+  VALID_TARGETED_HOMES_COUNTS,
+} from "@/lib/targeted/pricing";
 
 // ── Pricing validation constants ──────────────────────────────────────────
-// Cost basis: ~$0.25 print + ~$0.25 postage = ~$0.50/piece
-// Minimum sell price enforced server-side: $0.70/piece
-const MIN_PRICE_PER_PIECE_CENTS = 70;
-const VALID_HOMES_COUNTS = [500, 1000, 2500, 5000] as const;
-
-function validatePricing(homesCount: number, priceCents: number): string | null {
-  if (!VALID_HOMES_COUNTS.includes(homesCount as typeof VALID_HOMES_COUNTS[number])) {
-    return `homesCount must be one of: ${VALID_HOMES_COUNTS.join(", ")}`;
-  }
-  const perPiece = priceCents / homesCount;
-  if (perPiece < MIN_PRICE_PER_PIECE_CENTS) {
-    return `Price per piece ($${(perPiece / 100).toFixed(2)}) is below minimum ($${(MIN_PRICE_PER_PIECE_CENTS / 100).toFixed(2)})`;
-  }
-  return null;
-}
+const optionalText = (max: number) =>
+  z.string().trim().max(max).optional().transform((value) => value || undefined);
 
 const IntakeSchema = z.object({
-  // Lead identification (either token from the link OR manual)
+  // Lead identification. Public raw leadId is accepted for backward compatibility but not trusted.
   intakeToken:   z.string().uuid().optional(),
   leadId:        z.string().uuid().optional(),
 
   // Business info
-  businessName:    z.string().min(1),
-  contactName:     z.string().min(1).optional(),
-  email:           z.string().email(),
-  phone:           z.string().optional(),
+  businessName:    z.string().trim().min(1).max(160),
+  contactName:     optionalText(120),
+  email:           z.string().trim().email().max(254),
+  phone:           optionalText(40),
 
   // Target area
-  businessAddress:  z.string().min(1).optional(),
-  targetCity:       z.string().min(1).optional(),
-  targetAreaNotes:  z.string().min(1),
+  businessAddress:  optionalText(240),
+  targetCity:       optionalText(120),
+  targetAreaNotes:  z.string().trim().min(1).max(2_000),
 
   // Optional notes
-  notes: z.string().optional(),
+  notes: optionalText(2_000),
 
   // Pricing (validated server-side — anti-spoof floor enforced)
   homesCount: z.number().int().positive().optional().default(500),
@@ -54,7 +48,20 @@ const IntakeSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const limited = checkRateLimit(req, {
+      key: "targeted-intake",
+      limit: 8,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (limited) return limited;
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
     const parsed = IntakeSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -67,10 +74,15 @@ export async function POST(req: Request) {
     const data = parsed.data;
 
     // ── Pricing floor enforcement (server-side, anti-spoof) ───────────────────
-    const pricingError = validatePricing(data.homesCount, data.priceCents);
-    if (pricingError) {
-      return NextResponse.json({ error: pricingError }, { status: 400 });
+    if (!isTargetedHomesCount(data.homesCount)) {
+      return NextResponse.json(
+        {
+          error: `homesCount must be one of: ${VALID_TARGETED_HOMES_COUNTS.join(", ")}`,
+        },
+        { status: 400 },
+      );
     }
+    const authoritativePriceCents = resolveTargetedCampaignPriceCents(data.homesCount);
 
     // ── Resolve lead if token/id provided ─────────────────────────────────────
     let leadId: string | null = null;
@@ -82,17 +94,46 @@ export async function POST(req: Request) {
         .where(eq(leads.intakeToken, data.intakeToken))
         .limit(1);
 
-      if (lead) {
-        leadId = lead.id;
-
-        // Mark intake started (idempotent)
-        await db
-          .update(leads)
-          .set({ status: "intake_started", updatedAt: new Date() })
-          .where(eq(leads.id, lead.id));
+      if (!lead) {
+        return NextResponse.json(
+          { error: "Invalid or expired intake link" },
+          { status: 404 },
+        );
       }
-    } else if (data.leadId) {
-      leadId = data.leadId;
+
+      leadId = lead.id;
+
+      // Mark intake started (idempotent)
+      await db
+        .update(leads)
+        .set({ status: "intake_started", updatedAt: new Date() })
+        .where(eq(leads.id, lead.id));
+    }
+
+    if (leadId) {
+      const [existingCampaign] = await db
+        .select()
+        .from(targetedRouteCampaigns)
+        .where(eq(targetedRouteCampaigns.leadId, leadId))
+        .orderBy(desc(targetedRouteCampaigns.createdAt))
+        .limit(1);
+
+      if (existingCampaign && existingCampaign.status !== "cancelled") {
+        const checkoutToken = signPublicFlowToken({
+          scope: "targeted_checkout",
+          campaignId: existingCampaign.id,
+        });
+
+        return NextResponse.json({
+          success: true,
+          reused: true,
+          checkoutToken,
+          campaign: {
+            id:     existingCampaign.id,
+            status: existingCampaign.status,
+          },
+        });
+      }
     }
 
     // ── Create targeted route campaign ────────────────────────────────────────
@@ -109,7 +150,7 @@ export async function POST(req: Request) {
         targetAreaNotes: data.targetAreaNotes,
         notes:           data.notes,
         homesCount:      data.homesCount,
-        priceCents:      data.priceCents,
+        priceCents:      authoritativePriceCents,
         status:          "intake_complete",
       })
       .returning();
@@ -131,6 +172,13 @@ export async function POST(req: Request) {
     }
 
     // ── Notify admin + send confirmation to customer ──────────────────────────
+    const checkoutToken = signPublicFlowToken({
+      scope: "targeted_checkout",
+      campaignId: campaign.id,
+    });
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://home-reach.com";
+    const checkoutUrl = `${appUrl}/targeted/checkout?token=${encodeURIComponent(checkoutToken)}`;
+
     await Promise.all([
       notifyAdminIntakeReceived({
         businessName:    campaign.businessName,
@@ -147,11 +195,15 @@ export async function POST(req: Request) {
         email:        campaign.email,
         businessName: campaign.businessName,
         campaignId:   campaign.id,
+        checkoutUrl,
+        homesCount:   campaign.homesCount,
+        priceCents:   campaign.priceCents,
       }),
     ]).catch(console.error);
 
     return NextResponse.json({
       success: true,
+      checkoutToken,
       campaign: {
         id:     campaign.id,
         status: campaign.status,

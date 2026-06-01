@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   ]);
   if (!city || !category) return { title: "Not Found" };
   return {
-    title: `${category.name} in ${city.name} — Choose Your Spot`,
+    title: `${category.name} in ${city.name} - Choose Your Spot`,
     description: `Limited advertising spots available for ${category.name} businesses in ${city.name}. Claim yours before they're gone.`,
   };
 }
@@ -61,13 +61,13 @@ export default async function BundleSelectionPage({ params }: Props) {
       {/* Header */}
       <div className="mb-2 text-center">
         <p className="mb-2 text-sm font-medium uppercase tracking-widest text-blue-600">
-          {city.name} · {category.name}
+          {city.name} | {category.name}
         </p>
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
           Choose your spot
         </h1>
         <p className="mt-3 text-lg text-gray-500">
-          Each spot is exclusive — once it&apos;s claimed, no other{" "}
+          Each spot is exclusive after availability is confirmed. Once it is claimed, no other{" "}
           <span className="font-medium text-gray-700">{category.name.toLowerCase()}</span> business
           can take it in {city.name}.
         </p>
@@ -78,7 +78,7 @@ export default async function BundleSelectionPage({ params }: Props) {
       {/* Global scarcity alert */}
       {totalSpotsLeft <= 3 && totalSpotsLeft > 0 && (
         <div className="my-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <span className="text-xl">⚠️</span>
+          <span className="text-xl font-black">!</span>
           <div>
             <p className="font-semibold text-amber-800">
               Only {totalSpotsLeft} category-exclusive spot{totalSpotsLeft !== 1 ? "s" : ""} left in {city.name} for {category.name}
@@ -103,7 +103,7 @@ export default async function BundleSelectionPage({ params }: Props) {
           />
         ))}
 
-        {/* Sold out bundles — greyed out */}
+        {/* Sold out bundles */}
         {soldOutBundles.map((bundle) => (
           <SoldOutBundleCard key={bundle.id} bundle={bundle} />
         ))}
@@ -116,13 +116,13 @@ export default async function BundleSelectionPage({ params }: Props) {
         </h2>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { icon: "📬", title: "2,500+ homes", body: "Verified residential addresses in your neighborhood" },
-            { icon: "🎨", title: "Professional design", body: "Our team designs your ad — no creative work required" },
-            { icon: "📊", title: "Live dashboard", body: "See reach, responses, and ROI in real time" },
-            { icon: "🔒", title: "Exclusivity", body: "One business per category per mailer — period" },
+            { icon: "Mail", title: "2,500+ homes", body: "Verified residential addresses in your approved area" },
+            { icon: "Design", title: "Professional design", body: "Our team designs your ad and sends a proof before print" },
+            { icon: "Report", title: "Simple dashboard", body: "See campaign status, known response signals, and next steps" },
+            { icon: "Protect", title: "Category protection", body: "One business per category when inventory is confirmed" },
           ].map((item) => (
             <div key={item.title} className="flex flex-col items-center text-center">
-              <span className="mb-2 text-3xl">{item.icon}</span>
+              <span className="mb-2 rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-blue-700">{item.icon}</span>
               <p className="font-semibold text-gray-900 text-sm">{item.title}</p>
               <p className="mt-1 text-xs text-gray-500">{item.body}</p>
             </div>
@@ -137,7 +137,7 @@ export default async function BundleSelectionPage({ params }: Props) {
           {[
             {
               q: "How soon will my ad go out?",
-              a: "Your campaign launches within 10–14 business days of payment. We handle design, printing, and mailing.",
+              a: "Most campaigns move toward print within 10-14 business days after payment, proof approval, and the approved mail window.",
             },
             {
               q: "What if I'm not in my city yet?",
@@ -145,7 +145,7 @@ export default async function BundleSelectionPage({ params }: Props) {
             },
             {
               q: "Can I cancel or pause?",
-              a: "No contracts — campaigns run for the agreed term. Contact us to discuss renewal or adjustments.",
+              a: "Campaigns run for the agreed term. Contact us to discuss renewal or adjustments before the next billing cycle.",
             },
           ].map((faq) => (
             <div key={faq.q} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
@@ -162,7 +162,7 @@ export default async function BundleSelectionPage({ params }: Props) {
           href={`/get-started/${citySlug}`}
           className="text-sm text-gray-500 hover:text-gray-700"
         >
-          ← Choose a different category
+          Choose a different category
         </Link>
       </div>
     </div>
@@ -254,7 +254,7 @@ function BundleCard({
               )}
             >
               {bundle.spotsRemaining === 1
-                ? "⚠️ Last spot available"
+                ? "Last spot available"
                 : bundle.spotsRemaining <= 2
                 ? `Only ${bundle.spotsRemaining} spots left`
                 : `${bundle.spotsRemaining} of ${bundle.maxSpots} spots available`}
@@ -306,7 +306,7 @@ function BundleCard({
           highlight={bundle.highlight}
         />
         <p className="mt-2 text-center text-xs text-gray-400">
-          Secure checkout · No contracts
+          Secure checkout | proof approval before print
         </p>
       </div>
     </div>

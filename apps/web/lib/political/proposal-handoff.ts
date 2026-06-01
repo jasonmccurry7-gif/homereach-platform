@@ -25,6 +25,11 @@ export interface ProposalHandoffResult {
   proposalUrl: string;
 }
 
+export interface PlannerProposalSafety {
+  ok: boolean;
+  reason: string;
+}
+
 function clean(value: string | null | undefined): string | null {
   const trimmed = (value ?? "").trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -40,6 +45,61 @@ function pct(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.min(100, value))
     : null;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function flag(value: unknown): boolean {
+  return value === true || value === "true" || value === "yes";
+}
+
+export function evaluatePlannerProposalSafety(
+  snapshots: PlannerSnapshotInput,
+): PlannerProposalSafety {
+  const routeSnapshot = snapshots.routeCoverageSnapshot ?? {};
+  const sourceStatus = text(routeSnapshot.sourceStatus);
+  const dataConfidence = text(routeSnapshot.dataConfidence);
+  const approvalStatus = text(routeSnapshot.approvalStatus);
+  const checkoutEligible = flag(routeSnapshot.checkoutEligible);
+  const humanApproved =
+    flag(routeSnapshot.humanApproved) ||
+    approvalStatus === "approved" ||
+    approvalStatus === "human_approved";
+  const verifiedSource =
+    sourceStatus === "verified_usps" ||
+    sourceStatus === "licensed_carrier_route" ||
+    dataConfidence === "Exact" ||
+    dataConfidence === "Paid Vendor Data";
+
+  if (!checkoutEligible) {
+    return {
+      ok: false,
+      reason: "Public planner snapshots are review-only until checkoutEligible is explicitly true.",
+    };
+  }
+
+  if (!verifiedSource) {
+    return {
+      ok: false,
+      reason: "USPS or licensed carrier-route counts must be verified before a public proposal can open checkout.",
+    };
+  }
+
+  if (!humanApproved) {
+    return {
+      ok: false,
+      reason: "Human approval is required before generating a tokenized proposal or payment path.",
+    };
+  }
+
+  return {
+    ok: true,
+    reason: "Verified route source and human approval are present.",
+  };
 }
 
 function legacyGeography(input: CreateOutreachLeadInput) {
@@ -107,6 +167,11 @@ export async function createProposalHandoffFromPlanner(
   const scenario = normalizeScenario(snapshots);
   if (!scenario) {
     throw new Error("Selected scenario is missing cost, reach, or drop data.");
+  }
+
+  const safety = evaluatePlannerProposalSafety(snapshots);
+  if (!safety.ok) {
+    throw new Error(`createProposalHandoff blocked: ${safety.reason}`);
   }
 
   const sb = createServiceClient();

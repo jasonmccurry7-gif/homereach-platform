@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import crypto from "crypto";
+import { assertSocialPublishAllowed, SocialPublishBlockedError } from "@/lib/social-content/publish-guard";
+import {
+  getFacebookVerifyToken,
+  verifyFacebookSignature,
+} from "@/lib/security/facebook-webhook";
 
 export const dynamic = "force-dynamic";
 
@@ -51,15 +55,51 @@ function envFlag(key: string, defaultValue = false): boolean {
 }
 
 function facebookAutoReplyEnabled(): boolean {
-  return envFlag("FACEBOOK_AUTO_REPLY_ENABLED", false);
+  return envFlag("FACEBOOK_AUTO_REPLY_ENABLED", false) && envFlag("FACEBOOK_AUTO_REPLY_HUMAN_APPROVED", false);
 }
 
 function facebookCommentAutoReplyEnabled(): boolean {
-  return envFlag("FACEBOOK_COMMENT_AUTO_REPLY_ENABLED", false);
+  return envFlag("FACEBOOK_COMMENT_AUTO_REPLY_ENABLED", false) && envFlag("FACEBOOK_COMMENT_AUTO_REPLY_HUMAN_APPROVED", false);
 }
 
 function facebookCommentAutoDmEnabled(): boolean {
-  return envFlag("FACEBOOK_COMMENT_AUTO_DM_ENABLED", false);
+  return envFlag("FACEBOOK_COMMENT_AUTO_DM_ENABLED", false) && envFlag("FACEBOOK_COMMENT_AUTO_DM_HUMAN_APPROVED", false);
+}
+
+async function facebookOutboundControlsAllow(
+  db: ReturnType<typeof createServiceClient>,
+): Promise<boolean> {
+  try {
+    const { data } = await db
+      .from("system_controls")
+      .select("all_paused, facebook_paused, manual_approval_mode, outreach_test_mode")
+      .eq("id", 1)
+      .maybeSingle();
+
+    if (
+      data?.all_paused ||
+      data?.facebook_paused ||
+      data?.manual_approval_mode ||
+      data?.outreach_test_mode
+    ) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+async function facebookAutoReplyAllowed(db: ReturnType<typeof createServiceClient>): Promise<boolean> {
+  return facebookAutoReplyEnabled() && await facebookOutboundControlsAllow(db);
+}
+
+async function facebookCommentAutoReplyAllowed(db: ReturnType<typeof createServiceClient>): Promise<boolean> {
+  return facebookCommentAutoReplyEnabled() && await facebookOutboundControlsAllow(db);
+}
+
+async function facebookCommentAutoDmAllowed(db: ReturnType<typeof createServiceClient>): Promise<boolean> {
+  return facebookCommentAutoDmEnabled() && await facebookOutboundControlsAllow(db);
 }
 
 async function fbSend(psid: string, text: string): Promise<string | null> {
@@ -111,7 +151,14 @@ export async function GET(req: Request) {
   const token  = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
 
-  const verifyToken = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN;
+  const verifyToken = getFacebookVerifyToken();
+  if (!verifyToken) {
+    return NextResponse.json(
+      { error: "Facebook webhook verify token is not configured" },
+      { status: 503 },
+    );
+  }
+
   if (mode === "subscribe" && token === verifyToken && challenge) {
     return new NextResponse(challenge, { status: 200 });
   }
@@ -120,27 +167,24 @@ export async function GET(req: Request) {
 
 // ── Main webhook handler ──────────────────────────────────────────────────────
 export async function POST(req: Request) {
-  // Verify Meta signature
-  const appSecret = process.env.FACEBOOK_APP_SECRET;
-  if (appSecret) {
-    const signature = req.headers.get("x-hub-signature-256") ?? "";
-    const rawBody   = await req.text();
-    const expected  = "sha256=" + crypto
-      .createHmac("sha256", appSecret)
-      .update(rawBody)
-      .digest("hex");
-    if (signature !== expected) {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
-    // Re-parse since we consumed the body
-    try {
-      const payload = JSON.parse(rawBody);
-      await processWebhookPayload(payload);
-    } catch { /* ignore parse errors */ }
-  } else {
-    // No signature check in dev
-    const payload = await req.json().catch(() => null);
-    if (payload) await processWebhookPayload(payload);
+  const rawBody = await req.text();
+  const signatureCheck = verifyFacebookSignature(
+    rawBody,
+    req.headers.get("x-hub-signature-256"),
+  );
+
+  if (!signatureCheck.ok) {
+    return NextResponse.json(
+      { error: signatureCheck.reason },
+      { status: signatureCheck.status },
+    );
+  }
+
+  try {
+    const payload = JSON.parse(rawBody);
+    await processWebhookPayload(payload);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   return new NextResponse("EVENT_RECEIVED", { status: 200 });
@@ -223,6 +267,10 @@ async function handleMessage(event: Record<string, unknown>) {
     direction: "inbound",
     message:   text,
     agent:     null,
+    delivery_status: "received",
+    approval_status: "not_required",
+    requires_approval: false,
+    source: "facebook_webhook",
   });
 
   await db.from("facebook_leads").update({
@@ -235,6 +283,16 @@ async function handleMessage(event: Record<string, unknown>) {
   const intentScore = classifyIntent(lower, lead);
   const detectedCity = detectCity(lower);
   const detectedCategory = detectCategory(lower);
+
+  if (/\b(stop|unsubscribe|do not contact|don't contact|leave me alone)\b/i.test(lower)) {
+    await db.from("facebook_leads").update({
+      lead_status: "dead",
+      current_agent: "manual_review",
+      conversation_stage: "opt_out",
+      updated_at: new Date().toISOString(),
+    }).eq("id", lead.id);
+    return;
+  }
 
   // Update lead data if new info found
   const updates: Record<string, unknown> = { intent_level: intentScore };
@@ -275,18 +333,59 @@ async function handleMessage(event: Record<string, unknown>) {
   }
 
   // ── 5. Send response ──────────────────────────────────────────────────────
-  const shouldAutoReply = facebookAutoReplyEnabled();
-  const mid = shouldAutoReply ? await fbSend(sender, response) : null;
-
-  // ── 6. Log outbound + update state ───────────────────────────────────────
-  if (shouldAutoReply) {
-    await db.from("facebook_messages").insert({
+  const shouldAutoReply = await facebookAutoReplyAllowed(db);
+  const { data: outboundDraft } = await db
+    .from("facebook_messages")
+    .insert({
       lead_id:   lead.id,
       direction: "outbound",
       message:   response,
       agent:     agentName,
-      mid:       mid ?? null,
-    });
+      delivery_status: "draft",
+      approval_status: "pending",
+      requires_approval: true,
+      proposed_action: "reply",
+      source: "facebook_webhook",
+      metadata: {
+        intent_score: intentScore,
+        generated_by: agentName,
+        automation_mode: shouldAutoReply ? "approval_guard_required" : "draft_for_approval",
+      },
+    })
+    .select("id")
+    .single();
+
+  let sentOk = false;
+
+  // ── 6. Log outbound + update state ───────────────────────────────────────
+  if (shouldAutoReply && outboundDraft?.id) {
+    try {
+      await assertSocialPublishAllowed({
+        source: { type: "facebook_message", messageId: outboundDraft.id },
+        destination: { provider: "facebook", channel: "facebook_dm" },
+        action: "send_external",
+        text: response,
+      });
+      const mid = await fbSend(sender, response);
+      sentOk = Boolean(mid);
+      await db.from("facebook_messages").update({
+        mid: mid ?? null,
+        delivery_status: sentOk ? "sent" : "failed",
+        requires_approval: false,
+        actual_sent_at: sentOk ? new Date().toISOString() : null,
+        error_detail: sentOk ? null : "Facebook Graph API send returned no message id.",
+      }).eq("id", outboundDraft.id);
+    } catch (error) {
+      await db.from("facebook_messages").update({
+        metadata: {
+          intent_score: intentScore,
+          generated_by: agentName,
+          automation_mode: "draft_for_approval",
+          auto_send_blocked: true,
+          block_reason: error instanceof SocialPublishBlockedError ? error.message : "Facebook approval guard blocked auto-send.",
+        },
+      }).eq("id", outboundDraft.id);
+    }
   }
 
   await db.from("facebook_leads").update({
@@ -294,7 +393,7 @@ async function handleMessage(event: Record<string, unknown>) {
     lead_status:       newStatus,
     conversation_stage: newStage,
     last_reply_at:     new Date().toISOString(),
-    messages_sent:     shouldAutoReply ? (lead.messages_sent ?? 0) + 1 : (lead.messages_sent ?? 0),
+    messages_sent:     sentOk ? (lead.messages_sent ?? 0) + 1 : (lead.messages_sent ?? 0),
     updated_at:        new Date().toISOString(),
   }).eq("id", lead.id);
 
@@ -306,8 +405,6 @@ async function handleMessage(event: Record<string, unknown>) {
       category:      detectedCategory ?? lead.category ?? "",
       status:        newStatus === "hot" ? "interested" : newStatus === "warm" ? "contacted" : "queued",
       source:        "facebook",
-      do_not_contact: false,
-      sms_opt_out:   false,
     };
 
     if (lead.sales_lead_id) {
@@ -315,7 +412,11 @@ async function handleMessage(event: Record<string, unknown>) {
     } else {
       const { data: salesLeadRows } = await db
         .from("sales_leads")
-        .insert(salesLeadPayload)
+        .insert({
+          ...salesLeadPayload,
+          do_not_contact: false,
+          sms_opt_out: false,
+        })
         .select("id");
       const salesLeadId = salesLeadRows?.[0]?.id;
       if (salesLeadId) {
@@ -336,33 +437,55 @@ async function handleComment(value: Record<string, unknown>) {
   if (!senderId || !message) return;
 
   const db = createServiceClient();
-
-  // Public reply to the comment
-  if (facebookCommentAutoReplyEnabled()) {
-    await fbCommentReply(commentId,
-    "Thanks for engaging! 👋 I just sent you a quick DM with more info about what we do. Check your messages!"
-  );
-  }
-
-  // Send DM to start the conversation
   const profile = await fbGetUserProfile(senderId);
   const firstName = profile.name?.split(" ")[0] ?? "there";
 
-  if (facebookCommentAutoDmEnabled()) {
-    await fbSend(senderId,
-    `Hey ${firstName}! 👋 Saw your comment and wanted to reach out directly.\n\nI'm with HomeReach — we run direct-mail postcard campaigns targeting thousands of verified homeowners in your area. One exclusive spot per business category per city.\n\nAre you currently doing any local advertising?`
-  );
-  }
-
-  // Log as a lead from comment
-  await db.from("facebook_leads").upsert({
+  const { data: lead } = await db.from("facebook_leads").upsert({
     fb_psid:         senderId,
     fb_name:         profile.name ?? null,
     source:          "comment",
     comment_post_id: commentId,
     current_agent:   "echo",
     lead_status:     "warm",
-  }, { onConflict: "fb_psid" });
+  }, { onConflict: "fb_psid" }).select("id").single();
+
+  if (!lead?.id) return;
+
+  if (await facebookCommentAutoReplyAllowed(db)) {
+    await db.from("facebook_messages").insert({
+      lead_id: lead.id,
+      direction: "outbound",
+      message: "Thanks for engaging. I can send a quick DM with more info about HomeReach after review.",
+      agent: "echo",
+      delivery_status: "draft",
+      approval_status: "pending",
+      requires_approval: true,
+      proposed_action: "comment_reply",
+      source: "facebook_webhook_comment",
+      metadata: {
+        comment_id: commentId,
+        automation_mode: "approval_guard_required",
+      },
+    });
+  }
+
+  if (await facebookCommentAutoDmAllowed(db)) {
+    await db.from("facebook_messages").insert({
+      lead_id: lead.id,
+      direction: "outbound",
+      message: `Hey ${firstName}, saw your comment and wanted to reach out directly.\n\nI'm with HomeReach. We help local businesses stay visible with nearby homeowners through reviewed postcard campaigns.\n\nAre you currently doing any local advertising?`,
+      agent: "echo",
+      delivery_status: "draft",
+      approval_status: "pending",
+      requires_approval: true,
+      proposed_action: "dm_from_comment",
+      source: "facebook_webhook_comment",
+      metadata: {
+        comment_id: commentId,
+        automation_mode: "approval_guard_required",
+      },
+    });
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -424,7 +547,7 @@ function buildEchoResponse(text: string, lead: Record<string, unknown>): string 
   const lower  = text.toLowerCase();
 
   if (lead.conversation_stage === "initial" || !lead.conversation_stage) {
-    return `Hey ${name}! 👋 Thanks for reaching out to HomeReach!\n\nWe run exclusive direct-mail postcard campaigns — your ad goes out to 2,500+ verified homeowners monthly in your city. One business per category, so if you lock in your spot, no competitor can take it.\n\nWhat type of business do you run?`;
+    return `Hey ${name}, thanks for reaching out to HomeReach.\n\nWe help local businesses stay visible with nearby homeowners through reviewed postcard campaigns and simple follow-up. What type of business do you run?`;
   }
 
   if (/hello|hi|hey|yo/.test(lower)) {
@@ -453,7 +576,7 @@ function buildProspectorResponse(
 
   const cat  = category ?? (lead.category as string) ?? "your business";
   const loc  = city ?? (lead.city as string) ?? "your area";
-  return `Perfect — ${cat} in ${loc}! 🎯\n\nWe actually have a few spots open there right now. Our campaigns put you in front of 2,500+ homeowners every month, and you're the only ${cat.toLowerCase()} business in the mailer — no competitors.\n\nWant to know what it costs and how many spots are left?`;
+  return `Perfect, ${cat} in ${loc}.\n\nI can send a simple HomeReach overview with coverage, format, and current pricing so you can review whether it fits. Want me to send that?`;
 }
 
 function buildCloserResponse(
@@ -469,11 +592,11 @@ function buildCloserResponse(
 
   // Objection handling
   if (/too expensive|too much|can't afford|not in budget/.test(lower)) {
-    return `${name}, I totally get it — budget matters. Here's the thing: our Back Feature spot starts at $200/mo and you're reaching 2,500 homeowners. That's less than a cup of coffee per day to be in front of thousands of local homeowners.\n\nAnd because it's exclusive, no other ${cat.toLowerCase()} business can advertise while you're active.\n\nWant me to show you the exact breakdown?`;
+    return `${name}, I totally get it. Budget matters.\n\nOur entry package starts at $200/mo, and I can send the exact coverage, format, and pricing details so you can judge whether it fits.\n\nWant me to send the breakdown?`;
   }
 
   if (/need to think|think about it|not sure|maybe later/.test(lower)) {
-    return `${name}, I hear you — it's a real decision. But here's what I can't guarantee: that spot will still be available tomorrow.\n\nWe only allow one ${cat.toLowerCase()} business per city. If someone else claims it today, you'd have to wait for it to open up again.\n\nCan I at least send you the details so you have everything in front of you?`;
+    return `${name}, I hear you. It is a real decision, and timing matters.\n\nI can send the details so you have coverage, pricing, and next steps in one place. Want me to send that for review?`;
   }
 
   if (/already advertis|already have|google|facebook ads/.test(lower)) {
@@ -482,19 +605,19 @@ function buildCloserResponse(
 
   // Pricing inquiry
   if (/price|how much|cost|pricing/.test(lower)) {
-    return `Great question ${name}! Here's what's available in ${loc}:\n\n🥇 Anchor Spot: $600/mo — largest placement, front page, ONLY 1 available\n⭐ Front Feature: $250/mo — front page, 3 spots available\n✅ Back Feature: $200/mo — back page, 6 spots available\n\nAll include professional design, print, and mailing to 2,500+ verified homeowners.\n\nWhich option fits best for you?`;
+    return `Great question ${name}. Current HomeReach package options start at $200/mo, with front and anchor placements available at higher tiers.\n\nPackages include professional design, print coordination, mailing support, and category review. Want me to send the full breakdown?`;
   }
 
   // Hot intent
   if (/interested|tell me more|want to know|availability|spots left/.test(lower)) {
-    return `${name}, here's the deal — we have limited spots open in ${loc} for ${cat} right now.\n\n📬 Your postcard goes to 2,500+ verified homeowners monthly\n🔒 You're the ONLY ${cat.toLowerCase()} in the mailer\n💰 Starts at just $200/mo\n\nTo lock your spot right now: home-reach.com/get-started\n\nSpots have been filling fast this week. Want me to hold yours while you check it out?`;
+    return `${name}, I can send the ${loc} details for ${cat}: package options, coverage, setup, and current pricing.\n\nThe next step is reviewing the details here: home-reach.com/get-started\n\nWant me to help you compare the options?`;
   }
 
   // Affirmative / ready to close
   if (/yes|yeah|sure|ok|let's|ready|sign|lock in|reserve/.test(lower)) {
-    return `🎉 Awesome ${name}! Let's lock in your ${cat} spot in ${loc} before someone else grabs it.\n\nHere's your signup link:\nhome-reach.com/get-started\n\nTakes about 3 minutes. Choose your spot size, enter your business info, and you're in.\n\nIf you have any questions while you're going through it, just text me here. Let's get you live! 🚀`;
+    return `Great, ${name}. Here is the next-step link:\nhome-reach.com/get-started\n\nYou can review the package options and business info there. If any question comes up while you are looking, reply here and I will help.`;
   }
 
   // Default closer response
-  return `${name}, based on what you've told me — this is exactly what HomeReach was built for.\n\n${cat} in ${loc}, reaching 2,500+ homeowners monthly with ZERO competition in your category.\n\nHere's your link to claim your spot:\nhome-reach.com/get-started\n\nWhat's holding you back from locking it in today?`;
+  return `${name}, based on what you shared, HomeReach may be worth reviewing for ${cat} in ${loc}.\n\nHere is the next-step link: home-reach.com/get-started\n\nWhat would you want clarified before deciding?`;
 }

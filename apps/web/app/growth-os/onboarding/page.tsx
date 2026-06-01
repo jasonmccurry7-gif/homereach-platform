@@ -18,6 +18,10 @@ export default async function GrowthOsOnboardingPage() {
         <h1 className="mt-2 text-2xl font-bold text-gray-950">
           Set your operating baseline
         </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+          This gives Growth OS enough context to recommend one clear money move
+          at a time. You stay in control of every change.
+        </p>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">

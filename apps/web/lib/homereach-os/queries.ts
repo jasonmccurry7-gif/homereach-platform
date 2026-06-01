@@ -54,6 +54,7 @@ import type {
 } from "./types";
 import { getSeoCommandCenterSnapshot } from "@/lib/seo/authority";
 import { getGrowthExecutionSnapshot } from "@/lib/growth-execution/services";
+import { buildOutreachMarketingIntelligence } from "@/lib/marketing-intelligence/outreach";
 
 async function safe<T>(promise: Promise<T>, fallback: T, timeoutMs = 2500): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -201,6 +202,8 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
     topPoliticalRows,
     recentReplyRows,
     recentEventRows,
+    marketingIntelEventRows,
+    testimonialLeadRows,
   ] = await Promise.all([
     safe(db.select({ n: count() }).from(spotAssignments).where(eq(spotAssignments.status, "active")), [{ n: 0 }]),
     safe(db.select({ n: count() }).from(spotAssignments).where(eq(spotAssignments.status, "pending")), [{ n: 0 }]),
@@ -331,6 +334,48 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
         .limit(6),
       [],
     ),
+    safe(
+      db
+        .select({
+          id: salesEvents.id,
+          actionType: salesEvents.actionType,
+          channel: salesEvents.channel,
+          city: salesEvents.city,
+          category: salesEvents.category,
+          revenueCents: salesEvents.revenueCents,
+          leadId: salesEvents.leadId,
+          message: salesEvents.message,
+          metadata: salesEvents.metadata,
+          createdAt: salesEvents.createdAt,
+        })
+        .from(salesEvents)
+        .where(gte(salesEvents.createdAt, thirtyDaysAgo))
+        .orderBy(desc(salesEvents.createdAt))
+        .limit(250),
+      [],
+    ),
+    safe(
+      db
+        .select({
+          id: salesLeads.id,
+          businessName: salesLeads.businessName,
+          contactName: salesLeads.contactName,
+          city: salesLeads.city,
+          category: salesLeads.category,
+          status: salesLeads.status,
+          priority: salesLeads.priority,
+          score: salesLeads.score,
+          rating: salesLeads.rating,
+          reviewsCount: salesLeads.reviewsCount,
+          lastReplyAt: salesLeads.lastReplyAt,
+          updatedAt: salesLeads.updatedAt,
+        })
+        .from(salesLeads)
+        .where(or(eq(salesLeads.status, "closed"), gte(salesLeads.score, 80)))
+        .orderBy(desc(salesLeads.updatedAt))
+        .limit(12),
+      [],
+    ),
   ]);
 
   const activeSpots = firstNumber(activeSpotsRows, "n");
@@ -361,6 +406,36 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
     91,
     Math.max(18, Math.round((firstNumber(hotSalesLeadsRows, "n") * 6 + firstNumber(pendingProposalRows, "n") * 4 + activeSpots) / 2)),
   );
+  const outreachMarketingIntelligence = buildOutreachMarketingIntelligence(
+    marketingIntelEventRows.map((event) => ({
+      id: event.id,
+      actionType: event.actionType,
+      channel: event.channel,
+      city: event.city,
+      category: event.category,
+      revenueCents: event.revenueCents,
+      leadId: event.leadId,
+      message: event.message,
+      metadata: event.metadata,
+      createdAt: event.createdAt,
+    })),
+    testimonialLeadRows.map((lead) => ({
+      id: lead.id,
+      businessName: lead.businessName,
+      contactName: lead.contactName,
+      city: lead.city,
+      category: lead.category,
+      status: lead.status,
+      priority: lead.priority,
+      score: lead.score,
+      rating: lead.rating,
+      reviewsCount: lead.reviewsCount,
+      lastReplyAt: lead.lastReplyAt,
+      updatedAt: lead.updatedAt,
+    })),
+  );
+  const bestOutreachWinner = outreachMarketingIntelligence.winners[0];
+  const testimonialOpportunityCount = outreachMarketingIntelligence.testimonialOpportunities.length;
 
   const topBusiness: OSOpportunity[] = topBusinessLeadRows.map((lead) => ({
     id: lead.id,
@@ -1305,6 +1380,40 @@ export async function getHomeReachOSData(): Promise<HomeReachOSData> {
           risk: "Medium",
           status: "watch",
           category: "communications",
+        })
+      : null,
+    bestOutreachWinner
+      ? action({
+          id: "reuse-winning-outreach",
+          title: "Reuse the winning outreach pattern",
+          outcome: `${bestOutreachWinner.label} is outperforming the current outreach baseline.`,
+          reason: `${bestOutreachWinner.label} shows ${Math.round(bestOutreachWinner.replyRate * 1000) / 10}% reply rate, ${bestOutreachWinner.deals} closed deal${bestOutreachWinner.deals === 1 ? "" : "s"}, and ${formatMoney(bestOutreachWinner.revenueCents)} attributed revenue in the recent sales event stream.`,
+          ifIgnored: "The team may keep creating new drafts while proven hooks, CTAs, and channels sit unused.",
+          actionLabel: "Open sales insights",
+          href: "/api/admin/sales/insights",
+          confidence: Math.max(70, bestOutreachWinner.score),
+          urgency: bestOutreachWinner.performanceLabel === "Winner" ? 83 : 62,
+          impact: "Improves reply quality and reduces wasted outreach tests",
+          risk: "Low",
+          status: "watch",
+          category: "communications",
+        })
+      : null,
+    testimonialOpportunityCount > 0
+      ? action({
+          id: "testimonial-mining",
+          title: "Turn customer wins into proof",
+          outcome: `${testimonialOpportunityCount} customer win${testimonialOpportunityCount === 1 ? "" : "s"} look ready for a testimonial, referral, video review, or case study request.`,
+          reason: "Closed or high-signal customers create reusable trust assets for local SEO, outreach, sales pages, and proposals.",
+          ifIgnored: "Revenue wins stay private, and future prospects see fewer proof points when deciding whether to trust HomeReach.",
+          actionLabel: "Open sales insights",
+          href: "/api/admin/sales/insights",
+          confidence: 82,
+          urgency: 74,
+          impact: "Builds proof for higher-converting content and outreach",
+          risk: "Low",
+          status: "watch",
+          category: "revenue",
         })
       : null,
     candidateApprovalNeededCount > 0

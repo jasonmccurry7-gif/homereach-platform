@@ -71,7 +71,7 @@ export async function getCampaignsForUser(userId: string) {
     .leftJoin(cities, eq(marketingCampaigns.cityId, cities.id))
     .leftJoin(categories, eq(marketingCampaigns.categoryId, categories.id))
     .leftJoin(bundles, eq(marketingCampaigns.bundleId, bundles.id))
-    .where(eq(marketingCampaigns.businessId, businessIds[0]!))
+    .where(inArray(marketingCampaigns.businessId, businessIds))
     .orderBy(desc(marketingCampaigns.createdAt));
 
   return rows;
@@ -135,6 +135,8 @@ export async function getOrdersForUser(userId: string) {
 
   if (userBusinesses.length === 0) return [];
 
+  const businessIds = userBusinesses.map((business) => business.id);
+
   const rows = await db
     .select({
       order: orders,
@@ -149,7 +151,7 @@ export async function getOrdersForUser(userId: string) {
     .from(orders)
     .leftJoin(bundles, eq(orders.bundleId, bundles.id))
     .leftJoin(businesses, eq(orders.businessId, businesses.id))
-    .where(eq(orders.businessId, userBusinesses[0]!.id))
+    .where(inArray(orders.businessId, businessIds))
     .orderBy(desc(orders.createdAt));
 
   return rows;

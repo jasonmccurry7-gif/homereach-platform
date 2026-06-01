@@ -29,7 +29,7 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const { data: page, error } = await admin.supa
     .from("seo_pages")
-    .select("id, status, slug, city_id, category_id, primary_cta_url, content_blocks")
+    .select("id, status, slug, city_id, category_id, primary_cta_url, content_blocks, approved_by, approved_at")
     .eq("id", id)
     .maybeSingle();
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -43,11 +43,16 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     category_id: string | null;
     primary_cta_url: string | null;
     content_blocks: Array<{ kind?: string }>;
+    approved_by: string | null;
+    approved_at: string | null;
   };
   const p = page as PageRow;
 
   if (p.status !== "approved") {
     return NextResponse.json({ ok: false, error: "not_approved", current_status: p.status }, { status: 409 });
+  }
+  if (!p.approved_by || !p.approved_at) {
+    return NextResponse.json({ ok: false, error: "missing_approval_audit" }, { status: 409 });
   }
 
   // Quality re-check

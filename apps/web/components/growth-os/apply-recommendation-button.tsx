@@ -61,8 +61,14 @@ export function ApplyRecommendationButton({
         ) : (
           <Check className="h-4 w-4" aria-hidden="true" />
         )}
-        {disabled ? "Locked" : "Apply lever"}
+        {disabled ? "One lever active" : "Approve lever"}
       </button>
+      {!disabled ? (
+        <p className="text-xs font-medium leading-5 text-gray-500">
+          Approval starts tracking. It does not change prices, send messages, or
+          commit staffing automatically.
+        </p>
+      ) : null}
       {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
     </div>
   );

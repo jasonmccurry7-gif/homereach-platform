@@ -105,6 +105,18 @@ export type WeeklyAiReport = {
   nextWeekFocus: string;
 };
 
+export type ProcurementSavingsLedger = {
+  enrolledAt: Date | null;
+  lastUpdatedAt: Date;
+  foundThisWeekCents: number;
+  foundThisMonthCents: number;
+  pendingApprovalCents: number;
+  capturedThisWeekCents: number;
+  capturedThisMonthCents: number;
+  capturedSinceEnrollmentCents: number;
+  totalIdentifiedSinceEnrollmentCents: number;
+};
+
 export type EmergencyProcurementItem = {
   id: string;
   itemName: string;
@@ -144,6 +156,7 @@ export type CopilotSnapshot = {
   vendorScorecards: VendorScorecard[];
   riskAlerts: ProcurementRiskAlert[];
   weeklyReport: WeeklyAiReport;
+  savingsLedger: ProcurementSavingsLedger;
   emergencyItems: EmergencyProcurementItem[];
   businessMemory: BusinessMemorySummary;
   insights: CopilotInsight[];

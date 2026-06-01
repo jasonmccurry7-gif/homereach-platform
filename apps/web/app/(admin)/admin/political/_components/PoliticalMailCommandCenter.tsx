@@ -186,7 +186,7 @@ export function PoliticalMailCommandCenter({ data, audience = "admin" }: Politic
           <div className="max-w-4xl">
             <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-blue-200">
               <span className="rounded-full border border-blue-300/25 bg-blue-950/50 px-3 py-1">
-                Political Mail Command Center
+                PoliticalReach Mail Command Center
               </span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
                 {data.dataMode === "live" ? "Live data" : data.dataMode === "partial" ? "Partial live data" : "Awaiting live data"}
@@ -210,7 +210,7 @@ export function PoliticalMailCommandCenter({ data, audience = "admin" }: Politic
             <ActionLink href={`${routeBase}/maps`} label="Open Maps" icon={<Map className="h-4 w-4" />} />
             <ActionLink href={`${routeBase}/routes`} label="Open Routes" icon={<Route className="h-4 w-4" />} />
             <ActionLink href={analyticsHref} label={isAdmin ? "Open Reporting" : "Review Analytics"} icon={<BarChart3 className="h-4 w-4" />} />
-            <ActionLink href={isAdmin ? `${routeBase}/candidate-agent` : "/political/candidate-agent"} label="Chat with Campaign AI Agent" icon={<Sparkles className="h-4 w-4" />} />
+            <ActionLink href={isAdmin ? `${routeBase}/candidate-agent` : "/political/candidate-agent"} label="Chat with PoliticalReach AI" icon={<Sparkles className="h-4 w-4" />} />
             <button
               type="button"
               onClick={() => setWarRoomOpen(true)}
@@ -576,7 +576,7 @@ export function PoliticalMailCommandCenter({ data, audience = "admin" }: Politic
             <div className="admin-only-export-hide mt-4">
               <ActionLink
                 href="/political/candidate-agent"
-                label="Chat with Campaign AI Agent"
+                label="Chat with PoliticalReach AI"
                 icon={<Sparkles className="h-4 w-4" />}
               />
             </div>
@@ -715,7 +715,7 @@ function buildCustomerActionAudit(): PoliticalMailCommandCenterData["actionAudit
     { label: "Analytics tab", type: "route", target: "/political/analytics", status: "verified" },
     { label: "Data tab", type: "route", target: "/political/data-sources", status: "verified" },
     { label: "Start Campaign Mail Plan", type: "route", target: "/political/plan", status: "verified" },
-    { label: "Chat with Campaign AI Agent", type: "route", target: "/political/candidate-agent", status: "verified" },
+    { label: "Chat with PoliticalReach AI", type: "route", target: "/political/candidate-agent", status: "verified" },
     { label: "Open Maps", type: "route", target: "/political/maps", status: "verified" },
     { label: "Open Routes", type: "route", target: "/political/routes", status: "verified" },
     { label: "Print / Save PDF", type: "browser-print", target: "window.print()", status: "local_action" },

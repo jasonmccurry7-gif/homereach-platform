@@ -3,22 +3,48 @@ import "server-only";
 import { resolveCname, resolveTxt } from "node:dns/promises";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
+  getOwnerIdentity,
   getOutreachSafetyConfig,
   sendEmail,
 } from "@homereach/services/outreach";
 
-export const DEFAULT_VERIFICATION_DESTINATION = "jasonmccurry7@gmail.com";
+const ownerIdentity = getOwnerIdentity();
+
+export const DEFAULT_VERIFICATION_DESTINATION = ownerIdentity.personalEmail.toLowerCase();
 
 export const HOME_REACH_SENDER_IDENTITIES = [
   { name: "Heather HomeReach", email: "heather@home-reach.com" },
   { name: "Josh HomeReach", email: "josh@home-reach.com" },
   { name: "Chelsi HomeReach", email: "chelsi@home-reach.com" },
-  { name: "Jason HomeReach", email: "jason@home-reach.com" },
+  { name: ownerIdentity.name, email: ownerIdentity.domainEmail.toLowerCase() },
 ] as const;
 
-export type HomeReachSenderEmail = (typeof HOME_REACH_SENDER_IDENTITIES)[number]["email"];
+export type HomeReachSenderEmail = string;
 
 type GenericRow = Record<string, unknown>;
+type PostmarkSenderSignatureApiRow = {
+  ID?: number;
+  EmailAddress?: string;
+  Name?: string;
+  ReplyToEmailAddress?: string;
+  Domain?: string;
+  Confirmed?: boolean;
+  SPFVerified?: boolean;
+  SPFHost?: string;
+  SPFTextValue?: string;
+  DKIMVerified?: boolean;
+  DKIMHost?: string;
+  DKIMTextValue?: string;
+  DKIMPendingHost?: string;
+  DKIMPendingTextValue?: string;
+  ReturnPathDomain?: string;
+  ReturnPathDomainVerified?: boolean;
+  ReturnPathDomainCNAMEValue?: string;
+};
+
+const POSTMARK_SPF_INCLUDE = "include:spf.mtasv.net";
+const POSTMARK_RETURN_PATH_HOST = "pm-bounces.home-reach.com";
+const POSTMARK_RETURN_PATH_TARGET = "pm.mtasv.net";
 
 export type EnvAudit = {
   emailProvider: string;
@@ -50,6 +76,7 @@ export type DnsAudit = {
     hasSpf: boolean;
     includesPostmark: boolean;
     includesWorkspaceProvider: boolean;
+    recommendedMergedValue: string;
   };
   dmarc: DnsRecordStatus & {
     hasDmarc: boolean;
@@ -58,8 +85,37 @@ export type DnsAudit = {
   returnPath: DnsRecordStatus & {
     pointsToPostmark: boolean;
   };
+  returnPathTxt: DnsRecordStatus & {
+    conflictsWithCname: boolean;
+  };
   dkimCandidates: DnsRecordStatus[];
   dkimLikelyConfigured: boolean;
+};
+
+export type PostmarkSenderSignatureAudit = {
+  email: string;
+  expectedName: string;
+  found: boolean;
+  confirmed: boolean | null;
+  name: string | null;
+  replyTo: string | null;
+  senderSignatureId: number | null;
+  spfVerified: boolean | null;
+  spfHost: string | null;
+  spfTextValue: string | null;
+  dkimVerified: boolean | null;
+  dkimHost: string | null;
+  dkimPendingHost: string | null;
+  returnPathDomain: string | null;
+  returnPathDomainVerified: boolean | null;
+  returnPathDomainCnameValue: string | null;
+  error: string | null;
+};
+
+export type PostmarkSenderSignatureSummary = {
+  status: "verified" | "partial" | "missing_token" | "error";
+  message: string;
+  signatures: PostmarkSenderSignatureAudit[];
 };
 
 export type SenderIdentityAudit = {
@@ -75,6 +131,7 @@ export type SenderIdentityAudit = {
     rampDay: number | null;
     updatedAt: string | null;
   };
+  postmarkSignature: PostmarkSenderSignatureAudit | null;
   senderHealth: GenericRow | null;
   recentEvents: GenericRow[];
   verificationStatus: "ready" | "blocked" | "needs_postmark_confirmation" | "not_configured";
@@ -102,6 +159,7 @@ export type EmailInfrastructureAudit = {
     httpStatus?: number;
     message: string;
   };
+  postmarkSenderSignatures: PostmarkSenderSignatureSummary;
   senderIdentities: SenderIdentityAudit[];
   webhook: {
     route: string;
@@ -135,6 +193,27 @@ export type VerificationSendResult = {
 
 function hasValue(value: string | undefined): boolean {
   return Boolean(value && value.trim().length > 0);
+}
+
+function boolOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function buildRecommendedSpfValue(records: string[]): string {
+  const existing = records.find((value) => value.toLowerCase().startsWith("v=spf1"));
+  if (!existing) {
+    return `v=spf1 ${POSTMARK_SPF_INCLUDE} include:_spf-usg2.ppe-hosted.com include:secureserver.net ~all`;
+  }
+  if (existing.includes(POSTMARK_SPF_INCLUDE)) return existing;
+  return existing.replace(/\s(~all|-all|\?all|\+all)$/i, ` ${POSTMARK_SPF_INCLUDE}$1`);
 }
 
 function getEnvAudit(): EnvAudit {
@@ -219,10 +298,11 @@ function extractDmarcPolicy(records: string[]): string | null {
 }
 
 export async function auditDnsAuthentication(): Promise<DnsAudit> {
-  const [spfBase, dmarcBase, returnPath, ...dkimCandidates] = await Promise.all([
+  const [spfBase, dmarcBase, returnPath, returnPathTxt, ...dkimCandidates] = await Promise.all([
     lookupTxt("home-reach.com"),
     lookupTxt("_dmarc.home-reach.com"),
-    lookupCname("pm-bounces.home-reach.com"),
+    lookupCname(POSTMARK_RETURN_PATH_HOST),
+    lookupTxt(POSTMARK_RETURN_PATH_HOST),
     lookupCname("20230601pm._domainkey.home-reach.com"),
     lookupCname("20161025pm._domainkey.home-reach.com"),
     lookupCname("pm._domainkey.home-reach.com"),
@@ -242,6 +322,7 @@ export async function auditDnsAuthentication(): Promise<DnsAudit> {
       hasSpf: spfValues.length > 0,
       includesPostmark: spfValues.some((value) => /spf\.mtasv\.net|postmark|mtasv/i.test(value)),
       includesWorkspaceProvider: spfValues.some((value) => /secureserver|ppe-hosted|protection\.outlook/i.test(value)),
+      recommendedMergedValue: buildRecommendedSpfValue(spfBase.values),
     },
     dmarc: {
       ...dmarcBase,
@@ -251,6 +332,10 @@ export async function auditDnsAuthentication(): Promise<DnsAudit> {
     returnPath: {
       ...returnPath,
       pointsToPostmark: returnPath.values.some((value) => value.toLowerCase().includes("mtasv.net")),
+    },
+    returnPathTxt: {
+      ...returnPathTxt,
+      conflictsWithCname: returnPathTxt.status === "present",
     },
     dkimCandidates,
     dkimLikelyConfigured: dkimCandidates.some((record) =>
@@ -293,6 +378,130 @@ async function probePostmarkCredential(env: EnvAudit): Promise<EmailInfrastructu
     return {
       status: "unknown",
       message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function buildMissingSignature(email: string, expectedName: string, error: string | null): PostmarkSenderSignatureAudit {
+  return {
+    email,
+    expectedName,
+    found: false,
+    confirmed: null,
+    name: null,
+    replyTo: null,
+    senderSignatureId: null,
+    spfVerified: null,
+    spfHost: null,
+    spfTextValue: null,
+    dkimVerified: null,
+    dkimHost: null,
+    dkimPendingHost: null,
+    returnPathDomain: null,
+    returnPathDomainVerified: null,
+    returnPathDomainCnameValue: null,
+    error,
+  };
+}
+
+function normalizePostmarkSignature(
+  row: PostmarkSenderSignatureApiRow | null | undefined,
+  expected: { email: string; name: string },
+  error: string | null = null,
+): PostmarkSenderSignatureAudit {
+  if (!row) return buildMissingSignature(expected.email, expected.name, error);
+
+  return {
+    email: expected.email,
+    expectedName: expected.name,
+    found: true,
+    confirmed: boolOrNull(row.Confirmed),
+    name: stringOrNull(row.Name),
+    replyTo: stringOrNull(row.ReplyToEmailAddress),
+    senderSignatureId: numberOrNull(row.ID),
+    spfVerified: boolOrNull(row.SPFVerified),
+    spfHost: stringOrNull(row.SPFHost),
+    spfTextValue: stringOrNull(row.SPFTextValue),
+    dkimVerified: boolOrNull(row.DKIMVerified),
+    dkimHost: stringOrNull(row.DKIMHost),
+    dkimPendingHost: stringOrNull(row.DKIMPendingHost),
+    returnPathDomain: stringOrNull(row.ReturnPathDomain),
+    returnPathDomainVerified: boolOrNull(row.ReturnPathDomainVerified),
+    returnPathDomainCnameValue: stringOrNull(row.ReturnPathDomainCNAMEValue),
+    error,
+  };
+}
+
+async function fetchPostmarkSignatureDetail(id: number): Promise<PostmarkSenderSignatureApiRow | null> {
+  const response = await fetch(`https://api.postmarkapp.com/senders/${id}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      "X-Postmark-Account-Token": process.env.POSTMARK_ACCOUNT_TOKEN ?? "",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) return null;
+  return await response.json() as PostmarkSenderSignatureApiRow;
+}
+
+async function auditPostmarkSenderSignatures(env: EnvAudit): Promise<PostmarkSenderSignatureSummary> {
+  if (!env.postmarkAccountTokenConfigured) {
+    return {
+      status: "missing_token",
+      message: "POSTMARK_ACCOUNT_TOKEN is not available, so sender signatures must be confirmed in the Postmark console.",
+      signatures: HOME_REACH_SENDER_IDENTITIES.map((sender) =>
+        buildMissingSignature(sender.email, sender.name, "POSTMARK_ACCOUNT_TOKEN missing"),
+      ),
+    };
+  }
+
+  try {
+    const response = await fetch("https://api.postmarkapp.com/senders?count=500&offset=0", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-Postmark-Account-Token": process.env.POSTMARK_ACCOUNT_TOKEN ?? "",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return {
+        status: "error",
+        message: `Postmark sender signature API returned HTTP ${response.status}.`,
+        signatures: HOME_REACH_SENDER_IDENTITIES.map((sender) =>
+          buildMissingSignature(sender.email, sender.name, `Postmark API HTTP ${response.status}`),
+        ),
+      };
+    }
+
+    const payload = await response.json() as { SenderSignatures?: PostmarkSenderSignatureApiRow[] };
+    const rows = Array.isArray(payload.SenderSignatures) ? payload.SenderSignatures : [];
+    const signatures = await Promise.all(HOME_REACH_SENDER_IDENTITIES.map(async (sender) => {
+      const listed = rows.find((row) => lower(row.EmailAddress) === sender.email);
+      if (!listed) return buildMissingSignature(sender.email, sender.name, "Sender signature not found in Postmark account.");
+      const id = numberOrNull(listed.ID);
+      const detail = id ? await fetchPostmarkSignatureDetail(id) : null;
+      return normalizePostmarkSignature(detail ?? listed, sender, null);
+    }));
+
+    const allConfirmed = signatures.every((signature) => signature.found && signature.confirmed === true);
+    return {
+      status: allConfirmed ? "verified" : "partial",
+      message: allConfirmed
+        ? "All required HomeReach sender signatures were found and confirmed by the Postmark Account API."
+        : "One or more HomeReach sender signatures are missing or not confirmed in Postmark.",
+      signatures,
+    };
+  } catch (err) {
+    return {
+      status: "error",
+      message: err instanceof Error ? err.message : String(err),
+      signatures: HOME_REACH_SENDER_IDENTITIES.map((sender) =>
+        buildMissingSignature(sender.email, sender.name, err instanceof Error ? err.message : String(err)),
+      ),
     };
   }
 }
@@ -361,6 +570,49 @@ function buildAutomationMode(controls: GenericRow | null, env: EnvAudit): EmailF
   };
 }
 
+function buildEmailRecommendations(input: {
+  env: EnvAudit;
+  dns: DnsAudit;
+  postmarkSenderSignatures: PostmarkSenderSignatureSummary;
+  automationMode: EmailFirstAutomationMode;
+}): string[] {
+  const recommendations: string[] = [];
+
+  if (input.postmarkSenderSignatures.status === "missing_token") {
+    recommendations.push("Add POSTMARK_ACCOUNT_TOKEN to production if you want this dashboard to confirm Postmark sender signatures by API; otherwise confirm heather, josh, chelsi, and jason manually in Postmark Sender Signatures.");
+  } else if (input.postmarkSenderSignatures.status !== "verified") {
+    recommendations.push("Resolve missing or unconfirmed Postmark sender signatures for heather, josh, chelsi, and jason before scaling beyond verification sends.");
+  }
+
+  if (!input.dns.spf.includesPostmark) {
+    recommendations.push(`Merge Postmark into the existing root SPF record, not a second SPF record: ${input.dns.spf.recommendedMergedValue}`);
+  }
+
+  if (!input.dns.dkimLikelyConfigured) {
+    recommendations.push("Add the DKIM host/value shown in the Postmark console for home-reach.com, then refresh this audit until a Postmark DKIM selector is visible.");
+  }
+
+  if (!input.dns.returnPath.pointsToPostmark) {
+    recommendations.push(`Configure the Postmark Return-Path CNAME for ${POSTMARK_RETURN_PATH_HOST} to the Postmark target shown in the console, commonly ${POSTMARK_RETURN_PATH_TARGET}.`);
+  }
+
+  if (input.dns.returnPathTxt.conflictsWithCname) {
+    recommendations.push(`${POSTMARK_RETURN_PATH_HOST} currently has TXT records; remove any conflicting TXT records before adding the Postmark Return-Path CNAME.`);
+  }
+
+  if (input.automationMode.smsLiveSendingAllowed) {
+    recommendations.push("Keep Twilio prospecting disabled until A2P/10DLC approval, inbound webhooks, and status callbacks are verified.");
+  }
+
+  if (!input.automationMode.manualApprovalMode) {
+    recommendations.push("Turn on manual approval mode before campaign-scale outbound sequences.");
+  }
+
+  recommendations.push("Keep verification sends at one recipient per sender and monitor Postmark delivery, open, bounce, and suppression events before any warm-up.");
+
+  return recommendations;
+}
+
 export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructureAudit> {
   const env = getEnvAudit();
   const db = createServiceClient();
@@ -370,6 +622,7 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
   const [
     dns,
     postmarkCredentialProbe,
+    postmarkSenderSignatures,
     identities,
     senderHealth,
     recentEvents,
@@ -378,6 +631,7 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
   ] = await Promise.all([
     auditDnsAuthentication(),
     probePostmarkCredential(env),
+    auditPostmarkSenderSignatures(env),
     safeQuery<GenericRow[]>(() =>
       db
         .from("agent_identities")
@@ -425,10 +679,12 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
     })),
     ...eventRows,
   ];
+  const automationMode = buildAutomationMode(controls.data, env);
 
   const senderIdentities = HOME_REACH_SENDER_IDENTITIES.map((sender) => {
     const identity = identityRows.find((row) => lower(row.from_email) === sender.email);
     const health = healthRows.find((row) => lower(row.from_email) === sender.email) ?? null;
+    const signature = postmarkSenderSignatures.signatures.find((row) => lower(row.email) === sender.email) ?? null;
     const senderRecentEvents = combinedEvents.filter((event) => {
       const rawPayload = event.raw_payload as GenericRow | undefined;
       const metadata = rawPayload?.Metadata as GenericRow | undefined;
@@ -443,8 +699,13 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
     if (env.postmarkApiTokenConfigured && !env.postmarkAccountTokenConfigured) {
       notes.push("Postmark account token is not configured, so sender signature confirmation must be checked in Postmark.");
     }
+    if (env.postmarkAccountTokenConfigured && !signature?.found) notes.push("Postmark sender signature was not found by the Account API.");
+    if (signature?.found && signature.confirmed === false) notes.push("Postmark sender signature exists but is not confirmed.");
+    if (signature?.found && signature.confirmed === true) notes.push("Postmark sender signature confirmed by API.");
+    if (signature?.dkimVerified === false) notes.push("Postmark reports DKIM is not verified for this sender/domain.");
     if (!dns.spf.includesPostmark) notes.push("Domain SPF does not visibly include Postmark.");
     if (!dns.dkimLikelyConfigured) notes.push("No common Postmark DKIM selector was found by DNS lookup.");
+    if (!dns.returnPath.pointsToPostmark) notes.push("Postmark Return-Path CNAME was not found.");
 
     return {
       email: sender.email,
@@ -459,14 +720,19 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
         rampDay: typeof identity?.email_ramp_day === "number" ? identity.email_ramp_day : null,
         updatedAt: typeof identity?.updated_at === "string" ? identity.updated_at : null,
       },
+      postmarkSignature: signature,
       senderHealth: health,
       recentEvents: senderRecentEvents,
       verificationStatus: !identity
         ? "not_configured"
-        : !env.postmarkApiTokenConfigured || !dns.spf.includesPostmark || !dns.dkimLikelyConfigured
-        ? "needs_postmark_confirmation"
         : identity.is_active === false
         ? "blocked"
+        : !env.postmarkApiTokenConfigured ||
+          !dns.spf.includesPostmark ||
+          !dns.dkimLikelyConfigured ||
+          !dns.returnPath.pointsToPostmark ||
+          (env.postmarkAccountTokenConfigured && (!signature?.found || signature.confirmed !== true))
+        ? "needs_postmark_confirmation"
         : "ready",
       notes,
     } satisfies SenderIdentityAudit;
@@ -482,6 +748,11 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
     !env.postmarkApiTokenConfigured ? "POSTMARK_API_TOKEN is missing in this runtime." : null,
     !dns.spf.includesPostmark ? "SPF does not include a visible Postmark sending include." : null,
     !dns.dkimLikelyConfigured ? "Postmark DKIM was not found on common selectors." : null,
+    !dns.returnPath.pointsToPostmark ? "Postmark Return-Path CNAME is missing or not pointed to Postmark." : null,
+    dns.returnPathTxt.conflictsWithCname ? "Postmark Return-Path host has TXT records that can conflict with the required CNAME." : null,
+    env.postmarkAccountTokenConfigured && postmarkSenderSignatures.status !== "verified"
+      ? "One or more Postmark sender signatures could not be confirmed by API."
+      : null,
     env.postmarkWebhookEnabled && !env.postmarkWebhookAuthConfigured ? "Postmark webhook is enabled but Basic Auth env vars are missing." : null,
   ].filter(Boolean) as string[];
 
@@ -490,6 +761,7 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
     environment: env,
     dns,
     postmarkCredentialProbe,
+    postmarkSenderSignatures,
     senderIdentities,
     webhook: {
       route: "/api/webhooks/postmark",
@@ -505,7 +777,7 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
         ? "Recent bounce/complaint/unsubscribe events exist for the test destination."
         : "No recent terminal suppression events found in HomeReach email_events for the test destination.",
     },
-    emailFirstAutomation: buildAutomationMode(controls.data, env),
+    emailFirstAutomation: automationMode,
     sourceErrors: {
       agent_identities: identities.error,
       sender_health: senderHealth.error,
@@ -514,13 +786,7 @@ export async function getEmailInfrastructureAudit(): Promise<EmailInfrastructure
       email_verification_tests: verificationRows.error,
     },
     blockingIssues,
-    recommendations: [
-      "Confirm Postmark sender signatures for heather, josh, chelsi, and jason in the Postmark console or add POSTMARK_ACCOUNT_TOKEN for API-side confirmation.",
-      "Add Postmark SPF/DKIM records before scaling beyond verification sends.",
-      "Keep Twilio prospecting disabled until A2P/10DLC and webhook callbacks are verified.",
-      "Turn on manual approval mode before campaign-scale outbound sequences.",
-      "Keep verification sends at one recipient per sender and monitor webhook delivery/open/bounce events.",
-    ],
+    recommendations: buildEmailRecommendations({ env, dns, postmarkSenderSignatures, automationMode }),
   };
 }
 

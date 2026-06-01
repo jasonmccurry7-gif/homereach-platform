@@ -23,6 +23,9 @@ export const maxDuration = 300; // 5 minutes — orchestrator runs all agents
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://home-reach.com";
+const OUTREACH_AGENTS_ENABLED =
+  process.env.APEX_OUTREACH_AGENTS_ENABLED === "true" &&
+  process.env.APEX_OUTREACH_HUMAN_APPROVED === "true";
 
 type AgentResult = {
   agent: string;
@@ -127,17 +130,30 @@ export async function POST(req: NextRequest) {
     const prospector = await runAgent("Prospector", "/api/admin/system/agents/prospector");
     results.push(prospector);
 
-    // ── STEP 5: Echo — send due outreach sequences ───────────────────────────
-    const echo = await runAgent("Echo", "/api/admin/agents/echo", "POST", { mode: "sequences" });
-    results.push(echo);
-
-    // ── STEP 6: Closer — action warm deals ──────────────────────────────────
-    const closer = await runAgent("Closer", "/api/admin/agents/closer");
-    results.push(closer);
-
-    // ── STEP 7: Anchor — retention checks ───────────────────────────────────
-    const anchor = await runAgent("Anchor", "/api/admin/agents/anchor");
-    results.push(anchor);
+    results.push({
+      agent: "Echo",
+      status: "skipped",
+      summary: OUTREACH_AGENTS_ENABLED
+        ? "Skipped by safety policy; run outreach from the approval queue."
+        : "Outbound outreach agent disabled until APEX_OUTREACH_AGENTS_ENABLED and APEX_OUTREACH_HUMAN_APPROVED are true.",
+      ms: 0,
+    });
+    results.push({
+      agent: "Closer",
+      status: "skipped",
+      summary: OUTREACH_AGENTS_ENABLED
+        ? "Skipped by safety policy; run follow-up from the approval queue."
+        : "Follow-up agent disabled until APEX_OUTREACH_AGENTS_ENABLED and APEX_OUTREACH_HUMAN_APPROVED are true.",
+      ms: 0,
+    });
+    results.push({
+      agent: "Anchor",
+      status: "skipped",
+      summary: OUTREACH_AGENTS_ENABLED
+        ? "Skipped by safety policy; run retention actions from the approval queue."
+        : "Retention agent disabled until APEX_OUTREACH_AGENTS_ENABLED and APEX_OUTREACH_HUMAN_APPROVED are true.",
+      ms: 0,
+    });
 
     // ── STEP 8: Scraper — run if prospector flagged low leads ────────────────
     results.push({

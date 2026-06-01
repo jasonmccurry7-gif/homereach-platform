@@ -64,7 +64,6 @@ export async function calculateAndStoreGrowthOsImpact({
   const calculation = calculateGrowthOsImpact({
     appliedRecommendation,
     weeklyInputs,
-    now,
   });
 
   const [impactTracking] = await db
@@ -193,11 +192,9 @@ export async function completeGrowthOsActiveLever({
 export function calculateGrowthOsImpact({
   appliedRecommendation,
   weeklyInputs,
-  now = new Date(),
 }: {
   appliedRecommendation: AppliedRecommendationInput;
   weeklyInputs: WeeklyImpactInput[];
-  now?: Date;
 }): GrowthOsImpactCalculation {
   const baseline = appliedRecommendation.baselineMetrics;
   const dateAppliedWeekStart = getCurrentWeekStartDate(

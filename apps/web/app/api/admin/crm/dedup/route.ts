@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/crm/dedup?resolution=pending|merged|kept_separate|all
@@ -8,7 +9,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const resolution = req.nextUrl.searchParams.get("resolution") ?? "pending";
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50");
 
@@ -56,13 +60,14 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdminOrSalesAgent();
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const { cluster_id, action, merge_notes } = await req.json();
 
   // Get current user
-  let resolvedBy: string | null = null;
-  const { data: { user } } = await supabase.auth.getUser();
-  resolvedBy = user?.id ?? null;
+  const resolvedBy = guard.user?.id ?? null;
 
   if (!cluster_id || !action) {
     return NextResponse.json({ error: "cluster_id and action required" }, { status: 400 });

@@ -3,6 +3,8 @@ import { GrowthOsShell } from "@/components/growth-os/growth-os-shell";
 import { getGrowthOsSessionUser } from "@/lib/growth-os/auth";
 import { isGrowthOsEnabled } from "@/lib/growth-os/feature-flag";
 
+export const dynamic = "force-dynamic";
+
 export default async function GrowthOsLayout({
   children,
 }: {

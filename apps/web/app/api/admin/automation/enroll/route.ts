@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/api-guards";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/automation/enroll
@@ -12,7 +13,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const body = await req.json();
   const { sequence_id, agent_id } = body;
 
@@ -56,7 +60,10 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-  const supabase = await createClient();
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
+  const supabase = createServiceClient();
   const body = await req.json();
 
   let query = supabase.from("auto_enrollments").update({

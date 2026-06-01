@@ -1,23 +1,23 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { accountStartHref, safeRelativeRedirect } from "@/lib/marketing/product-routes";
 import { createClient } from "@/lib/supabase/client";
 
 interface LoginFormProps {
-  searchParams: Promise<{ redirect?: string; error?: string }>;
+  redirect: string;
+  initialError?: string | null;
 }
 
-export function LoginForm({ searchParams }: LoginFormProps) {
-  const params = use(searchParams);
+export function LoginForm({ redirect, initialError = null }: LoginFormProps) {
   const router = useRouter();
-  const redirect = safeRelativeRedirect(params.redirect);
-  const signupHref = redirect === "/dashboard" ? "/signup" : accountStartHref(redirect);
+  const nextPath = safeRelativeRedirect(redirect);
+  const signupHref = nextPath === "/dashboard" ? "/signup" : accountStartHref(nextPath);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(params.error ?? null);
+  const [error, setError] = useState<string | null>(initialError);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -37,7 +37,7 @@ export function LoginForm({ searchParams }: LoginFormProps) {
       return;
     }
 
-    router.push(redirect);
+    router.push(nextPath);
     router.refresh();
   }
 

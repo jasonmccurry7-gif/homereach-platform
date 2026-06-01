@@ -17,6 +17,12 @@ export interface EmailIdentityOptions {
   replyTo?: string | null;
 }
 
+export interface SenderIdentity {
+  key: "jason" | "heather" | "josh" | "chelsi";
+  name: string;
+  email: string;
+}
+
 export interface SmsIdentityOptions {
   fromNumber?: string | null;
   messagingServiceSid?: string | null;
@@ -59,14 +65,32 @@ function envInt(key: string, defaultValue: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
 }
 
+function normalizeEmailAddress(value: string | null | undefined): string | null {
+  const email = value?.trim().toLowerCase() ?? "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function isHomeReachDomainSender(value: string | null | undefined): boolean {
+  const email = normalizeEmailAddress(value);
+  return Boolean(email && email.endsWith("@home-reach.com"));
+}
+
+function safeFromEmail(value: string | null | undefined, fallback: string): string {
+  const email = normalizeEmailAddress(value);
+  if (email && isHomeReachDomainSender(email)) return email;
+  const fallbackEmail = normalizeEmailAddress(fallback);
+  if (fallbackEmail && isHomeReachDomainSender(fallbackEmail)) return fallbackEmail;
+  return "jason@home-reach.com";
+}
+
 export function getOwnerIdentity(): OwnerIdentity {
   const name = env("OWNER_NAME") ?? OWNER_DEFAULTS.name;
   const cellPhone = env("OWNER_CELL_PHONE") ?? OWNER_DEFAULTS.cellPhone;
   const personalEmail = env("OWNER_PERSONAL_EMAIL") ?? OWNER_DEFAULTS.personalEmail;
   const secondaryEmail = env("OWNER_SECONDARY_EMAIL") ?? OWNER_DEFAULTS.secondaryEmail;
-  const domainEmail = env("OWNER_DOMAIN_EMAIL") ?? OWNER_DEFAULTS.domainEmail;
-  const defaultFromEmail = env("DEFAULT_FROM_EMAIL") ?? domainEmail;
-  const defaultReplyToEmail = env("DEFAULT_REPLY_TO_EMAIL") ?? domainEmail ?? personalEmail;
+  const domainEmail = safeFromEmail(env("OWNER_DOMAIN_EMAIL"), OWNER_DEFAULTS.domainEmail);
+  const defaultFromEmail = safeFromEmail(env("DEFAULT_FROM_EMAIL"), domainEmail);
+  const defaultReplyToEmail = safeFromEmail(env("DEFAULT_REPLY_TO_EMAIL"), domainEmail);
 
   return {
     name,
@@ -78,6 +102,24 @@ export function getOwnerIdentity(): OwnerIdentity {
     defaultReplyToEmail,
     fallbackReplyToEmail: personalEmail,
   };
+}
+
+export function getHomeReachSenderIdentities(identity = getOwnerIdentity()): SenderIdentity[] {
+  const jasonEmail = safeFromEmail(identity.domainEmail, OWNER_DEFAULTS.domainEmail);
+  const senders: SenderIdentity[] = [
+    { key: "jason", name: identity.name, email: jasonEmail },
+    { key: "heather", name: "Heather HomeReach", email: "heather@home-reach.com" },
+    { key: "josh", name: "Josh HomeReach", email: "josh@home-reach.com" },
+    { key: "chelsi", name: "Chelsi HomeReach", email: "chelsi@home-reach.com" },
+  ];
+
+  const seen = new Set<string>();
+  return senders.filter((sender) => {
+    const email = normalizeEmailAddress(sender.email);
+    if (!email || seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  }).map((sender) => ({ ...sender, email: normalizeEmailAddress(sender.email) ?? sender.email }));
 }
 
 export function getOwnerTemplateVars(identity = getOwnerIdentity()): Record<string, string> {
@@ -148,37 +190,40 @@ export function appendSmsCompliance(
 
 export function appendEmailComplianceText(text: string, recipientEmail?: string): string {
   const unsubscribe = recipientEmail
-    ? `https://home-reach.com/unsubscribe?email=${encodeURIComponent(recipientEmail)}`
-    : "https://home-reach.com/unsubscribe";
+    ? `https://www.home-reach.com/unsubscribe?email=${encodeURIComponent(recipientEmail)}`
+    : "https://www.home-reach.com/unsubscribe";
   return `${text.trim()}\n\n${buildOwnerSignature()}\n\nYou are receiving this because your business may be a fit for HomeReach. Unsubscribe: ${unsubscribe}`;
 }
 
 export function appendEmailComplianceHtml(html: string, recipientEmail?: string): string {
   const unsubscribe = recipientEmail
-    ? `https://home-reach.com/unsubscribe?email=${encodeURIComponent(recipientEmail)}`
-    : "https://home-reach.com/unsubscribe";
+    ? `https://www.home-reach.com/unsubscribe?email=${encodeURIComponent(recipientEmail)}`
+    : "https://www.home-reach.com/unsubscribe";
   return `
     ${html}
     <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
     <p style="color: #777; font-size: 12px; line-height: 1.5;">
       ${buildOwnerSignature().replace(/\n/g, "<br>")}<br><br>
       You are receiving this because your business may be a fit for HomeReach.
-      <a href="${unsubscribe}">Unsubscribe</a>
+      <a href="${unsubscribe}" target="_blank" rel="noopener noreferrer">Unsubscribe</a>
     </p>
   `;
 }
 
 export function getDefaultEmailIdentity(options: EmailIdentityOptions = {}) {
   const identity = getOwnerIdentity();
+  const requestedFromEmail =
+    options.fromEmail ??
+    env("DEFAULT_FROM_EMAIL") ??
+    env("POSTMARK_FROM_EMAIL") ??
+    env("RESEND_FROM_EMAIL") ??
+    env("MAILGUN_FROM_EMAIL") ??
+    identity.defaultFromEmail;
   return {
-    fromEmail:
-      options.fromEmail ??
-      env("DEFAULT_FROM_EMAIL") ??
-      env("RESEND_FROM_EMAIL") ??
-      env("MAILGUN_FROM_EMAIL") ??
-      identity.defaultFromEmail,
+    fromEmail: safeFromEmail(requestedFromEmail, identity.domainEmail),
     fromName:
       options.fromName ??
+      env("POSTMARK_FROM_NAME") ??
       env("RESEND_FROM_NAME") ??
       env("MAILGUN_FROM_NAME") ??
       identity.name,
@@ -200,11 +245,10 @@ function stableIndex(seed: string, size: number): number {
 
 export function getEmailRotationPool(identity = getOwnerIdentity()): string[] {
   return Array.from(new Set([
+    ...getHomeReachSenderIdentities(identity).map((sender) => sender.email),
     identity.defaultFromEmail,
     identity.domainEmail,
-    identity.personalEmail,
-    identity.secondaryEmail,
-  ].filter(Boolean)));
+  ].filter((email): email is string => Boolean(email && isHomeReachDomainSender(email)))));
 }
 
 export function getRotatingEmailIdentity(
@@ -212,12 +256,11 @@ export function getRotatingEmailIdentity(
   options: EmailIdentityOptions = {},
 ) {
   const base = getDefaultEmailIdentity(options);
+  if (options.fromEmail) return base;
+
   const owner = getOwnerIdentity();
-  const ownerEmails = new Set(getEmailRotationPool(owner).map((email) => email.toLowerCase()));
-  const explicitFrom = options.fromEmail?.toLowerCase();
 
   if (!envFlag("OUTREACH_EMAIL_ROTATION_ENABLED", false)) return base;
-  if (explicitFrom && !ownerEmails.has(explicitFrom)) return base;
 
   const pool = getEmailRotationPool(owner);
   const fromEmail = pool[stableIndex(seed, pool.length)] ?? base.fromEmail;

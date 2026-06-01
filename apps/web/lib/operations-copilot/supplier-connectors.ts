@@ -2,6 +2,7 @@ import type { IndustryPriceCatalog } from "@/lib/operations-copilot/industry-cat
 
 export type SupplierConnectorMode =
   | "api_ready"
+  | "edi_cxml_ready"
   | "csv_import"
   | "manual_quote"
   | "search_reference";
@@ -38,13 +39,13 @@ const connectorCatalog: SupplierConnector[] = [
     confidenceScore: 74,
     lastCheckedLabel: "Connector ready, credentials not connected",
     complianceNotes:
-      "Use official Amazon Business APIs or approved account exports. Do not store supplier credentials here.",
+      "Use official Amazon Business APIs, Punchout/Punch-in workflows, or approved account exports. Do not store supplier credentials here.",
     liveOrderingEnabled: false,
   },
   {
     supplierName: "Costco Business",
     categories: ["foodservice", "janitorial", "packaging", "office"],
-    mode: "manual_quote",
+    mode: "edi_cxml_ready",
     searchUrlPattern: "https://www.costcobusinessdelivery.com/CatalogSearch?keyword={query}",
     supportsDelivery: true,
     supportsPickup: true,
@@ -137,15 +138,15 @@ const connectorCatalog: SupplierConnector[] = [
     freeDeliveryMinimumCents: null,
     defaultLeadTimeDays: 2,
     confidenceScore: 58,
-    lastCheckedLabel: "Account quote mode",
+    lastCheckedLabel: "EDI/cXML-ready, credentials not connected",
     complianceNotes:
-      "Requires approved account pricing, route schedule, and rep quote before ordering.",
+      "Requires approved account pricing through EDI, cXML/Punchout, portal export, route schedule, or rep quote before ordering.",
     liveOrderingEnabled: false,
   },
   {
     supplierName: "US Foods",
     categories: ["foodservice", "restaurant", "bakery"],
-    mode: "manual_quote",
+    mode: "edi_cxml_ready",
     supportsDelivery: true,
     supportsPickup: false,
     supportsSupplierTruck: true,
@@ -153,15 +154,15 @@ const connectorCatalog: SupplierConnector[] = [
     freeDeliveryMinimumCents: null,
     defaultLeadTimeDays: 2,
     confidenceScore: 58,
-    lastCheckedLabel: "Account quote mode",
+    lastCheckedLabel: "EDI/cXML-ready, credentials not connected",
     complianceNotes:
-      "Requires approved account pricing, route schedule, and rep quote before ordering.",
+      "Requires approved account pricing through EDI, cXML/Punchout, portal export, route schedule, or rep quote before ordering.",
     liveOrderingEnabled: false,
   },
   {
     supplierName: "Gordon Food Service",
     categories: ["foodservice", "restaurant", "bakery"],
-    mode: "manual_quote",
+    mode: "edi_cxml_ready",
     searchUrlPattern: "https://gfsstore.com/search/?text={query}",
     supportsDelivery: true,
     supportsPickup: true,
@@ -170,9 +171,9 @@ const connectorCatalog: SupplierConnector[] = [
     freeDeliveryMinimumCents: null,
     defaultLeadTimeDays: 2,
     confidenceScore: 66,
-    lastCheckedLabel: "Manual quote/search mode",
+    lastCheckedLabel: "EDI/cXML-ready, credentials not connected",
     complianceNotes:
-      "Delivery eligibility, route day, and business account pricing must be verified.",
+      "Delivery eligibility, route day, and business account pricing must be verified through EDI 832, cXML/Punchout, portal export, or quote import.",
     liveOrderingEnabled: false,
   },
   {
@@ -300,6 +301,8 @@ export function buildSupplierConnectorControlPanel({
       status:
         connector.mode === "api_ready"
           ? "API-ready, credentials needed"
+          : connector.mode === "edi_cxml_ready"
+            ? "EDI/cXML-ready, credentials needed"
           : connector.mode === "csv_import"
             ? "CSV import ready"
             : connector.mode === "manual_quote"

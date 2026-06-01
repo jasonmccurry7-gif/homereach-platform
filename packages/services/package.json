@@ -12,6 +12,7 @@
     "./targeted": "./src/targeted/index.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "@supabase/supabase-js": "^2.47.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.7"
   }
 }

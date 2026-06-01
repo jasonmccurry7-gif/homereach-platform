@@ -116,3 +116,16 @@ Sources:
 9. Reporting reflects the transaction.
 
 No Growth Engine feature is complete until this path is verified end to end for the relevant product.
+
+## Local Growth Review Handoff
+
+The sellable MVP entry point is `/local-growth-os` with CTA to `/waitlist?product=local-growth-review`.
+
+The request form creates:
+
+- A tagged `waitlist_entries` row.
+- Preserved `product_context` with market, goal, channel, and budget context.
+- An approval-gated `ai_workforce_tasks` row assigned to `Content Strategy Agent`.
+- An activity log entry when AI Workforce tables are available.
+
+The output must remain a reviewed 1-page opportunity brief until a human approves follow-up, proposals, pricing, or campaign creation.

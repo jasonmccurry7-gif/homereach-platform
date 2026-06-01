@@ -11,7 +11,7 @@ export default function PrivacyPolicyPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-16">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-      <p className="text-sm text-gray-500 mb-10">Last updated: April 15, 2026</p>
+      <p className="text-sm text-gray-500 mb-10">Last updated: May 28, 2026</p>
 
       <div className="prose prose-gray max-w-none space-y-8 text-gray-700">
 
@@ -66,15 +66,31 @@ export default function PrivacyPolicyPage() {
             <li><strong>Supabase</strong> — for secure data storage</li>
           </ul>
           <p className="mt-3">These providers are bound by their own privacy policies and data protection obligations.</p>
+          <p className="mt-3 font-semibold text-gray-900">
+            HomeReach does not sell, rent, or share mobile phone numbers, SMS consent records, or text messaging opt-in data with third parties or affiliates for marketing or promotional purposes.
+          </p>
         </section>
 
         <section>
           <h2 className="text-xl font-bold text-gray-900 mb-3">6. Data Retention</h2>
+          <p>
+            SMS consent and mobile information: if you provide your mobile phone number and consent to receive SMS messages from HomeReach, we may use your number to send requested information, appointment updates, quote follow-ups, service updates, proposal or order updates, and related customer support messages.
+          </p>
+          <p className="mt-3 font-semibold text-gray-900">
+            Mobile opt-in data, SMS consent, and phone numbers collected for SMS messaging purposes will not be shared, sold, rented, or disclosed to third parties or affiliates for marketing or promotional purposes.
+          </p>
+          <p className="mt-3">
+            You may opt out of SMS messages at any time by replying STOP. You may request help by replying HELP. Message frequency varies. Message and data rates may apply. Consent to receive SMS messages is not required as a condition of purchasing HomeReach services.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">7. Data Retention</h2>
           <p>We retain your information for as long as necessary to provide our services and comply with legal obligations. You may request deletion of your data at any time by contacting us.</p>
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-gray-900 mb-3">7. Your Rights</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">8. Your Rights</h2>
           <p>You have the right to:</p>
           <ul className="list-disc pl-6 mt-2 space-y-1">
             <li>Access the personal information we hold about you</li>
@@ -85,17 +101,17 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-gray-900 mb-3">8. Cookies</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">9. Cookies</h2>
           <p>Our website uses cookies to improve your browsing experience and analyze site traffic. You can control cookie settings through your browser preferences.</p>
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-gray-900 mb-3">9. Security</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">10. Security</h2>
           <p>We implement industry-standard security measures including encryption in transit and at rest, access controls, and regular security reviews to protect your information.</p>
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-gray-900 mb-3">10. Contact Us</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">11. Contact Us</h2>
           <p>If you have questions about this Privacy Policy or how we handle your data, contact us at:</p>
           <div className="mt-2">
             <p><strong>HomeReach</strong></p>
@@ -106,7 +122,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-gray-900 mb-3">11. Changes to This Policy</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">12. Changes to This Policy</h2>
           <p>We may update this Privacy Policy from time to time. We will notify you of significant changes by posting a notice on our website. Continued use of our services after changes constitutes acceptance of the updated policy.</p>
         </section>
 

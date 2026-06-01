@@ -6,20 +6,49 @@ import { NextResponse } from "next/server";
 import { db, leads } from "@homereach/db";
 import { z } from "zod";
 import { notifyAdminNewLead } from "@homereach/services/targeted";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { createServiceClient } from "@/lib/supabase/service";
+
+const optionalText = (max: number) =>
+  z.string().trim().max(max).optional().transform((value) => value || undefined);
 
 const CreateLeadSchema = z.object({
-  name:         z.string().min(1).optional(),
-  businessName: z.string().min(1).optional(),
-  phone:        z.string().optional(),
-  email:        z.string().email().optional(),
-  city:         z.string().optional(),
+  name:         optionalText(120),
+  businessName: optionalText(160),
+  phone:        optionalText(40),
+  email:        z.string().trim().email().max(254).optional(),
+  city:         optionalText(120),
   source:       z.enum(["facebook", "web", "manual", "sms", "referral"]).default("facebook"),
-  notes:        z.string().optional(),
+  notes:        optionalText(2_000),
+  attribution: z.object({
+    sessionId: z.string().max(120).optional(),
+    landingPath: z.string().max(500).optional(),
+    pagePath: z.string().max(500).optional(),
+    referrer: z.string().max(1000).optional(),
+    source: z.string().max(120).optional(),
+    medium: z.string().max(120).optional(),
+    campaign: z.string().max(160).optional(),
+    term: z.string().max(160).optional(),
+    content: z.string().max(160).optional(),
+  }).optional(),
 });
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const limited = checkRateLimit(req, {
+      key: "targeted-leads",
+      limit: 12,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (limited) return limited;
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
     const parsed = CreateLeadSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -31,10 +60,10 @@ export async function POST(req: Request) {
 
     const data = parsed.data;
 
-    // Require at least one contact method
-    if (!data.email && !data.phone && !data.name) {
+    // Require a reachable contact method. Name-only leads create dead-end records.
+    if (!data.email && !data.phone) {
       return NextResponse.json(
-        { error: "At least one of: email, phone, or name is required" },
+        { error: "Email or phone is required" },
         { status: 400 }
       );
     }
@@ -67,6 +96,8 @@ export async function POST(req: Request) {
       source:       lead.source,
     }).catch(console.error);
 
+    recordSeoLeadAttribution(req, lead.id, data.attribution).catch(console.error);
+
     return NextResponse.json({
       success: true,
       lead: {
@@ -80,4 +111,26 @@ export async function POST(req: Request) {
     console.error("[api/targeted/leads] error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+async function recordSeoLeadAttribution(
+  req: Request,
+  leadId: string,
+  attribution?: z.infer<typeof CreateLeadSchema>["attribution"],
+) {
+  const supa = createServiceClient();
+  await supa.from("seo_attribution_events").insert({
+    event_name: "lead_submit",
+    session_id: attribution?.sessionId ?? null,
+    lead_id: leadId,
+    landing_path: attribution?.landingPath ?? null,
+    page_path: attribution?.pagePath ?? null,
+    referrer: attribution?.referrer ?? req.headers.get("referer"),
+    source: attribution?.source ?? null,
+    medium: attribution?.medium ?? null,
+    campaign: attribution?.campaign ?? null,
+    term: attribution?.term ?? null,
+    content: attribution?.content ?? null,
+    metadata: { route: "/api/targeted/leads" },
+  });
 }

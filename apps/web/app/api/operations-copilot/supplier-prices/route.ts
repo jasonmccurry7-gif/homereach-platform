@@ -1,50 +1,58 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOperationsCopilotSessionUser } from "@/lib/operations-copilot/auth";
 import { isOperationsCopilotEnabled } from "@/lib/operations-copilot/feature-flag";
+import {
+  guardSupplifyMutation,
+  jsonNoStore,
+  sanitizeJsonValue,
+} from "@/lib/operations-copilot/governance";
 import { industryPriceCatalogs } from "@/lib/operations-copilot/industry-catalog";
 import { buildSupplierPriceIntelligence } from "@/lib/operations-copilot/price-intelligence";
+import {
+  resolvePriceSourceQuality,
+  supportedPriceSourceTypes,
+} from "@/lib/operations-copilot/price-confidence";
 
 const priceSnapshotSchema = z.object({
-  industryId: z.string().default("roofing"),
-  region: z.string().default("Akron / Northeast Ohio"),
-  zipCode: z.string().default("44309"),
-  sku: z.string().min(1),
-  itemName: z.string().min(1),
-  category: z.string().min(1),
-  supplierName: z.string().min(1),
+  industryId: z.string().trim().min(1).max(48).default("roofing"),
+  region: z.string().trim().min(1).max(120).default("Akron / Northeast Ohio"),
+  zipCode: z.string().trim().min(3).max(12).default("44309"),
+  sku: z.string().trim().min(1).max(120),
+  itemName: z.string().trim().min(1).max(180),
+  category: z.string().trim().min(1).max(100),
+  supplierName: z.string().trim().min(1).max(160),
   sourceType: z
-    .enum(["public_web", "supplier_portal", "quote_request", "invoice_upload"])
+    .enum(supportedPriceSourceTypes)
     .default("public_web"),
-  sourceLabel: z.string().default("Captured price"),
-  sourceUrl: z.string().url().optional(),
-  unit: z.string().min(1),
-  observedPriceCents: z.number().int().nonnegative().optional(),
-  normalizedUnitPriceCents: z.number().int().nonnegative().optional(),
-  landedPriceCents: z.number().int().nonnegative().optional(),
-  availableQuantity: z.string().optional(),
+  sourceLabel: z.string().trim().max(160).default("Captured price"),
+  sourceUrl: z.string().url().or(z.literal("")).optional(),
+  unit: z.string().trim().min(1).max(80),
+  observedPriceCents: z.number().int().nonnegative().max(50_000_000).optional(),
+  normalizedUnitPriceCents: z.number().int().nonnegative().max(50_000_000).optional(),
+  landedPriceCents: z.number().int().nonnegative().max(50_000_000).optional(),
+  availableQuantity: z.string().trim().max(80).optional(),
   inStock: z.boolean().optional(),
-  leadTimeDays: z.number().int().nonnegative().optional(),
+  leadTimeDays: z.number().int().nonnegative().max(365).optional(),
   validUntil: z.string().optional(),
   confidence: z.enum(["low", "medium", "high"]).default("medium"),
-  priceBasis: z.string().default("observed shelf price"),
-  notes: z.string().optional(),
+  priceBasis: z.string().trim().max(200).default("observed shelf price"),
+  notes: z.string().trim().max(1_000).optional(),
   metadata: z.record(z.unknown()).default({}),
 });
 
 export async function GET() {
   if (!isOperationsCopilotEnabled()) {
-    return NextResponse.json({ error: "Operations Copilot disabled" }, { status: 404 });
+    return jsonNoStore({ error: "Operations Copilot disabled" }, { status: 404 });
   }
 
   const user = await getOperationsCopilotSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
 
   const roofingCatalog =
     industryPriceCatalogs.find((catalog) => catalog.id === "roofing") ??
     industryPriceCatalogs[0];
   if (!roofingCatalog) {
-    return NextResponse.json({ error: "No supplier catalog configured" }, { status: 500 });
+    return jsonNoStore({ error: "No supplier catalog configured" }, { status: 500 });
   }
 
   const intelligence = await buildSupplierPriceIntelligence({
@@ -52,26 +60,41 @@ export async function GET() {
     userId: user.id,
   });
 
-  return NextResponse.json({ intelligence });
+  return jsonNoStore({ intelligence });
 }
 
 export async function POST(request: Request) {
   if (!isOperationsCopilotEnabled()) {
-    return NextResponse.json({ error: "Operations Copilot disabled" }, { status: 404 });
+    return jsonNoStore({ error: "Operations Copilot disabled" }, { status: 404 });
   }
 
   const user = await getOperationsCopilotSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
 
-  const parsed = priceSnapshotSchema.safeParse(await request.json());
+  const guard = guardSupplifyMutation(request, {
+    key: "opcopilot_price_snapshot",
+    limit: 30,
+    userId: user.id,
+  });
+  if (guard) return guard;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonNoStore({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const parsed = priceSnapshotSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Invalid price snapshot", details: parsed.error.flatten() },
       { status: 400 }
     );
   }
 
   const snapshot = parsed.data;
+  const sourceQuality = resolvePriceSourceQuality(snapshot.sourceType);
   const { db, opcopilotPriceSnapshots } = await import("@homereach/db");
   const [created] = await db
     .insert(opcopilotPriceSnapshots)
@@ -86,7 +109,7 @@ export async function POST(request: Request) {
       supplierName: snapshot.supplierName,
       sourceType: snapshot.sourceType,
       sourceLabel: snapshot.sourceLabel,
-      sourceUrl: snapshot.sourceUrl,
+      sourceUrl: snapshot.sourceUrl || undefined,
       unit: snapshot.unit,
       observedPriceCents: snapshot.observedPriceCents,
       normalizedUnitPriceCents: snapshot.normalizedUnitPriceCents,
@@ -98,9 +121,13 @@ export async function POST(request: Request) {
       confidence: snapshot.confidence,
       priceBasis: snapshot.priceBasis,
       notes: snapshot.notes,
-      metadata: snapshot.metadata,
+      metadata: {
+        ...(sanitizeJsonValue(snapshot.metadata) as Record<string, unknown>),
+        sourceQuality,
+        verifiedForOrdering: sourceQuality === "verified",
+      },
     })
     .returning();
 
-  return NextResponse.json({ snapshot: created }, { status: 201 });
+  return jsonNoStore({ snapshot: created }, { status: 201 });
 }

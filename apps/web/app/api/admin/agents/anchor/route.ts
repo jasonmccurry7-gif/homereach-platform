@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getOwnerIdentity } from "@homereach/services/outreach";
+import { resolveInternalAppUrl } from "@/lib/app-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Anchor Agent — Client Retention & Renewal Management
@@ -120,7 +121,7 @@ async function sendRetentionSms(
     };
 
     const response = await fetch(
-      `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/admin/sales/event`,
+      `${resolveInternalAppUrl()}/api/admin/sales/event`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

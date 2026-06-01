@@ -60,7 +60,13 @@ export function AiChatPanel() {
           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">
             AI Advisor
           </p>
-          <h2 className="text-xl font-bold text-gray-950">Ask about growth</h2>
+          <h2 className="text-xl font-bold text-gray-950">
+            Ask what to do next
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-gray-600">
+            Uses your Growth OS data to explain options. Owner approval is still
+            required for pricing, staffing, and customer-facing changes.
+          </p>
         </div>
       </div>
 

@@ -19,9 +19,8 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/svg+xml",
 ]);
-const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "svg"]);
+const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 
 function initialState(message: string): DesignUploadState {
   return { ok: false, message };
@@ -50,7 +49,6 @@ function getExtension(fileName: string, mimeType: string): string {
   if (mimeType === "image/jpeg") return "jpg";
   if (mimeType === "image/png") return "png";
   if (mimeType === "image/webp") return "webp";
-  if (mimeType === "image/svg+xml") return "svg";
   return "png";
 }
 
@@ -92,7 +90,7 @@ async function uploadDesignFile(
   const extensionIsAllowed = ALLOWED_IMAGE_EXTENSIONS.has(extension);
 
   if (!mimeIsAllowed && !extensionIsAllowed) {
-    return { ok: false, message: "Upload a JPG, PNG, WEBP, or SVG design file." };
+    return { ok: false, message: "Upload a JPG, PNG, or WEBP design file." };
   }
 
   const bucket = process.env.POSTCARD_DESIGN_BUCKET ?? DEFAULT_DESIGN_BUCKET;

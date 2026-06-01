@@ -1,6 +1,10 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getOperationsCopilotSessionUser } from "@/lib/operations-copilot/auth";
 import { isOperationsCopilotEnabled } from "@/lib/operations-copilot/feature-flag";
+import {
+  guardSupplifyMutation,
+  jsonNoStore,
+} from "@/lib/operations-copilot/governance";
 import {
   listOperationsCopilotApprovals,
   resolveOperationsCopilotActionRequest,
@@ -8,64 +12,65 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const approvalDecisionSchema = z.object({
+  requestId: z.string().uuid(),
+  decision: z.enum(["approved", "rejected"]),
+});
+
 export async function GET() {
   if (!isOperationsCopilotEnabled()) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return jsonNoStore({ error: "Not found" }, { status: 404 });
   }
 
   const user = await getOperationsCopilotSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
 
   const approvals = await listOperationsCopilotApprovals(user.id);
-  return NextResponse.json({ approvals });
+  return jsonNoStore({ approvals });
 }
 
 export async function PATCH(req: Request) {
   if (!isOperationsCopilotEnabled()) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return jsonNoStore({ error: "Not found" }, { status: 404 });
   }
 
   const user = await getOperationsCopilotSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
+
+  const guard = guardSupplifyMutation(req, {
+    key: "opcopilot_approval_decision",
+    limit: 30,
+    userId: user.id,
+  });
+  if (guard) return guard;
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return jsonNoStore({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const requestId =
-    typeof body === "object" &&
-    body !== null &&
-    "requestId" in body &&
-    typeof body.requestId === "string"
-      ? body.requestId
-      : "";
-  const decision =
-    typeof body === "object" &&
-    body !== null &&
-    "decision" in body &&
-    (body.decision === "approved" || body.decision === "rejected")
-      ? body.decision
-      : null;
-
-  if (!requestId || !decision) {
-    return NextResponse.json(
-      { error: "requestId and decision are required" },
+  const parsed = approvalDecisionSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonNoStore(
+      { error: "requestId and decision are required", details: parsed.error.flatten() },
       { status: 400 }
     );
   }
 
   const request = await resolveOperationsCopilotActionRequest({
     userId: user.id,
-    requestId,
-    decision,
+    requestId: parsed.data.requestId,
+    decision: parsed.data.decision,
   });
 
   if (!request) {
-    return NextResponse.json({ error: "Action request not found" }, { status: 404 });
+    return jsonNoStore(
+      { error: "Action request not found or is not pending approval" },
+      { status: 404 }
+    );
   }
 
-  return NextResponse.json({ request });
+  return jsonNoStore({ request });
 }

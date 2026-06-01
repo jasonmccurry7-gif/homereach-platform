@@ -50,60 +50,60 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "ready_to_buy",
     channel: "sms",
     templates: [
-      "Let's lock it in. Here's your intake link: {{intakeLink}}\n\nTakes about 3 minutes. I'll have your spot secured same day.",
-      "Perfect. Sending your intake link now: {{intakeLink}}\n\nOnce you fill it out I'll confirm everything and lock in your {{category}} spot in {{city}}.",
+      "Great. Here is the quick intake link: {{intakeLink}}\n\nIt takes about 3 minutes. Once it is in, I will confirm the {{city}} {{category}} setup and next step.",
+      "Perfect. Start here: {{intakeLink}}\n\nAfter you send it in, I will confirm the protected {{category}} option in {{city}} and keep the process simple.",
     ],
   },
   {
     intent: "ready_to_buy",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nExcited to get this going. Here's your intake link to lock in your exclusive {{category}} spot in {{city}}:\n\n{{intakeLink}}\n\nTakes about 3 minutes. I'll confirm everything same day and you'll be set for your first mailing.\n\nTalk soon,\n{{ownerName}}",
+      "Hi {{firstName}},\n\nGreat to get this moving. Here is the intake link for the protected {{category}} visibility option in {{city}}:\n\n{{intakeLink}}\n\nIt should take about 3 minutes. Once it is complete, I will confirm the setup and the next campaign step so you are not left guessing.\n\nTalk soon,\n{{ownerName}}",
     ],
   },
   {
     intent: "interested",
     channel: "sms",
     templates: [
-      "Here's the deal: you get the exclusive {{category}} spot in {{city}}. No other {{category}} can advertise in that area. 2,500+ homeowners see your name every month.\n\nStarts at $299/mo. Want me to hold the spot while you look it over?",
-      "Awesome. One business per category, per city. You'd be the only {{category}} on the postcard for {{city}}. Homeowners keep it on their fridge.\n\nPricing starts at $299/mo. Want the full breakdown?",
+      "Simple version: one {{category}} business gets protected visibility in {{city}}, and HomeReach handles the postcard path around it.\n\nPricing starts at $299/mo. Want the full breakdown?",
+      "The goal is steady local recognition without another complicated marketing task. One business per category in {{city}}.\n\nPricing starts at $299/mo. Want me to send the details?",
     ],
   },
   {
     intent: "interested",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nThanks for your interest. Here's how it works:\n\n- You get the exclusive {{category}} spot in {{city}} with no competitors allowed\n- 2,500+ homeowners receive the postcard every month\n- Starts at $299/month, no long-term contract required\n\nWant me to hold your spot while you review? I can send over the full details.\n\n{{ownerName}}",
+      "Hi {{firstName}},\n\nThanks for your interest. Here is the simple version:\n\n- One {{category}} business gets protected visibility in {{city}}\n- HomeReach handles the campaign structure, postcard setup, and mail path\n- Pricing starts at $299/month, with no long-term contract required\n\nIf you want, I can send the full breakdown so you can review it without pressure.\n\n{{ownerName}}",
     ],
   },
   {
     intent: "objection",
     channel: "sms",
     templates: [
-      "Totally fair. Most clients think about it this way: one new customer from a postcard pays for 3+ months. No long-term contract either. Worth trying?",
-      "Makes sense. Most clients break even on the first new customer they get. No long-term commitment, and your spot is exclusive while you're in. What's holding you back: timing, budget, or something else?",
+      "Totally fair. The goal is not pressure - it is clearer local visibility with a simple commitment. Is the concern timing, budget, or fit?",
+      "Makes sense. A lot of owners are protecting every dollar right now. Would a simple cost/coverage breakdown help you decide?",
     ],
   },
   {
     intent: "objection",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nCompletely understand the hesitation. Here's what I'd say:\n\n- No long-term contract. You can cancel after 3 months.\n- Most clients break even on their first new customer.\n- Your {{category}} spot in {{city}} is exclusive while you're in.\n\nWhat's the main concern? I'm happy to address it directly.\n\n{{ownerName}}",
+      "Hi {{firstName}},\n\nI completely understand the hesitation. Local marketing should not feel like another risky thing on your plate.\n\nThe HomeReach setup is meant to be simple: protected {{category}} visibility in {{city}}, a clear postcard path, and no long-term contract required.\n\nIf helpful, tell me whether the main concern is timing, budget, or fit and I will answer directly.\n\n{{ownerName}}",
     ],
   },
   {
     intent: "asking_questions",
     channel: "sms",
     templates: [
-      "Great question. Short version: one spot per category, per city. Exclusive. 2,500+ homes/month. Starting at $299/mo, cancel anytime after 3 months. What else do you want to know?",
-      "Happy to answer. Are you wondering about pricing, postcard design, tracking results, or something else?",
+      "Great question. Short version: protected category visibility in {{city}}, postcard setup handled by HomeReach, pricing from $299/mo, no long-term contract. What would you like clarified?",
+      "Happy to answer. Are you wondering about pricing, design, coverage, timing, or how much work it takes on your end?",
     ],
   },
   {
     intent: "asking_questions",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nHappy to answer your questions. Quick overview:\n\n- One business per category in {{city}}, fully exclusive\n- 2,500+ homeowners reached every month\n- Postcard design included\n- Starts at $299/mo, cancel after 3 months\n\nWhat else can I clarify for you?\n\n{{ownerName}}",
+      "Hi {{firstName}},\n\nHappy to answer your questions. Quick overview:\n\n- One business per category in {{city}}\n- HomeReach handles the postcard setup and campaign path\n- Design support is included\n- Pricing starts at $299/mo, with no long-term contract required\n\nWhat would make the decision feel clearer?\n\n{{ownerName}}",
     ],
   },
   {
@@ -124,14 +124,14 @@ const RESPONSE_TEMPLATES: ResponseTemplate[] = [
     intent: "unknown",
     channel: "sms",
     templates: [
-      "Hey {{firstName}}. Just checking in: still interested in the {{category}} spot in {{city}}? Happy to answer any questions.",
+      "Hi {{firstName}}, checking in on the {{city}} {{category}} visibility option. Happy to send the simple breakdown or close the loop.",
     ],
   },
   {
     intent: "unknown",
     channel: "email",
     templates: [
-      "Hi {{firstName}},\n\nJust wanted to follow up and see if you had any questions about the {{category}} opportunity in {{city}}. Happy to jump on a quick call too.\n\n{{ownerName}}",
+      "Hi {{firstName}},\n\nJust wanted to follow up and see if you had any questions about the {{category}} visibility option in {{city}}. I can keep it simple: coverage, cost, and the next step.\n\n{{ownerName}}",
     ],
   },
 ];
@@ -158,7 +158,7 @@ function templateResponse(
     .replace(/{{city}}/g, vars.city)
     .replace(/{{category}}/g, vars.category)
     .replace(/{{intakeLink}}/g, vars.intakeLink)
-    .replace(/{{ownerName}}/g, vars.ownerName ?? process.env.NEXT_PUBLIC_OWNER_NAME ?? "Jason McCurry");
+    .replace(/{{ownerName}}/g, vars.ownerName ?? process.env.OWNER_NAME ?? process.env.NEXT_PUBLIC_OWNER_NAME ?? "HomeReach");
 }
 
 export class AutomationClientEngine {

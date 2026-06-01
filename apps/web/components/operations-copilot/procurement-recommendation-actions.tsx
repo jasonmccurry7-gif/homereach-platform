@@ -26,7 +26,7 @@ const actionMeta: Record<
   { label: string; success: string; icon: typeof CheckCircle2 }
 > = {
   approve_order: {
-    label: "Approve Order",
+    label: "Queue Approval",
     success: "Approval request created. No live order was placed.",
     icon: CheckCircle2,
   },
@@ -46,12 +46,12 @@ const actionMeta: Record<
     icon: ShoppingCart,
   },
   mark_purchased: {
-    label: "Mark Purchased",
+    label: "Log Manual Purchase",
     success: "Manual purchase tracking action created.",
     icon: ClipboardList,
   },
   ignore: {
-    label: "Ignore",
+    label: "Dismiss",
     success: "Ignore action saved for review.",
     icon: XCircle,
   },
@@ -92,6 +92,7 @@ export function ProcurementRecommendationActions({
               recommendation.savingsAudit.recommendedTotalDeliveredCostCents,
             monthlyEstimatedSavingsCents:
               recommendation.savingsAudit.monthlyEstimatedSavingsCents,
+            approvalOnly: true,
             liveOrderingEnabled: false,
           },
         }),
@@ -147,7 +148,7 @@ export function ProcurementRecommendationActions({
 
       <p className="text-xs leading-5 text-neutral-500">
         Safe workflow: actions create approval or tracking records only. No supplier
-        order, payment, or external message is sent from this dashboard.
+        order, payment, vendor switch, or external message is sent from this dashboard.
       </p>
 
       {showDetails ? (
@@ -163,11 +164,27 @@ export function ProcurementRecommendationActions({
               Delivery fee:{" "}
               {formatMoney(recommendation.savingsAudit.recommendedDeliveryFeeCents)}
             </span>
+            <span>
+              Receiving burden:{" "}
+              {formatMoney(recommendation.savingsAudit.receivingBurdenCents)}
+            </span>
+            <span>
+              Risk adders:{" "}
+              {formatMoney(
+                recommendation.savingsAudit.spoilageRiskCents +
+                  recommendation.savingsAudit.substitutionRiskCents
+              )}
+            </span>
             <span>Order qty: {recommendation.savingsAudit.orderQuantity}</span>
             <span>Monthly usage: {recommendation.savingsAudit.monthlyUsageEstimate}</span>
             <span>Data quality: {recommendation.savingsAudit.dataQuality}</span>
           </div>
           <p className="mt-3 text-neutral-400">{recommendation.savingsAudit.formula}</p>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-neutral-400">
+            {recommendation.savingsAudit.trueLandedCostNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
           <p className="mt-2 text-neutral-400">{recommendation.connector.complianceNotes}</p>
         </div>
       ) : null}

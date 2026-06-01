@@ -90,6 +90,7 @@ export const HOMEREACH_CANVA_FOLDERS: CanvaFolderDefinition[] = [
   { path: "HomeReach/Templates/Postcards", purpose: "Political, shared postcard, targeted campaign, and local business postcard templates." },
   { path: "HomeReach/Templates/Proposals", purpose: "Client proposals, campaign summaries, and executive reports." },
   { path: "HomeReach/Templates/Social", purpose: "Facebook, Instagram, testimonial, founder story, and campaign social graphics." },
+  { path: "HomeReach/Templates/Social/Videos", purpose: "Daily vertical reels, shorts, captions, thumbnails, and branded 3D logo outro assets." },
   { path: "HomeReach/Templates/Dashboard Assets", purpose: "KPI panels, operating-system visuals, route overlays, and map support graphics." },
   { path: "HomeReach/Campaigns/Political/Statewide", purpose: "Statewide candidate and party campaign working folders." },
   { path: "HomeReach/Campaigns/Political/Local", purpose: "County, city, township, and district campaign assets." },
@@ -153,6 +154,15 @@ export const HOMEREACH_CANVA_TEMPLATES: CanvaTemplateDefinition[] = [
     description: "Reusable visual asset for KPI cards, command-center graphics, and executive dashboard visuals.",
     requiredFields: ["metric_label", "metric_value", "status", "supporting_context"],
     recommendedExportTypes: ["png", "jpg"],
+  },
+  {
+    key: "social_reel_video",
+    label: "Daily Social Reel Video",
+    useCase: "social_graphic",
+    envVar: "CANVA_TEMPLATE_SOCIAL_REEL_VIDEO",
+    description: "Editable 9:16 short-form video template for HomeReach daily procurement, targeted campaign, and political content.",
+    requiredFields: ["video_title", "hook", "cta", "visual_1", "visual_2", "outro", "format"],
+    recommendedExportTypes: ["mp4", "png"],
   },
 ] as const;
 

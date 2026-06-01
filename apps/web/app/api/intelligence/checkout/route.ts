@@ -1,10 +1,24 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { z } from "zod";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2025-02-24.acacia",
+const CheckoutSchema = z.object({
+  tier: z.string().trim().min(1).max(24).regex(/^[a-z0-9_-]+$/i),
+  city: z.string().trim().min(1).max(120),
+  category: z.string().trim().max(120).optional().nullable(),
+  market_size: z.union([z.string().trim().max(80), z.number()]).optional().nullable(),
+  businessName: z.string().trim().min(1).max(160),
+  email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+  phone: z.string().trim().min(7).max(40),
 });
+
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY not configured");
+  return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/intelligence/checkout
@@ -18,10 +32,25 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
+  const limited = checkRateLimit(req, {
+    key: "property-intelligence-checkout",
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   const db = createServiceClient();
 
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    const parsed = CheckoutSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid checkout request" },
+        { status: 400 },
+      );
+    }
+
     const {
       tier,
       city,
@@ -30,18 +59,7 @@ export async function POST(req: Request) {
       businessName,
       email,
       phone,
-      userId,
-    } = body;
-
-    if (!tier || !city || !businessName || !email || !phone) {
-      return NextResponse.json(
-        {
-          error:
-            "Missing required fields: tier, city, businessName, email, phone",
-        },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     // Step 1: Look up pricing from property_intelligence_tiers
     const { data: tierData, error: tierError } = await db
@@ -65,7 +83,7 @@ export async function POST(req: Request) {
       .eq("product", `intelligence_${tier}`)
       .eq("city", city)
       .eq("founding_open", true)
-      .single();
+      .maybeSingle();
 
     if (slotError) {
       console.error("Error checking founding slots:", slotError);
@@ -81,6 +99,7 @@ export async function POST(req: Request) {
     }
 
     // Step 3: Create Stripe checkout session
+    const stripe = getStripe();
     const isSubscription = tier === "t2" || tier === "t3";
     const mode: "payment" | "subscription" = isSubscription ? "subscription" : "payment";
 
@@ -126,6 +145,7 @@ export async function POST(req: Request) {
         type: "property_intelligence",
         city,
         category: category || "all",
+        market_size: market_size ? String(market_size) : "",
         tier,
         founding_flag: isFounding.toString(),
         locked_price: priceCents.toString(),
@@ -133,7 +153,7 @@ export async function POST(req: Request) {
         business_name: businessName,
         email,
         phone,
-        user_id: userId ?? "",
+        user_id: "",
         slot_id: slot?.id ?? "",
       },
     });

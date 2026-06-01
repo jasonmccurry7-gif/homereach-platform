@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import type { SalesLead, SalesEngineStats, HotLeadAlert, MessageRole } from "@/lib/sales-engine/types";
+import type { GrowthOpportunity, SalesGrowthPlan } from "@/lib/sales-engine/growth-engine";
 import { getTemperatureMeta }   from "@/lib/sales-engine/classifier";
 import { getEscalationMeta, getControlMeta } from "@/lib/sales-engine/escalation-client";
 import { FOLLOW_UP_SCHEDULE }   from "@/lib/sales-engine/followup-engine";
@@ -26,6 +27,7 @@ interface Props {
   leads:   SalesLead[];
   stats:   SalesEngineStats;
   alerts:  HotLeadAlert[];
+  growth:  SalesGrowthPlan;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,7 +225,7 @@ function HotLeadCard({ lead, onTakeOver }: { lead: SalesLead; onTakeOver: (id: s
                 onClick={() => onTakeOver(lead.id)}
                 className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold transition"
               >
-                ✋ Take Over
+                Manual takeover
               </button>
             )}
           </div>
@@ -306,7 +308,7 @@ function LeadRow({ lead, onTakeOver }: { lead: SalesLead; onTakeOver: (id: strin
                 onClick={() => onTakeOver(lead.id)}
                 className="text-xs px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded-lg transition"
               >
-                ✋ Take Over
+                Manual takeover
               </button>
             )}
           </div>
@@ -364,56 +366,254 @@ function AlertRow({ alert }: { alert: HotLeadAlert }) {
 // Main Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function PriorityBadge({ priority }: { priority: GrowthOpportunity["priority"] }) {
+  const classes = {
+    critical: "border-red-700 bg-red-950/50 text-red-200",
+    high: "border-amber-700 bg-amber-950/40 text-amber-200",
+    medium: "border-blue-800 bg-blue-950/30 text-blue-200",
+  }[priority];
+
+  return (
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${classes}`}>
+      {priority}
+    </span>
+  );
+}
+
+function GrowthOpportunityCard({
+  opportunity,
+  onCopy,
+}: {
+  opportunity: GrowthOpportunity;
+  onCopy: (opportunity: GrowthOpportunity) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <PriorityBadge priority={opportunity.priority} />
+            <span className="rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-[11px] font-semibold text-gray-300">
+              {opportunity.urgency}
+            </span>
+            <span className="rounded-full border border-emerald-900/60 bg-emerald-950/30 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+              {formatMoney(opportunity.estimatedValue)} est.
+            </span>
+          </div>
+          <h3 className="mt-3 text-base font-bold text-white">{opportunity.businessName}</h3>
+          <p className="mt-1 text-xs text-gray-500">
+            {opportunity.city} - {opportunity.category.replace(/_/g, " ")} - {opportunity.source}
+          </p>
+        </div>
+        <div className="text-left sm:text-right">
+          <p className="text-xs uppercase tracking-wider text-gray-500">Priority score</p>
+          <p className="text-2xl font-black text-white">{opportunity.score}</p>
+        </div>
+      </div>
+
+      <p className="mt-3 text-sm leading-6 text-gray-300">{opportunity.reason}</p>
+      <div className="mt-3 rounded-lg border border-gray-800 bg-gray-950/70 p-3">
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Recommended next step</p>
+        <p className="mt-1 text-sm leading-6 text-white">{opportunity.recommendedAction}</p>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {opportunity.safeActions.map((action) => {
+          if (action.kind === "copy") {
+            return (
+              <button
+                key={action.label}
+                onClick={() => onCopy(opportunity)}
+                className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200 transition hover:bg-gray-700"
+              >
+                {action.label}
+              </button>
+            );
+          }
+
+          return (
+            <a
+              key={action.label}
+              href={action.href}
+              className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200 transition hover:bg-gray-700"
+            >
+              {action.label}
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GrowthCommandCenter({
+  growth,
+  onCopy,
+}: {
+  growth: SalesGrowthPlan;
+  onCopy: (opportunity: GrowthOpportunity) => void;
+}) {
+  const top = growth.topOpportunities.slice(0, 5);
+
+  return (
+    <section className="mb-6 rounded-2xl border border-blue-900/50 bg-gradient-to-br from-blue-950/60 via-gray-900 to-gray-950 p-4 sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-300">Growth command center</p>
+          <h2 className="mt-2 text-xl font-black text-white">Do this first</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-blue-100/80">{growth.ownerFocus}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
+          <div className="rounded-xl border border-red-900/50 bg-red-950/30 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-red-300">Act now</p>
+            <p className="mt-1 text-2xl font-black text-white">{growth.immediateCount}</p>
+          </div>
+          <div className="rounded-xl border border-amber-900/50 bg-amber-950/25 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-300">Due follow-ups</p>
+            <p className="mt-1 text-2xl font-black text-white">{growth.followUpDueCount}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/25 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">Pipeline</p>
+            <p className="mt-1 text-2xl font-black text-white">{formatMoney(growth.estimatedPipeline)}</p>
+          </div>
+          <div className="rounded-xl border border-blue-900/50 bg-blue-950/25 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-blue-300">At risk</p>
+            <p className="mt-1 text-2xl font-black text-white">{formatMoney(growth.estimatedRevenueAtRisk)}</p>
+          </div>
+        </div>
+      </div>
+
+      {top.length > 0 && (
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {top.map((opportunity) => (
+            <GrowthOpportunityCard key={opportunity.id} opportunity={opportunity} onCopy={onCopy} />
+          ))}
+        </div>
+      )}
+
+      {growth.sourceSummaries.length > 0 && (
+        <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {growth.sourceSummaries.map((source) => (
+            <div key={source.source} className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="truncate text-sm font-bold text-white">{source.source}</p>
+                <span className="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-300">{source.leads} leads</span>
+              </div>
+              <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
+                <div>
+                  <p className="font-bold text-red-300">{source.hot}</p>
+                  <p className="text-gray-600">Hot</p>
+                </div>
+                <div>
+                  <p className="font-bold text-amber-300">{source.warm}</p>
+                  <p className="text-gray-600">Warm</p>
+                </div>
+                <div>
+                  <p className="font-bold text-blue-300">{source.actionNeeded}</p>
+                  <p className="text-gray-600">Action</p>
+                </div>
+                <div>
+                  <p className="font-bold text-emerald-300">{formatMoney(source.estimatedPipeline)}</p>
+                  <p className="text-gray-600">Value</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 type Tab = "pipeline" | "alerts" | "config";
 
-export function SalesEngineClient({ leads, stats, alerts }: Props) {
+export function SalesEngineClient({ leads, stats, alerts, growth }: Props) {
   const [tab, setTab]     = useState<Tab>("pipeline");
-  const [toastedId, setToasted] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   function handleTakeOver(leadId: string) {
-    setToasted(leadId);
-    setTimeout(() => setToasted(null), 3000);
+    setToastMessage(`Manual takeover noted for ${leadId.slice(0, 8)}. AI should stay in assist mode until the owner clears the thread.`);
+    setTimeout(() => setToastMessage(null), 3000);
+  }
+
+  function handleCopyOpportunity(opportunity: GrowthOpportunity) {
+    const text = `${opportunity.businessName}\n${opportunity.recommendedAction}\n\nReason: ${opportunity.reason}`;
+    void navigator.clipboard?.writeText(text).catch(() => undefined);
+    setToastMessage("Recommended next step copied.");
+    setTimeout(() => setToastMessage(null), 3000);
   }
 
   const hotLeads  = leads.filter((l) => l.classification.temperature === "hot").sort((a, b) => b.classification.score - a.classification.score);
   const warmLeads = leads.filter((l) => l.classification.temperature === "warm").sort((a, b) => b.classification.score - a.classification.score);
   const coldLeads = leads.filter((l) => l.classification.temperature === "cold");
+  const hotNeedsOwner = hotLeads.filter((l) => l.control !== "human").length;
+  const repliesNeedOwner = leads.filter((l) => l.lastMessageRole === "lead" && l.stage !== "closed_won" && l.control !== "human").length;
+  const paymentDecisions = leads.filter((l) => l.stage === "intake_sent" || l.stage === "qualifying").length;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Toast */}
-      {toastedId && (
+      {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-green-800 border border-green-600 text-sm text-white px-4 py-3 rounded-xl shadow-lg">
-          ✋ You've taken over. AI is now in assist mode.
+          {toastMessage}
         </div>
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Live Data Indicator */}
-        <div className="mb-6 rounded-xl border border-green-800/50 bg-green-900/10 px-4 py-2.5 flex items-center gap-2">
+        <div className="mb-6 rounded-xl border border-green-800/50 bg-green-900/10 px-4 py-2.5 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
           <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
-          <p className="text-sm text-green-400 font-medium">LIVE — Connected to production database</p>
-          <p className="text-xs text-green-600 ml-1">Lead data refreshes on every page load</p>
+          <p className="text-sm text-green-400 font-medium">LIVE - production lead data</p>
+          <p className="text-xs text-green-600 sm:ml-1">Read-only until a human takes over, approves, or sends.</p>
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">⚡ Sales Engine</h1>
+            <h1 className="text-2xl font-bold text-white">Sales Engine</h1>
             <p className="text-sm text-gray-500 mt-1">
-              AI qualifies at scale — you close the deals. Alerts → <span className="text-gray-400 font-mono">{ALERT_CONFIG.recipientPhone}</span>
+              Revenue replies, hot leads, and payment-ready conversations for owner-controlled closing.
+              Alerts route to <span className="text-gray-400 font-mono">{ALERT_CONFIG.recipientPhone}</span>.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {hotLeads.filter((l) => l.control !== "human").length > 0 && (
+            {hotNeedsOwner > 0 && (
               <div className="flex items-center gap-2 bg-red-900/40 border border-red-800/60 px-3 py-2 rounded-lg">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="text-red-300 text-sm font-bold">
-                  {hotLeads.filter((l) => l.control !== "human").length} HOT LEAD{hotLeads.filter(l => l.control !== "human").length !== 1 ? "S" : ""} — ACT NOW
+                  {hotNeedsOwner} owner decision{hotNeedsOwner !== 1 ? "s" : ""} now
                 </span>
               </div>
             )}
+          </div>
+        </div>
+
+        <GrowthCommandCenter growth={growth} onCopy={handleCopyOpportunity} />
+
+        <div className="grid gap-3 mb-6 md:grid-cols-3">
+          <div className="rounded-xl border border-red-900/50 bg-red-950/30 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-red-300">Reply-speed queue</p>
+            <p className="mt-2 text-3xl font-black text-white">{hotNeedsOwner}</p>
+            <p className="mt-1 text-xs leading-5 text-red-100/80">Hot conversations where a human should answer, qualify payment timing, or move to manual close.</p>
+          </div>
+          <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Inbound replies</p>
+            <p className="mt-2 text-3xl font-black text-white">{repliesNeedOwner}</p>
+            <p className="mt-1 text-xs leading-5 text-amber-100/80">Latest message came from a lead. Draft, approve, or take over before momentum cools.</p>
+          </div>
+          <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">Revenue decisions</p>
+            <p className="mt-2 text-3xl font-black text-white">{paymentDecisions}</p>
+            <p className="mt-1 text-xs leading-5 text-emerald-100/80">Qualification or intake stages that need an owner decision before pricing, payment, or onboarding moves.</p>
           </div>
         </div>
 
@@ -432,7 +632,7 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-gray-800">
+        <div className="flex gap-1 mb-6 overflow-x-auto border-b border-gray-800">
           {([
             { key: "pipeline" as Tab, label: `Pipeline (${leads.length})` },
             { key: "alerts"   as Tab, label: `Alert Log (${alerts.length})` },
@@ -460,7 +660,7 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
             {hotLeads.length > 0 && (
               <section>
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-sm font-bold text-red-400 uppercase tracking-wider">🔥 Hot Leads — Human Priority</h2>
+                  <h2 className="text-sm font-bold text-red-400 uppercase tracking-wider">Hot leads - human priority</h2>
                   <span className="text-xs bg-red-900/30 text-red-400 border border-red-800/40 px-2 py-0.5 rounded-full">
                     {hotLeads.length} active
                   </span>
@@ -477,7 +677,7 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
             {warmLeads.length > 0 && (
               <section>
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider">🌡️ Warm — AI Qualifying</h2>
+                  <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider">Warm - qualify and decide</h2>
                   <span className="text-xs bg-amber-900/30 text-amber-400 border border-amber-800/40 px-2 py-0.5 rounded-full">
                     {warmLeads.length}
                   </span>
@@ -494,7 +694,7 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
             {coldLeads.length > 0 && (
               <section>
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider">❄️ Cold — Outreach / Follow-Up</h2>
+                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Cold - follow-up watchlist</h2>
                   <span className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full">{coldLeads.length}</span>
                 </div>
                 <div className="space-y-2">
@@ -517,7 +717,7 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
         {tab === "alerts" && (
           <div className="space-y-4">
             <div className="bg-gray-900/60 border border-amber-800/30 rounded-xl p-4 text-sm text-amber-300">
-              📲 All HOT lead alerts go to <strong>{ALERT_CONFIG.recipientPhone}</strong> instantly. No batching. No delay.
+              Owner SMS alerts go to <strong>{ALERT_CONFIG.recipientPhone}</strong> when a hot lead needs human attention.
               Max {ALERT_CONFIG.maxAlertsPerLead} alerts per lead · {ALERT_CONFIG.dedupeWindowMs / 60000}m dedupe window.
             </div>
 
@@ -544,13 +744,13 @@ export function SalesEngineClient({ leads, stats, alerts }: Props) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div className="space-y-2">
                   <p className="text-blue-400 font-bold text-sm">🤖 AI Role</p>
-                  {["Generate conversations at scale", "Qualify within 2–4 messages", "Detect intent instantly", "Escalate at the right moment", "Hold attention until human arrives", "NEVER close, negotiate, or discount"].map((item) => (
+                  {["Generate conversations at scale", "Qualify within 2-4 messages", "Detect intent instantly", "Escalate at the right moment", "Hold attention until human arrives", "Never close, negotiate, discount, or charge"].map((item) => (
                     <p key={item} className="flex items-start gap-2 text-gray-400"><span className="text-blue-500 mt-0.5">→</span>{item}</p>
                   ))}
                 </div>
                 <div className="space-y-2">
                   <p className="text-green-400 font-bold text-sm">✋ Human Role</p>
-                  {["Respond within minutes", "Build trust and rapport", "Handle objections", "Present pricing and close", "Maximize deal value", "Confirm onboarding"].map((item) => (
+                  {["Respond within minutes", "Build trust and rapport", "Handle objections", "Approve pricing/payment language", "Close the deal", "Confirm onboarding"].map((item) => (
                     <p key={item} className="flex items-start gap-2 text-gray-400"><span className="text-green-500 mt-0.5">→</span>{item}</p>
                   ))}
                 </div>

@@ -26,6 +26,7 @@ export function IntelligenceCheckoutClient({
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -45,6 +46,11 @@ export function IntelligenceCheckoutClient({
       setLoading(false);
       return;
     }
+    if (!smsConsent) {
+      setError("Please confirm SMS consent or leave checkout and contact us by email.");
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch("/api/intelligence/checkout", {
@@ -58,6 +64,8 @@ export function IntelligenceCheckoutClient({
           businessName,
           email,
           phone,
+          smsConsent,
+          optInSource: "intelligence_checkout_sms_checkbox",
         }),
       });
 
@@ -188,6 +196,23 @@ export function IntelligenceCheckoutClient({
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                     disabled={loading}
                   />
+                  <label className="mt-2 flex gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={smsConsent}
+                      onChange={(e) => setSmsConsent(e.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300"
+                      disabled={loading}
+                    />
+                    <span>
+                      I agree HomeReach may text me about this request, including checkout support, quote follow-up,
+                      appointment coordination, service updates, and support replies. Message frequency varies. Msg and
+                      data rates may apply. Reply HELP for help or STOP to opt out. SMS consent is not required as a
+                      condition of purchase. Mobile opt-in data will not be shared with third parties or affiliates for
+                      marketing or promotional purposes. See <Link href="/terms" className="font-semibold text-blue-700 underline">Terms</Link>{" "}
+                      and <Link href="/privacy" className="font-semibold text-blue-700 underline">Privacy Policy</Link>.
+                    </span>
+                  </label>
                 </div>
 
                 <button

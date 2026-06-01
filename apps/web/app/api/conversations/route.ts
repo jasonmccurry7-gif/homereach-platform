@@ -13,16 +13,25 @@ export async function GET() {
     const guard = await requireAdminOrSalesAgent();
     if (!guard.ok) return guard.response;
 
+    const currentUser = guard.user!;
+    const role = currentUser.app_metadata?.user_role as string | undefined;
+    const isSalesAgent = role === "sales_agent";
     const db = createServiceClient();
 
     // Get all leads that have been contacted or replied
-    const { data: leads, error: leadsErr } = await db
+    let leadsQuery = db
       .from("sales_leads")
-      .select("id, business_name, contact_name, phone, email, city, category, status, last_contacted_at, last_reply_at")
+      .select("id, business_name, contact_name, phone, email, city, category, status, last_contacted_at, last_reply_at, assigned_agent_id")
       .in("status", ["contacted", "replied", "interested", "payment_sent", "closed"])
       .order("last_reply_at", { ascending: false, nullsFirst: false })
       .order("last_contacted_at", { ascending: false, nullsFirst: false })
       .limit(200);
+
+    if (isSalesAgent) {
+      leadsQuery = leadsQuery.eq("assigned_agent_id", currentUser.id);
+    }
+
+    const { data: leads, error: leadsErr } = await leadsQuery;
 
     if (leadsErr || !leads?.length) {
       return NextResponse.json({ conversations: [] });

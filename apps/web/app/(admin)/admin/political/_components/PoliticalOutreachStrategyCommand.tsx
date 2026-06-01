@@ -292,19 +292,19 @@ export function PoliticalOutreachStrategyCommand({ data }: PoliticalOutreachStra
             </div>
           </Panel>
 
-          <Panel eyebrow="Execution" title="One-Click Outreach Layer" icon={<Send className="h-5 w-5" />}>
+          <Panel eyebrow="Approval-gated drafts" title="Outreach Draft Handoff" icon={<Send className="h-5 w-5" />}>
             <div className="grid gap-3 xl:grid-cols-2">
               <ExecutionGroup title="Email system">
-                <ActionAnchor href={emailHref} label="One-Click Email" icon={<Mail className="h-4 w-4" />} disabled={!selected.contact.email} />
-                <ActionAnchor href={emailHref} label="Send Now" icon={<Send className="h-4 w-4" />} disabled={!selected.contact.email} />
+                <ActionAnchor href={emailHref} label="Open Email Draft" icon={<Mail className="h-4 w-4" />} disabled={!selected.contact.email} />
+                <ActionAnchor href={emailHref} label="Review Email Handoff" icon={<Send className="h-4 w-4" />} disabled={!selected.contact.email} />
                 <ActionButton label="Save Draft" icon={<FileText className="h-4 w-4" />} onClick={() => void copyText("Email draft", editableDraft)} />
                 <ActionButton label="Preview Email" icon={<MonitorCheck className="h-4 w-4" />} onClick={() => setNotice("Email preview is the editable draft above. Provider send stays manual until approved.")} />
-                <ActionButton label="Edit Before Send" icon={<RotateCcw className="h-4 w-4" />} onClick={() => setNotice("Edit mode is active in the draft box. No message has been sent.")} />
+                <ActionButton label="Edit Before Handoff" icon={<RotateCcw className="h-4 w-4" />} onClick={() => setNotice("Edit mode is active in the draft box. No message has been sent.")} />
               </ExecutionGroup>
 
               <ExecutionGroup title="Text system">
-                <ActionAnchor href={smsHref} label="One-Click Text" icon={<MessageSquare className="h-4 w-4" />} disabled={!selected.contact.phone} />
-                <ActionAnchor href={smsHref} label="Send Text" icon={<Send className="h-4 w-4" />} disabled={!selected.contact.phone} />
+                <ActionAnchor href={smsHref} label="Open SMS Draft" icon={<MessageSquare className="h-4 w-4" />} disabled={!selected.contact.phone} />
+                <ActionAnchor href={smsHref} label="Review SMS Handoff" icon={<Send className="h-4 w-4" />} disabled={!selected.contact.phone} />
                 <ActionButton label="Edit Text" icon={<RotateCcw className="h-4 w-4" />} onClick={() => {
                   setDraftKey("sms");
                   setNotice("SMS draft selected for editing.");

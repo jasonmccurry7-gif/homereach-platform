@@ -39,6 +39,22 @@ export { getNextFollowUp, buildFollowUpMessage,
          recordFollowUpSent, getLeadsDueForFollowUp,
          isFollowUpExhausted, FOLLOW_UP_SCHEDULE }         from "./followup-engine";
 
+// Growth Engine
+export { buildSalesGrowthPlan }                            from "./growth-engine";
+export type { SalesGrowthPlan, GrowthOpportunity,
+              GrowthPriority, SourceGrowthSummary,
+              GrowthQuickAction }                          from "./growth-engine";
+
+// Outreach Governance
+export { auditDeliverabilityCopy, buildAiOutputContent,
+         buildOutreachSourceAttribution, buildOutreachThrottleStatus,
+         evaluateAutomationLiveSendGate, evaluateOutboundApprovalGate,
+         firstNameFromLead, scoreNextBestAction }           from "./outreach-governance";
+export type { DeliverabilityAudit, GovernedOutreachChannel,
+              NextBestAction, OutreachApprovalStatus,
+              OutreachLeadLike, OutreachSourceAttribution,
+              OutreachThrottleStatus }                      from "./outreach-governance";
+
 // Mock Data
 export { MOCK_SALES_LEADS, MOCK_HOT_ALERTS,
          computeSalesStats }                               from "./mock-sales-data";

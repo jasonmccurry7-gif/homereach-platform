@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { logPlatformAuditEvent } from "@/lib/audit/platform-audit";
 import { NextResponse } from "next/server";
 import {
   appendEmailComplianceHtml,
@@ -10,6 +11,10 @@ import {
   sendEmail,
   sendSms,
 } from "@homereach/services/outreach";
+import {
+  auditDeliverabilityCopy,
+  buildOutreachSourceAttribution,
+} from "@/lib/sales-engine/outreach-governance";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/close-deal
@@ -26,6 +31,8 @@ interface CloseDealRequest {
   lead_id: string;
   channel: "sms" | "email";
   bundle_type?: "back" | "front" | "anchor";
+  approval_id?: string;
+  human_approved?: boolean;
 }
 
 interface Lead {
@@ -37,6 +44,10 @@ interface Lead {
   business_name: string | null;
   contact_name: string | null;
   assigned_agent_id: string | null;
+  do_not_contact?: boolean | null;
+  sms_opt_out?: boolean | null;
+  is_quarantined?: boolean | null;
+  email_status?: string | null;
 }
 
 interface AgentIdentity {
@@ -153,14 +164,14 @@ function buildCloseSmsMessage(
   agentName: string,
   city: string | null | undefined
 ): string {
-  return `Hey ${firstName}, this is ${agentName} — wanted to lock in your spot before someone else grabs it. Here's everything you need to get started: https://home-reach.com/get-started
+  return `Hey ${firstName}, this is ${agentName}. Here are the current HomeReach package options for ${city || "your area"} so you can review the next step: https://home-reach.com/get-started
 
 Pricing:
-• Back Spot: $200/mo (6 available)
-• Front Spot: $250/mo (3 available)
-• Anchor Spot: $600/mo (1 available — exclusive)
+Back Spot: $200/mo
+Front Spot: $250/mo
+Anchor Spot: $600/mo
 
-All include 2,500+ homeowners in ${city || "your area"}, professional design, and category exclusivity. Takes 3 minutes to lock in. Reply STOP to opt out.`;
+Packages include professional design, print coordination, mailing support, and category review. Reply with any questions or STOP to opt out.`;
 }
 
 function buildCloseEmailMessage(
@@ -169,25 +180,25 @@ function buildCloseEmailMessage(
   agentEmail: string,
   city: string | null | undefined
 ): { subject: string; html: string; text: string } {
-  const subject = `Your ${city || "local"} spot — lock it in today, ${firstName}`;
+  const subject = `HomeReach package details for ${city || "your area"}, ${firstName}`;
 
   const text = `Hi ${firstName},
 
-I wanted to personally reach out with an exclusive opportunity to grow your ${city ? `${city}-based ` : ""}business.
+I wanted to send the current HomeReach package details for your ${city ? `${city}-based ` : ""}business so you can review the next step clearly.
 
-We're offering limited advertising spots in your category with guaranteed access to 2,500+ local homeowners. Here's what's available:
+Here are the current package options:
 
-• Back Spot: $200/mo (6 available)
-• Front Spot: $250/mo (3 available)
-• Anchor Spot: $600/mo (1 available — exclusive)
+Back Spot: $200/mo
+Front Spot: $250/mo
+Anchor Spot: $600/mo
 
-All packages include professional design, category exclusivity, and direct homeowner access.
+Packages include professional design, print coordination, mailing support, and category review.
 
-Ready to lock in your spot? Visit: https://home-reach.com/get-started
+If you want to move forward, visit: https://home-reach.com/get-started
 
-It takes just 3 minutes to secure your position before another business in your category claims it.
+Reply with any questions and I can help you review the right option.
 
-Looking forward to working with you!
+Thanks,
 
 ${agentName}
 HomeReach
@@ -219,11 +230,11 @@ ${agentEmail}`;
       <div class="container">
         <div class="header">
           <p>Hi ${firstName},</p>
-          <p>I wanted to personally reach out with an exclusive opportunity to grow your ${city ? `<strong>${city}</strong>-based ` : ""}business.</p>
+          <p>I wanted to send the current HomeReach package details for your ${city ? `<strong>${city}</strong>-based ` : ""}business so you can review the next step clearly.</p>
         </div>
 
         <div class="opportunity">
-          <p><strong>We're offering limited advertising spots in your category with guaranteed access to 2,500+ local homeowners.</strong></p>
+          <p><strong>Packages include professional design, print coordination, mailing support, and category review.</strong></p>
         </div>
 
         <div class="pricing">
@@ -232,33 +243,31 @@ ${agentEmail}`;
             <span class="price-label">• Back Spot</span>
             <span class="price-value">$200/mo</span>
           </div>
-          <p style="margin: 4px 0; font-size: 13px; color: #666;">6 available</p>
+          <p style="margin: 4px 0; font-size: 13px; color: #666;">Availability is reviewed before launch.</p>
 
           <div class="price-item">
             <span class="price-label">• Front Spot</span>
             <span class="price-value">$250/mo</span>
           </div>
-          <p style="margin: 4px 0; font-size: 13px; color: #666;">3 available</p>
+          <p style="margin: 4px 0; font-size: 13px; color: #666;">Availability is reviewed before launch.</p>
 
           <div class="price-item">
             <span class="price-label">• Anchor Spot</span>
             <span class="price-value">$600/mo</span>
           </div>
-          <p style="margin: 4px 0; font-size: 13px; color: #666;">1 available — exclusive</p>
+          <p style="margin: 4px 0; font-size: 13px; color: #666;">Availability is reviewed before launch.</p>
         </div>
 
         <p><strong>What's Included:</strong></p>
         <ul>
-          <li>2,500+ local homeowners in ${city || "your area"}</li>
-          <li>Professional design & setup</li>
-          <li>Category exclusivity</li>
+          <li>Professional design and setup</li>
+          <li>Print and mailing coordination</li>
+          <li>Category review before launch</li>
         </ul>
 
-        <p class="scarcity">⚡ Only a few spots remaining in ${city || "your area"}. Lock yours in today.</p>
+        <a href="https://home-reach.com/get-started" class="cta">Review The Next Step</a>
 
-        <a href="https://home-reach.com/get-started" class="cta">Lock In Your Spot</a>
-
-        <p style="color: #666; font-size: 14px; margin-top: 30px;">It takes just 3 minutes to secure your position before another business claims it.</p>
+        <p style="color: #666; font-size: 14px; margin-top: 30px;">Reply with any questions and I can help you review the right option.</p>
 
         <div class="footer">
           <p style="margin: 10px 0;">Looking forward to working with you!</p>
@@ -309,7 +318,7 @@ export async function POST(request: Request) {
     const { data: lead, error: leadError } = await supabase
       .from("sales_leads")
       .select(
-        "id, phone, email, city, category, business_name, contact_name, assigned_agent_id"
+        "id, phone, email, city, category, business_name, contact_name, assigned_agent_id, do_not_contact, sms_opt_out, is_quarantined, email_status"
       )
       .eq("id", lead_id)
       .single();
@@ -327,6 +336,27 @@ export async function POST(request: Request) {
 
     if (isSalesAgent && typedLead.assigned_agent_id && typedLead.assigned_agent_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (typedLead.do_not_contact || typedLead.is_quarantined) {
+      return NextResponse.json(
+        {
+          error: "Lead is blocked for outbound contact",
+          reason: typedLead.do_not_contact ? "do_not_contact" : "quarantined",
+        },
+        { status: 409 }
+      );
+    }
+
+    if (channel === "sms" && typedLead.sms_opt_out) {
+      return NextResponse.json({ error: "Lead has opted out of SMS", reason: "sms_opt_out" }, { status: 409 });
+    }
+
+    if (
+      channel === "email" &&
+      ["bounced_permanent", "complained", "unsubscribed"].includes(String(typedLead.email_status ?? "").toLowerCase())
+    ) {
+      return NextResponse.json({ error: "Lead email is suppressed", reason: "email_suppressed" }, { status: 409 });
     }
 
     // ── Verify contact method exists ──────────────────────────────────────────
@@ -372,17 +402,13 @@ export async function POST(request: Request) {
 
     // ── Build and send message ────────────────────────────────────────────────
     let closedMessage = "";
+    let emailSubject: string | null = null;
+    let emailHtml: string | null = null;
     let sendResult: { success: boolean; externalId?: string; error?: string; provider?: string; testMode?: boolean };
 
     if (channel === "sms") {
       closedMessage = buildCloseSmsMessage(firstName, agent.from_name, typedLead.city);
       closedMessage = appendSmsCompliance(closedMessage);
-      sendResult = await sendSms({
-        to: typedLead.phone!,
-        fromNumber: agent.twilio_phone,
-        body: closedMessage,
-        intent: "follow_up",
-      });
     } else {
       const emailData = buildCloseEmailMessage(
         firstName,
@@ -391,11 +417,149 @@ export async function POST(request: Request) {
         typedLead.city
       );
       closedMessage = emailData.text;
+      emailSubject = emailData.subject;
+      emailHtml = emailData.html;
+    }
+
+    const sourceAttribution = buildOutreachSourceAttribution({
+      workflow: "admin_sales_close_deal",
+      channel,
+      lead: typedLead,
+      destination: channel === "sms" ? typedLead.phone : typedLead.email,
+      templateId: `close_deal_${bundle_type}_safe_v2`,
+      action: "Close-deal checkout draft",
+      nextAction: "Review pricing-sensitive copy and approve before one-to-one send.",
+      approvalStatus: body.approval_id || body.human_approved ? "approved" : "needs_review",
+      sources: ["sales_leads", "agent_identities", "ai_outputs"],
+      extraInputs: {
+        bundle_type,
+        approval_id: body.approval_id ?? null,
+      },
+    });
+    const deliverability = auditDeliverabilityCopy(
+      channel === "email" ? `${emailSubject ?? ""}\n\n${closedMessage}` : closedMessage,
+      channel,
+    );
+    if (deliverability.status === "blocked") {
+      return NextResponse.json({
+        sent: false,
+        approval_status: "needs_review",
+        reason: "Close-deal copy contains unsupported claims and must be revised before sending.",
+        source_attribution: sourceAttribution,
+        deliverability,
+      }, { status: 422 });
+    }
+
+    const oneTapLiveEnabled = process.env.CLOSE_DEAL_ONE_TAP_LIVE_ENABLED === "true";
+    const hasApprovedOutput = Boolean(body.approval_id);
+    const hasEnvBackedHumanApproval = oneTapLiveEnabled && body.human_approved === true;
+
+    if (!hasApprovedOutput && !hasEnvBackedHumanApproval) {
+      await supabase.from("sales_events").insert({
+        agent_id,
+        lead_id,
+        action_type: "lead_loaded",
+        channel,
+        city: typedLead.city,
+        category: typedLead.category,
+        message: closedMessage,
+        metadata: {
+          bundle_type,
+          approval_status: "needs_review",
+          workflow: "close_deal_draft",
+          live_send_blocked: true,
+          reason: "explicit_approval_required",
+          source_attribution: sourceAttribution,
+          deliverability,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          sent: false,
+          requires_approval: true,
+          approval_status: "needs_review",
+          reason: "Close-deal messages include pricing and conversion language, so HomeReach requires explicit approval before live send.",
+          draft: {
+            channel,
+            subject: emailSubject,
+            body: closedMessage,
+          },
+          source_attribution: sourceAttribution,
+          deliverability,
+          next_action: "Review the draft, approve it in the AI/output approval workflow, then resend with approval_id.",
+        },
+        { status: 202 }
+      );
+    }
+
+    if (body.approval_id) {
+      const { data: approval, error: approvalError } = await supabase
+        .from("ai_outputs")
+        .select("id, approval_status, verification_status")
+        .eq("id", body.approval_id)
+        .maybeSingle();
+
+      if (approvalError || approval?.approval_status !== "approved") {
+        return NextResponse.json(
+          {
+            error: "Approved AI output is required before sending this close-deal message",
+            approval_status: approval?.approval_status ?? "missing",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    const { data: systemControls } = await supabase
+      .from("system_controls")
+      .select("all_paused,sms_paused,email_paused,outreach_test_mode")
+      .eq("id", 1)
+      .maybeSingle();
+    const channelPaused = channel === "sms" ? Boolean(systemControls?.sms_paused) : Boolean(systemControls?.email_paused);
+
+    if (systemControls?.all_paused || channelPaused || systemControls?.outreach_test_mode) {
+      const reason = systemControls?.all_paused
+        ? "global_system_pause"
+        : channelPaused
+          ? `${channel}_channel_pause`
+          : "outreach_test_mode";
+      await logPlatformAuditEvent({
+        actorType: "human",
+        module: "sales_outreach",
+        actionType: "close_deal_send_blocked",
+        entityType: "sales_lead",
+        entityId: lead_id,
+        channel,
+        resultStatus: "blocked",
+        approvalState: hasApprovedOutput || hasEnvBackedHumanApproval ? "approved" : "needs_review",
+        severity: "high",
+        message: `Close-deal ${channel} send blocked by ${reason}.`,
+        metadata: { reason, approval_id: body.approval_id ?? null },
+      });
+
+      return NextResponse.json({
+        sent: false,
+        approval_status: hasApprovedOutput || hasEnvBackedHumanApproval ? "approved" : "needs_review",
+        reason: `Close-deal send blocked by ${reason}.`,
+        source_attribution: sourceAttribution,
+        deliverability,
+      }, { status: 423 });
+    }
+
+    if (channel === "sms") {
+      sendResult = await sendSms({
+        to: typedLead.phone!,
+        fromNumber: agent.twilio_phone,
+        body: closedMessage,
+        intent: "follow_up",
+      });
+    } else {
       sendResult = await sendEmail({
         to: typedLead.email!,
-        subject: emailData.subject,
-        html: appendEmailComplianceHtml(emailData.html, typedLead.email ?? undefined),
-        text: appendEmailComplianceText(emailData.text, typedLead.email ?? undefined),
+        subject: emailSubject ?? "HomeReach next steps",
+        html: appendEmailComplianceHtml(emailHtml ?? "", typedLead.email ?? undefined),
+        text: appendEmailComplianceText(closedMessage, typedLead.email ?? undefined),
         fromEmail: agent.from_email,
         fromName: agent.from_name,
         replyTo: agent.reply_to_email ?? undefined,
@@ -427,9 +591,13 @@ export async function POST(request: Request) {
       message: closedMessage,
       metadata: {
         bundle_type,
+        approval_id: body.approval_id ?? null,
+        approval_status: body.approval_id ? "approved" : "env_human_approved",
         external_id: sendResult.externalId,
         provider: sendResult.provider,
         test_mode: sendResult.testMode ?? false,
+        source_attribution: sourceAttribution,
+        deliverability,
       },
     });
 
@@ -447,6 +615,8 @@ export async function POST(request: Request) {
       sent: true,
       message_sent: closedMessage,
       channel,
+      source_attribution: sourceAttribution,
+      deliverability,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

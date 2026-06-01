@@ -34,7 +34,7 @@ export function CtaButton({
     <Link
       href={href}
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-bold transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+        "inline-flex min-h-11 touch-action-fast items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-bold transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
         variants[variant],
         className
       )}

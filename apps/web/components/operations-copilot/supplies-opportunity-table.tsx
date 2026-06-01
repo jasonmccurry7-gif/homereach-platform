@@ -28,17 +28,18 @@ export function SuppliesOpportunityTable({
     <div className="space-y-5">
       <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">
-          Supplies Price Control
+          Supplify Spend Map
         </p>
         <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="max-w-4xl text-3xl font-bold text-white">
-              Daily supplies list with baseline variance
+              Best price today vs. your margin baseline
             </h1>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-neutral-300">
-              {board.industryLabel} supplies are ranked by estimated savings opportunity using
-              the best available price for today against the baseline purchasing
-              price.
+              {board.industryLabel} operating inputs are ranked by the clearest
+              profit-protection opportunity: best available price today, your baseline,
+              variance, and estimated savings. The goal is not more purchasing work.
+              The goal is knowing where money is leaking.
             </p>
             <p className="mt-2 max-w-4xl text-xs uppercase tracking-[0.14em] text-neutral-500">
               {board.operatingModel}
@@ -96,10 +97,10 @@ export function SuppliesOpportunityTable({
       <section className="rounded-lg border border-white/10 bg-neutral-900 p-5">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white">Supplies list</h2>
+            <h2 className="text-lg font-bold text-white">Profitability watchlist</h2>
             <p className="mt-1 text-sm text-neutral-400">
-              Columns are arranged for fast purchasing decisions: supply,
-              best today, baseline, variance, and savings.
+              Columns are arranged for fast owner clarity: item, best price today,
+              baseline, over/under variance, and estimated savings opportunity.
             </p>
           </div>
           <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">
@@ -113,7 +114,7 @@ export function SuppliesOpportunityTable({
               <tr className="text-xs uppercase tracking-[0.16em] text-neutral-500">
                 <th className="border-b border-white/10 px-3 py-3">Supply</th>
                 <th className="border-b border-white/10 px-3 py-3">Best today</th>
-                <th className="border-b border-white/10 px-3 py-3">Baseline</th>
+                <th className="border-b border-white/10 px-3 py-3">Margin baseline</th>
                 <th className="border-b border-white/10 px-3 py-3">Over / under</th>
                 <th className="border-b border-white/10 px-3 py-3">Savings opp.</th>
                 <th className="border-b border-white/10 px-3 py-3">Source</th>
@@ -127,7 +128,7 @@ export function SuppliesOpportunityTable({
             <tfoot>
               <tr className="bg-cyan-300/10 text-sm font-bold text-white">
                 <td className="border-t border-cyan-300/30 px-3 py-4">
-                  Total estimated weekly purchasing impact
+                  Total estimated weekly margin impact
                 </td>
                 <td className="border-t border-cyan-300/30 px-3 py-4">
                   {formatMoney(totals.bestTodaySpendCents)}
@@ -262,12 +263,39 @@ function SupplyRow({ row }: { row: SupplyOpportunityRow }) {
         </div>
       </td>
       <td className="border-b border-white/10 px-3 py-4 align-top">
-        <div className="text-sm text-neutral-300">{row.sourceLabel}</div>
-        <div className="mt-1 text-xs text-neutral-500">
-          confidence {row.confidence}
+        <div className="text-sm font-semibold text-neutral-300">{row.sourceLabel}</div>
+        <div className="mt-2 flex flex-wrap gap-1">
+          <SourceQualityBadge quality={row.sourceQuality} label={row.sourceQualityLabel} />
+          <span className="rounded-md border border-white/10 px-2 py-1 text-xs text-neutral-300">
+            {row.freshnessLabel}
+          </span>
+        </div>
+        <div className="mt-2 text-xs text-neutral-500">
+          confidence {row.confidence} / updated {row.lastUpdatedLabel}
         </div>
       </td>
     </tr>
+  );
+}
+
+function SourceQualityBadge({
+  label,
+  quality,
+}: {
+  label: string;
+  quality: SupplyOpportunityRow["sourceQuality"];
+}) {
+  const className =
+    quality === "verified"
+      ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
+      : quality === "observed"
+        ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
+        : "border-amber-300/20 bg-amber-300/10 text-amber-100";
+
+  return (
+    <span className={`rounded-md border px-2 py-1 text-xs font-bold ${className}`}>
+      {label}
+    </span>
   );
 }
 

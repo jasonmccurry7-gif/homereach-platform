@@ -6,6 +6,7 @@ import {
   type CandidateCampaignStrategy,
   type PostcardConcept,
 } from "@/lib/political/candidate-agent-recommendations";
+import { politicalEmotionCopy } from "@/lib/brand/emotional-positioning";
 import { loadCandidates, type CandidateRow } from "@/lib/political/queries";
 
 export type OutreachPriorityTier = "tier-1" | "tier-2" | "tier-3" | "tier-4";
@@ -598,9 +599,9 @@ function buildDrafts(
   cta: string,
 ): OutreachDraft[] {
   const core =
-    `I put together a HomeReach political mail concept for ${name} that shows ${geography} coverage, deployment timing, and a proposal-ready postcard direction.`;
+    `I put together a HomeReach political mail concept for ${name} that turns ${geography} coverage, deployment timing, and postcard creative into a clear campaign execution path.`;
   const execution =
-    `HomeReach handles operational execution: route planning, print-ready creative, deployment visibility, follow-up tracking, and proposal packaging.`;
+    `HomeReach gives campaigns more control when execution feels scattered: route planning, print-ready creative, deployment visibility, follow-up tracking, and proposal packaging. ${politicalEmotionCopy.complianceTone}`;
 
   return [
     {

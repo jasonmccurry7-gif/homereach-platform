@@ -12,19 +12,28 @@ import {
 } from "lucide-react";
 import { buildHomeReachCanvaOperatingModel } from "@/lib/canva/orchestrator";
 import { HOMEREACH_CANVA_PROMPT_FRAMEWORKS } from "@/lib/canva/prompt-frameworks";
+import { loadCanvaStoredConnectionStatus } from "@/lib/canva/repository";
 
 export const metadata = {
   title: "Canva Design OS - HomeReach Admin",
 };
 
-export default function AdminCanvaDesignOsPage({
+type AdminCanvaSearchParams = {
+  connected?: string;
+  stored?: string;
+  reason?: string;
+};
+
+export default async function AdminCanvaDesignOsPage({
   searchParams,
 }: {
-  searchParams?: { connected?: string; stored?: string; reason?: string };
+  searchParams?: Promise<AdminCanvaSearchParams>;
 }) {
+  const resolvedSearchParams = (await searchParams) ?? {};
   const model = buildHomeReachCanvaOperatingModel();
-  const connected = searchParams?.connected === "1";
-  const failed = searchParams?.connected === "0";
+  const storedStatus = await loadCanvaStoredConnectionStatus();
+  const connected = resolvedSearchParams.connected === "1";
+  const failed = resolvedSearchParams.connected === "0";
 
   return (
     <main className="mx-auto max-w-7xl space-y-8">
@@ -75,7 +84,7 @@ export default function AdminCanvaDesignOsPage({
             )}
             {failed && (
               <div className="mt-5 rounded-lg border border-red-300/20 bg-red-400/10 p-4 text-sm font-semibold text-red-100">
-                Canva OAuth did not complete. Reason: {searchParams?.reason ?? "unknown"}.
+                Canva OAuth did not complete. Reason: {resolvedSearchParams.reason ?? "unknown"}.
               </div>
             )}
           </div>
@@ -86,6 +95,7 @@ export default function AdminCanvaDesignOsPage({
             </p>
             <div className="mt-4 grid gap-3">
               <StatusRow label="Mode" value={model.status.mode.replaceAll("_", " ")} />
+              <StatusRow label="Stored OAuth" value={storedStatus.connected ? "Connected" : "Not connected"} />
               <StatusRow label="OAuth redirect" value={model.status.oauthRedirectUri ?? "Not configured"} />
               <StatusRow
                 label="Missing env"
@@ -95,10 +105,17 @@ export default function AdminCanvaDesignOsPage({
                 label="Template IDs"
                 value={`${model.status.configuredTemplates.filter((template) => template.templateId).length}/${model.status.configuredTemplates.length} configured`}
               />
+              <StatusRow label="Design jobs" value={String(storedStatus.designJobCount)} />
             </div>
           </div>
         </div>
       </section>
+
+      {storedStatus.warning && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
+          Canva storage status warning: {storedStatus.warning}
+        </section>
+      )}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {model.architecture.map((item, index) => (

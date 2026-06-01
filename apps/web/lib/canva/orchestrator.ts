@@ -18,6 +18,7 @@ export type HomeReachCanvaDesignContext =
   | "sales_proposal"
   | "dashboard_asset"
   | "social_graphic"
+  | "social_video"
   | "map_report";
 
 export type HomeReachCanvaJobInput = {
@@ -156,6 +157,8 @@ function resolveFolderPath(context: HomeReachCanvaDesignContext) {
       return "HomeReach/Campaigns/Shared Postcards";
     case "dashboard_asset":
       return "HomeReach/Templates/Dashboard Assets";
+    case "social_video":
+      return "HomeReach/Templates/Social/Videos";
     case "social_graphic":
       return "HomeReach/Templates/Social";
     case "map_report":

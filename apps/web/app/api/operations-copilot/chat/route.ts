@@ -1,6 +1,10 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getOperationsCopilotSessionUser } from "@/lib/operations-copilot/auth";
 import { isOperationsCopilotEnabled } from "@/lib/operations-copilot/feature-flag";
+import {
+  guardSupplifyMutation,
+  jsonNoStore,
+} from "@/lib/operations-copilot/governance";
 import {
   answerOperationsQuestion,
   buildOperationsCopilotSnapshot,
@@ -8,37 +12,44 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const chatSchema = z.object({
+  message: z.string().trim().min(2).max(600),
+});
+
 export async function POST(req: Request) {
   if (!isOperationsCopilotEnabled()) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return jsonNoStore({ error: "Not found" }, { status: 404 });
   }
 
   const user = await getOperationsCopilotSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
+
+  const guard = guardSupplifyMutation(req, {
+    key: "opcopilot_chat",
+    limit: 20,
+    userId: user.id,
+  });
+  if (guard) return guard;
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return jsonNoStore({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const message =
-    typeof body === "object" &&
-    body !== null &&
-    "message" in body &&
-    typeof body.message === "string"
-      ? body.message.trim()
-      : "";
-
-  if (message.length < 2) {
-    return NextResponse.json({ error: "Message is required" }, { status: 400 });
+  const parsed = chatSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonNoStore(
+      { error: "Message is required", details: parsed.error.flatten() },
+      { status: 400 }
+    );
   }
 
   const snapshot = await buildOperationsCopilotSnapshot(user.id);
-  const answer = answerOperationsQuestion({ snapshot, message });
+  const answer = answerOperationsQuestion({ snapshot, message: parsed.data.message });
 
-  return NextResponse.json({
+  return jsonNoStore({
     answer,
     source: "deterministic_operations_engine",
     confidence: "medium",

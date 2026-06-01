@@ -10,9 +10,9 @@ export function KpiStrip({ kpis }: { kpis: DashboardKpis }) {
       sub: `${kpis.activeCandidates.toLocaleString()} active`,
     },
     {
-      label: "Hot priority",
+      label: "Ops priority",
       value: kpis.hotCandidates.toLocaleString(),
-      sub: "priority ≥ 70",
+      sub: "geography/timing priority >= 70",
       tone: "hot" as const,
     },
     {
@@ -37,7 +37,7 @@ export function KpiStrip({ kpis }: { kpis: DashboardKpis }) {
       sub: kpis.avgDealCents !== null ? `avg deal ${formatCents(kpis.avgDealCents)}` : "no paid orders yet",
     },
     {
-      label: "Elections · 90d",
+      label: "Elections / 90d",
       value: kpis.electionsThisQuarter.toLocaleString(),
       sub: "upcoming",
     },

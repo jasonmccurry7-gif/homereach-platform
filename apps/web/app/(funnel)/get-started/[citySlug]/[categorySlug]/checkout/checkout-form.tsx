@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface CheckoutFormProps {
@@ -33,8 +33,38 @@ export function CheckoutForm({
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState(userEmail ?? "");
   const [phone, setPhone] = useState("");
+  const [approvalAccepted, setApprovalAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const draftKey = `homereach:shared-checkout:${citySlug}:${categorySlug}:${bundleId}`;
+
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(draftKey);
+      if (!saved) return;
+      const draft = JSON.parse(saved) as {
+        businessName?: string;
+        email?: string;
+        phone?: string;
+      };
+      if (draft.businessName) setBusinessName(draft.businessName);
+      if (!userEmail && draft.email) setEmail(draft.email);
+      if (draft.phone) setPhone(draft.phone);
+    } catch {
+      // Ignore malformed local drafts; checkout can continue normally.
+    }
+  }, [draftKey, userEmail]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(
+        draftKey,
+        JSON.stringify({ businessName, email, phone }),
+      );
+    } catch {
+      // Session storage is a convenience only.
+    }
+  }, [businessName, draftKey, email, phone]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,6 +73,14 @@ export function CheckoutForm({
 
     // If not authenticated, redirect to signup with return URL
     if (!isAuthenticated) {
+      try {
+        window.sessionStorage.setItem(
+          draftKey,
+          JSON.stringify({ businessName, email, phone }),
+        );
+      } catch {
+        // Session storage is a convenience only.
+      }
       const returnUrl = encodeURIComponent(
         `/get-started/${citySlug}/${categorySlug}/checkout?bundle=${bundleId}`
       );
@@ -51,15 +89,24 @@ export function CheckoutForm({
     }
 
     try {
-      const res = await fetch("/api/stripe/checkout", {
+      if (!approvalAccepted) {
+        setError("Please acknowledge the shared postcard terms before payment.");
+        setLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/spots/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bundleId,
           businessName,
+          phone,
           cityId,
           categoryId,
-          addonIds: [],
+          citySlug,
+          categorySlug,
+          addons: [],
         }),
       });
 
@@ -71,8 +118,14 @@ export function CheckoutForm({
         return;
       }
 
+      if (!data.checkoutUrl) {
+        setError("Checkout could not be created. Please try again.");
+        setLoading(false);
+        return;
+      }
+
       // Redirect to Stripe Checkout
-      window.location.href = data.url;
+      window.location.href = data.checkoutUrl;
     } catch {
       setError("Network error. Please check your connection and try again.");
       setLoading(false);
@@ -113,6 +166,7 @@ export function CheckoutForm({
             id="businessName"
             type="text"
             required
+            autoComplete="organization"
             placeholder={`Your ${categoryName.toLowerCase()} business name`}
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
@@ -128,6 +182,8 @@ export function CheckoutForm({
             id="email"
             type="email"
             required
+            autoComplete="email"
+            inputMode="email"
             placeholder="you@yourbusiness.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -147,6 +203,8 @@ export function CheckoutForm({
           <input
             id="phone"
             type="tel"
+            autoComplete="tel"
+            inputMode="tel"
             placeholder="(512) 555-0100"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
@@ -158,17 +216,29 @@ export function CheckoutForm({
         <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 text-sm">
           <div>
             <span className="font-medium text-gray-700">{bundleName}</span>
-            <span className="mx-1 text-gray-400">·</span>
+            <span className="mx-1 text-gray-400">|</span>
             <span className="text-gray-500">{cityName}</span>
           </div>
           <span className="font-bold text-gray-900">
-            ${Number(bundlePrice).toLocaleString()}
+            ${Number(bundlePrice).toLocaleString()}/mo
           </span>
         </div>
 
+        <label className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-900">
+          <input
+            type="checkbox"
+            checked={approvalAccepted}
+            onChange={(event) => setApprovalAccepted(event.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span>
+            I understand HomeReach will recheck city/category availability at checkout, prepare a proof for approval before print, and that shared postcard visibility does not guarantee leads, calls, sales, delivery dates beyond vendor/USPS estimates, or category exclusivity unless the inventory check passes.
+          </span>
+        </label>
+
         <button
           type="submit"
-          disabled={loading || !businessName.trim()}
+          disabled={loading || !businessName.trim() || !email.trim() || !approvalAccepted}
           className="w-full rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-blue-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
@@ -177,10 +247,10 @@ export function CheckoutForm({
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Taking you to checkout…
+              Taking you to checkout...
             </span>
           ) : (
-            `Continue to payment → $${Number(bundlePrice).toLocaleString()}`
+            `Continue to payment - $${Number(bundlePrice).toLocaleString()}/mo`
           )}
         </button>
 

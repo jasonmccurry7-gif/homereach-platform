@@ -7,6 +7,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // Protects routes by role:
 //   /admin/*    — admin only
 //   /dashboard/* — any authenticated user
+//   /political/{advanced command routes} - admin only
 //   /get-started/* — public (funnel)
 //   /          — public (marketing)
 //
@@ -17,22 +18,49 @@ import { NextResponse, type NextRequest } from "next/server";
 const PROTECTED_ROUTES = {
   admin: /^\/admin(\/|$)/,
   adminAgentView: /^\/admin\/agent-view(\/|$)/,
+  adminAgentMiniApps: /^\/admin\/agent-mini-apps(\/|$)/,
   adminApi: /^\/api\/admin(\/|$)/,
+  adminAgentMiniAppsApi: /^\/api\/admin\/agent-mini-apps(\/|$)/,
   adminAlertPreferencesApi: /^\/api\/admin\/alerts\/preferences(\/|$)/,
   adminSalesApi: /^\/api\/admin\/sales(\/|$)/,
   agentApi: /^\/api\/agent(\/|$)/,
   agent: /^\/agent(\/|$)/,
   dashboard: /^\/dashboard(\/|$)/,
   operationsCopilot: /^\/operations-copilot(\/|$)/,
+  politicalCommand: /^\/political\/(?:analytics|maps|presentation|routes)(\/|$)/,
+  politicalPublicCoverageApi: /^\/political\/routes\/coverage(\/|$)/,
   targetedAdminApi: /^\/api\/targeted\/admin(\/|$)/,
 };
 
-const CRON_SECRET_ENV_KEYS = [
-  "CRON_SECRET",
-  "CONTENT_INTEL_CRON_SECRET",
-  "POLITICAL_CRON_SECRET",
-  "FSGOS_CRON_SECRET",
-] as const;
+type CronSecretEnvKey =
+  | "CRON_SECRET"
+  | "CONTENT_INTEL_CRON_SECRET"
+  | "POLITICAL_CRON_SECRET"
+  | "FSGOS_CRON_SECRET";
+
+const CRON_ALLOWED_API_ROUTES: Array<{
+  route: RegExp;
+  envKeys?: readonly CronSecretEnvKey[];
+}> = [
+  { route: /^\/api\/admin\/automation\/send-due(\/|$)/ },
+  { route: /^\/api\/admin\/daily-outreach\/send-due(\/|$)/ },
+  { route: /^\/api\/admin\/revenue-messaging\/send-approved(\/|$)/ },
+  { route: /^\/api\/admin\/control-tower\/daily-brief(\/|$)/ },
+  { route: /^\/api\/admin\/daily-content\/generate(\/|$)/ },
+  { route: /^\/api\/admin\/daily-content\/[^/]+\/higgsfield(\/|$)/ },
+  { route: /^\/api\/admin\/content-intel\/cron(\/|$)/, envKeys: ["CONTENT_INTEL_CRON_SECRET"] },
+  { route: /^\/api\/admin\/lead-intel\/cron(\/|$)/, envKeys: ["CONTENT_INTEL_CRON_SECRET"] },
+  { route: /^\/api\/admin\/political\/intelligence\/sync(\/|$)/, envKeys: ["POLITICAL_CRON_SECRET", "CONTENT_INTEL_CRON_SECRET", "CRON_SECRET"] },
+  { route: /^\/api\/admin\/system\/apex(\/|$)/ },
+  { route: /^\/api\/admin\/system\/agents\/(?:pulse|ledger|kaizen|prospector)(\/|$)/ },
+  { route: /^\/api\/admin\/agents\/scraper(\/|$)/ },
+  { route: /^\/api\/admin\/health(\/|$)/ },
+  { route: /^\/api\/admin\/sales\/power-mode\/end-of-day(\/|$)/ },
+  { route: /^\/api\/admin\/sales\/facebook\/alert(\/|$)/ },
+  { route: /^\/api\/admin\/sales\/facebook\/daily-score(\/|$)/ },
+  { route: /^\/api\/admin\/procurement\/price-ingestion\/run(\/|$)/ },
+  { route: /^\/api\/admin\/gov-contracts\/sync(\/|$)/ },
+];
 
 const SALES_AGENT_SALES_API_ROUTES = [
   /^\/api\/admin\/sales\/alert(\/|$)/,
@@ -67,13 +95,18 @@ function requestSecret(request: NextRequest): string | null {
   return authorization.slice("bearer ".length).trim() || null;
 }
 
+function cronRouteConfig(pathname: string) {
+  return CRON_ALLOWED_API_ROUTES.find((entry) => entry.route.test(pathname));
+}
+
 function hasValidCronSecret(request: NextRequest, pathname: string): boolean {
   const provided = requestSecret(request);
   if (!provided) return false;
 
-  const allowedKeys = pathname.includes("/cron/")
-    ? CRON_SECRET_ENV_KEYS
-    : (["CRON_SECRET"] as const);
+  const routeConfig = cronRouteConfig(pathname);
+  if (!routeConfig) return false;
+
+  const allowedKeys = routeConfig.envKeys ?? (["CRON_SECRET"] as const);
 
   return allowedKeys.some((key) => {
     const expected = process.env[key];
@@ -98,6 +131,12 @@ function safeAuthRedirectPath(request: NextRequest): string | null {
   } catch {
     return null;
   }
+}
+
+function loginRedirectFor(request: NextRequest, fallbackPath?: string) {
+  const redirectPath =
+    fallbackPath ?? `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  return new URL(`/login?redirect=${encodeURIComponent(redirectPath)}`, request.url);
 }
 
 export async function middleware(request: NextRequest) {
@@ -165,6 +204,13 @@ export async function middleware(request: NextRequest) {
       return supabaseResponse;
     }
 
+    if (
+      PROTECTED_ROUTES.adminAgentMiniAppsApi.test(pathname) &&
+      (role === "admin" || role === "sales_agent")
+    ) {
+      return supabaseResponse;
+    }
+
     if (role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -173,7 +219,7 @@ export async function middleware(request: NextRequest) {
   // ── Admin routes ──────────────────────────────────────────────────────────
   if (PROTECTED_ROUTES.admin.test(pathname)) {
     if (!user) {
-      return NextResponse.redirect(new URL("/login?redirect=/admin", request.url));
+      return NextResponse.redirect(loginRedirectFor(request));
     }
 
     // Role check via custom JWT claim
@@ -182,6 +228,27 @@ export async function middleware(request: NextRequest) {
       return supabaseResponse;
     }
 
+    if (PROTECTED_ROUTES.adminAgentMiniApps.test(pathname) && role === "sales_agent") {
+      return supabaseResponse;
+    }
+
+    if (role !== "admin") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
+  if (
+    PROTECTED_ROUTES.politicalCommand.test(pathname) &&
+    !PROTECTED_ROUTES.politicalPublicCoverageApi.test(pathname)
+  ) {
+    if (!user) {
+      const redirectPath = `${pathname}${request.nextUrl.search}`;
+      return NextResponse.redirect(
+        new URL(`/login?redirect=${encodeURIComponent(redirectPath)}`, request.url)
+      );
+    }
+
+    const role = user.app_metadata?.user_role as string | undefined;
     if (role !== "admin") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
@@ -189,9 +256,7 @@ export async function middleware(request: NextRequest) {
 
   if (PROTECTED_ROUTES.agent.test(pathname)) {
     if (!user) {
-      return NextResponse.redirect(
-        new URL(`/login?redirect=${encodeURIComponent(pathname)}`, request.url)
-      );
+      return NextResponse.redirect(loginRedirectFor(request));
     }
 
     const role = user.app_metadata?.user_role as string | undefined;
@@ -203,17 +268,13 @@ export async function middleware(request: NextRequest) {
   // ── Dashboard routes ──────────────────────────────────────────────────────
   if (PROTECTED_ROUTES.dashboard.test(pathname)) {
     if (!user) {
-      return NextResponse.redirect(
-        new URL(`/login?redirect=${encodeURIComponent(pathname)}`, request.url)
-      );
+      return NextResponse.redirect(loginRedirectFor(request));
     }
   }
 
   if (PROTECTED_ROUTES.operationsCopilot.test(pathname)) {
     if (!user) {
-      return NextResponse.redirect(
-        new URL(`/login?redirect=${encodeURIComponent(pathname)}`, request.url)
-      );
+      return NextResponse.redirect(loginRedirectFor(request));
     }
   }
 

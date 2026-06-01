@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const city = await getCityBySlug(citySlug);
   if (!city) return { title: "Not Found" };
   return {
-    title: `${city.name} — Choose Your Category`,
+    title: `${city.name} - Choose Your Category`,
     description: `See available advertising spots for your business type in ${city.name}, ${city.state}.`,
   };
 }
@@ -52,7 +52,7 @@ export default async function CategorySelectionPage({ params }: Props) {
           What type of business are you?
         </h1>
         <p className="mt-3 text-lg text-gray-500">
-          Each category has limited spots per mailer — one business per slot.
+          Each category has limited spots per mailer. One business per category can be protected after availability is confirmed.
         </p>
       </div>
 
@@ -91,8 +91,8 @@ export default async function CategorySelectionPage({ params }: Props) {
           href="/get-started"
           className="text-sm text-gray-500 hover:text-gray-700"
         >
-          ← Choose a different city
-        </Link>
+        Choose a different city
+      </Link>
       </div>
     </div>
   );
@@ -125,7 +125,9 @@ function CategoryCard({
         </div>
       )}
 
-      <div className="mb-3 text-3xl">{category.icon ?? "🏢"}</div>
+      <div className="mb-3 rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-blue-700">
+        Category
+      </div>
       <h3 className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
         {category.name}
       </h3>
@@ -145,7 +147,7 @@ function CategoryCard({
           )}
         >
           {urgency === "critical"
-            ? "⚠️ Almost full"
+            ? "Almost full"
             : urgency === "high"
             ? `${category.spotsRemaining} left`
             : "Available"}
@@ -173,7 +175,9 @@ function SoldOutCategoryCard({
 }) {
   return (
     <div className="relative flex flex-col rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-5 opacity-60">
-      <div className="mb-3 text-3xl grayscale">{category.icon ?? "🏢"}</div>
+      <div className="mb-3 rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+        Category
+      </div>
       <h3 className="font-semibold text-gray-400 leading-tight">{category.name}</h3>
       <span className="mt-3 text-xs font-semibold uppercase text-gray-400">Sold out</span>
     </div>

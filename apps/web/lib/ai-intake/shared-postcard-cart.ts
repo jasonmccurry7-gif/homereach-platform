@@ -139,7 +139,7 @@ export function placementToSpotType(placement: AiPlacementType): string {
 
 export function placementToBundleSlug(placement: AiPlacementType): string {
   if (placement === "front") return "front-feature";
-  if (placement === "full_card_exclusivity") return "anchor";
+  if (placement === "full_card_exclusivity") return "anchor-spot";
   return "back-feature";
 }
 
@@ -412,14 +412,21 @@ export async function syncAiIntakeTotals(supa: ServiceClient, sessionId: string)
 
 function findBundleForPlacement(bundles: BundleRow[], placement: AiPlacementType): BundleRow | null {
   const slug = placementToBundleSlug(placement);
-  const bySlug = bundles.find((bundle) => bundle.slug === slug);
+  const acceptableSlugs =
+    placement === "full_card_exclusivity" ? new Set([slug, "anchor"]) : new Set([slug]);
+  const bySlug = bundles.find((bundle) => acceptableSlugs.has(bundle.slug));
   if (bySlug) return bySlug;
 
-  const desiredSpot = placement === "front" ? "front" : "back";
+  const desiredSpot =
+    placement === "front"
+      ? "front"
+      : placement === "full_card_exclusivity"
+        ? "anchor"
+        : "back";
   return (
     bundles.find((bundle) => {
       const meta = bundle.metadata ?? {};
-      return meta.spotType === desiredSpot;
+      return meta.spotType === desiredSpot || (placement === "full_card_exclusivity" && meta.spotType === "full_card");
     }) ?? bundles[0] ?? null
   );
 }

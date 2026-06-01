@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import {
+  auditDeliverabilityCopy,
+  buildAiOutputContent,
+  buildOutreachSourceAttribution,
+  scoreNextBestAction,
+} from "@/lib/sales-engine/outreach-governance";
 
 interface FollowUpTask {
   lead_id: string;
@@ -30,10 +36,10 @@ function getDraftMessage(
   const categoryName = lead.category || "category";
 
   const messages: Record<number, string> = {
-    1: `Hey ${firstName}, just wanted to make sure you got my message yesterday about the homeowner mailer in ${cityName}. Still have that ${categoryName} spot available — still interested?`,
-    3: `Subject: Still open — ${categoryName} in ${cityName}\n\nHi ${firstName},\n\nJust a quick reminder that the ${categoryName} spot in ${cityName} is still available. Here's your pricing link with details.\n\nLet me know if you have questions!\n\nBest`,
-    5: `Hey ${firstName}, last check-in — the ${categoryName} spot in ${cityName} is still here. One question: is the timing just off, or is it not a fit? Either way is totally fine.`,
-    7: `Final note about the ${categoryName} spot in ${cityName}. Happy to answer any questions before it goes to someone else.`,
+    1: `Hi ${firstName}, quick follow-up on the ${cityName} ${categoryName} visibility option. Want me to send the simple coverage and pricing breakdown?`,
+    3: `Subject: Clear ${categoryName} visibility option in ${cityName}\n\nHi ${firstName},\n\nI wanted to make sure you had the details for the ${categoryName} visibility option in ${cityName}. HomeReach keeps this simple: protected category placement, a clear postcard path, and a low-lift setup.\n\nWould you like me to send the pricing link and next step?\n\nBest`,
+    5: `Hi ${firstName}, last check-in on the ${cityName} ${categoryName} option. Is the timing off, or would a simpler coverage/cost breakdown help you decide? Either answer is fine.`,
+    7: `Final note on the ${cityName} ${categoryName} visibility option. Happy to close the loop or send the simple plan if it would help later.`,
   };
 
   return messages[sequenceDay] || "";
@@ -196,7 +202,42 @@ export async function GET(req: NextRequest) {
       });
     });
 
-    return NextResponse.json({ sequence_tasks: tasks });
+    const governedTasks = tasks.map((task) => {
+      const leadContext = {
+        id: task.lead_id,
+        business_name: task.business_name,
+        city: task.city,
+        category: task.category,
+        phone: task.phone,
+        email: task.email,
+        facebook_url: task.facebook_url,
+        last_contacted_at: new Date(now.getTime() - task.days_since_contact * 24 * 60 * 60 * 1000).toISOString(),
+      };
+      const channel = task.channel === "dm" ? "facebook_dm" : task.channel;
+      const sourceAttribution = buildOutreachSourceAttribution({
+        workflow: "admin_sales_follow_up_sequence",
+        channel,
+        lead: leadContext,
+        destination: task.channel === "sms" || task.channel === "call" ? task.phone : task.channel === "email" ? task.email : task.facebook_url,
+        templateId: `follow_up_sequence_day_${task.sequence_day}`,
+        action: "Follow-up sequence draft",
+        nextAction: "Review and approve one-to-one before marking sent.",
+        sources: ["sales_leads", "sales_events"],
+      });
+      return {
+        ...task,
+        approval: {
+          required: true,
+          status: "needs_review",
+          reason: "Generated follow-up drafts must be reviewed before outbound use.",
+        },
+        source_attribution: sourceAttribution,
+        next_best_action: scoreNextBestAction(leadContext, { channel }),
+        deliverability: auditDeliverabilityCopy(task.draft_message, channel),
+      };
+    });
+
+    return NextResponse.json({ sequence_tasks: governedTasks });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[follow-up-sequence GET] error:`, msg);
@@ -210,7 +251,8 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { agentId, leadId, sequenceDay, channel, message } = await req.json();
+    const body = await req.json();
+    const { agentId, leadId, sequenceDay, channel, message } = body;
 
     if (!agentId || !leadId || !sequenceDay || !channel || !message) {
       return NextResponse.json(
@@ -220,26 +262,95 @@ export async function POST(req: NextRequest) {
     }
 
     const db = createServiceClient();
+    const { data: lead } = await db
+      .from("sales_leads")
+      .select("id, business_name, contact_name, city, category, phone, email, facebook_url, status, score, buying_signal, last_contacted_at, last_reply_at, next_follow_up_at, do_not_contact, sms_opt_out, is_quarantined, email_status")
+      .eq("id", leadId)
+      .maybeSingle();
+    const leadContext = lead ?? {
+      id: leadId,
+      business_name: "Unknown business",
+      city: "",
+      category: "",
+    };
+    const governedChannel = channel === "dm" ? "facebook_dm" : channel;
+    const sourceAttribution = buildOutreachSourceAttribution({
+      workflow: "admin_sales_follow_up_sequence",
+      channel: governedChannel,
+      lead: leadContext,
+      destination: channel === "sms" || channel === "call" ? lead?.phone : channel === "email" ? lead?.email : lead?.facebook_url,
+      templateId: `follow_up_sequence_day_${sequenceDay}`,
+      action: "Follow-up sequence POST",
+      nextAction: "Human approval required before this follow-up is considered sent.",
+      approvalStatus: body.humanApproved === true || body.approval_status === "approved" ? "approved" : "needs_review",
+      sources: ["sales_leads", "sales_events"],
+    });
+    const deliverability = auditDeliverabilityCopy(message, governedChannel);
+    const humanApproved = body.humanApproved === true || body.approval_status === "approved";
 
-    // Log the follow-up as a sales_event
+    if (!humanApproved || deliverability.status === "blocked") {
+      try {
+        await db.from("ai_outputs").insert({
+          title: `Follow-up draft: ${sourceAttribution.related_entity.label}`,
+          agent_name: "Outreach Agent",
+          workflow: "admin_sales_follow_up_sequence",
+          output_type: "draft",
+          content: buildAiOutputContent({
+            channel: governedChannel,
+            body: message,
+            cta: "Review, approve, and send one-to-one from the admin workflow.",
+            complianceNotes: deliverability.notes,
+            sourceAttribution,
+          }),
+          data_sources: sourceAttribution.sources_referenced,
+          prompt_sop_name: "skills/outreach/SKILL.md",
+          approval_status: "needs_review",
+          verification_status: deliverability.status === "blocked" ? "needs_review" : "pending",
+          metadata: {
+            source_attribution: sourceAttribution,
+            deliverability,
+            sequence_day: sequenceDay,
+          },
+        });
+      } catch (draftError) {
+        console.warn("[follow-up-sequence POST] AI output draft log skipped:", draftError);
+      }
+
+      return NextResponse.json({
+        ok: true,
+        approval_status: "needs_review",
+        message: deliverability.status === "blocked"
+          ? "Follow-up draft needs revision before outbound use"
+          : "Follow-up draft saved for review; not marked as sent",
+        source_attribution: sourceAttribution,
+        deliverability,
+      });
+    }
+
+    // Approval records the draft decision only. Sending must go through the approved provider pipeline.
     await db.from("sales_events").insert({
       agent_id: agentId,
       lead_id: leadId,
-      action_type: "follow_up_sent",
+      action_type: "lead_loaded",
       channel: channel,
       message: message,
-      metadata: { sequence_day: sequenceDay },
+      metadata: {
+        sequence_day: sequenceDay,
+        approval_status: "approved",
+        draft_only: true,
+        send_required_separately: true,
+        source_attribution: sourceAttribution,
+        deliverability,
+      },
     });
-
-    // Update lead's last_contacted_at
-    await db
-      .from("sales_leads")
-      .update({ last_contacted_at: new Date().toISOString() })
-      .eq("id", leadId);
 
     return NextResponse.json({
       ok: true,
-      message: "Follow-up sent and logged",
+      approval_status: "approved",
+      source_attribution: sourceAttribution,
+      deliverability,
+      sent: false,
+      message: "Follow-up approved as a draft. No outbound message was sent or marked sent by this route.",
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

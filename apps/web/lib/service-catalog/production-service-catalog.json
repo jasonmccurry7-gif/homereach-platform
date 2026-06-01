@@ -1,0 +1,1369 @@
+[
+  {
+    "id": "market-capture",
+    "publicName": "Market Capture",
+    "category": "Revenue Engine",
+    "offerType": "recurring_service",
+    "productionStatus": "sellable_now",
+    "price": {
+      "public": "$499/month management fee + client-funded ad spend",
+      "billingMode": "Stripe recurring subscription",
+      "stripeStatus": "Live Market Capture Starter Price configured"
+    },
+    "primaryOwner": "Revenue Operations",
+    "publicPath": "/market-capture",
+    "startPath": "/market-capture/intake",
+    "adminPath": "/admin/market-capture-sales",
+    "customerPath": "/market-capture/status",
+    "docs": [
+      "docs/MARKET_CAPTURE_SELL_SHEET.md",
+      "docs/MARKET_CAPTURE_FIRST_CLIENT_SOP.md",
+      "docs/MARKET_CAPTURE_MANUAL_LAUNCH_SOP.md",
+      "docs/MARKET_CAPTURE_MONTHLY_REPORT_TEMPLATE.md",
+      "docs/PHASE_E_GO_LIVE_MONITORING.md"
+    ],
+    "deliverables": [
+      "Target-area campaign plan",
+      "Ad spend and objective worksheet",
+      "Creative guidance and launch checklist",
+      "Admin sales and fulfillment handoff",
+      "Monthly performance report"
+    ],
+    "fulfillmentSteps": [
+      "Confirm intake and contact details",
+      "Confirm payment and client-funded ad spend",
+      "Approve target geography and offer",
+      "Prepare campaign plan and launch checklist",
+      "Launch manually after approval",
+      "Prepare monthly report"
+    ],
+    "reportingMetrics": [
+      "Payment status",
+      "Campaign stage",
+      "Ad spend budget",
+      "Target areas",
+      "Impressions",
+      "Clicks",
+      "Leads or calls when available",
+      "Notes and next action"
+    ],
+    "approvalGates": [
+      "Payment before fulfillment",
+      "Client approval before launch",
+      "No guaranteed leads or ROI",
+      "No paid ad launch without admin approval"
+    ],
+    "smokeTests": [
+      "/",
+      "/market-capture",
+      "/market-capture/intake",
+      "pnpm smoke:market-capture-stripe",
+      "pnpm smoke:market-capture-live-funnel",
+      "pnpm monitor:market-capture",
+      "pnpm monitor:market-capture:first-customer"
+    ],
+    "issueHandling": [
+      "If checkout fails, create payment-required admin task and send manual payment link after owner approval",
+      "If assets are missing, move to asset collection and notify client",
+      "If ad platform approval blocks launch, document the reason and revise creative or targeting"
+    ],
+    "renewalMotion": "Monthly report plus next-area recommendation before renewal date.",
+    "readinessNotes": "Ready to sell. First real customer still needs to complete the full intake-payment-launch-report loop."
+  },
+  {
+    "id": "jobsite-halo-campaigns",
+    "publicName": "Jobsite Halo Campaigns",
+    "category": "Revenue Engine",
+    "offerType": "market_capture_variant",
+    "productionStatus": "sellable_manual",
+    "price": {
+      "public": "$499/month Market Capture management + client-funded ad spend; includes up to 5 jobsites/month; additional jobsite clusters $49 each",
+      "billingMode": "Market Capture subscription plus manual add-on if needed",
+      "stripeStatus": "Use Market Capture checkout; add-ons require owner-approved invoice"
+    },
+    "primaryOwner": "Market Capture Fulfillment",
+    "publicPath": "/market-capture",
+    "startPath": "/market-capture/intake",
+    "adminPath": "/admin/market-capture-fulfillment",
+    "customerPath": "/dashboard/campaign-launch",
+    "docs": [
+      "docs/JOBSITE_HALO_CAMPAIGN_WORKSHEET.md",
+      "docs/JOBSITE_HALO_FULFILLMENT_SOP.md",
+      "docs/JOBSITE_HALO_LOCATION_REPORT_TEMPLATE.md",
+      "docs/MARKET_CAPTURE_FIRST_CLIENT_SOP.md",
+      "docs/MARKET_CAPTURE_MANUAL_LAUNCH_SOP.md",
+      "docs/DIGITAL_DIRECT_MAIL_BUNDLE_REPORT.md"
+    ],
+    "deliverables": [
+      "Jobsite address worksheet",
+      "Radius and neighborhood plan",
+      "Photo/proof asset checklist",
+      "Jobsite-level campaign summary",
+      "Location-level performance notes"
+    ],
+    "fulfillmentSteps": [
+      "Collect jobsite addresses and proof assets",
+      "Validate address quality and radius rules",
+      "Create one fulfillment location per approved jobsite",
+      "Approve campaign offer",
+      "Prepare manual launch package",
+      "Track results by jobsite cluster"
+    ],
+    "reportingMetrics": [
+      "Jobsites used",
+      "Radius settings",
+      "Neighborhoods covered",
+      "Impressions",
+      "Clicks",
+      "Leads or calls when available",
+      "Best-performing jobsite cluster"
+    ],
+    "approvalGates": [
+      "Client must confirm jobsites are valid and usable",
+      "No individual homeowner identity targeting",
+      "No before/after or customer proof claims without client approval"
+    ],
+    "smokeTests": [
+      "/market-capture",
+      "/market-capture/intake",
+      "/admin/market-capture-fulfillment",
+      "pnpm smoke:market-capture-live-funnel",
+      "pnpm monitor:market-capture"
+    ],
+    "issueHandling": [
+      "If jobsite data is incomplete, keep campaign in target-area review",
+      "If proof photos are rejected, request alternate assets",
+      "If radius is too narrow, recommend neighborhood or ZIP-level fallback"
+    ],
+    "renewalMotion": "Recommend the next completed jobsite cluster after each monthly report.",
+    "readinessNotes": "Ready to sell as a Market Capture variant with structured jobsite intake, radius defaults, proof workflow, and location-level report template."
+  },
+  {
+    "id": "neighborhood-saturation",
+    "publicName": "Neighborhood Saturation",
+    "category": "Revenue Engine",
+    "offerType": "campaign_package",
+    "productionStatus": "sellable_manual",
+    "price": {
+      "public": "$499/month Market Capture management + client-funded ad spend; direct mail saturation quoted separately from verified route counts",
+      "billingMode": "Market Capture subscription plus manual direct-mail quote",
+      "stripeStatus": "Use Market Capture checkout; direct mail requires quote approval"
+    },
+    "primaryOwner": "Revenue Operations",
+    "publicPath": "/market-capture",
+    "startPath": "/market-capture/intake",
+    "adminPath": "/admin/market-capture-fulfillment",
+    "customerPath": "/dashboard/campaign-launch",
+    "docs": [
+      "docs/NEIGHBORHOOD_SATURATION_SCORING_WORKSHEET.md",
+      "docs/NEIGHBORHOOD_SATURATION_FULFILLMENT_SOP.md",
+      "docs/NEIGHBORHOOD_SATURATION_AREA_REPORT_TEMPLATE.md",
+      "docs/DIGITAL_DIRECT_MAIL_BUNDLE_REPORT.md",
+      "docs/DIRECT_MAIL_CAMPAIGN_REPORT_TEMPLATE.md",
+      "docs/MARKET_CAPTURE_MANUAL_LAUNCH_SOP.md"
+    ],
+    "deliverables": [
+      "Neighborhood planning worksheet",
+      "Target-area approval checklist",
+      "Direct mail or digital saturation plan",
+      "Area-by-area reporting summary"
+    ],
+    "fulfillmentSteps": [
+      "Collect desired neighborhoods, ZIPs, or route clusters",
+      "Score area fit by service, budget, and timing",
+      "Create one fulfillment location per approved area",
+      "Approve target area",
+      "Prepare launch package",
+      "Report by area"
+    ],
+    "reportingMetrics": [
+      "Neighborhoods selected",
+      "Budget by area",
+      "Mail quantity if included",
+      "Impressions",
+      "Clicks",
+      "QR scans",
+      "Leads or calls when available"
+    ],
+    "approvalGates": [
+      "Target area approval",
+      "No prohibited targeting categories",
+      "Direct mail proof approval before print"
+    ],
+    "smokeTests": [
+      "/market-capture",
+      "/market-capture/intake",
+      "/admin/market-capture-fulfillment",
+      "pnpm smoke:market-capture-live-funnel",
+      "pnpm monitor:market-capture"
+    ],
+    "issueHandling": [
+      "If route counts are unavailable, hold quote until verified",
+      "If budget is too small, reduce area size before launch",
+      "If direct mail proof changes after approval, restart proof review"
+    ],
+    "renewalMotion": "Use the monthly report to recommend repeat exposure or next-neighborhood expansion.",
+    "readinessNotes": "Ready to sell as a Market Capture variant with structured neighborhood intake, scoring, fulfillment locations, and an area-level report template."
+  },
+  {
+    "id": "digital-direct-mail-campaigns",
+    "publicName": "Digital + Direct Mail Campaigns",
+    "category": "Revenue Engine",
+    "offerType": "bundle",
+    "productionStatus": "sellable_manual",
+    "price": {
+      "public": "$499/month digital management + client-funded ad spend + owner-approved direct mail quote",
+      "billingMode": "Stripe recurring management plus manual direct-mail invoice or checkout",
+      "stripeStatus": "Digital management checkout available through Market Capture; direct mail uses existing checkout/quote flow"
+    },
+    "primaryOwner": "Campaign Operations",
+    "publicPath": "/market-capture",
+    "startPath": "/market-capture/intake",
+    "adminPath": "/admin/market-capture-fulfillment",
+    "customerPath": "/dashboard/campaign-launch",
+    "docs": [
+      "docs/DIGITAL_DIRECT_MAIL_BUNDLE_SKU.md",
+      "docs/DIGITAL_DIRECT_MAIL_QUOTE_TEMPLATE.md",
+      "docs/DIGITAL_DIRECT_MAIL_BUNDLE_REPORT.md",
+      "docs/DIRECT_MAIL_FULFILLMENT_SOP.md",
+      "docs/DIRECT_MAIL_CAMPAIGN_REPORT_TEMPLATE.md"
+    ],
+    "deliverables": [
+      "Combined digital and direct mail plan",
+      "Founder bundle SKU",
+      "Direct mail quote packet",
+      "QR and UTM naming convention",
+      "Proof approval timeline",
+      "Launch checklist",
+      "Combined monthly report"
+    ],
+    "fulfillmentSteps": [
+      "Confirm target area and budget",
+      "Confirm bundle metadata and direct mail path",
+      "Create digital launch package",
+      "Create postcard proof and route count quote",
+      "Approve proof and payment",
+      "Launch digital manually and hand off print",
+      "Report combined results"
+    ],
+    "reportingMetrics": [
+      "Mail quantity",
+      "Estimated in-home date",
+      "QR scans",
+      "Landing page visits",
+      "Digital impressions",
+      "Clicks",
+      "Spend",
+      "Leads or calls when available"
+    ],
+    "approvalGates": [
+      "Client proof approval",
+      "Owner-approved quote before print",
+      "Admin approval before paid ads",
+      "No attribution certainty claims"
+    ],
+    "smokeTests": [
+      "/market-capture",
+      "/market-capture/intake",
+      "/targeted/start",
+      "/admin/market-capture-fulfillment",
+      "/admin/targeted-campaigns",
+      "pnpm smoke:market-capture-live-funnel",
+      "pnpm monitor:market-capture"
+    ],
+    "issueHandling": [
+      "If print timeline slips, update client with revised in-home window",
+      "If QR or UTM is missing, pause launch until tracking is fixed",
+      "If proof is rejected, restart approval timeline"
+    ],
+    "renewalMotion": "Recommend repeat digital exposure before and after direct mail in-home window.",
+    "readinessNotes": "Ready to sell as a managed Market Capture bundle with canonical founder SKU, structured intake metadata, direct mail quote template, and manual approval gates."
+  },
+  {
+    "id": "competitor-area-campaigns",
+    "publicName": "Competitor Area Campaigns",
+    "category": "Revenue Engine",
+    "offerType": "market_capture_variant",
+    "productionStatus": "sellable_manual_compliance_review",
+    "price": {
+      "public": "$499/month Market Capture management + client-funded ad spend; includes up to 10 competitor-area locations; additional validation $49/location",
+      "billingMode": "Market Capture subscription plus manual add-on if needed",
+      "stripeStatus": "Use Market Capture checkout"
+    },
+    "primaryOwner": "Ad-Tech Operations",
+    "publicPath": "/market-capture",
+    "startPath": "/market-capture/intake",
+    "adminPath": "/admin/market-capture-fulfillment",
+    "customerPath": "/dashboard/campaign-launch",
+    "docs": [
+      "docs/COMPETITOR_AREA_CAMPAIGN_SOP.md",
+      "docs/COMPETITOR_AREA_VALIDATION_WORKSHEET.md",
+      "docs/DIGITAL_TARGETING_RELEASE_CHECKLIST.md",
+      "docs/MARKET_CAPTURE_FIRST_CLIENT_SOP.md"
+    ],
+    "deliverables": [
+      "Competitor address validation list",
+      "Competitor-area readiness score",
+      "Compliance-safe launch package",
+      "Approved non-surveillance copy",
+      "Manual launch instructions"
+    ],
+    "fulfillmentSteps": [
+      "Collect competitor names and addresses",
+      "Validate addresses and remove duplicates",
+      "Confirm competitor-area compliance acknowledgement",
+      "Review platform policy risk",
+      "Approve compliant language",
+      "Prepare manual campaign launch package"
+    ],
+    "reportingMetrics": [
+      "Competitor areas reviewed",
+      "Locations approved",
+      "Policy warnings resolved",
+      "Impressions",
+      "Clicks",
+      "Spend",
+      "Notes and next action"
+    ],
+    "approvalGates": [
+      "No spying or surveillance language",
+      "No individual-level claims",
+      "Platform policy review before launch",
+      "Admin approval before paid ads"
+    ],
+    "smokeTests": [
+      "/market-capture/intake",
+      "/admin/market-capture-fulfillment",
+      "/dashboard/campaign-launch",
+      "pnpm smoke:market-capture-live-funnel",
+      "pnpm monitor:market-capture"
+    ],
+    "issueHandling": [
+      "If address cannot be validated, remove it from launch package",
+      "If copy implies surveillance, rewrite before client approval",
+      "If ad platform blocks targeting, switch to broader geography"
+    ],
+    "renewalMotion": "Recommend next competitor area only after reviewing first-area visibility metrics.",
+    "readinessNotes": "Ready to sell as a Market Capture variant with structured competitor intake metadata, validation worksheet, fulfillment location rows, readiness scoring, and compliance-safe approval gates."
+  },
+  {
+    "id": "event-area-campaigns",
+    "publicName": "Event Area Campaigns",
+    "category": "Revenue Engine",
+    "offerType": "short_run_campaign",
+    "productionStatus": "sellable_manual",
+    "price": {
+      "public": "$499/month Market Capture management + client-funded ad spend; short-run creative rush review starts at $250 when launch is under 7 business days",
+      "billingMode": "Market Capture subscription plus owner-approved rush invoice if needed",
+      "stripeStatus": "Use Market Capture checkout"
+    },
+    "primaryOwner": "Campaign Operations",
+    "publicPath": "/market-capture",
+    "startPath": "/market-capture/intake",
+    "adminPath": "/admin/market-capture-fulfillment",
+    "customerPath": "/dashboard/campaign-launch",
+    "docs": [
+      "docs/EVENT_AREA_CAMPAIGN_SOP.md",
+      "docs/EVENT_AREA_DEADLINE_WORKSHEET.md",
+      "docs/MARKET_CAPTURE_FIRST_CLIENT_SOP.md",
+      "docs/DIGITAL_TARGETING_RELEASE_CHECKLIST.md"
+    ],
+    "deliverables": [
+      "Event deadline worksheet",
+      "Event location list",
+      "Event readiness and launch cutoff score",
+      "Short-run creative checklist",
+      "Post-event recap report"
+    ],
+    "fulfillmentSteps": [
+      "Collect event name, address, dates, and promotion window",
+      "Confirm launch cutoff date",
+      "Confirm rush review if launch is under 7 business days",
+      "Confirm event source/details",
+      "Approve offer and creative",
+      "Launch manually if deadline is feasible",
+      "Prepare post-event recap"
+    ],
+    "reportingMetrics": [
+      "Event dates",
+      "Deadline status",
+      "Launch date",
+      "Impressions",
+      "Clicks",
+      "Spend",
+      "Landing page visits",
+      "Post-event notes"
+    ],
+    "approvalGates": [
+      "Launch cutoff approval",
+      "Event claim/source confirmation",
+      "No guaranteed attendance or sales claims",
+      "Admin approval before paid ads"
+    ],
+    "smokeTests": [
+      "/market-capture/intake",
+      "/admin/market-capture-fulfillment",
+      "pnpm smoke:market-capture-live-funnel",
+      "pnpm monitor:market-capture"
+    ],
+    "issueHandling": [
+      "If deadline is too close, propose post-event follow-up or decline launch",
+      "If event location is unclear, require verified source before targeting",
+      "If creative is not approved in time, do not launch"
+    ],
+    "renewalMotion": "After recap, recommend next seasonal or event-based campaign.",
+    "readinessNotes": "Ready to sell as a Market Capture short-run variant with structured event intake metadata, deadline worksheet, readiness scoring, rush-review guardrails, fulfillment event locations, and approval gates."
+  },
+  {
+    "id": "political-district-saturation",
+    "publicName": "Political District Saturation",
+    "category": "Political",
+    "offerType": "campaign_package",
+    "productionStatus": "sellable_with_political_compliance",
+    "price": {
+      "public": "Minimum planning package starts at $1,500; mail, postage, maps, and production quoted after verified geography and counts",
+      "billingMode": "Political proposal and owner-approved checkout or invoice",
+      "stripeStatus": "Political proposal/payment path requires smoke before each election cycle"
+    },
+    "primaryOwner": "Political Campaign Operations",
+    "publicPath": "/political",
+    "startPath": "/political/plan",
+    "adminPath": "/admin/political",
+    "customerPath": "/political/plan",
+    "docs": [
+      "docs/POLITICAL_DISTRICT_SATURATION_SOP.md",
+      "docs/POLITICAL_DISTRICT_SATURATION_COMPLIANCE_WORKSHEET.md",
+      "docs/POLITICAL_OPERATOR_GUIDE.md",
+      "docs/political-execution-os-phased-plan.md",
+      "docs/DIRECT_MAIL_FULFILLMENT_SOP.md"
+    ],
+    "deliverables": [
+      "Geography-only political district plan",
+      "Compliance checklist",
+      "District validation notes",
+      "District readiness and deadline score",
+      "Proposal package",
+      "Production handoff checklist"
+    ],
+    "fulfillmentSteps": [
+      "Validate race, district, and source data",
+      "Confirm campaign contact and disclaimer needs",
+      "Confirm geography-only or campaign-provided audience basis",
+      "Review Political District Saturation readiness score",
+      "Prepare geography-only plan",
+      "Approve copy and proposal",
+      "Verify counts and payment before production"
+    ],
+    "reportingMetrics": [
+      "Districts or geography covered",
+      "Mail quantity",
+      "Drops scheduled",
+      "Readiness score",
+      "Deadline status",
+      "Proof status",
+      "Payment status",
+      "Delivery notes"
+    ],
+    "approvalGates": [
+      "Political copy approval",
+      "No ideology inference",
+      "No individual voter belief classification",
+      "Verified counts before quote or checkout",
+      "Human approval before production"
+    ],
+    "smokeTests": [
+      "/political",
+      "/political/plan",
+      "/political/pricing",
+      "/admin/political",
+      "pnpm smoke:political-district"
+    ],
+    "issueHandling": [
+      "If district data is uncertain, hold proposal until verified",
+      "If disclaimer is unclear, escalate before proof approval",
+      "If route counts change, regenerate quote before payment"
+    ],
+    "renewalMotion": "Recommend follow-up drops based on election calendar and geography coverage.",
+    "readinessNotes": "Ready to sell with strict political compliance review, structured district saturation intake metadata, readiness scoring, source/disclaimer capture, geography-only guardrails, and verified route/geography data before quote, checkout, or production."
+  },
+  {
+    "id": "targeted-direct-mail",
+    "publicName": "Targeted Direct Mail",
+    "category": "Direct Mail",
+    "offerType": "one_time_campaign",
+    "productionStatus": "sellable_now",
+    "price": {
+      "public": "500 homes $400, 1,000 homes $770, 2,500 homes $1,825, 5,000 homes $3,500; final quote requires verified route counts and proof approval",
+      "billingMode": "Stripe one-time checkout after signed checkout token",
+      "stripeStatus": "Existing targeted checkout flow with signed checkout tokens and live funnel smoke"
+    },
+    "primaryOwner": "Direct Mail Fulfillment",
+    "publicPath": "/targeted",
+    "startPath": "/targeted/start",
+    "adminPath": "/admin/targeted-campaigns",
+    "customerPath": "/targeted/confirmed",
+    "docs": [
+      "docs/TARGETED_DIRECT_MAIL_PRODUCTION_SOP.md",
+      "docs/DIRECT_MAIL_FULFILLMENT_SOP.md",
+      "docs/DIRECT_MAIL_CAMPAIGN_REPORT_TEMPLATE.md"
+    ],
+    "deliverables": [
+      "Targeted route plan",
+      "Postcard proof",
+      "Verified quantity and quote",
+      "Vendor handoff",
+      "Delivery and issue-resolution log"
+    ],
+    "fulfillmentSteps": [
+      "Collect route or geography request",
+      "Confirm quantity and price",
+      "Approve proof",
+      "Collect payment",
+      "Hand off to print/mail vendor",
+      "Track delivery status"
+    ],
+    "reportingMetrics": [
+      "Mail quantity",
+      "Routes or areas",
+      "Proof approval time",
+      "Vendor status",
+      "Estimated in-home date",
+      "QR scans",
+      "Issue notes"
+    ],
+    "approvalGates": [
+      "Verified counts before checkout",
+      "Proof approval before production",
+      "Payment before vendor handoff",
+      "No delivery guarantees beyond vendor/USPS estimates"
+    ],
+    "smokeTests": [
+      "/targeted",
+      "/targeted/start",
+      "/targeted/intake",
+      "/targeted/checkout",
+      "/admin/targeted-campaigns",
+      "pnpm smoke:targeted-direct-mail"
+    ],
+    "issueHandling": [
+      "If route data changes, regenerate quote",
+      "If proof is rejected, restart proof approval",
+      "If vendor issue occurs, log status and provide revised timeline"
+    ],
+    "renewalMotion": "Recommend repeat drop or digital bundle after delivery window.",
+    "readinessNotes": "Ready to sell with signed checkout tokens, pricing floor validation, proof/route acknowledgement, admin lifecycle controls, and dedicated live funnel smoke."
+  },
+  {
+    "id": "shared-postcards",
+    "publicName": "Shared Postcards",
+    "category": "Direct Mail",
+    "offerType": "recurring_or_spot_based",
+    "productionStatus": "sellable_now",
+    "price": {
+      "public": "Shared spots use active city/category bundle pricing; standard back feature pricing starts around $300/month with founder rates where available; 3-month minimum",
+      "billingMode": "Stripe recurring subscription through shared postcard funnel",
+      "stripeStatus": "Shared Postcard checkout uses live availability, subscription Checkout, stored session IDs, and expiration cleanup"
+    },
+    "primaryOwner": "Shared Postcard Operations",
+    "publicPath": "/shared-postcards",
+    "startPath": "/get-started",
+    "adminPath": "/admin/spots",
+    "customerPath": "/dashboard",
+    "docs": [
+      "docs/SHARED_POSTCARDS_PRODUCTION_SOP.md",
+      "docs/DIRECT_MAIL_FULFILLMENT_SOP.md",
+      "docs/DIRECT_MAIL_CAMPAIGN_REPORT_TEMPLATE.md"
+    ],
+    "deliverables": [
+      "Protected category placement",
+      "Shared postcard proof",
+      "Mail schedule",
+      "Renewal and spot status tracking",
+      "Basic campaign report"
+    ],
+    "fulfillmentSteps": [
+      "Confirm city/category availability",
+      "Collect business and creative details",
+      "Create proof",
+      "Approve proof and payment",
+      "Schedule mailing",
+      "Track renewal"
+    ],
+    "reportingMetrics": [
+      "City",
+      "Category",
+      "Spot type",
+      "Mail schedule",
+      "Payment status",
+      "QR scans",
+      "Renewal status"
+    ],
+    "approvalGates": [
+      "Category conflict check",
+      "Proof approval",
+      "Payment before mail commitment",
+      "No exclusivity claim without inventory validation"
+    ],
+    "smokeTests": [
+      "/shared-postcards",
+      "/get-started",
+      "/admin/spots",
+      "/dashboard",
+      "pnpm smoke:shared-postcards"
+    ],
+    "issueHandling": [
+      "If category conflict appears, pause checkout and escalate",
+      "If proof misses deadline, move to next mail window",
+      "If renewal payment fails, notify owner before replacing spot"
+    ],
+    "renewalMotion": "Monthly renewal review with category protection and upsell to targeted or Market Capture.",
+    "readinessNotes": "Ready to sell with live inventory checks, subscription checkout, stale reservation cleanup, proof approval gate, admin spot ledger, AI intake optionality, and dedicated live funnel smoke."
+  },
+  {
+    "id": "cost-savings-review",
+    "publicName": "Cost Savings Review",
+    "category": "Cost Control Engine",
+    "offerType": "manual_audit",
+    "productionStatus": "manual_sellable",
+    "price": {
+      "public": "Free initial savings scan; paid Cost Savings Review starts at $499 one-time or $299/month monitoring",
+      "billingMode": "Manual invoice or future Stripe product",
+      "stripeStatus": "Initial scan uses request form; paid review is owner-approved manual invoice until a dedicated Stripe SKU is added"
+    },
+    "primaryOwner": "Cost Control Operations",
+    "publicPath": "/inventory-purchasing",
+    "startPath": "/waitlist?product=procurement-savings-review",
+    "adminPath": "/admin/cost-control",
+    "customerPath": "/dashboard/cost-control",
+    "docs": [
+      "docs/COST_CONTROL_ENGINE_MANUAL_SERVICE_KIT.md",
+      "docs/COST_SAVINGS_REVIEW_PRODUCTION_SOP.md"
+    ],
+    "deliverables": [
+      "Invoice/upload intake checklist",
+      "Savings worksheet",
+      "Supplier benchmark notes",
+      "Client savings report",
+      "Recommended owner actions"
+    ],
+    "fulfillmentSteps": [
+      "Collect invoice or supplier data",
+      "Normalize item, unit, and frequency",
+      "Compare benchmark or alternate supplier source",
+      "QA savings math",
+      "Deliver recommendations"
+    ],
+    "reportingMetrics": [
+      "Estimated savings",
+      "Actual savings",
+      "Category reviewed",
+      "Supplier reviewed",
+      "Accepted actions",
+      "Rejected actions"
+    ],
+    "approvalGates": [
+      "No purchasing without owner approval",
+      "No guaranteed savings",
+      "Savings math QA before client delivery",
+      "Source notes required"
+    ],
+    "smokeTests": [
+      "/inventory-purchasing",
+      "/waitlist?product=procurement-savings-review",
+      "/admin/cost-control",
+      "/dashboard/cost-control"
+    ],
+    "issueHandling": [
+      "If invoice data is incomplete, request missing unit or frequency details",
+      "If benchmark source is weak, label estimate as directional",
+      "If vendor action changes spend, require owner approval"
+    ],
+    "renewalMotion": "Monthly savings monitoring and category review.",
+    "readinessNotes": "Production-ready manual service: public request form, Procurement Agent handoff task, admin Cost Control queue, client Cost Control view, approval-gated action workflow, and live smoke coverage. Dedicated Stripe SKU can be added later; no vendor, purchase, or savings claim action executes without owner approval."
+  },
+  {
+    "id": "reputation-follow-up",
+    "publicName": "Reputation Follow-Up",
+    "category": "Reputation Engine",
+    "offerType": "recurring_service",
+    "productionStatus": "manual_sellable",
+    "price": {
+      "public": "$299/month reputation follow-up management; testimonial capture package starts at $499 one-time",
+      "billingMode": "Manual invoice or future Stripe product",
+      "stripeStatus": "Public request form creates approval-gated Reputation Agent task; paid package uses owner-approved manual invoice until a dedicated Stripe SKU is added"
+    },
+    "primaryOwner": "Reputation Operations",
+    "publicPath": "/services/reputation",
+    "startPath": "/waitlist?product=reputation",
+    "adminPath": "/admin/reputation",
+    "customerPath": "/dashboard/reputation",
+    "docs": [
+      "docs/REPUTATION_ENGINE_MANUAL_SERVICE_KIT.md",
+      "docs/REPUTATION_FOLLOW_UP_PRODUCTION_SOP.md"
+    ],
+    "deliverables": [
+      "Review request plan",
+      "Referral request drafts",
+      "Testimonial tracking sheet",
+      "Approval-ready response drafts",
+      "Monthly reputation report"
+    ],
+    "fulfillmentSteps": [
+      "Collect customer list or recent job list",
+      "Approve review/referral templates",
+      "Send only through approved manual workflow",
+      "Track replies, reviews, testimonials",
+      "Report outcomes"
+    ],
+    "reportingMetrics": [
+      "Requests drafted",
+      "Requests sent after approval",
+      "Reviews received",
+      "Testimonials captured",
+      "Referral opportunities",
+      "Follow-up actions"
+    ],
+    "approvalGates": [
+      "No fake reviews",
+      "No review gating",
+      "No public reply without approval",
+      "Platform policy compliance"
+    ],
+    "smokeTests": [
+      "/services/reputation",
+      "/waitlist?product=reputation",
+      "/admin/reputation",
+      "/dashboard/reputation"
+    ],
+    "issueHandling": [
+      "If client asks for review filtering, decline and use compliant request workflow",
+      "If negative review appears, draft response for approval",
+      "If testimonial permission is missing, do not publish"
+    ],
+    "renewalMotion": "Monthly review/referral opportunity report.",
+    "readinessNotes": "Production-ready manual service: public request form, Reputation Agent handoff task, admin Reputation queue, client Reputation Center, approval-gated action workflow, and live smoke coverage. Google Business Profile integration remains future hardening; no review request, public reply, or testimonial publication happens without approval."
+  },
+  {
+    "id": "local-growth-review",
+    "publicName": "Local Growth Review",
+    "category": "Growth Intelligence",
+    "offerType": "audit_or_sales_wedge",
+    "productionStatus": "sales_wedge_ready",
+    "price": {
+      "public": "Free 1-page opportunity review as sales wedge; paid local growth audit $499 one-time",
+      "billingMode": "Manual invoice for paid audit",
+      "stripeStatus": "No dedicated checkout required for MVP"
+    },
+    "primaryOwner": "Growth Strategy",
+    "publicPath": "/local-growth-os",
+    "startPath": "/waitlist?product=local-growth-review",
+    "adminPath": "/admin/growth-intelligence",
+    "customerPath": "/dashboard/growth-intelligence",
+    "docs": [
+      "docs/HOMEREACH_GROWTH_ENGINE_BLUEPRINT.md",
+      "docs/LOCAL_GROWTH_REVIEW_PRODUCTION_SOP.md"
+    ],
+    "deliverables": [
+      "1-page opportunity report",
+      "Top revenue opportunity",
+      "Top cost savings opportunity",
+      "Top reputation opportunity",
+      "Recommended next action"
+    ],
+    "fulfillmentSteps": [
+      "Collect business category and geography",
+      "Review existing HomeReach data and admin intelligence",
+      "Generate 1-page summary",
+      "Approve recommendations",
+      "Offer next paid service"
+    ],
+    "reportingMetrics": [
+      "Opportunities found",
+      "Estimated value",
+      "Accepted recommendations",
+      "Dismissed recommendations",
+      "Converted services"
+    ],
+    "approvalGates": [
+      "No guaranteed revenue claims",
+      "No unsupported market dominance claims",
+      "Owner approval before pricing or proposal changes"
+    ],
+    "smokeTests": [
+      "/local-growth-os",
+      "/waitlist?product=local-growth-review",
+      "/dashboard/growth-intelligence",
+      "/admin/growth-intelligence"
+    ],
+    "issueHandling": [
+      "If data is thin, label findings as preliminary",
+      "If recommendation requires unavailable integration, route to manual service",
+      "If claim lacks proof, remove it"
+    ],
+    "renewalMotion": "Use accepted recommendation to sell Market Capture, SEO, reputation, or cost-control service.",
+    "readinessNotes": "Production-ready manual sales wedge: public request form, Content Strategy Agent handoff task, Growth Intelligence admin/client surfaces, approval gates, 1-page review SOP, and live smoke coverage. Advanced scoring remains advisory and no outreach, proposal, pricing, or campaign action happens without approval."
+  },
+  {
+    "id": "local-seo-landing-pages",
+    "publicName": "Local SEO / Landing Pages",
+    "category": "SEO",
+    "offerType": "recurring_service",
+    "productionStatus": "manual_sellable_with_publish_gate",
+    "price": {
+      "public": "$499 setup + $299/month monitoring for one local landing page package; additional page clusters quoted",
+      "billingMode": "Manual invoice or future Stripe product",
+      "stripeStatus": "No public auto-publish checkout"
+    },
+    "primaryOwner": "SEO Operations",
+    "publicPath": "/services/local-seo",
+    "startPath": "/waitlist?product=local-seo",
+    "adminPath": "/admin/marketing/seo-command-center",
+    "customerPath": "/dashboard",
+    "docs": [
+      "docs/LOCAL_SEO_LANDING_PAGE_PRODUCTION_SOP.md",
+      "docs/LOCAL_SEO_LANDING_PAGE_PUBLISHING_WORKFLOW.md",
+      "docs/LOCAL_SEO_LANDING_PAGE_QA_CHECKLIST.md"
+    ],
+    "deliverables": [
+      "Page brief",
+      "SEO draft",
+      "Proof checklist",
+      "Publish approval log",
+      "Monthly SEO report"
+    ],
+    "fulfillmentSteps": [
+      "Confirm service and geography",
+      "Collect proof and claims support",
+      "Draft page",
+      "Run QA checklist",
+      "Approve before publish",
+      "Report traffic and lead actions"
+    ],
+    "reportingMetrics": [
+      "Pages drafted",
+      "Pages approved",
+      "Pages published",
+      "Visits",
+      "Form submissions",
+      "Search Console data when connected"
+    ],
+    "approvalGates": [
+      "No unsupported local claims",
+      "No publish without approval",
+      "No duplicate doorway pages",
+      "Analytics source notes required for performance claims"
+    ],
+    "smokeTests": [
+      "/services/local-seo",
+      "/waitlist?product=local-seo",
+      "/admin/marketing/seo-command-center",
+      "/api/admin/seo-engine/pages/[id]/approve",
+      "pnpm smoke:local-seo"
+    ],
+    "issueHandling": [
+      "If proof is missing, keep draft unpublished",
+      "If analytics is unavailable, report only page inventory and known conversions",
+      "If duplicate intent exists, consolidate rather than publish"
+    ],
+    "renewalMotion": "Monthly page health and next local page recommendation.",
+    "readinessNotes": "Production-ready manual service: public request form, Local SEO Authority Agent handoff task, admin SEO command center, approval-gated publish workflow, SOP, and live smoke coverage. Search Console and analytics imports remain future reporting improvements."
+  },
+  {
+    "id": "social-content-drafting",
+    "publicName": "Social Content Drafting",
+    "category": "Content",
+    "offerType": "recurring_service",
+    "productionStatus": "manual_sellable",
+    "price": {
+      "public": "$399/month for 8 draft posts; $699/month for 16 draft posts; publishing remains manual/approval-led",
+      "billingMode": "Manual invoice or future Stripe product",
+      "stripeStatus": "No native auto-post checkout"
+    },
+    "primaryOwner": "Content Operations",
+    "publicPath": "/services/social-content",
+    "startPath": "/waitlist?product=social-content",
+    "adminPath": "/admin/content-intel",
+    "customerPath": "/dashboard",
+    "docs": [
+      "docs/SOCIAL_CONTENT_DRAFTING_PRODUCTION_SOP.md",
+      "docs/HOMEREACH_AUTONOMOUS_CONTENT_ENGINE_2026-05-25.md",
+      "docs/HOMEREACH_AI_CREATIVE_PRODUCTION_STUDIO.md"
+    ],
+    "deliverables": [
+      "Monthly content calendar",
+      "Draft posts",
+      "Creative briefs",
+      "Approval queue",
+      "Manual publishing checklist",
+      "Monthly performance notes"
+    ],
+    "fulfillmentSteps": [
+      "Collect brand assets and approved topics",
+      "Confirm channels, content package, audience, and approval owner",
+      "Draft content calendar",
+      "Prepare posts and creative briefs",
+      "Route for approval",
+      "Log manual publish status and engagement"
+    ],
+    "reportingMetrics": [
+      "Drafts created",
+      "Drafts approved",
+      "Drafts revised",
+      "Posts manually published",
+      "Engagement manually entered",
+      "Leads, DMs, calls, or clicks when known",
+      "Top themes"
+    ],
+    "approvalGates": [
+      "No auto-publishing by default",
+      "No political content without compliance review",
+      "No unsupported claims",
+      "Brand approval required"
+    ],
+    "smokeTests": [
+      "/services/social-content",
+      "/waitlist?product=social-content",
+      "/admin/content-intel",
+      "/admin/content-review",
+      "/api/admin/social-content/metrics",
+      "pnpm smoke:social-content"
+    ],
+    "issueHandling": [
+      "If brand assets are missing, use text-only drafts until assets are approved",
+      "If content is time-sensitive, require approval before publishing window",
+      "If approval owner is missing, hold drafts in review",
+      "If native publishing fails, use manual copy/export"
+    ],
+    "renewalMotion": "Monthly content performance review and next calendar.",
+    "readinessNotes": "Production-ready manual service: public request form, Content Strategy Agent handoff task, content review queue, Social Content production SOP, and live smoke coverage. Sell as draft-and-approve content support, not auto-posting."
+  },
+  {
+    "id": "ai-website-assistant",
+    "publicName": "AI Website Assistant",
+    "category": "Lead Capture",
+    "offerType": "pilot_recurring_service",
+    "productionStatus": "pilot_sellable_with_activation_gate",
+    "price": {
+      "public": "$299/month + $499 setup for founder pilots; live widget activation requires domain approval and knowledge base review",
+      "billingMode": "Manual invoice or future Stripe product",
+      "stripeStatus": "No live self-serve widget checkout yet"
+    },
+    "primaryOwner": "AI Web Assistant Operations",
+    "publicPath": "/services/ai-website-assistant",
+    "startPath": "/services/ai-website-assistant#assistant-demo",
+    "adminPath": "/admin/ai-web-assistant",
+    "customerPath": "/ai-assistant",
+    "docs": ["docs/AI_WEBSITE_ASSISTANT_SERVICE_KIT.md"],
+    "deliverables": [
+      "Assistant setup questionnaire",
+      "AI Workforce setup task",
+      "Approved knowledge base",
+      "Lead capture routing rules",
+      "Embed code after approval",
+      "FAQ gap report"
+    ],
+    "fulfillmentSteps": [
+      "Capture demo request and consent",
+      "Create AI Workforce setup review task",
+      "Collect business FAQs and services",
+      "Approve knowledge base",
+      "Configure assistant and lead capture",
+      "Approve domain/embed",
+      "Pilot on one client",
+      "Track leads and gaps"
+    ],
+    "reportingMetrics": [
+      "Demo requests",
+      "Setup tasks created",
+      "Approval status",
+      "Conversations",
+      "Leads captured",
+      "Urgent handoffs",
+      "FAQ gaps",
+      "Approved knowledge updates"
+    ],
+    "approvalGates": [
+      "Knowledge base approval",
+      "Domain approval",
+      "No legal/medical/financial advice",
+      "No outbound send without approval"
+    ],
+    "smokeTests": [
+      "/services/ai-website-assistant",
+      "/api/ai-web-assistant/demo",
+      "/api/ai-web-assistant/widget.js",
+      "/admin/ai-web-assistant",
+      "/ai-assistant",
+      "pnpm smoke:ai-website-assistant"
+    ],
+    "issueHandling": [
+      "If assistant gives uncertain answer, route to human handoff",
+      "If lead persistence fails, collect fallback email notification",
+      "If domain is unapproved, do not provide live embed"
+    ],
+    "renewalMotion": "Monthly lead capture and FAQ improvement report.",
+    "readinessNotes": "Production-ready for founder pilots with manual setup, AI Workforce handoff, and activation gate. Broad self-serve live chat remains intentionally gated."
+  },
+  {
+    "id": "contractos",
+    "publicName": "ContractOS / Gov Contract Support",
+    "category": "Government Contracts",
+    "offerType": "recurring_and_project_service",
+    "productionStatus": "sellable_now",
+    "price": {
+      "public": "Watchtower $299/month founder rate; Workspace $799/month founder rate; Proposal Assist starts at $1,500; Managed Bid Desk starts at $3,500",
+      "billingMode": "Stripe recurring or one-time founder-rate checkout",
+      "stripeStatus": "Live ContractOS Prices configured"
+    },
+    "primaryOwner": "ContractOS Operations",
+    "publicPath": "/contractos",
+    "startPath": "/contractos/dashboard",
+    "adminPath": "/admin/contractos",
+    "customerPath": "/contractos/dashboard",
+    "docs": ["docs/CONTRACTOS_SERVICE_KIT.md"],
+    "deliverables": [
+      "Opportunity watchlist",
+      "AI solicitation summaries",
+      "AI Workforce ContractOS intake task",
+      "Bid/no-bid checklist",
+      "Proposal package template",
+      "Human-review approval log"
+    ],
+    "fulfillmentSteps": [
+      "Capture readiness or paid support request",
+      "Route request to SAM.gov Contract Agent",
+      "Review opportunity and summarize requirements",
+      "Score fit and bid/no-bid",
+      "Create bid room and checklist",
+      "Prepare package for human review",
+      "Record submission boundaries"
+    ],
+    "reportingMetrics": [
+      "Opportunities reviewed",
+      "ContractOS requests received",
+      "AI Workforce tasks created",
+      "Strong-fit opportunities",
+      "Bid rooms created",
+      "Documents completed",
+      "Pipeline value",
+      "Awards/losses when known"
+    ],
+    "approvalGates": [
+      "No bid submission by automation",
+      "No compliance certification by AI",
+      "No pricing commitment without owner approval",
+      "Draft - Human Review Required on AI summaries"
+    ],
+    "smokeTests": [
+      "/contractos",
+      "/contractos/dashboard",
+      "/waitlist?product=contractos-readiness-scan",
+      "/api/contractos/documents/analyze",
+      "/api/contractos/billing/checkout",
+      "pnpm smoke:contractos"
+    ],
+    "issueHandling": [
+      "If SAM sync fails, use manual opportunity entry",
+      "If AI summary fails, fall back to deterministic summary",
+      "If checkout fails, create owner-approved manual payment link"
+    ],
+    "renewalMotion": "Monthly opportunity pipeline review and bid-support upsell.",
+    "readinessNotes": "SAM key, AI summarization, billing, public intake, AI Workforce handoff, and live smoke coverage are configured in production."
+  },
+  {
+    "id": "ai-coo",
+    "publicName": "AI COO",
+    "category": "Operating System",
+    "offerType": "internal_advisory_layer",
+    "productionStatus": "internal_first",
+    "price": {
+      "public": "Included as HomeReach operating intelligence; not sold standalone yet",
+      "billingMode": "Bundled/internal",
+      "stripeStatus": "No standalone checkout"
+    },
+    "primaryOwner": "AI Operations",
+    "publicPath": "/dashboard",
+    "startPath": "/dashboard",
+    "adminPath": "/admin/ai-coo-queue",
+    "customerPath": "/dashboard",
+    "docs": [
+      "docs/AI_COO_OPERATING_LAYER_SERVICE_KIT.md",
+      "docs/REVENUE_OPERATING_SYSTEM_LAYER_2026-05-28.md"
+    ],
+    "deliverables": [
+      "Top recommendations",
+      "Opportunity cards",
+      "Draft messages",
+      "Task assignments",
+      "Acceptance/dismissal tracking"
+    ],
+    "fulfillmentSteps": [
+      "Generate recommendations from current records",
+      "Prioritize by value and urgency",
+      "Route to admin queue",
+      "Expose only top simple client actions",
+      "Track accepted, dismissed, and completed outcomes"
+    ],
+    "reportingMetrics": [
+      "Recommendations generated",
+      "Accepted recommendations",
+      "Dismissed recommendations",
+      "Completed recommendations",
+      "Estimated value",
+      "Acceptance rate"
+    ],
+    "approvalGates": [
+      "No autonomous action",
+      "No pricing/payment changes",
+      "No outbound send without approval",
+      "No unsupported revenue promises"
+    ],
+    "smokeTests": [
+      "/dashboard",
+      "/admin/ai-coo-queue",
+      "/api/ai-coo/recommendations",
+      "pnpm smoke:ai-coo"
+    ],
+    "issueHandling": [
+      "If data is thin, label recommendation as low confidence",
+      "If recommendation needs unavailable integration, convert to manual task",
+      "If client dismisses repeatedly, reduce future priority"
+    ],
+    "renewalMotion": "Use accepted recommendations to justify monthly value and upsell next service.",
+    "readinessNotes": "Production-hardened as an internal-first operating intelligence layer with guarded API access, advisory-only actions, database preflight checks, and live smoke coverage. Keep standalone selling gated until more real client outcome data exists."
+  },
+  {
+    "id": "business-memory",
+    "publicName": "Business Memory",
+    "category": "Operating System",
+    "offerType": "internal_foundation",
+    "productionStatus": "internal_foundation",
+    "price": {
+      "public": "Included in managed HomeReach services; not sold standalone",
+      "billingMode": "Bundled/internal",
+      "stripeStatus": "No standalone checkout"
+    },
+    "primaryOwner": "Client Success Operations",
+    "publicPath": "/dashboard/business-memory",
+    "startPath": "/dashboard/business-memory",
+    "adminPath": "/admin/business-memory",
+    "customerPath": "/dashboard/business-memory",
+    "docs": [
+      "docs/BUSINESS_MEMORY_SERVICE_KIT.md",
+      "docs/REVENUE_OPERATING_SYSTEM_LAYER_2026-05-28.md"
+    ],
+    "deliverables": [
+      "Client memory profile",
+      "Campaign history",
+      "Geography history",
+      "Offer history",
+      "Memory completeness score"
+    ],
+    "fulfillmentSteps": [
+      "Collect required onboarding memory fields",
+      "Attach campaign and outcome records",
+      "Track accepted/rejected opportunities",
+      "Update memory after reports",
+      "Use memory to improve recommendations"
+    ],
+    "reportingMetrics": [
+      "Memory completeness",
+      "Campaigns recorded",
+      "Geographies recorded",
+      "Outcomes recorded",
+      "Missing data fields"
+    ],
+    "approvalGates": [
+      "Do not expose private client data across accounts",
+      "No inferred sensitive traits",
+      "No unsupported conclusions from incomplete memory"
+    ],
+    "smokeTests": [
+      "/dashboard/business-memory",
+      "/admin/business-memory",
+      "/api/business-memory/profile",
+      "pnpm smoke:business-memory"
+    ],
+    "issueHandling": [
+      "If profile is incomplete, show missing fields",
+      "If duplicate memory exists, merge through admin review",
+      "If outcome is unknown, mark as unknown rather than successful"
+    ],
+    "renewalMotion": "Use memory improvement and smarter recommendations as retention story.",
+    "readinessNotes": "Production-hardened as an internal foundation with guarded profile API access, explicit sync endpoints, RLS-backed schema, service kit, and live smoke coverage. Keep standalone selling gated until mandatory onboarding fields and duplicate-profile merge discipline mature."
+  },
+  {
+    "id": "growth-intelligence",
+    "publicName": "Growth Intelligence",
+    "category": "Growth Intelligence",
+    "offerType": "internal_to_client_advisory",
+    "productionStatus": "internal_then_client",
+    "price": {
+      "public": "Included in Growth Review or managed services; not sold standalone initially",
+      "billingMode": "Bundled/internal",
+      "stripeStatus": "No standalone checkout"
+    },
+    "primaryOwner": "Growth Strategy",
+    "publicPath": "/dashboard/growth-intelligence",
+    "startPath": "/dashboard/growth-intelligence",
+    "adminPath": "/admin/growth-intelligence",
+    "customerPath": "/dashboard/growth-intelligence",
+    "docs": ["docs/HOMEREACH_GROWTH_ENGINE_BLUEPRINT.md"],
+    "deliverables": [
+      "Growth opportunity cards",
+      "Admin-entered intelligence entries",
+      "Client fit scoring",
+      "Campaign conversion handoff",
+      "Growth report"
+    ],
+    "fulfillmentSteps": [
+      "Enter or ingest opportunity source",
+      "Match against client fit",
+      "Score opportunity",
+      "Route to AI COO or admin queue",
+      "Convert approved opportunity into campaign"
+    ],
+    "reportingMetrics": [
+      "Opportunities found",
+      "High-priority opportunities",
+      "Approved opportunities",
+      "Converted campaigns",
+      "Dismissed opportunities"
+    ],
+    "approvalGates": [
+      "No scraping private platforms",
+      "No sensitive traits",
+      "No guaranteed results",
+      "Human approval before outreach or campaign creation"
+    ],
+    "smokeTests": [
+      "/dashboard/growth-intelligence",
+      "/admin/growth-intelligence",
+      "/api/growth-intelligence/opportunities"
+    ],
+    "issueHandling": [
+      "If source is admin-entered, label source accordingly",
+      "If opportunity lacks proof, keep internal until reviewed",
+      "If conversion path is missing, create manual task"
+    ],
+    "renewalMotion": "Monthly next-market and upsell recommendation.",
+    "readinessNotes": "Good internal intelligence layer. Needs source input discipline and campaign conversion workflow."
+  },
+  {
+    "id": "ad-tech-integration-layer",
+    "publicName": "Ad-Tech Integration Layer",
+    "category": "Ad-Tech",
+    "offerType": "internal_operations_layer",
+    "productionStatus": "manual_launch_only",
+    "price": {
+      "public": "Not sold standalone; supports Market Capture and digital campaigns",
+      "billingMode": "Bundled/internal",
+      "stripeStatus": "No standalone checkout"
+    },
+    "primaryOwner": "Ad-Tech Operations",
+    "publicPath": "/dashboard/campaign-launch",
+    "startPath": "/dashboard/campaign-launch",
+    "adminPath": "/admin/ad-tech",
+    "customerPath": "/dashboard/campaign-launch",
+    "docs": ["docs/DIGITAL_TARGETING_RELEASE_CHECKLIST.md"],
+    "deliverables": [
+      "Meta/Google draft package",
+      "Target validation",
+      "Launch package",
+      "Approval queue",
+      "Reporting import framework"
+    ],
+    "fulfillmentSteps": [
+      "Prepare draft campaign package",
+      "Validate locations and tracking",
+      "Confirm payment and ad spend",
+      "Require admin approval",
+      "Launch manually until API credentials are approved",
+      "Import or enter reporting"
+    ],
+    "reportingMetrics": [
+      "Drafts created",
+      "Launch packages approved",
+      "Manual launches recorded",
+      "Reporting imports",
+      "Attribution notes"
+    ],
+    "approvalGates": [
+      "No auto-launch paid ads",
+      "No auto-spend",
+      "No platform policy bypass",
+      "Admin approval required before launch"
+    ],
+    "smokeTests": [
+      "/dashboard/campaign-launch",
+      "/admin/ad-tech",
+      "/api/ad-tech/launch-packages"
+    ],
+    "issueHandling": [
+      "If credentials are missing, continue manual launch mode",
+      "If target validation warns, require admin decision",
+      "If reporting import fails, allow manual metric entry"
+    ],
+    "renewalMotion": "Use reporting notes to recommend optimization or direct mail add-on.",
+    "readinessNotes": "Manual launch is the production-safe mode. API launch should stay future and approval-gated."
+  },
+  {
+    "id": "ai-workforce-ai-assets",
+    "publicName": "AI Workforce / AI Assets",
+    "category": "Internal Operations",
+    "offerType": "internal_infrastructure",
+    "productionStatus": "internal_only",
+    "price": {
+      "public": "Not sold as a client product",
+      "billingMode": "Internal infrastructure",
+      "stripeStatus": "No checkout"
+    },
+    "primaryOwner": "AI Workforce Orchestrator",
+    "publicPath": "/admin/agents",
+    "startPath": "/admin/agents",
+    "adminPath": "/admin/agents",
+    "customerPath": "/dashboard",
+    "docs": [
+      "AGENTS.md",
+      "docs/HOMEREACH_AI_OPERATIONAL_EXECUTION_HARDENING_2026-05-25.md"
+    ],
+    "deliverables": [
+      "Task manifest",
+      "AI outputs",
+      "Approval reviews",
+      "Activity logs",
+      "Reusable SOPs and assets"
+    ],
+    "fulfillmentSteps": [
+      "Create task with owner and approval status",
+      "Generate draft output",
+      "Route to review",
+      "Log action and source inputs",
+      "Use approved outputs only in downstream workflows"
+    ],
+    "reportingMetrics": [
+      "Tasks created",
+      "Outputs drafted",
+      "Outputs approved",
+      "Outputs rejected",
+      "Activity logs completed"
+    ],
+    "approvalGates": [
+      "No sending, publishing, charging, submitting, or campaign changes without human approval",
+      "Every output needs source inputs and approval status",
+      "Political, procurement, SAM.gov, and legal-sensitive work stays gated"
+    ],
+    "smokeTests": [
+      "/admin/agents",
+      "/admin/ai-assets",
+      "/api/admin/ai-workforce/actions"
+    ],
+    "issueHandling": [
+      "If output lacks sources, return to draft",
+      "If approval status is missing, block downstream use",
+      "If task has no owner, return to orchestrator"
+    ],
+    "renewalMotion": "Internal operating leverage, not a customer renewal product.",
+    "readinessNotes": "Keep internal. Enforce the ledger consistently across modules."
+  }
+]

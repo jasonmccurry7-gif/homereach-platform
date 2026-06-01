@@ -5,7 +5,7 @@ import { getCityBySlug, getCategoryBySlug, getBundleById } from "@/lib/funnel/qu
 import { CheckoutForm } from "./checkout-form";
 
 export const metadata: Metadata = {
-  title: "Confirm Your Spot — HomeReach",
+  title: "Confirm Your Spot - HomeReach",
 };
 
 interface Props {
@@ -46,7 +46,7 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* Order summary — right rail on desktop, top on mobile */}
+        {/* Order summary */}
         <div className="order-1 lg:order-2 lg:col-span-2">
           <div className="sticky top-20 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-bold text-gray-900">Order summary</h2>
@@ -82,20 +82,20 @@ export default async function CheckoutReviewPage({ params, searchParams }: Props
 
             <div className="border-t border-gray-100 pt-4">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-gray-900">Total</span>
+                <span className="font-bold text-gray-900">Monthly rate</span>
                 <span className="text-2xl font-bold text-gray-900">
-                  ${Number(bundle.price).toLocaleString()}
+                  ${Number(bundle.price).toLocaleString()}/mo
                 </span>
               </div>
-              <p className="mt-0.5 text-right text-xs text-gray-400">One-time payment</p>
+              <p className="mt-0.5 text-right text-xs text-gray-400">3-month minimum; final pricing is locked at Stripe checkout</p>
             </div>
 
             {/* Trust signals */}
             <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-4">
               {[
-                "🔒 Secure Stripe checkout",
-                "🏦 We never store your card",
-                "📬 Campaign launches in 10–14 days",
+                "Secure Stripe checkout",
+                "We never store your card",
+                "Proof approval required before print",
               ].map((s) => (
                 <p key={s} className="text-xs text-gray-500">{s}</p>
               ))}

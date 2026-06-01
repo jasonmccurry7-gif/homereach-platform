@@ -14,6 +14,10 @@ export type SupplyOpportunityRow = {
   estimatedWeeklyQuantity: number;
   status: "under_baseline" | "over_baseline" | "in_line";
   sourceLabel: string;
+  sourceQuality: "verified" | "observed" | "estimated";
+  sourceQualityLabel: string;
+  freshnessLabel: string;
+  lastUpdatedLabel: string;
   confidence: "low" | "medium" | "high";
   capturedAt: Date | null;
 };
@@ -266,6 +270,10 @@ export function buildSupplyOpportunityBoard({
       sourceLabel: priceRow?.bestPriceCents
         ? "Captured price snapshot"
         : "Benchmark until live capture",
+      sourceQuality: priceRow?.bestSourceQuality ?? "estimated",
+      sourceQualityLabel: priceRow?.bestSourceQualityLabel ?? "Estimated",
+      freshnessLabel: priceRow?.bestFreshnessLabel ?? "No snapshot",
+      lastUpdatedLabel: priceRow?.latestUpdatedLabel ?? "Not updated",
       confidence: priceRow?.bestPriceCents ? "high" : "low",
       capturedAt: priceRow?.latestCapturedAt ?? null,
     } satisfies SupplyOpportunityRow;

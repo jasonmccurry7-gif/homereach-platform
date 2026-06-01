@@ -198,6 +198,7 @@ function SmartBuyPanel({ buy }: { buy: SmartBuyRecommendation | null }) {
             bestVendor: buy.bestVendor,
             quantityRecommended: buy.quantityRecommended,
             estimatedSavingsCents: buy.estimatedSavingsCents,
+            approvalOnly: true,
             liveOrderingEnabled: false,
           },
         }),
@@ -251,7 +252,7 @@ function SmartBuyPanel({ buy }: { buy: SmartBuyRecommendation | null }) {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <SmartActionButton
-              label="Approve Order"
+              label="Queue Approval"
               icon={CheckCircle2}
               loading={loadingAction === "approve_order"}
               onClick={() => createAction("approve_order")}
@@ -318,7 +319,7 @@ function ActionCenter({ snapshot }: { snapshot: CopilotSnapshot }) {
         <h2 className="text-xl font-black text-white">Action Center</h2>
       </div>
       <p className="mt-1 text-sm leading-6 text-neutral-400">
-        Only decisions that need owner attention. No raw procurement noise.
+        Only decisions that need owner attention. No raw operational noise.
       </p>
       <div className="mt-4 space-y-3">
         {topActions.map((action) => (
@@ -332,7 +333,7 @@ function ActionCenter({ snapshot }: { snapshot: CopilotSnapshot }) {
           Review Approvals
         </Link>
         <Link href="/operations-copilot/delivery" className="rounded-lg border border-white/10 px-3 py-2 text-sm font-bold text-white hover:bg-white/10">
-          View Best Prices
+          View Price Watch
         </Link>
       </div>
     </section>
@@ -360,7 +361,7 @@ function InventoryForecastPanel({ snapshot }: { snapshot: CopilotSnapshot }) {
     <section id="inventory-risk" className="rounded-lg border border-white/10 bg-neutral-900 p-5">
       <div className="flex items-center gap-2">
         <PackageCheck className="h-5 w-5 text-cyan-300" aria-hidden="true" />
-        <h2 className="text-xl font-black text-white">Predictive Inventory Intelligence</h2>
+        <h2 className="text-xl font-black text-white">Predictive Supply Risk</h2>
       </div>
       <div className="mt-4 grid gap-3">
         {snapshot.inventoryForecasts.slice(0, 6).map((item) => (
@@ -573,7 +574,7 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function actionLabel(action: Exclude<SmartBuyAction, "ask_ai_why">) {
-  if (action === "approve_order") return "Approve Order";
+  if (action === "approve_order") return "Queue Approval";
   if (action === "edit_order") return "Edit Order";
   if (action === "snooze") return "Snooze";
   return "Reject Recommendation";

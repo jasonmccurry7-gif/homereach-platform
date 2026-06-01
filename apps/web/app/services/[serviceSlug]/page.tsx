@@ -17,12 +17,19 @@ import {
 } from "lucide-react";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteHeader } from "@/components/marketing/site-header";
+import { JsonLd } from "@/components/seo/JsonLd";
 import {
   getGrowthServiceModule,
   getPublicServiceSlug,
   listPublicGrowthServiceSlugs,
   type GrowthServiceCategory,
 } from "@/lib/growth-execution/services";
+import {
+  buildBreadcrumbLd,
+  buildServiceLd,
+  buildSoftwareApplicationLd,
+  type JsonLd as JsonLdShape,
+} from "@/lib/seo/schema";
 
 type ServicePageParams = Promise<{ serviceSlug: string }>;
 
@@ -45,9 +52,9 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: ServicePageParams }): Promise<Metadata> {
   const { serviceSlug } = await params;
   const service = getGrowthServiceModule(serviceSlug);
-  if (!service) {
+  if (!service || service.publicExposure === "admin_only") {
     return {
-      title: "HomeReach Service",
+      title: "HomeReach Service Not Found",
     };
   }
 
@@ -69,12 +76,37 @@ export async function generateMetadata({ params }: { params: ServicePageParams }
 export default async function ServiceDetailPage({ params }: { params: ServicePageParams }) {
   const { serviceSlug } = await params;
   const service = getGrowthServiceModule(serviceSlug);
-  if (!service) notFound();
+  if (!service || service.publicExposure === "admin_only") notFound();
 
   const Icon = categoryIcons[service.category];
   const related = service.crossSells.slice(0, 4);
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
+  const canonical = service.publicPath.startsWith("/services/")
+    ? service.publicPath
+    : `/services/${getPublicServiceSlug(service)}`;
+  const schemas: JsonLdShape[] = [
+    buildServiceLd({
+      name: service.title,
+      description: service.outcome,
+      category: service.category,
+      url: `${base}${canonical}`,
+    }),
+    buildSoftwareApplicationLd({
+      name: `${service.shortTitle} - HomeReach`,
+      description: service.publicPromise,
+      url: `${base}${canonical}`,
+      applicationCategory: "BusinessApplication",
+    }),
+    buildBreadcrumbLd([
+      { name: "Home", url: `${base}/` },
+      { name: "Services", url: `${base}/services` },
+      { name: service.shortTitle, url: `${base}${canonical}` },
+    ]),
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50">
+      <JsonLd schemas={schemas} />
       <SiteHeader />
       <main>
         <section className="relative overflow-hidden bg-slate-950 text-white">
@@ -165,23 +197,22 @@ export default async function ServiceDetailPage({ params }: { params: ServicePag
               <p className="mt-3 text-sm leading-7 text-slate-700">{service.whoFor}</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Admin source</p>
-              <Link href={service.adminPath} className="mt-3 inline-flex items-center gap-2 text-sm font-black text-blue-700 hover:text-blue-900">
-                Open source module
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operating source</p>
+              <p className="mt-3 text-sm font-black text-slate-950">
+                Protected HomeReach command center
+              </p>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Advanced controls stay in the admin command center, not on the public website.
+                Advanced controls, approvals, payments, and fulfillment actions stay inside protected operator workflows.
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Customer path</p>
-              <Link href={service.customerPath} className="mt-3 inline-flex items-center gap-2 text-sm font-black text-blue-700 hover:text-blue-900">
-                View customer surface
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Next action</p>
+              <Link href={service.primaryCtaHref} className="mt-3 inline-flex items-center gap-2 text-sm font-black text-blue-700 hover:text-blue-900">
+                {service.primaryCtaLabel}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Customer-facing views stay simple: status, results, next action, and upgrade options.
+                Public visitors move into the appropriate intake, waitlist, or campaign request flow instead of protected account screens.
               </p>
             </div>
           </div>

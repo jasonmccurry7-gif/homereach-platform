@@ -12,6 +12,11 @@
 import "server-only";
 
 import { createClient as createUserClient } from "@/lib/supabase/server";
+import {
+  buildPoliticalDistrictSaturationMetadata,
+  getPoliticalDistrictSaturationMetadata,
+  type PoliticalDistrictSaturationMetadata,
+} from "@/lib/political/district-saturation";
 
 export interface DashboardKpis {
   totalCandidates: number;
@@ -25,6 +30,152 @@ export interface DashboardKpis {
   revenueCents: number;           // sum of amount_paid_cents across paid/deposit_paid
   avgDealCents: number | null;    // average political_orders.total_cents for paid orders
   electionsThisQuarter: number;   // next 90 days
+}
+
+export interface PoliticalDistrictSaturationLeadQueueRow {
+  id: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string | null;
+  candidateName: string | null;
+  organizationName: string | null;
+  officeSought: string | null;
+  state: string | null;
+  geographyType: string | null;
+  geographyValue: string | null;
+  districtType: string | null;
+  electionDate: string | null;
+  budgetEstimateCents: number | null;
+  desiredDropCount: number | null;
+  status: string;
+  notes: string | null;
+  createdAt: string;
+  districtSaturation: PoliticalDistrictSaturationMetadata;
+}
+
+interface PoliticalDistrictSaturationLeadDbRow {
+  id: string;
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string | null;
+  candidate_name: string | null;
+  organization_name: string | null;
+  office_sought: string | null;
+  state: string | null;
+  geography_type: string | null;
+  geography_value: string | null;
+  district_type: string | null;
+  election_date: string | null;
+  budget_estimate_cents: number | string | null;
+  desired_drop_count: number | null;
+  status: string;
+  notes: string | null;
+  strategy_snapshot?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+function numberValue(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function rowToPoliticalDistrictSaturationLead(
+  row: PoliticalDistrictSaturationLeadDbRow,
+): PoliticalDistrictSaturationLeadQueueRow {
+  const districtSaturation =
+    getPoliticalDistrictSaturationMetadata(row.strategy_snapshot) ??
+    buildPoliticalDistrictSaturationMetadata({
+      enabled: true,
+      state: row.state,
+      geographyType: row.geography_type,
+      geographyValue: row.geography_value,
+      districtType: row.district_type,
+      electionDate: row.election_date,
+      budgetEstimateCents: numberValue(row.budget_estimate_cents),
+      desiredDropCount: row.desired_drop_count,
+      notes: row.notes,
+    });
+
+  return {
+    id: row.id,
+    contactName: row.contact_name,
+    contactEmail: row.contact_email,
+    contactPhone: row.contact_phone,
+    candidateName: row.candidate_name,
+    organizationName: row.organization_name,
+    officeSought: row.office_sought,
+    state: row.state,
+    geographyType: row.geography_type,
+    geographyValue: row.geography_value,
+    districtType: row.district_type,
+    electionDate: row.election_date,
+    budgetEstimateCents: numberValue(row.budget_estimate_cents),
+    desiredDropCount: row.desired_drop_count,
+    status: row.status,
+    notes: row.notes,
+    createdAt: row.created_at,
+    districtSaturation,
+  };
+}
+
+export async function loadPoliticalDistrictSaturationLeadQueue(
+  limit = 8,
+): Promise<PoliticalDistrictSaturationLeadQueueRow[]> {
+  const supabase = await createUserClient();
+  const columns = [
+    "id",
+    "contact_name",
+    "contact_email",
+    "contact_phone",
+    "candidate_name",
+    "organization_name",
+    "office_sought",
+    "state",
+    "geography_type",
+    "geography_value",
+    "district_type",
+    "election_date",
+    "budget_estimate_cents",
+    "desired_drop_count",
+    "status",
+    "notes",
+    "strategy_snapshot",
+    "created_at",
+  ].join(", ");
+
+  const response = await supabase
+    .from("political_outreach_leads")
+    .select(columns)
+    .in("status", ["new", "qualified", "contacted"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (response.error) {
+    const message = response.error.message.toLowerCase();
+    if (!message.includes("strategy_snapshot")) {
+      console.error("[political] district saturation queue failed", response.error);
+      return [];
+    }
+
+    const fallback = await supabase
+      .from("political_outreach_leads")
+      .select(columns.replace(", strategy_snapshot", ""))
+      .in("status", ["new", "qualified", "contacted"])
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (fallback.error) {
+      console.error("[political] district saturation fallback queue failed", fallback.error);
+      return [];
+    }
+
+    return ((fallback.data ?? []) as unknown as PoliticalDistrictSaturationLeadDbRow[])
+      .map(rowToPoliticalDistrictSaturationLead);
+  }
+
+  return ((response.data ?? []) as unknown as PoliticalDistrictSaturationLeadDbRow[])
+    .map(rowToPoliticalDistrictSaturationLead);
 }
 
 /** Returns the dashboard KPIs in one call. A single page render = ~6 count

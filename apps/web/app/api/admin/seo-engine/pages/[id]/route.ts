@@ -43,6 +43,25 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const { id } = await ctx.params;
 
+  const { data: existing, error: existingError } = await admin.supa
+    .from("seo_pages")
+    .select("id, status")
+    .eq("id", id)
+    .maybeSingle();
+  if (existingError) return NextResponse.json({ ok: false, error: existingError.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+
+  const currentStatus = (existing as { status: string }).status;
+  if (currentStatus === "published") {
+    return NextResponse.json(
+      { ok: false, error: "published_page_locked_use_revert_or_archive" },
+      { status: 409 },
+    );
+  }
+  if (currentStatus === "archived") {
+    return NextResponse.json({ ok: false, error: "archived_page_locked" }, { status: 409 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -61,6 +80,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // Derive h1_slug if h1 is being updated
   if (typeof update.h1 === "string") {
     (update as { h1_slug?: string | null }).h1_slug = slugifyH1(update.h1);
+  }
+  if (currentStatus === "approved") {
+    update.status = "review";
+    update.approved_by = null;
+    update.approved_at = null;
+    update.approval_notes = "Approval cleared because page content or metadata changed after approval.";
   }
 
   const { data, error } = await admin.supa

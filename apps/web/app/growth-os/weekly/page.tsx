@@ -36,6 +36,10 @@ export default async function GrowthOsWeeklyPage() {
           <h1 className="mt-2 text-2xl font-bold text-gray-950">
             Update this week
           </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+            A 60-second check-in keeps the recommendations tied to real sales,
+            labor, ingredient cost, and waste instead of guesswork.
+          </p>
         </div>
         <StreakCounter weeks={data.userState?.currentStreakWeeks ?? 0} />
       </div>

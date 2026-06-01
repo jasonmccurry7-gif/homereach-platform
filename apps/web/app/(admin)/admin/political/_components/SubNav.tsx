@@ -50,7 +50,7 @@ const SUB_NAV: readonly SubNavItem[] = [
 ] as const;
 
 export function PoliticalSubNav() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
 
   return (
     <nav

@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { isPoliticalEnabled } from "@/lib/political/env";
 import { savePublicMapPlan } from "@/lib/political/map-plans";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 export async function POST(request: Request) {
   if (!isPoliticalEnabled()) {
     return NextResponse.json({ ok: false, error: "Political module disabled" }, { status: 404 });
   }
+
+  const limited = checkRateLimit(request, {
+    key: "political-map-plans",
+    limit: 6,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
 
   let body: unknown;
   try {

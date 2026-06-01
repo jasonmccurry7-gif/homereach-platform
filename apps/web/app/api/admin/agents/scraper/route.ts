@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import { resolveEnvAlias } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 min — scraping takes time
@@ -64,7 +65,7 @@ const CATEGORY_QUERIES: Record<string, string[]> = {
 async function searchGoogleMaps(query: string, city: string): Promise<SerpResult[]> {
   if (isSerpApiPaused()) return [];
 
-  const apiKey = process.env.SERPAPI_KEY;
+  const apiKey = resolveEnvAlias("SERPAPI_KEY", "SERP_API", "SERPAPI_API_KEY");
   if (!apiKey) return [];
 
   try {
@@ -87,7 +88,7 @@ async function searchGoogleMaps(query: string, city: string): Promise<SerpResult
 
 // ── Hunter.io email finder ─────────────────────────────────────────────────────
 async function findEmail(businessName: string, domain?: string): Promise<string | null> {
-  const apiKey = process.env.HUNTER_API_KEY;
+  const apiKey = resolveEnvAlias("HUNTER_API_KEY", "HUNTER");
   if (!apiKey || !domain) return null;
 
   try {

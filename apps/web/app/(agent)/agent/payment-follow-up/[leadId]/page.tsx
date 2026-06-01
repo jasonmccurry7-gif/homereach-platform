@@ -45,7 +45,8 @@ function timeAgo(iso: string) {
 }
 
 export default function PaymentFollowUpPage() {
-  const { leadId } = useParams<{ leadId: string }>();
+  const params = useParams<{ leadId: string }>();
+  const leadId = params?.leadId;
   const router     = useRouter();
 
   const [data,    setData]    = useState<LeadDetailResponse | null>(null);
@@ -54,6 +55,7 @@ export default function PaymentFollowUpPage() {
   const [logged,  setLogged]  = useState(false);
 
   const load = async () => {
+    if (!leadId) return;
     const res  = await fetch(`/api/agent/leads/${leadId}`);
     const json = await res.json();
     setData(json);

@@ -63,6 +63,11 @@ export type SavingsAudit = {
   currentDeliveryFeeCents: number;
   recommendedDeliveryFeeCents: number;
   estimatedFeesCents: number;
+  spoilageRiskCents: number;
+  substitutionRiskCents: number;
+  receivingBurdenCents: number;
+  orderingFrequencyBurdenCents: number;
+  trueLandedCostNotes: string[];
   orderQuantity: number;
   monthlyUsageEstimate: number;
   formula: string;
@@ -210,7 +215,7 @@ export async function buildBestPriceDeliveryBoard({
     workflowStatuses: buildWorkflowStatuses(),
     notificationHooks: buildNotificationHooks(),
     dataNotices: [
-      "Live ordering is disabled. Approve Order creates a safe owner/admin approval request and does not place a supplier order.",
+      "Live ordering is disabled. Approval actions queue owner/admin review and do not place supplier orders.",
       "Supplier prices are captured snapshots or benchmark estimates until invoice, quote, CSV, or approved API data is connected.",
       "Delivery fees, taxes, minimums, and arrival dates are estimates unless marked verified from supplier account data.",
     ],
@@ -242,17 +247,37 @@ function buildRecommendation({
     orderSubtotalCents: row.bestTodayPriceCents * orderQuantity,
   });
   const estimatedFeesCents = 0;
+  const deliveryOption = resolveDeliveryOption({ connector, supplierRecord });
+  const trueCostAdjustments = buildTrueCostAdjustments({
+    category: row.category,
+    connector,
+    deliveryOption,
+    itemMatchConfidence: row.confidence,
+    orderQuantity,
+    recommendedUnitPriceCents: row.bestTodayPriceCents,
+    supplierReliabilityScore:
+      supplierRecord?.reliabilityScore ?? Math.round(connector.confidenceScore),
+  });
   const currentVendorTotalCostCents =
-    row.baselinePriceCents * orderQuantity + currentDeliveryFeeCents + estimatedFeesCents;
+    row.baselinePriceCents * orderQuantity +
+    currentDeliveryFeeCents +
+    estimatedFeesCents +
+    trueCostAdjustments.currentReceivingBurdenCents +
+    trueCostAdjustments.currentOrderingFrequencyBurdenCents;
   const recommendedTotalDeliveredCostCents =
-    row.bestTodayPriceCents * orderQuantity + recommendedDeliveryFeeCents + estimatedFeesCents;
+    row.bestTodayPriceCents * orderQuantity +
+    recommendedDeliveryFeeCents +
+    estimatedFeesCents +
+    trueCostAdjustments.spoilageRiskCents +
+    trueCostAdjustments.substitutionRiskCents +
+    trueCostAdjustments.receivingBurdenCents +
+    trueCostAdjustments.orderingFrequencyBurdenCents;
   const savingsPerOrderCents =
     currentVendorTotalCostCents - recommendedTotalDeliveredCostCents;
   const monthlyUsageEstimate = Math.max(1, Math.round(row.estimatedWeeklyQuantity * 4.33));
   const monthlyEstimatedSavingsCents = Math.round(
     savingsPerOrderCents * (monthlyUsageEstimate / orderQuantity)
   );
-  const deliveryOption = resolveDeliveryOption({ connector, supplierRecord });
   const deliveryLabel = formatDeliveryLabel(deliveryOption);
   const estimatedDeliveryDateLabel = formatEstimatedDeliveryDate(
     supplierRecord?.averageLeadTimeDays ?? connector.defaultLeadTimeDays
@@ -323,12 +348,71 @@ function buildRecommendation({
       currentDeliveryFeeCents,
       recommendedDeliveryFeeCents,
       estimatedFeesCents,
+      spoilageRiskCents: trueCostAdjustments.spoilageRiskCents,
+      substitutionRiskCents: trueCostAdjustments.substitutionRiskCents,
+      receivingBurdenCents: trueCostAdjustments.receivingBurdenCents,
+      orderingFrequencyBurdenCents: trueCostAdjustments.orderingFrequencyBurdenCents,
+      trueLandedCostNotes: trueCostAdjustments.notes,
       orderQuantity,
       monthlyUsageEstimate,
       formula:
-        "Savings = (current unit price x order quantity + current delivery/fees) - (recommended unit price x order quantity + recommended delivery/fees). Monthly savings multiplies that order savings by estimated monthly usage.",
+        "Savings = current true landed cost minus recommended true landed cost. True landed cost includes unit price, delivery, fees, spoilage/substitution risk, receiving burden, and ordering frequency burden. Monthly savings multiplies order savings by estimated monthly usage.",
       dataQuality,
     },
+  };
+}
+
+function buildTrueCostAdjustments({
+  category,
+  connector,
+  deliveryOption,
+  itemMatchConfidence,
+  orderQuantity,
+  recommendedUnitPriceCents,
+  supplierReliabilityScore,
+}: {
+  category: string;
+  connector: SupplierConnector;
+  deliveryOption: DeliveryOptionKind;
+  itemMatchConfidence: "low" | "medium" | "high";
+  orderQuantity: number;
+  recommendedUnitPriceCents: number;
+  supplierReliabilityScore: number;
+}) {
+  const productSubtotal = recommendedUnitPriceCents * orderQuantity;
+  const spoilageRiskCents = /produce|dairy|bakery|food|perishable/i.test(category)
+    ? Math.round(productSubtotal * 0.03)
+    : 0;
+  const substitutionRiskCents =
+    itemMatchConfidence === "low"
+      ? Math.round(productSubtotal * 0.04)
+      : itemMatchConfidence === "medium"
+        ? Math.round(productSubtotal * 0.015)
+        : 0;
+  const receivingBurdenCents =
+    deliveryOption === "pickup_available_today"
+      ? 2200
+      : deliveryOption === "third_party_delivery_required"
+        ? 1800
+        : 900;
+  const orderingFrequencyBurdenCents = connector.freeDeliveryMinimumCents === null ? 400 : 700;
+  const reliabilityAdjustmentCents =
+    supplierReliabilityScore < 70 ? Math.round(productSubtotal * 0.025) : 0;
+
+  return {
+    spoilageRiskCents,
+    substitutionRiskCents: substitutionRiskCents + reliabilityAdjustmentCents,
+    receivingBurdenCents,
+    orderingFrequencyBurdenCents,
+    currentReceivingBurdenCents: 1400,
+    currentOrderingFrequencyBurdenCents: 900,
+    notes: [
+      "Includes delivery and handling burden, not just product shelf price.",
+      spoilageRiskCents > 0 ? "Perishable category includes spoilage exposure." : "No perishable spoilage add-on applied.",
+      substitutionRiskCents > 0 || reliabilityAdjustmentCents > 0
+        ? "Substitution/reliability risk included before approval."
+        : "Supplier/item match risk is low from loaded data.",
+    ],
   };
 }
 

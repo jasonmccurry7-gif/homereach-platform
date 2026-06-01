@@ -4,38 +4,48 @@ This is Jason's operator checklist for turning on real outbound outreach safely.
 
 ## Current Revenue Operations Finalization Tracker
 
+Updated 2026-05-25 after the outreach identity, Postmark webhook, and draft-only social outreach repair pass.
+
 These are the current owner-controlled items that must be finalized before moving the outreach system beyond read-only visibility and human-review mode.
 
 | Item | Status | Jason action |
 | --- | --- | --- |
-| Revenue Messaging migration 093 | Verify | Confirm `supabase/migrations/093_revenue_messaging_engine.sql` is applied in Supabase production. |
-| Outreach safety migration 086 | Verify | Confirm `system_controls` has one row with `id=1` and that global/channel pause controls are editable. |
-| Email provider credentials | Required | Set the active email provider key in Vercel. If `EMAIL_PROVIDER=resend`, set `RESEND_API_KEY`. |
-| Postmark webhook credentials | Required if webhook enabled | Set `POSTMARK_WEBHOOK_USER` and `POSTMARK_WEBHOOK_PASSWORD`, or disable `ENABLE_POSTMARK_WEBHOOK`. |
-| Hot lead alert phone | Required for legacy hot-lead SMS alerts | Set `ALERT_PHONE_NUMBER=+13302069639` in Vercel if you want hot-lead alerts enabled. |
+| Revenue Messaging migration 093 | Done / verify only | Tables are present in the current app path. Only re-check in Supabase if production starts showing source warnings. |
+| Outreach safety migration 086 | Done | `system_controls` is live and controls are editable. |
+| Email provider credentials | Done | Postmark is configured as the active production email provider. |
+| Postmark webhook credentials | Done | Webhook auth has been configured and rotated in Vercel. |
+| Postmark sender/domain verification | Jason/provider-side confirmation | Confirm in Postmark UI that `Jason@home-reach.com` and `home-reach.com` sender/domain status are fully verified. I can audit via API if an Account API token is available. |
+| Hot lead alert phone | Optional | I can wire this if you want legacy hot-lead SMS alerts, but keep live SMS disabled until Twilio/A2P is ready. |
 | Twilio A2P/10DLC | Required before live prospecting SMS | Confirm brand/campaign approval before enabling `OUTREACH_SMS_PROSPECTING_LIVE_ENABLED=true`. |
-| Twilio inbound SMS webhook | Required before live SMS | Point Twilio inbound SMS to `/api/webhooks/outreach/sms`. |
-| Twilio status callback webhook | Required before live SMS | Point Twilio message status callbacks to `/api/webhooks/twilio/status`. |
-| Political outreach legal review | Required before sends | Approve templates, disclaimer language, and manual handoff rules. |
+| Twilio sender number | Required before live SMS | Twilio must own or host `+13302069639`, or you must choose an approved Twilio sender. I cannot make Twilio send from a number it does not control. |
+| Twilio inbound/status webhooks | I can do after sender is ready | Point inbound SMS to `/api/webhooks/outreach/sms` and status callbacks to `/api/webhooks/twilio/status` once the approved sender/campaign exists. |
+| Political outreach legal review | Required before sends | Approve templates, disclaimer language, and manual handoff rules before live political outbound. |
 | SerpAPI discovery | Paused by request | No action unless you explicitly ask to restart with quotas and a narrow target list. |
+
+## Completed By Codex
+
+- Centralized Jason owner identity into outbound sender, persona, unsubscribe, and Postmark compliance surfaces.
+- Repaired the prospect queue screenshot issue: if a prospect has no Facebook/Messenger URL, `AI Draft` now queues a manual review draft instead of failing.
+- Preserved human approval gates: no email, SMS, Facebook DM, social post, payment, pricing, campaign, or legal-sensitive action sends automatically.
+- Verified narrow checks: web TypeScript passes, services TypeScript passes, and services tests pass.
 
 The in-app tracker now appears at `/admin/revenue-operations`.
 
 ## Required Before Live SMS
 
-- Confirm Twilio can legally send from `+13302069639`.
+- Confirm Twilio can legally send from `+13302069639`, either by hosting/porting the number or selecting an approved Twilio sender.
 - Complete or verify Twilio A2P/10DLC brand and campaign approval.
-- Configure the Twilio inbound SMS webhook for STOP/START replies.
-- Configure the Twilio status callback webhook for delivery failures.
+- Configure the Twilio inbound SMS webhook for STOP/START replies. I can do this after the sender/campaign is ready.
+- Configure the Twilio status callback webhook for delivery failures. I can do this after the sender/campaign is ready.
 - Keep `OUTREACH_SMS_PROSPECTING_LIVE_ENABLED=false` until approval is confirmed.
 - Use test mode or manual review mode until the first live SMS checks pass.
 
 ## Required Before Email Rotation
 
 - Verify `Jason@home-reach.com` in the chosen email provider.
-- Verify `Jasonmccurry7@gmail.com` in the chosen email provider if it will send directly.
-- Verify `Livetogivemarketing@gmail.com` in the chosen email provider if it will send directly.
-- Confirm SPF, DKIM, and DMARC for `home-reach.com`.
+- Verify `Jasonmccurry7@gmail.com` in the chosen email provider only if it will send directly. It can stay reply/fallback-only otherwise.
+- Verify `Livetogivemarketing@gmail.com` in the chosen email provider only if it will send directly. It can stay support/marketing identity otherwise.
+- Confirm SPF, DKIM, DMARC, and Postmark Return-Path for `home-reach.com`.
 - Start with `OUTREACH_EMAIL_ROTATION_ENABLED=false`.
 - Enable rotation only after all sender identities are verified and bounce tracking is working.
 

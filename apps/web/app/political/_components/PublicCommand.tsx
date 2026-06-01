@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 const POLITICAL_PLAN_HREF = "/political/plan";
-const POLITICAL_ACCOUNT_START_HREF = `/signup?redirect=${encodeURIComponent(POLITICAL_PLAN_HREF)}`;
 
 interface PublicHeroProps {
   eyebrow: string;
@@ -18,7 +17,7 @@ export function PublicHero({
   eyebrow,
   title,
   subtitle,
-  primaryHref = POLITICAL_ACCOUNT_START_HREF,
+  primaryHref = POLITICAL_PLAN_HREF,
   primaryLabel = "Start Campaign Mail Plan",
   primaryRequiresAccount = false,
   secondaryHref,
@@ -223,10 +222,10 @@ export function RouteVisual() {
       <div className="flex items-center justify-between border-b border-white/10 pb-3">
         <div>
           <div className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-200">
-            Mail Coverage Model
+            Reviewed Mail Plan
           </div>
           <div className="mt-1 text-sm font-bold text-white">
-            Example route readiness
+            Illustrative sample route readiness
           </div>
         </div>
         <div className="rounded-full border border-emerald-300/20 bg-emerald-950/50 px-3 py-1 text-xs font-bold text-emerald-200">
@@ -235,7 +234,7 @@ export function RouteVisual() {
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="font-bold uppercase tracking-[0.16em] text-slate-400">
-          96,300 target households
+          Example planning estimate: 96,300 households
         </div>
         <div className="flex flex-wrap gap-3 text-slate-300">
           {legend.map((item) => (
@@ -269,7 +268,7 @@ export function RouteVisual() {
       <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
         <div className="rounded border border-white/10 bg-white/5 p-2 text-slate-200">
           <div className="font-mono text-lg font-black text-white">92%</div>
-          target coverage
+          route coverage
         </div>
         <div className="rounded border border-white/10 bg-white/5 p-2 text-slate-200">
           <div className="font-mono text-lg font-black text-white">3</div>

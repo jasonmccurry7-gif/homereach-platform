@@ -62,7 +62,7 @@ function timeAgo(iso: string) {
 export default function LeadsPage() {
   const searchParams = useSearchParams();
   const router       = useRouter();
-  const statusFilter = searchParams.get("status") ?? "all";
+  const statusFilter = searchParams?.get("status") ?? "all";
 
   const [data,    setData]    = useState<LeadsResponse | null>(null);
   const [loading, setLoading] = useState(true);

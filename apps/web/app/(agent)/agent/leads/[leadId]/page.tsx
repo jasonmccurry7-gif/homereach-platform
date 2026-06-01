@@ -61,7 +61,8 @@ function formatTime(iso: string) {
 }
 
 export default function LeadDetailPage() {
-  const { leadId } = useParams<{ leadId: string }>();
+  const params = useParams<{ leadId: string }>();
+  const leadId = params?.leadId;
   const router     = useRouter();
   const [data,    setData]    = useState<LeadDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);

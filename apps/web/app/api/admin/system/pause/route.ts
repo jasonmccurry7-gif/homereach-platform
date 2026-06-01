@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/api-guards";
+import { logPlatformAuditEvent } from "@/lib/audit/platform-audit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET  /api/admin/system/pause — current pause state (system + all sequences + agents)
@@ -57,6 +58,12 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date().toISOString();
+  const auditBase = {
+    actorType: "human" as const,
+    actorId: adminId,
+    module: "system_controls",
+    provider: "supabase",
+  };
 
   // ── System-wide pause ──────────────────────────────────────────────────────
   if (scope === "system") {
@@ -85,6 +92,17 @@ export async function POST(req: NextRequest) {
         .eq("pause_reason", "system_pause");
     }
 
+    await logPlatformAuditEvent({
+      ...auditBase,
+      actionType: paused ? "global_pause_enabled" : "global_pause_disabled",
+      entityType: "system_controls",
+      entityId: "1",
+      resultStatus: "success",
+      severity: paused ? "high" : "medium",
+      message: paused ? "Global outbound/system pause enabled." : "Global outbound/system pause disabled.",
+      metadata: { reason: reason ?? null, cascaded_sequences: true },
+    });
+
     return NextResponse.json({ ok: true, scope: "system", paused });
   }
 
@@ -111,6 +129,17 @@ export async function POST(req: NextRequest) {
       .eq("id", 1);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await logPlatformAuditEvent({
+      ...auditBase,
+      actionType: Boolean(paused) ? "channel_pause_enabled" : "channel_pause_disabled",
+      entityType: "system_controls",
+      entityId: "1",
+      channel,
+      resultStatus: "success",
+      severity: Boolean(paused) ? "high" : "medium",
+      message: `${channel} channel pause ${Boolean(paused) ? "enabled" : "disabled"}.`,
+      metadata: { column, reason: reason ?? null },
+    });
     return NextResponse.json({ ok: true, scope: "channel", id: channel, paused: Boolean(paused) });
   }
 
@@ -140,6 +169,16 @@ export async function POST(req: NextRequest) {
       .eq("id", 1);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await logPlatformAuditEvent({
+      ...auditBase,
+      actionType: "control_toggle_updated",
+      entityType: "system_controls",
+      entityId: "1",
+      resultStatus: "success",
+      severity: control === "sms_live" && nextValue ? "critical" : control === "manual_approval" ? "high" : "medium",
+      message: `${control} set to ${nextValue ? "enabled" : "disabled"}.`,
+      metadata: { column, enabled: nextValue },
+    });
     return NextResponse.json({ ok: true, scope: "control", id: control, enabled: nextValue });
   }
 
@@ -159,6 +198,16 @@ export async function POST(req: NextRequest) {
       .eq("id", id);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await logPlatformAuditEvent({
+      ...auditBase,
+      actionType: paused ? "sequence_paused" : "sequence_resumed",
+      entityType: "auto_sequence",
+      entityId: String(id),
+      resultStatus: "success",
+      severity: paused ? "medium" : "info",
+      message: `Automation sequence ${paused ? "paused" : "resumed"}.`,
+      metadata: { reason: reason ?? null },
+    });
     return NextResponse.json({ ok: true, scope: "sequence", id, paused });
   }
 
@@ -186,6 +235,17 @@ export async function POST(req: NextRequest) {
         .eq("agent_id", id)
         .eq("status", "active");
     }
+
+    await logPlatformAuditEvent({
+      ...auditBase,
+      actionType: paused ? "agent_paused" : "agent_resumed",
+      entityType: "agent_pause_control",
+      entityId: String(id),
+      resultStatus: "success",
+      severity: paused ? "medium" : "info",
+      message: `Agent automation ${paused ? "paused" : "resumed"}.`,
+      metadata: { reason: reason ?? null, active_enrollments_stopped: Boolean(paused) },
+    });
 
     return NextResponse.json({ ok: true, scope: "agent", id, paused });
   }

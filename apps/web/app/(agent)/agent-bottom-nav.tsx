@@ -11,7 +11,7 @@ const NAV = [
 ];
 
 export default function AgentBottomNav() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   return (
     <nav className="fixed bottom-0 left-0 right-0 w-full bg-gray-900 border-t border-gray-800 z-50 safe-area-pb">
       <div className="grid grid-cols-5 h-16 max-w-lg mx-auto">

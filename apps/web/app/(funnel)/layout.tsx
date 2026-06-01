@@ -25,10 +25,10 @@ export default function FunnelLayout({
               <svg className="h-3.5 w-3.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
               </svg>
-              Secure checkout
+              Protected checkout
             </span>
             <span className="hidden sm:block">·</span>
-            <span className="hidden sm:block">No contracts, cancel anytime</span>
+            <span className="hidden sm:block">Review before payment</span>
           </div>
         </div>
       </header>

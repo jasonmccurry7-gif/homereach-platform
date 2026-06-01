@@ -4,7 +4,7 @@ import { CommandPanel, PublicHero } from "../_components/PublicCommand";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Campaign Strategy Simulator - HomeReach Political",
+  title: "PoliticalReach Campaign Strategy Simulator - HomeReach",
   description: "Compare campaign mail strategies, coverage, drops, timeline, and pricing.",
 };
 

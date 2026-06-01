@@ -3,6 +3,8 @@ import { OperationsCopilotShell } from "@/components/operations-copilot/operatio
 import { getOperationsCopilotSessionUser } from "@/lib/operations-copilot/auth";
 import { isOperationsCopilotEnabled } from "@/lib/operations-copilot/feature-flag";
 
+export const dynamic = "force-dynamic";
+
 export default async function OperationsCopilotLayout({
   children,
 }: {

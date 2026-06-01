@@ -26,6 +26,15 @@ type SenderAudit = {
     smsDailyLimit: number | null;
     rampDay: number | null;
   };
+  postmarkSignature: {
+    found: boolean;
+    confirmed: boolean | null;
+    name: string | null;
+    replyTo: string | null;
+    dkimVerified: boolean | null;
+    returnPathDomainVerified: boolean | null;
+    error: string | null;
+  } | null;
   senderHealth: Record<string, unknown> | null;
   recentEvents: Record<string, unknown>[];
   verificationStatus: "ready" | "blocked" | "needs_postmark_confirmation" | "not_configured";
@@ -57,6 +66,7 @@ type EmailInfrastructureAudit = {
       hasSpf: boolean;
       includesPostmark: boolean;
       includesWorkspaceProvider: boolean;
+      recommendedMergedValue: string;
     };
     dmarc: {
       status: string;
@@ -69,6 +79,11 @@ type EmailInfrastructureAudit = {
       values: string[];
       pointsToPostmark: boolean;
     };
+    returnPathTxt: {
+      status: string;
+      values: string[];
+      conflictsWithCname: boolean;
+    };
     dkimCandidates: Array<{ name: string; status: string; values: string[]; error?: string }>;
     dkimLikelyConfigured: boolean;
   };
@@ -76,6 +91,20 @@ type EmailInfrastructureAudit = {
     status: string;
     httpStatus?: number;
     message: string;
+  };
+  postmarkSenderSignatures: {
+    status: string;
+    message: string;
+    signatures: Array<{
+      email: string;
+      found: boolean;
+      confirmed: boolean | null;
+      name: string | null;
+      replyTo: string | null;
+      dkimVerified: boolean | null;
+      returnPathDomainVerified: boolean | null;
+      error: string | null;
+    }>;
   };
   senderIdentities: SenderAudit[];
   webhook: {
@@ -134,6 +163,12 @@ const statusTone: Record<string, string> = {
   missing: "border-rose-200 bg-rose-50 text-rose-700",
   not_configured: "border-rose-200 bg-rose-50 text-rose-700",
   needs_postmark_confirmation: "border-amber-200 bg-amber-50 text-amber-700",
+  missing_token: "border-amber-200 bg-amber-50 text-amber-700",
+  partial: "border-amber-200 bg-amber-50 text-amber-700",
+  verified: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  email_first: "border-blue-200 bg-blue-50 text-blue-700",
+  mixed_ready: "border-amber-200 bg-amber-50 text-amber-700",
+  paused: "border-slate-200 bg-slate-50 text-slate-700",
   unknown: "border-amber-200 bg-amber-50 text-amber-700",
   error: "border-amber-200 bg-amber-50 text-amber-700",
 };
@@ -253,9 +288,9 @@ export function EmailInfrastructureClient({ initialAudit, defaultDestination }: 
           tone={audit.dns.dkimLikelyConfigured ? "green" : "amber"}
         />
         <MetricCard
-          label="Webhook"
-          value={audit.webhook.enabled ? "Enabled" : "Disabled"}
-          tone={audit.webhook.enabled ? "green" : "amber"}
+          label="Sender signatures"
+          value={audit.postmarkSenderSignatures.status === "verified" ? "Confirmed" : "Needs check"}
+          tone={audit.postmarkSenderSignatures.status === "verified" ? "green" : "amber"}
         />
       </section>
 
@@ -312,6 +347,7 @@ export function EmailInfrastructureClient({ initialAudit, defaultDestination }: 
                 <div className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-3">
                   <MiniFact label="DB identity" value={selected.databaseIdentity.exists ? "Found" : "Missing"} />
                   <MiniFact label="Active" value={selected.databaseIdentity.active ? "Yes" : "No"} />
+                  <MiniFact label="Postmark signature" value={selected.postmarkSignature?.confirmed ? "Confirmed" : "Needs check"} />
                   <MiniFact label="Daily cap" value={selected.databaseIdentity.emailDailyLimit ?? "n/a"} />
                 </div>
                 {selected.notes.length > 0 && (
@@ -379,9 +415,27 @@ export function EmailInfrastructureClient({ initialAudit, defaultDestination }: 
 
       <section className="grid gap-4 xl:grid-cols-3">
         <Panel title="DNS Authentication" icon={<ShieldCheck className="h-5 w-5" />}>
-          <DnsLine label="SPF" status={audit.dns.spf.includesPostmark ? "present" : "missing"} values={audit.dns.spf.values} />
+          <DnsLine
+            label="SPF"
+            status={audit.dns.spf.includesPostmark ? "present" : "missing"}
+            values={audit.dns.spf.values}
+            note={audit.dns.spf.includesPostmark ? "Root SPF includes Postmark." : `Merge to one SPF record: ${audit.dns.spf.recommendedMergedValue}`}
+          />
           <DnsLine label="DMARC" status={audit.dns.dmarc.hasDmarc ? "present" : "missing"} values={audit.dns.dmarc.values} note={`Policy: ${audit.dns.dmarc.policy ?? "n/a"}`} />
-          <DnsLine label="Return-Path" status={audit.dns.returnPath.pointsToPostmark ? "present" : audit.dns.returnPath.status} values={audit.dns.returnPath.values} />
+          <DnsLine
+            label="Return-Path CNAME"
+            status={audit.dns.returnPath.pointsToPostmark ? "present" : audit.dns.returnPath.status}
+            values={audit.dns.returnPath.values}
+            note="Postmark custom Return-Path should point to the Postmark mtasv.net target shown in the console."
+          />
+          {audit.dns.returnPathTxt.values.length > 0 && (
+            <DnsLine
+              label="Return-Path TXT conflict check"
+              status={audit.dns.returnPathTxt.conflictsWithCname ? "error" : "present"}
+              values={audit.dns.returnPathTxt.values}
+              note={audit.dns.returnPathTxt.conflictsWithCname ? "TXT records at this host can block the required CNAME." : "No CNAME conflict detected from this view."}
+            />
+          )}
           <div className="mt-4">
             <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">DKIM candidates</p>
             <div className="mt-2 space-y-2">
@@ -389,6 +443,30 @@ export function EmailInfrastructureClient({ initialAudit, defaultDestination }: 
                 <DnsLine key={record.name} label={record.name} status={record.status} values={record.values} compact />
               ))}
             </div>
+          </div>
+        </Panel>
+
+        <Panel title="Postmark Sender Signatures" icon={<CheckCircle2 className="h-5 w-5" />}>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <StatusPill status={audit.postmarkSenderSignatures.status} />
+            <p className="text-sm font-semibold leading-6 text-slate-700">{audit.postmarkSenderSignatures.message}</p>
+          </div>
+          <div className="space-y-2">
+            {audit.postmarkSenderSignatures.signatures.map((signature) => (
+              <div key={signature.email} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-black text-slate-950">{signature.email}</p>
+                  <StatusPill status={signature.confirmed ? "verified" : signature.found ? "needs_postmark_confirmation" : "missing"} />
+                </div>
+                <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                  <MiniFact label="Found" value={signature.found ? "Yes" : "No"} />
+                  <MiniFact label="Confirmed" value={signature.confirmed ? "Yes" : "No"} />
+                  <MiniFact label="DKIM" value={signature.dkimVerified === true ? "Verified" : signature.dkimVerified === false ? "Not verified" : "n/a"} />
+                  <MiniFact label="Return-path" value={signature.returnPathDomainVerified === true ? "Verified" : signature.returnPathDomainVerified === false ? "Not verified" : "n/a"} />
+                </div>
+                {signature.error && <p className="mt-2 text-xs font-semibold text-amber-700">{signature.error}</p>}
+              </div>
+            ))}
           </div>
         </Panel>
 

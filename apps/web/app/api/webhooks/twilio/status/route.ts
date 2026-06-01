@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { logPlatformAuditEvent } from "@/lib/audit/platform-audit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/webhooks/twilio/status
@@ -102,7 +103,7 @@ export async function POST(req: Request) {
     }
 
     // ── Insert into twilio_message_status (additive — never updates sends) ──
-    const supabase = await createClient();
+    const supabase = createServiceClient();
     const { error } = await supabase.from("twilio_message_status").insert({
       message_sid:           messageSid,
       message_status:        messageStatus,
@@ -121,6 +122,26 @@ export async function POST(req: Request) {
       // Log but still 200 — Twilio retries don't help on a DB issue.
       console.error("[twilio/status] insert failed:", error.message);
     }
+
+    await logPlatformAuditEvent({
+      actorType: "webhook",
+      actorLabel: "Twilio",
+      module: "communications",
+      actionType: "twilio_status_callback",
+      sourceTable: "twilio_message_status",
+      sourceId: messageSid,
+      channel: "sms",
+      provider: "twilio",
+      resultStatus: error ? "failure" : "success",
+      severity: error ? "high" : ["failed", "undelivered"].includes(messageStatus.toLowerCase()) ? "medium" : "info",
+      message: `Twilio status callback received: ${messageStatus}.`,
+      errorMessage: error?.message ?? params["ErrorMessage"] ?? null,
+      metadata: {
+        message_sid: messageSid,
+        message_status: messageStatus,
+        error_code: params["ErrorCode"] ?? null,
+      },
+    });
 
     return EMPTY_TWIML;
   } catch (err) {

@@ -12,6 +12,8 @@ out
 apps/web/.codex-next*/
 
 # Codex/local validation artifacts
+.codex/
+.codex-previews/
 _codex_runtime/
 _codex_checkpoints/
 .hotfix-tree/

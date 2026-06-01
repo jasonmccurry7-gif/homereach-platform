@@ -14,7 +14,7 @@ const NAV_ITEMS = [
 ];
 
 export function GrowthOsShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
 
   return (
     <div className="min-h-screen bg-gray-50">

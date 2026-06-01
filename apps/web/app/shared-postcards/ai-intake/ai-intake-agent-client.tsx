@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -18,6 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sharedPostcardEmotionCopy } from "@/lib/brand/emotional-positioning";
 import type {
   AiCartItemView,
   AiIntakeCategoryOption,
@@ -39,6 +41,7 @@ type DetailsForm = {
   contactName: string;
   phone: string;
   email: string;
+  smsConsent: boolean;
   websiteUrl: string;
   facebookUrl: string;
   logoUrl: string;
@@ -52,10 +55,10 @@ const placements: Array<{
   label: string;
   body: string;
 }> = [
-  { id: "front", label: "Front spot", body: "Premium visibility on the front side." },
-  { id: "back", label: "Back spot", body: "Efficient exposure on the back side." },
-  { id: "multiple", label: "Multiple spots", body: "Reserve more layout space in the same city." },
-  { id: "full_card_exclusivity", label: "Full-card exclusivity", body: "Hold the remaining card for one advertiser." },
+  { id: "front", label: "Front spot", body: "Premium visibility for the offer you want remembered first." },
+  { id: "back", label: "Back spot", body: "Efficient exposure that keeps local visibility affordable." },
+  { id: "multiple", label: "Multiple spots", body: "Reserve more room when one message is not enough." },
+  { id: "full_card_exclusivity", label: "Full-card exclusivity", body: "Hold the remaining card when category control matters most." },
 ];
 
 function money(cents: number) {
@@ -71,6 +74,7 @@ function initialDetails(): DetailsForm {
     contactName: "",
     phone: "",
     email: "",
+    smsConsent: false,
     websiteUrl: "",
     facebookUrl: "",
     logoUrl: "",
@@ -83,7 +87,7 @@ function initialDetails(): DetailsForm {
 export function AiIntakeAgentClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedSessionId = searchParams.get("sessionId") ?? undefined;
+  const requestedSessionId = searchParams?.get("sessionId") ?? undefined;
   const [agentState, setAgentState] = useState<AgentState | null>(null);
   const [selectedCityIds, setSelectedCityIds] = useState<string[]>([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -182,6 +186,7 @@ export function AiIntakeAgentClient() {
       contactName: session.contactName,
       phone: session.phone,
       email: session.email,
+      smsConsent: false,
       websiteUrl: session.websiteUrl,
       facebookUrl: session.facebookUrl,
       logoUrl: session.logoUrl,
@@ -214,6 +219,10 @@ export function AiIntakeAgentClient() {
 
   async function saveDetails() {
     if (!session) return;
+    if (!details.phone.trim() || !details.smsConsent) {
+      setError("Please enter a phone number and confirm SMS consent before saving details.");
+      return;
+    }
     await callAgent(
       {
         action: "save_details",
@@ -267,7 +276,7 @@ export function AiIntakeAgentClient() {
       <div className="flex min-h-[520px] items-center justify-center">
         <div className="flex items-center gap-3 rounded-lg border border-blue-100 bg-white px-5 py-4 text-sm font-semibold text-slate-700 shadow-sm">
           <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-          Starting intake agent
+          Preparing your shared visibility plan
         </div>
       </div>
     );
@@ -285,9 +294,12 @@ export function AiIntakeAgentClient() {
                 </span>
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-200">
-                    AI Intake Agent
+                    Shared Visibility Intake
                   </p>
-                  <h1 className="text-xl font-black">Shared postcard cart builder</h1>
+                  <h1 className="text-xl font-black">Build a protected local visibility plan</h1>
+                  <p className="mt-1 max-w-xl text-xs leading-5 text-blue-100/80">
+                    {sharedPostcardEmotionCopy.valueLine}
+                  </p>
                 </div>
               </div>
               <StatusPill status={session?.status ?? "starting"} />
@@ -310,7 +322,7 @@ export function AiIntakeAgentClient() {
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-black text-slate-950">1. Target cities</h2>
+            <h2 className="text-lg font-black text-slate-950">1. Where do you need to be remembered?</h2>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {options.cities.map((city) => {
@@ -331,7 +343,7 @@ export function AiIntakeAgentClient() {
                     {city.name}, {city.state}
                   </span>
                   <span className="mt-1 block text-xs font-semibold text-slate-500">
-                    {city.availableSpots} of 12 spots open
+                    {city.availableSpots} of 12 protected positions open
                     {city.foundingEligible ? " - Founding pricing" : ""}
                   </span>
                 </button>
@@ -343,7 +355,7 @@ export function AiIntakeAgentClient() {
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <Tags className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-black text-slate-950">2. Service categories</h2>
+            <h2 className="text-lg font-black text-slate-950">2. Protect your category</h2>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {options.categories.map((category) => {
@@ -362,7 +374,7 @@ export function AiIntakeAgentClient() {
                 >
                   <span className="block text-sm font-black">{category.name}</span>
                   <span className="mt-1 line-clamp-2 block text-xs text-slate-500">
-                    {category.description ?? "Category-exclusive shared postcard placement."}
+                    {category.description ?? "Category-exclusive visibility for one serious local business."}
                   </span>
                 </button>
               );
@@ -373,7 +385,7 @@ export function AiIntakeAgentClient() {
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-black text-slate-950">3. Placement</h2>
+            <h2 className="text-lg font-black text-slate-950">3. Choose your visibility level</h2>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {placements.map((placement) => {
@@ -427,7 +439,7 @@ export function AiIntakeAgentClient() {
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-blue-700 disabled:opacity-60"
             >
               {busyAction === "add_item" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Add selections to cart
+              Add this visibility plan
             </button>
             <QuickButton onClick={() => setSelectedCityIds([])}>Add another city</QuickButton>
             <QuickButton onClick={() => setSelectedCategoryIds([])}>Add another category</QuickButton>
@@ -440,13 +452,24 @@ export function AiIntakeAgentClient() {
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-black text-slate-950">4. Business details</h2>
+            <h2 className="text-lg font-black text-slate-950">4. Make the offer feel clear</h2>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <TextField label="Business name" value={details.businessName} onChange={(v) => setDetails({ ...details, businessName: v })} />
             <TextField label="Contact name" value={details.contactName} onChange={(v) => setDetails({ ...details, contactName: v })} />
             <TextField label="Phone" value={details.phone} onChange={(v) => setDetails({ ...details, phone: v })} />
             <TextField label="Email" value={details.email} onChange={(v) => setDetails({ ...details, email: v })} />
+            <label className="md:col-span-2 flex gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold leading-5 text-slate-600">
+              <input
+                type="checkbox"
+                checked={details.smsConsent}
+                onChange={(event) => setDetails({ ...details, smsConsent: event.target.checked })}
+                className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+              />
+              <span>
+                I agree HomeReach may text me about this request, including campaign information, quote follow-up, appointment coordination, proposal/order updates, and support replies. Message frequency varies. Msg and data rates may apply. Reply HELP for help or STOP to opt out. SMS consent is not required as a condition of purchase. Mobile opt-in data will not be shared with third parties or affiliates for marketing or promotional purposes. See <Link href="/terms" className="text-blue-700 underline">Terms</Link> and <Link href="/privacy" className="text-blue-700 underline">Privacy Policy</Link>.
+              </span>
+            </label>
             <TextField label="Website" value={details.websiteUrl} onChange={(v) => setDetails({ ...details, websiteUrl: v })} />
             <TextField label="Facebook page" value={details.facebookUrl} onChange={(v) => setDetails({ ...details, facebookUrl: v })} />
             <TextField label="Logo URL" value={details.logoUrl} onChange={(v) => setDetails({ ...details, logoUrl: v })} />
@@ -454,7 +477,7 @@ export function AiIntakeAgentClient() {
               Logo upload optional
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                accept="image/png,image/jpeg,image/webp"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   setDetails({ ...details, logoFileName: file?.name ?? "" });
@@ -480,7 +503,7 @@ export function AiIntakeAgentClient() {
               onChange={(event) => setDetails({ ...details, aiGenerateOffer: event.target.checked })}
               className="h-4 w-4"
             />
-            Let AI generate the offer/headline
+              Let AI shape this into a clearer local offer
           </label>
           <button
             type="button"
@@ -489,7 +512,7 @@ export function AiIntakeAgentClient() {
             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-60"
           >
             {busyAction === "save_details" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            Save details
+            Save my visibility details
           </button>
         </div>
       </section>

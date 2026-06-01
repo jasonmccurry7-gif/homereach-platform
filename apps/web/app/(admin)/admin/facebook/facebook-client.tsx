@@ -41,6 +41,39 @@ interface Opportunity {
 interface ExecutionData {
   date: string;
   agent_id: string;
+  setup?: {
+    callback_url: string;
+    alert_callback_url: string;
+    recommended_callback_url: string;
+    verify_token_configured: boolean;
+    app_secret_configured: boolean;
+    page_access_token_configured: boolean;
+    page_id_configured: boolean;
+    app_id_configured: boolean;
+    operating_mode: string;
+    counts: {
+      facebook_leads: number;
+      pending_drafts: number;
+      pending_alerts: number;
+    };
+    system_controls: {
+      all_paused: boolean;
+      facebook_paused: boolean;
+      manual_approval_mode: boolean;
+      outreach_test_mode: boolean;
+    };
+    automation_modes: {
+      inbound_capture: boolean;
+      draft_generation: boolean;
+      auto_reply_enabled: boolean;
+      comment_reply_enabled: boolean;
+      comment_dm_enabled: boolean;
+      followup_auto_send_enabled: boolean;
+    };
+    subscriptions_needed: string[];
+    permissions_needed: string[];
+  };
+  inbox?: FacebookInboxLead[];
   execution: {
     needsComment:    Opportunity[];
     needsDm:         Opportunity[];
@@ -59,6 +92,34 @@ interface ExecutionData {
   };
 }
 
+interface FacebookMessage {
+  id: string;
+  direction: string;
+  message: string;
+  agent: string | null;
+  sent_at: string;
+  delivery_status?: string | null;
+  approval_status?: string | null;
+  requires_approval?: boolean | null;
+  error_detail?: string | null;
+}
+
+interface FacebookInboxLead {
+  id: string;
+  fb_name: string | null;
+  business_name: string | null;
+  lead_status: string;
+  intent_level: number;
+  city: string | null;
+  category: string | null;
+  current_agent: string;
+  conversation_stage: string;
+  last_message_at: string | null;
+  messages_sent: number;
+  messages_received: number;
+  facebook_messages?: FacebookMessage[];
+}
+
 const STAGE_LABELS: Record<string, string> = {
   post_discovered: "Discovered", post_qualified: "Qualified",
   businesses_extracted: "Extracted", replies_generated: "Reply Ready",
@@ -68,8 +129,6 @@ const STAGE_LABELS: Record<string, string> = {
   close_attempt: "Closing", closed_won: "🏆 WON", closed_lost: "Lost",
   follow_up: "Follow-Up",
 };
-
-const DM_STAGE_LABELS = ["", "Warm Opener", "Diagnose Marketing", "Position HomeReach", "Scarcity + Close", "Final Close"];
 
 // Objection handlers
 const OBJECTION_RESPONSES: Record<string, string> = {
@@ -136,6 +195,53 @@ export default function FacebookExecutionClient({ agentId }: { agentId: string }
       load();
     } else {
       showFlash("Failed to add opportunity", false);
+    }
+  };
+
+  const sendDraft = async (draftId: string) => {
+    const res = await fetch("/api/admin/facebook", {
+      method:  "PUT",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ action: "send_draft", draft_message_id: draftId }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showFlash("Facebook draft sent");
+      load();
+    } else {
+      showFlash(payload.error ?? "Facebook send failed", false);
+    }
+  };
+
+  const approveDraft = async (draftId: string) => {
+    const res = await fetch("/api/admin/facebook", {
+      method:  "PUT",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ action: "approve_draft", draft_message_id: draftId }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showFlash("Facebook draft approved. Send is now unlocked.");
+      load();
+    } else {
+      showFlash(payload.error ?? "Facebook approval failed", false);
+    }
+  };
+
+  const rejectDraft = async (draftId: string) => {
+    const reason = window.prompt("Why reject this draft?", "Needs revision before sending.");
+    if (reason === null) return;
+    const res = await fetch("/api/admin/facebook", {
+      method:  "PUT",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ action: "reject_draft", draft_message_id: draftId, reason }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showFlash("Facebook draft rejected.");
+      load();
+    } else {
+      showFlash(payload.error ?? "Facebook rejection failed", false);
     }
   };
 
@@ -230,6 +336,83 @@ export default function FacebookExecutionClient({ agentId }: { agentId: string }
             </button>
           ))}
         </div>
+
+        {data?.setup && (
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_1fr]">
+            <div className="rounded-2xl border border-blue-500/20 bg-blue-950/20 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-300">Facebook Automation Setup</p>
+                  <h2 className="mt-1 text-lg font-bold text-white">
+                    {data.setup.operating_mode === "draft_and_approval" ? "Drafts are live. Auto-send is off." : "Auto-send flags are enabled."}
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                    Inbound Messenger events are captured, replies are drafted for review, and one-to-one sends require an operator click unless explicit auto-send flags are enabled.
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  data.setup.operating_mode === "draft_and_approval"
+                    ? "bg-amber-400/10 text-amber-200 ring-1 ring-amber-300/30"
+                    : "bg-emerald-400/10 text-emerald-200 ring-1 ring-emerald-300/30"
+                }`}>
+                  {data.setup.operating_mode === "draft_and_approval" ? "Approval mode" : "Live auto mode"}
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {[
+                  ["App secret", data.setup.app_secret_configured],
+                  ["Verify token", data.setup.verify_token_configured],
+                  ["Page token", data.setup.page_access_token_configured],
+                  ["Page ID", data.setup.page_id_configured],
+                ].map(([label, ok]) => (
+                  <div key={String(label)} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                    <span className="text-xs text-slate-300">{label}</span>
+                    <span className={`text-xs font-bold ${ok ? "text-emerald-300" : "text-red-300"}`}>{ok ? "Set" : "Missing"}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Use this Meta callback URL</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-black/40 px-3 py-2 text-xs text-blue-100">{data.setup.recommended_callback_url}</code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(data.setup?.recommended_callback_url ?? ""); showFlash("Callback URL copied"); }}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
+                  >
+                    Copy URL
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Readiness</p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-slate-950/60 p-3">
+                  <p className="text-2xl font-black text-white">{data.setup.counts.facebook_leads}</p>
+                  <p className="text-[10px] text-slate-400">FB leads</p>
+                </div>
+                <div className="rounded-xl bg-slate-950/60 p-3">
+                  <p className="text-2xl font-black text-amber-200">{data.setup.counts.pending_drafts}</p>
+                  <p className="text-[10px] text-slate-400">Drafts</p>
+                </div>
+                <div className="rounded-xl bg-slate-950/60 p-3">
+                  <p className="text-2xl font-black text-blue-200">{data.setup.counts.pending_alerts}</p>
+                  <p className="text-[10px] text-slate-400">Alerts</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2 text-xs text-slate-300">
+                <p>Subscriptions: {data.setup.subscriptions_needed.join(", ")}</p>
+                <p>Permissions: {data.setup.permissions_needed.join(", ")}</p>
+                {(data.setup.system_controls.all_paused || data.setup.system_controls.facebook_paused || data.setup.system_controls.outreach_test_mode) && (
+                  <p className="rounded-lg bg-red-500/10 p-2 font-bold text-red-200">Facebook sends are blocked by system controls.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Objection handler panel */}
@@ -240,7 +423,7 @@ export default function FacebookExecutionClient({ agentId }: { agentId: string }
             <div className="space-y-3">
               {Object.entries(OBJECTION_RESPONSES).map(([trigger, response]) => (
                 <div key={trigger} className="rounded-xl border border-gray-700 p-3">
-                  <p className="text-xs font-bold text-red-400 mb-1">They say: "{trigger}"</p>
+                  <p className="text-xs font-bold text-red-400 mb-1">They say: &quot;{trigger}&quot;</p>
                   <p className="text-sm text-gray-300 whitespace-pre-wrap">{response}</p>
                   <button
                     onClick={() => { navigator.clipboard.writeText(response); showFlash("Copied!"); }}
@@ -262,18 +445,18 @@ export default function FacebookExecutionClient({ agentId }: { agentId: string }
             <p className="text-xs text-gray-400 mb-4">Paste post details → system generates reply + DM scripts automatically</p>
             <div className="space-y-3">
               {[
-                { key: "group_name", label: "Facebook Group Name", placeholder: "e.g. Wooster Ohio Community Board" },
-                { key: "post_url",   label: "Post URL (optional)", placeholder: "https://facebook.com/..." },
-                { key: "business_name", label: "Business Name", placeholder: "e.g. Smith Plumbing LLC" },
-                { key: "commenter_name", label: "Person's Name", placeholder: "e.g. John Smith" },
-                { key: "profile_link", label: "Facebook Profile Link (optional)", placeholder: "https://facebook.com/..." },
+                { key: "group_name" as const, label: "Facebook Group Name", placeholder: "e.g. Wooster Ohio Community Board" },
+                { key: "post_url" as const, label: "Post URL (optional)", placeholder: "https://facebook.com/..." },
+                { key: "business_name" as const, label: "Business Name", placeholder: "e.g. Smith Plumbing LLC" },
+                { key: "commenter_name" as const, label: "Person's Name", placeholder: "e.g. John Smith" },
+                { key: "profile_link" as const, label: "Facebook Profile Link (optional)", placeholder: "https://facebook.com/..." },
               ].map(field => (
                 <div key={field.key}>
                   <label className="block text-xs font-medium text-gray-400 mb-1">{field.label}</label>
                   <input
                     type="text"
                     placeholder={field.placeholder}
-                    value={(form as any)[field.key]}
+                    value={form[field.key]}
                     onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
                     className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500"
                   />
@@ -326,11 +509,19 @@ export default function FacebookExecutionClient({ agentId }: { agentId: string }
 
       {/* Main content */}
       <div className="p-6 max-w-4xl mx-auto">
+        <FacebookInboxPanel
+          leads={data?.inbox ?? []}
+          onCopy={(text, label) => { navigator.clipboard.writeText(text); showFlash(`${label} copied`); }}
+          onSendDraft={sendDraft}
+          onApproveDraft={approveDraft}
+          onRejectDraft={rejectDraft}
+        />
+
         {activeItems.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-4xl mb-4">📭</p>
             <p className="text-gray-400 text-lg font-medium">Nothing here yet</p>
-            <p className="text-gray-600 text-sm mt-2">Click "+ Add Post" to paste a Facebook post and generate your scripts</p>
+            <p className="text-gray-600 text-sm mt-2">Click &quot;+ Add Post&quot; to paste a Facebook post and generate your scripts</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -353,6 +544,131 @@ export default function FacebookExecutionClient({ agentId }: { agentId: string }
 }
 
 // ─── Opportunity Card ─────────────────────────────────────────────────────────
+
+function FacebookInboxPanel({
+  leads,
+  onCopy,
+  onSendDraft,
+  onApproveDraft,
+  onRejectDraft,
+}: {
+  leads: FacebookInboxLead[];
+  onCopy: (text: string, label: string) => void;
+  onSendDraft: (draftId: string) => void;
+  onApproveDraft: (draftId: string) => void;
+  onRejectDraft: (draftId: string) => void;
+}) {
+  const activeLeads = leads
+    .map((lead) => {
+      const messages = [...(lead.facebook_messages ?? [])].sort(
+        (a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime(),
+      );
+      return {
+        lead,
+        latestInbound: messages.find((msg) => msg.direction === "inbound"),
+        pendingDraft: messages.find((msg) => msg.delivery_status === "draft" && msg.approval_status === "pending"),
+        approvedDraft: messages.find((msg) => msg.delivery_status === "draft" && msg.approval_status === "approved"),
+      };
+    })
+    .filter((item) => item.latestInbound || item.pendingDraft || item.approvedDraft)
+    .slice(0, 6);
+
+  if (!activeLeads.length) return null;
+
+  return (
+    <section className="mb-6 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-300">Unified Facebook Inbox</p>
+          <h2 className="mt-1 text-lg font-black text-white">Review replies and send approved drafts</h2>
+          <p className="mt-1 text-sm text-slate-400">Automation prepares the response. You keep control of what gets sent.</p>
+        </div>
+        <span className="rounded-full bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-200 ring-1 ring-amber-300/30">
+          Human approval
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {activeLeads.map(({ lead, latestInbound, pendingDraft, approvedDraft }) => (
+          <div key={lead.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-bold text-white">{lead.business_name || lead.fb_name || "Facebook lead"}</p>
+                <p className="text-xs text-slate-400">
+                  {[lead.category, lead.city, lead.lead_status, lead.current_agent].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+              <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                approvedDraft
+                  ? "bg-emerald-400/10 text-emerald-200"
+                  : pendingDraft
+                    ? "bg-amber-400/10 text-amber-200"
+                    : "bg-blue-400/10 text-blue-200"
+              }`}>
+                {approvedDraft ? "Approved draft" : pendingDraft ? "Needs approval" : "Reply captured"}
+              </span>
+            </div>
+
+            {latestInbound && (
+              <div className="mt-3 rounded-lg bg-slate-950/60 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Latest inbound</p>
+                <p className="mt-1 text-sm text-slate-200">{latestInbound.message}</p>
+              </div>
+            )}
+
+            {pendingDraft && (
+              <div className="mt-3 rounded-lg border border-amber-300/20 bg-amber-400/10 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-amber-200">AI draft for approval</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-white">{pendingDraft.message}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => onCopy(pendingDraft.message, "Draft")}
+                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-white/10"
+                  >
+                    Copy draft
+                  </button>
+                  <button
+                    onClick={() => onApproveDraft(pendingDraft.id)}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                  >
+                    Approve draft
+                  </button>
+                  <button
+                    onClick={() => onRejectDraft(pendingDraft.id)}
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {approvedDraft && (
+              <div className="mt-3 rounded-lg border border-emerald-300/20 bg-emerald-400/10 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-200">Approved draft ready to send</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-white">{approvedDraft.message}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => onCopy(approvedDraft.message, "Approved draft")}
+                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-white/10"
+                  >
+                    Copy approved draft
+                  </button>
+                  <button
+                    onClick={() => onSendDraft(approvedDraft.id)}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                  >
+                    Send one DM
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function OpportunityCard({
   opp, expanded, onToggle, onAction, onShowFlash, onObjection

@@ -1,47 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/system/agents/kaizen
 // Kaizen = system-wide continuous improvement engine
-// Runs daily: analyze metrics, identify improvements, auto-apply safe fixes
+// Runs daily: analyze metrics, identify improvements, and flag changes for approval
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
+    const guard = await requireAdminOrCron(req);
+    if (!guard.ok) return guard.response;
+
+    const supabase = createServiceClient();
     const now = new Date().toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    // ─── STEP 1: Create kaizen_insights table if not exists ────────────────────
-    await supabase.rpc("exec", {
-      sql: `
-        CREATE TABLE IF NOT EXISTS kaizen_insights (
-          id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-          run_at TIMESTAMPTZ DEFAULT NOW(),
-          cycle_date DATE DEFAULT CURRENT_DATE,
-          findings JSONB NOT NULL DEFAULT '{}',
-          auto_fixes_applied INTEGER DEFAULT 0,
-          flagged_for_approval JSONB DEFAULT '[]',
-          email_sent BOOLEAN DEFAULT FALSE,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `,
-    });
-
-    // Ensure table exists by checking
-    const { error: tableCheckError } = await supabase
-      .from("kaizen_insights" as never)
-      .select("id", { count: "exact", head: true })
-      .limit(1);
-
-    if (tableCheckError) {
-      // Try direct SQL insert which will auto-create or verify table exists
-      console.log("[kaizen] Creating kaizen_insights table...");
-    }
-
+    // STEP 1: Prepare findings snapshot.
     const findings: any = {
       analyzed_at: now,
       template_analysis: null,
@@ -235,16 +213,12 @@ export async function POST(req: NextRequest) {
         sample: deadLeads.slice(0, 5),
       };
 
-      // Auto-fix: re-queue dead leads
-      const deadLeadIds = deadLeads.map((l) => l.id);
-      const { error: requeueError } = await supabase
-        .from("sales_leads")
-        .update({ status: "queued", last_contacted_at: null })
-        .in("id", deadLeadIds);
-
-      if (!requeueError) {
-        autoFixesApplied += deadLeads.length;
-      }
+      flaggedForApproval.push({
+        type: "dead_leads_review",
+        reason: "Leads have been contacted but not followed up within 7 days",
+        count: deadLeads.length,
+        recommended_action: "Review and approve requeueing before any lead status changes are made",
+      });
     }
 
     // ─── STEP 6: Check system health ─────────────────────────────────────────────

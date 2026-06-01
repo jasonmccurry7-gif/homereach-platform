@@ -5,7 +5,7 @@ import { PublicHero } from "../_components/PublicCommand";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Political Mail Timeline Calculator - HomeReach Political",
+  title: "PoliticalReach Mail Timeline Calculator - HomeReach",
   description:
     "Calculate a five-phase political postcard drop schedule by office, election date, early vote window, and production deadline.",
 };

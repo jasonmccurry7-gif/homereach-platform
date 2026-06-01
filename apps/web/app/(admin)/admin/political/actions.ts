@@ -30,6 +30,9 @@ export async function rescoreCandidatesAction(): Promise<RescoreResult> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user || user.app_metadata?.user_role !== "admin") {
+    return { ok: false, error: "Admin access is required to rescore political candidates." };
+  }
   const userId = user?.id ?? null;
 
   try {

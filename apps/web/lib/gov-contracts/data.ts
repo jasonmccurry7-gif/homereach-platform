@@ -9,7 +9,7 @@ import type {
   GovContractAuditEventInput,
 } from "./types";
 
-type AnyRow = Record<string, any>;
+type AnyRow = Record<string, unknown>;
 
 function hasSupabaseServiceEnv() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -28,34 +28,47 @@ function isoOrNull(value: unknown) {
   return String(value);
 }
 
+function rowObject(value: unknown): AnyRow {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRow) : {};
+}
+
+function stringOrNull(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function stringOr(value: unknown, fallback: string) {
+  return stringOrNull(value) ?? fallback;
+}
+
 function locationFromRow(row: AnyRow) {
-  const place = (row.place_of_performance ?? {}) as Record<string, any>;
+  const place = rowObject(row.place_of_performance);
+  const city = stringOrNull(place.city);
+  const state = stringOrNull(place.state);
+  const zip = stringOrNull(place.zip);
   return {
-    city: place.city ?? null,
-    state: place.state ?? null,
-    zip: place.zip ?? null,
-    country: place.country ?? "USA",
-    label:
-      place.label ??
-      [place.city, place.state, place.zip].filter(Boolean).join(", ") ??
-      "Place of performance not listed",
+    city,
+    state,
+    zip,
+    country: stringOr(place.country, "USA"),
+    label: stringOrNull(place.label) ?? ([city, state, zip].filter(Boolean).join(", ") || "Place of performance not listed"),
   };
 }
 
 export function normalizeGovContractRow(row: AnyRow): GovContractOpportunity {
   const location = locationFromRow(row);
+  const aiSummary = rowObject(row.ai_summary);
   const summary =
-    row.ai_summary?.plain_english ??
-    row.ai_summary?.summary ??
+    stringOrNull(aiSummary.plain_english) ??
+    stringOrNull(aiSummary.summary) ??
     "Review official solicitation details, attachments, deadlines, and compliance requirements before any pursuit decision.";
 
   const scored = scoreGovContractOpportunity({
-    title: row.title ?? "Untitled opportunity",
-    agency: row.agency,
-    noticeType: row.notice_type,
-    naicsCode: row.naics_code,
-    pscCode: row.psc_code,
-    setAsideDescription: row.set_aside_description,
+    title: stringOr(row.title, "Untitled opportunity"),
+    agency: stringOrNull(row.agency),
+    noticeType: stringOrNull(row.notice_type),
+    naicsCode: stringOrNull(row.naics_code),
+    pscCode: stringOrNull(row.psc_code),
+    setAsideDescription: stringOrNull(row.set_aside_description),
     dueDate: isoOrNull(row.response_deadline),
     estimatedValueCents: moneyCents(row.estimated_value_cents),
     locationState: location.state,
@@ -66,40 +79,52 @@ export function normalizeGovContractRow(row: AnyRow): GovContractOpportunity {
     id: String(row.id),
     sourceSystem: row.source_system === "sam.gov" ? "sam.gov" : "manual",
     sourceId: String(row.source_id ?? row.id),
-    sourceUrl: row.source_url ?? null,
-    title: row.title ?? "Untitled opportunity",
-    agency: row.agency ?? "Agency not listed",
-    department: row.department ?? null,
-    office: row.office ?? null,
-    solicitationNumber: row.solicitation_number ?? null,
-    noticeType: row.notice_type ?? "Notice",
-    baseNoticeType: row.base_notice_type ?? null,
+    sourceUrl: stringOrNull(row.source_url),
+    title: stringOr(row.title, "Untitled opportunity"),
+    agency: stringOr(row.agency, "Agency not listed"),
+    department: stringOrNull(row.department),
+    office: stringOrNull(row.office),
+    solicitationNumber: stringOrNull(row.solicitation_number),
+    noticeType: stringOr(row.notice_type, "Notice"),
+    baseNoticeType: stringOrNull(row.base_notice_type),
+    contractType: stringOrNull(row.contract_type),
+    responseMethod: stringOrNull(row.response_method),
+    incumbentVendor: stringOrNull(row.incumbent_vendor),
     postedDate: isoOrNull(row.posted_date),
     dueDate: isoOrNull(row.response_deadline),
     questionsDeadline: isoOrNull(row.questions_deadline),
     siteVisitAt: isoOrNull(row.site_visit_at),
-    naicsCode: row.naics_code ?? null,
-    pscCode: row.psc_code ?? null,
-    setAsideCode: row.set_aside_code ?? null,
-    setAsideDescription: row.set_aside_description ?? null,
+    naicsCode: stringOrNull(row.naics_code),
+    pscCode: stringOrNull(row.psc_code),
+    setAsideCode: stringOrNull(row.set_aside_code),
+    setAsideDescription: stringOrNull(row.set_aside_description),
     estimatedValueCents: moneyCents(row.estimated_value_cents),
     awardAmountCents: moneyCents(row.award_amount_cents),
     location,
     pipelineStatus: (row.pipeline_status ?? "new") as GovContractPipelineStatus,
-    fitStatus: row.fit_status ?? scored.fitStatus,
+    fitStatus: (stringOrNull(row.fit_status) ?? scored.fitStatus) as GovContractOpportunity["fitStatus"],
     fitScore: Number(row.fit_score ?? scored.fitScore),
     riskScore: Number(row.risk_score ?? scored.riskScore),
     urgencyScore: Number(row.urgency_score ?? scored.urgencyScore),
     urgency: scored.urgency,
-    scoreBreakdown: row.score_breakdown ?? scored.scoreBreakdown,
-    recommendedNextAction: row.recommended_next_action ?? "",
-    scoringReason: row.scoring_reason ?? scored.scoringReason,
+    scoreBreakdown: Object.keys(rowObject(row.score_breakdown)).length
+      ? (rowObject(row.score_breakdown) as unknown as GovContractOpportunity["scoreBreakdown"])
+      : scored.scoreBreakdown,
+    recommendedNextAction: stringOr(row.recommended_next_action, ""),
+    scoringReason: stringOr(row.scoring_reason, scored.scoringReason),
     summary,
-    complianceNotes: row.ai_summary?.compliance_notes ?? [
+    complianceNotes: Array.isArray(aiSummary.compliance_notes) ? aiSummary.compliance_notes.map(String) : [
       "AI score is advisory only.",
       "Human approval is required before pricing, certification claims, subcontractor commitments, or bid submission.",
     ],
-    attachments: Array.isArray(row.attachments) ? row.attachments : [],
+    attachments: Array.isArray(row.attachments) ? (row.attachments as GovContractOpportunity["attachments"]) : [],
+    requiredDocuments: Array.isArray(row.required_documents)
+      ? row.required_documents.map((item: unknown) => String(item))
+      : [],
+    submissionInstructions:
+      row.submission_instructions && typeof row.submission_instructions === "object"
+        ? (row.submission_instructions as Record<string, unknown>)
+        : {},
     amendmentCount: Array.isArray(row.amendments) ? row.amendments.length : 0,
     missingItems: scored.missingItems,
     lastSyncedAt: isoOrNull(row.last_synced_at),
@@ -131,17 +156,38 @@ function applyFilters(opportunities: GovContractOpportunity[], filters: GovContr
 }
 
 function buildSummary(opportunities: GovContractOpportunity[]): GovContractDashboardData["summary"] {
+  const estimatedPipelineValueCents = opportunities.reduce((sum, o) => sum + (o.estimatedValueCents ?? 0), 0);
   return {
     newOpportunities: opportunities.filter((o) => o.pipelineStatus === "new").length,
     strongFit: opportunities.filter((o) => o.fitStatus === "strong_fit").length,
     deadlinesThisWeek: opportunities.filter((o) => o.urgency === "high" || o.urgency === "critical").length,
-    bidsInProgress: opportunities.filter((o) => ["reviewing", "strong_fit", "need_subcontractor", "bid_prep", "awaiting_approval"].includes(o.pipelineStatus)).length,
-    submittedBids: opportunities.filter((o) => o.pipelineStatus === "submitted").length,
+    bidsInProgress: opportunities.filter((o) => [
+      "reviewing",
+      "qualifying",
+      "strong_fit",
+      "need_subcontractor",
+      "bid_prep",
+      "waiting_on_documents",
+      "waiting_on_subcontractor_quote",
+      "pricing_review",
+      "compliance_review",
+      "awaiting_approval",
+      "ready_for_approval",
+      "ready_to_submit",
+    ].includes(o.pipelineStatus)).length,
+    submittedBids: opportunities.filter((o) => ["submitted", "under_evaluation"].includes(o.pipelineStatus)).length,
     awardedBids: opportunities.filter((o) => o.pipelineStatus === "awarded").length,
-    estimatedPipelineValueCents: opportunities.reduce((sum, o) => sum + (o.estimatedValueCents ?? 0), 0),
+    estimatedPipelineValueCents,
     pendingApprovals: opportunities.filter((o) => o.pipelineStatus === "awaiting_approval").length,
     missingDocuments: opportunities.reduce((sum, o) => sum + o.missingItems.length, 0),
     requiredActionsToday: opportunities.filter((o) => o.urgency === "critical" || o.pipelineStatus === "awaiting_approval").length,
+    expectedProfitCents: Math.round(estimatedPipelineValueCents * 0.18),
+    complianceRisks: opportunities.filter((o) => o.riskScore >= 65 || o.missingItems.length >= 3).length,
+    cashFlowExposureCents: opportunities.reduce((sum, o) => {
+      const value = o.estimatedValueCents ?? 0;
+      return sum + Math.round(value * (o.scoreBreakdown.subcontractability >= 68 ? 0.42 : 0.24));
+    }, 0),
+    activeSubcontractorNeeds: opportunities.filter((o) => o.scoreBreakdown.subcontractability >= 68 || o.pipelineStatus === "need_subcontractor").length,
   };
 }
 

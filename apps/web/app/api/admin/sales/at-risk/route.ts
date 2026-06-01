@@ -57,7 +57,7 @@ export async function GET(req: Request) {
         risk_label:      "Interested — No Follow-Up",
         stale_since:     lead.last_contacted_at,
         recovery_action: lead.phone ? "call" : "send_text",
-        recovery_message: `Hey ${lead.business_name.split(" ")[0] ?? "there"} — just circling back. That spot in ${lead.city ?? "your area"} is still open. Did you want to move forward?`,
+        recovery_message: `Hi ${lead.business_name.split(" ")[0] ?? "there"} - quick follow-up on the ${lead.city ?? "your area"} visibility option. Want me to send the simple next step before I close the loop?`,
         estimated_value: "$200–$900/mo",
         days_stale:      days,
       });
@@ -86,7 +86,7 @@ export async function GET(req: Request) {
         risk_label:      "They Replied — You Didn't",
         stale_since:     lead.last_reply_at ?? "",
         recovery_action: "respond",
-        recovery_message: `Hey! Sorry for the slow reply — still have that spot in ${lead.city ?? "your area"} open. Want to lock it in?`,
+        recovery_message: `Hi - sorry for the slow reply. I can still help with the ${lead.city ?? "your area"} visibility option if it is useful. Want the simple next step?`,
         estimated_value: "$200–$900/mo",
         days_stale:      days,
       });
@@ -115,7 +115,7 @@ export async function GET(req: Request) {
         risk_label:      "Payment Link Sent — Not Paid",
         stale_since:     lead.last_contacted_at,
         recovery_action: "call",
-        recovery_message: `Hey — wanted to make sure you got the link okay. The ${lead.city ?? ""} spot is still being held for you. Did you run into any issues?`,
+        recovery_message: `Hi - wanted to make sure the payment link worked and nothing got in the way. Do you want me to resend the simple checkout link for ${lead.city ?? "your area"}?`,
         estimated_value: "$200–$900/mo (CONFIRMED CLOSE)",
         days_stale:      days,
       });
@@ -144,7 +144,7 @@ export async function GET(req: Request) {
         risk_label:      `Contacted ${days} Days Ago — No Movement`,
         stale_since:     lead.last_contacted_at,
         recovery_action: lead.phone ? "call" : "send_text",
-        recovery_message: `Hey — circling back on the homeowner mailer in ${lead.city ?? "your area"}. That ${lead.category?.toLowerCase() ?? "business"} spot is still open. Still interested?`,
+        recovery_message: `Hi - checking back on the ${lead.category?.toLowerCase() ?? "business"} visibility option in ${lead.city ?? "your area"}. Should I send the simple breakdown or close the loop?`,
         estimated_value: "$200–$900/mo",
         days_stale:      days,
       });
@@ -168,7 +168,7 @@ export async function GET(req: Request) {
       total_at_risk:   totalAtRisk,
       estimated_value_cents: estimatedValue * 100,
       message:         totalAtRisk > 0
-        ? `$${(estimatedValue / 100 * totalAtRisk).toLocaleString()} sitting in stalled deals — recover them now`
+        ? `$${(estimatedValue / 100 * totalAtRisk).toLocaleString()} in stalled local visibility opportunities - clear the next action today`
         : null,
     });
 

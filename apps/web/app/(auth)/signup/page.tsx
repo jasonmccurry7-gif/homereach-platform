@@ -5,6 +5,7 @@ import { SignupForm } from "./signup-form";
 export const metadata: Metadata = {
   title: "Create Account",
 };
+export const dynamic = "force-dynamic";
 
 interface SignupPageProps {
   searchParams: Promise<{ redirect?: string }>;

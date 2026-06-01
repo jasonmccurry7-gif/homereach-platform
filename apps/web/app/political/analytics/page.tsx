@@ -5,7 +5,7 @@ import { loadPoliticalMailCommandCenter } from "@/lib/political/mail-command-cen
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Political Mail Command Center - HomeReach Political",
+  title: "PoliticalReach Mail Command Center - HomeReach",
   description:
     "Customer-safe campaign operations analytics for mail reach, route readiness, delivery windows, cost visibility, risk alerts, and safe engagement reporting.",
 };

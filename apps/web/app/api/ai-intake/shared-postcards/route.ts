@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isAiIntakeAgentEnabled } from "@/lib/ai-intake/env";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import {
   AI_INTAKE_TERM_MONTHS,
   addAiCartItems,
@@ -351,6 +352,13 @@ export async function POST(req: Request) {
   if (!isAiIntakeAgentEnabled()) return disabledResponse();
 
   try {
+    const limited = checkRateLimit(req, {
+      key: "shared-postcard-ai-intake",
+      limit: 40,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (limited) return limited;
+
     const body = BodySchema.parse(await req.json());
     const supa = createServiceClient();
 

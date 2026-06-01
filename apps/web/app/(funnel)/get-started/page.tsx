@@ -6,11 +6,11 @@ import { cn } from "@/lib/utils";
 import { SHARED_POSTCARD_TOTAL_SPOTS } from "@/lib/spots/shared-postcard";
 
 export const metadata: Metadata = {
-  title: "Choose Your City — Get Started",
+  title: "Choose Your City - Get Started",
   description: "Select your city to see available advertising spots in your neighborhood.",
 };
 
-// Revalidate every 60s — spots change but not constantly
+// Revalidate every 60s; spots change but not constantly.
 export const revalidate = 60;
 
 export default async function CitySelectionPage() {
@@ -71,12 +71,12 @@ export default async function CitySelectionPage() {
       <div className="mt-14 rounded-2xl border border-gray-100 bg-white p-6">
         <div className="grid gap-6 sm:grid-cols-3">
           {[
-            { icon: "📬", title: "2,500+ homes per mailer", body: "We target verified residential addresses in your neighborhood." },
-            { icon: "📍", title: "Hyper-local targeting", body: "Your ad stays in your zip code — no wasted spend." },
-            { icon: "📊", title: "Real-time tracking", body: "See exactly how many people responded to your campaign." },
+            { icon: "Mail", title: "2,500+ homes per mailer", body: "We target verified residential addresses in your neighborhood." },
+            { icon: "Local", title: "Neighborhood targeting", body: "Your ad stays focused on the local area you approve." },
+            { icon: "Report", title: "Simple reporting", body: "Track campaign status, known responses, and next steps where available." },
           ].map((item) => (
             <div key={item.title} className="flex gap-3">
-              <span className="text-2xl">{item.icon}</span>
+              <span className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold uppercase tracking-[0.14em] text-blue-700">{item.icon}</span>
               <div>
                 <p className="font-semibold text-gray-900 text-sm">{item.title}</p>
                 <p className="mt-0.5 text-sm text-gray-500">{item.body}</p>
@@ -124,7 +124,7 @@ function CityCard({ city }: { city: Awaited<ReturnType<typeof getActiveCities>>[
           <p className="text-sm text-gray-500">{city.state}</p>
         </div>
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-xl group-hover:bg-blue-100 transition-colors">
-          🏙️
+          City
         </div>
       </div>
 
@@ -181,7 +181,7 @@ function ComingSoonCard({ city }: { city: Awaited<ReturnType<typeof getActiveCit
         href={`/waitlist?city=${city.slug}`}
         className="mt-auto text-sm font-medium text-blue-500 hover:text-blue-600"
       >
-        Join the waitlist →
+        Join the waitlist
       </Link>
     </div>
   );

@@ -20,14 +20,14 @@ function NonprofitForm() {
   const searchParams = useSearchParams();
 
   const [form, setForm] = useState({
-    orgName:     searchParams.get("orgName")     ?? "",
+    orgName:     searchParams?.get("orgName")     ?? "",
     ein:         "",
-    contactName: searchParams.get("contactName") ?? "",
-    email:       searchParams.get("email")       ?? "",
-    phone:       searchParams.get("phone")       ?? "",
+    contactName: searchParams?.get("contactName") ?? "",
+    email:       searchParams?.get("email")       ?? "",
+    phone:       searchParams?.get("phone")       ?? "",
     website:     "",
     mission:     "",
-    city:        searchParams.get("city")        ?? "",
+    city:        searchParams?.get("city")        ?? "",
   });
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);

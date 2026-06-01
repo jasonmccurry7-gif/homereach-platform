@@ -1,5 +1,12 @@
 import { resolvePoliticalPostcardPriceCents } from "./pricing-config";
 
+import { politicalCandidateHeadshotProxyUrl } from "@/lib/political/candidate-headshot-proxy";
+import {
+  buildPoliticalReachCreativeStrategy,
+  type PoliticalReachBrandMode,
+  type PoliticalReachPostcardType,
+} from "./politicalreach-creative-engine";
+
 export type CandidateTargetId =
   | "vivek-ramaswamy"
   | "sherrod-brown"
@@ -12,7 +19,11 @@ export type CandidateTargetId =
   | "ohio-republican-party"
   | "amy-acton";
 
-export type CreativeCategory = "Emotional/Human" | "Policy/Issue Focused" | "Testimonial/Social Proof" | "Contrast/Urgency";
+export type CreativeCategory =
+  | "Emotional/Human"
+  | "Policy/Issue Focused"
+  | "Testimonial/Social Proof"
+  | "Contrast/Urgency";
 export type ReviewAction =
   | "Preview Front"
   | "Preview Back"
@@ -26,7 +37,7 @@ export type ReviewAction =
   | "Leave Comment"
   | "Request AI Revision"
   | "Save Draft"
-  | "Approve Design"
+  | "Mark for Approval"
   | "Duplicate Design"
   | "Export Proposal"
   | "Export Creative Brief"
@@ -37,7 +48,25 @@ export type ReviewAction =
 export interface CandidateCampaignSource {
   label: string;
   url: string;
-  sourceType: "campaign" | "election" | "population" | "party" | "public_record" | "home_reach";
+  sourceType:
+    | "campaign"
+    | "election"
+    | "population"
+    | "party"
+    | "public_record"
+    | "home_reach";
+}
+
+export interface CandidatePortraitAsset {
+  url: string;
+  alt: string;
+  sourceLabel: string;
+  sourceUrl: string;
+  approvalStatus:
+    | "source_linked_review_required"
+    | "campaign_approved"
+    | "placeholder";
+  notes: string;
 }
 
 export interface GeoRecommendation {
@@ -80,6 +109,7 @@ export interface CandidateCampaignProfile {
   mediaMarkets: string[];
   messagePillars: string[];
   creativeTone: string;
+  portrait?: CandidatePortraitAsset;
   sources: CandidateCampaignSource[];
 }
 
@@ -109,6 +139,11 @@ export interface PostcardConcept {
   editableImageZone: string;
   internalStrategyNotes: string;
   staffCommentPrompt: string;
+  politicalReachBrandMode: PoliticalReachBrandMode;
+  politicalReachPostcardType: PoliticalReachPostcardType;
+  typographySystem: string[];
+  hierarchySystem: string[];
+  mailboxImpactRules: string[];
 }
 
 export interface CandidateCampaignPhase {
@@ -212,6 +247,23 @@ const COMMON_SOURCES: CandidateCampaignSource[] = [
   },
 ];
 
+function portrait(
+  url: string,
+  alt: string,
+  sourceLabel: string,
+  sourceUrl: string,
+  notes = "Public source-linked portrait. Human review is required before using in paid creative, proposals, or production artwork.",
+): CandidatePortraitAsset {
+  return {
+    url: politicalCandidateHeadshotProxyUrl(url, alt.replace(/\s+(official|public|campaign)?\s*portrait$/i, "")),
+    alt,
+    sourceLabel,
+    sourceUrl,
+    approvalStatus: "source_linked_review_required",
+    notes,
+  };
+}
+
 export const REVIEW_ACTIONS: ReviewAction[] = [
   "Preview Front",
   "Preview Back",
@@ -225,7 +277,7 @@ export const REVIEW_ACTIONS: ReviewAction[] = [
   "Leave Comment",
   "Request AI Revision",
   "Save Draft",
-  "Approve Design",
+  "Mark for Approval",
   "Duplicate Design",
   "Export Proposal",
   "Export Creative Brief",
@@ -244,33 +296,41 @@ const CREATIVE_CATEGORIES: CreativeCategory[] = [
 const PHASE_BLUEPRINTS = [
   {
     key: "introduction",
-    objective: "Introduce the candidate or organization with source-backed public identity and role.",
-    timing: "Six to five months before the general election, or immediately after campaign approval.",
+    objective:
+      "Introduce the candidate or organization with source-backed public identity and role.",
+    timing:
+      "Six to five months before the general election, or immediately after campaign approval.",
   },
   {
     key: "trust",
-    objective: "Build credibility with public service record, campaign-provided proof points, and local relevance.",
+    objective:
+      "Build credibility with public service record, campaign-provided proof points, and local relevance.",
     timing: "Four to five months before Election Day.",
   },
   {
     key: "issue-positioning",
-    objective: "Connect the campaign's approved priorities to local economic, civic, or community concerns.",
+    objective:
+      "Connect the campaign's approved priorities to local economic, civic, or community concerns.",
     timing: "Three to four months before Election Day.",
   },
   {
     key: "persuasion",
-    objective: "Reinforce the campaign's approved case in higher-attention aggregate geographies.",
+    objective:
+      "Reinforce the campaign's approved case in higher-attention aggregate geographies.",
     timing: "Eight to ten weeks before Election Day.",
   },
   {
     key: "contrast",
-    objective: "Frame the public choice with compliant, factual, campaign-approved contrast.",
+    objective:
+      "Frame the public choice with compliant, factual, campaign-approved contrast.",
     timing: "Four to six weeks before Election Day.",
   },
   {
     key: "gotv",
-    objective: "Deliver election timing, ballot-window, and final reminder mail using campaign-approved language.",
-    timing: "Final three weeks, aligned to absentee, early vote, and Election Day deadlines.",
+    objective:
+      "Deliver election timing, ballot-window, and final reminder mail using campaign-approved language.",
+    timing:
+      "Final three weeks, aligned to absentee, early vote, and Election Day deadlines.",
   },
 ] as const;
 
@@ -283,22 +343,81 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Republican",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide executive profile with business, outsider, economy, and government-reform themes. Verify official campaign copy before client-facing use.",
+    publicCampaignFrame:
+      "Statewide executive profile with business, outsider, economy, and government-reform themes. Verify official campaign copy before client-facing use.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-red-700 to-slate-950",
     accentClass: "text-red-100",
-    biographyBullets: ["Ohio statewide campaign profile.", "Business and public-policy background requires source refresh before proposal.", "Public-facing message should stay tied to verified campaign materials."],
-    publicPriorities: ["Economy and cost of living", "Government reform", "Statewide leadership", "Public safety and opportunity"],
-    strengths: ["High name recognition", "Statewide media visibility", "Clear executive-style message frame"],
-    riskOrResearchGaps: ["Confirm official committee/contact", "Verify current platform language", "Attach final county and USPS route counts"],
-    topCounties: ["Delaware", "Warren", "Butler", "Medina", "Stark", "Miami", "Clermont", "Lake"],
-    topCities: ["Mason", "Delaware", "Strongsville", "West Chester", "Medina", "Canton", "Troy", "Mentor"],
-    zipClusters: ["43015/43065", "45040/45069", "44256/44212", "44708/44720", "45103/45150"],
-    routeClusters: ["Exurban growth routes", "County-seat saturation routes", "High-household suburban carrier routes"],
+    biographyBullets: [
+      "Ohio statewide campaign profile.",
+      "Business and public-policy background requires source refresh before proposal.",
+      "Public-facing message should stay tied to verified campaign materials.",
+    ],
+    publicPriorities: [
+      "Economy and cost of living",
+      "Government reform",
+      "Statewide leadership",
+      "Public safety and opportunity",
+    ],
+    strengths: [
+      "High name recognition",
+      "Statewide media visibility",
+      "Clear executive-style message frame",
+    ],
+    riskOrResearchGaps: [
+      "Confirm official committee/contact",
+      "Verify current platform language",
+      "Attach final county and USPS route counts",
+    ],
+    topCounties: [
+      "Delaware",
+      "Warren",
+      "Butler",
+      "Medina",
+      "Stark",
+      "Miami",
+      "Clermont",
+      "Lake",
+    ],
+    topCities: [
+      "Mason",
+      "Delaware",
+      "Strongsville",
+      "West Chester",
+      "Medina",
+      "Canton",
+      "Troy",
+      "Mentor",
+    ],
+    zipClusters: [
+      "43015/43065",
+      "45040/45069",
+      "44256/44212",
+      "44708/44720",
+      "45103/45150",
+    ],
+    routeClusters: [
+      "Exurban growth routes",
+      "County-seat saturation routes",
+      "High-household suburban carrier routes",
+    ],
     mediaMarkets: ["Cleveland-Akron", "Columbus", "Cincinnati", "Dayton"],
     messagePillars: ["Economy", "Reform", "Energy", "Ohio-first leadership"],
     creativeTone: "Direct, energetic, reform-focused, and executive.",
-    sources: [{ label: "Vivek for Ohio campaign site", url: "https://vivekforohio.com/", sourceType: "campaign" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Vivek_Ramaswamy_2026_%28cropped%29.jpg/960px-Vivek_Ramaswamy_2026_%28cropped%29.jpg",
+      "Vivek Ramaswamy public campaign portrait",
+      "Wikimedia Commons public portrait",
+      "https://en.wikipedia.org/wiki/Vivek_Ramaswamy",
+    ),
+    sources: [
+      {
+        label: "Vivek for Ohio campaign site",
+        url: "https://vivekforohio.com/",
+        sourceType: "campaign",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "sherrod-brown",
@@ -308,22 +427,86 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Democrat",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Federal statewide profile with working-family, labor, dignity-of-work, and Ohio manufacturing themes. Verify 2026 campaign status before proposal.",
+    publicCampaignFrame:
+      "Federal statewide profile with working-family, labor, dignity-of-work, and Ohio manufacturing themes. Verify 2026 campaign status before proposal.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-blue-700 to-slate-950",
     accentClass: "text-blue-100",
-    biographyBullets: ["Former U.S. Senator and long-running Ohio public figure.", "Known publicly for working-family and labor-oriented messaging.", "Campaign status and committee details must be verified before client-facing use."],
-    publicPriorities: ["Workers and wages", "Manufacturing", "Health care affordability", "Community investment"],
-    strengths: ["Recognized statewide brand", "Labor and working-class message fit", "Strong story-mail potential"],
-    riskOrResearchGaps: ["Confirm active 2026 committee details", "Verify official site and contact", "Load federal-route quote model"],
-    topCounties: ["Mahoning", "Trumbull", "Lorain", "Lucas", "Summit", "Cuyahoga", "Stark", "Montgomery"],
-    topCities: ["Youngstown", "Warren", "Lorain", "Toledo", "Akron", "Cleveland", "Canton", "Dayton"],
-    zipClusters: ["44502/44505", "44052/44055", "43604/43608", "44310/44320", "45402/45410"],
-    routeClusters: ["Industrial corridor routes", "Union-region household routes", "Urban turnout logistics routes"],
+    biographyBullets: [
+      "Former U.S. Senator and long-running Ohio public figure.",
+      "Known publicly for working-family and labor-oriented messaging.",
+      "Campaign status and committee details must be verified before client-facing use.",
+    ],
+    publicPriorities: [
+      "Workers and wages",
+      "Manufacturing",
+      "Health care affordability",
+      "Community investment",
+    ],
+    strengths: [
+      "Recognized statewide brand",
+      "Labor and working-class message fit",
+      "Strong story-mail potential",
+    ],
+    riskOrResearchGaps: [
+      "Confirm active 2026 committee details",
+      "Verify official site and contact",
+      "Load federal-route quote model",
+    ],
+    topCounties: [
+      "Mahoning",
+      "Trumbull",
+      "Lorain",
+      "Lucas",
+      "Summit",
+      "Cuyahoga",
+      "Stark",
+      "Montgomery",
+    ],
+    topCities: [
+      "Youngstown",
+      "Warren",
+      "Lorain",
+      "Toledo",
+      "Akron",
+      "Cleveland",
+      "Canton",
+      "Dayton",
+    ],
+    zipClusters: [
+      "44502/44505",
+      "44052/44055",
+      "43604/43608",
+      "44310/44320",
+      "45402/45410",
+    ],
+    routeClusters: [
+      "Industrial corridor routes",
+      "Union-region household routes",
+      "Urban turnout logistics routes",
+    ],
     mediaMarkets: ["Cleveland-Akron", "Youngstown", "Toledo", "Dayton"],
-    messagePillars: ["Dignity of work", "Labor", "Health costs", "Ohio manufacturing"],
+    messagePillars: [
+      "Dignity of work",
+      "Labor",
+      "Health costs",
+      "Ohio manufacturing",
+    ],
     creativeTone: "Plainspoken, worker-centered, local, and proof-heavy.",
-    sources: [{ label: "Sherrod Brown campaign site", url: "https://www.sherrodbrown.com/", sourceType: "campaign" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Sherrod_Brown_117th_Congress_%282%29.jpg/960px-Sherrod_Brown_117th_Congress_%282%29.jpg",
+      "Sherrod Brown official portrait",
+      "Wikimedia Commons public portrait",
+      "https://en.wikipedia.org/wiki/Sherrod_Brown",
+    ),
+    sources: [
+      {
+        label: "Sherrod Brown campaign site",
+        url: "https://www.sherrodbrown.com/",
+        sourceType: "campaign",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "jon-husted",
@@ -333,22 +516,81 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Republican",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide Republican federal profile with public-office, economy, and administration experience. Verify official Senate campaign materials before proposal.",
+    publicCampaignFrame:
+      "Statewide Republican federal profile with public-office, economy, and administration experience. Verify official Senate campaign materials before proposal.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-red-700 to-blue-950",
     accentClass: "text-red-100",
-    biographyBullets: ["Statewide public-office profile.", "Known for state executive and administrative roles.", "Official Senate campaign materials must control final copy."],
-    publicPriorities: ["Economy", "Small business", "Public administration", "Ohio competitiveness"],
-    strengths: ["Statewide office experience", "Suburban and exurban message fit", "Strong logistics-ready county network potential"],
-    riskOrResearchGaps: ["Confirm official Senate committee/contact", "Verify current issue hierarchy", "Attach federal quote assumptions"],
-    topCounties: ["Delaware", "Warren", "Butler", "Medina", "Lake", "Greene", "Miami", "Clermont"],
-    topCities: ["Delaware", "Mason", "West Chester", "Medina", "Mentor", "Beavercreek", "Troy", "Milford"],
-    zipClusters: ["43015/43035", "45040/45069", "44256/44281", "44060/44077", "45324/45373"],
-    routeClusters: ["Republican suburban retention routes", "Business corridor routes", "Exurban growth corridors"],
+    biographyBullets: [
+      "Statewide public-office profile.",
+      "Known for state executive and administrative roles.",
+      "Official Senate campaign materials must control final copy.",
+    ],
+    publicPriorities: [
+      "Economy",
+      "Small business",
+      "Public administration",
+      "Ohio competitiveness",
+    ],
+    strengths: [
+      "Statewide office experience",
+      "Suburban and exurban message fit",
+      "Strong logistics-ready county network potential",
+    ],
+    riskOrResearchGaps: [
+      "Confirm official Senate committee/contact",
+      "Verify current issue hierarchy",
+      "Attach federal quote assumptions",
+    ],
+    topCounties: [
+      "Delaware",
+      "Warren",
+      "Butler",
+      "Medina",
+      "Lake",
+      "Greene",
+      "Miami",
+      "Clermont",
+    ],
+    topCities: [
+      "Delaware",
+      "Mason",
+      "West Chester",
+      "Medina",
+      "Mentor",
+      "Beavercreek",
+      "Troy",
+      "Milford",
+    ],
+    zipClusters: [
+      "43015/43035",
+      "45040/45069",
+      "44256/44281",
+      "44060/44077",
+      "45324/45373",
+    ],
+    routeClusters: [
+      "Republican suburban retention routes",
+      "Business corridor routes",
+      "Exurban growth corridors",
+    ],
     mediaMarkets: ["Columbus", "Cincinnati", "Cleveland-Akron", "Dayton"],
     messagePillars: ["Experience", "Economy", "Competence", "Ohio results"],
     creativeTone: "Steady, executive, experienced, and economy-forward.",
-    sources: [{ label: "Jon Husted for Senate campaign site", url: "https://www.jonhustedforsenate.com/", sourceType: "campaign" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Sen._Jon_Husted_official_portrait%2C_119th_Congress.jpg/960px-Sen._Jon_Husted_official_portrait%2C_119th_Congress.jpg",
+      "Jon Husted official Senate portrait",
+      "Wikimedia Commons official portrait",
+      "https://commons.wikimedia.org/wiki/File:Sen._Jon_Husted_official_portrait,_119th_Congress.jpg",
+    ),
+    sources: [
+      {
+        label: "Jon Husted for Senate campaign site",
+        url: "https://www.jonhustedforsenate.com/",
+        sourceType: "campaign",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "keith-faber",
@@ -358,22 +600,80 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Republican",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide legal executive profile with accountability, fiscal oversight, and rule-of-law positioning. Verify official campaign details.",
+    publicCampaignFrame:
+      "Statewide legal executive profile with accountability, fiscal oversight, and rule-of-law positioning. Verify official campaign details.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-red-800 to-slate-950",
     accentClass: "text-red-100",
-    biographyBullets: ["Statewide office profile.", "Public auditor/accountability experience is a likely verified-message lane.", "Attorney General campaign copy needs official source approval."],
-    publicPriorities: ["Rule of law", "Accountability", "Fiscal oversight", "Public safety"],
-    strengths: ["Accountability message fit", "Statewide official profile", "Clear AG-relevant issue lane"],
-    riskOrResearchGaps: ["Verify official AG campaign status", "Confirm ballot/primary status", "Attach official campaign copy"],
-    topCounties: ["Auglaize", "Mercer", "Darke", "Shelby", "Miami", "Allen", "Hancock", "Van Wert"],
-    topCities: ["Celina", "Wapakoneta", "Sidney", "Troy", "Lima", "Findlay", "Van Wert", "Piqua"],
+    biographyBullets: [
+      "Statewide office profile.",
+      "Public auditor/accountability experience is a likely verified-message lane.",
+      "Attorney General campaign copy needs official source approval.",
+    ],
+    publicPriorities: [
+      "Rule of law",
+      "Accountability",
+      "Fiscal oversight",
+      "Public safety",
+    ],
+    strengths: [
+      "Accountability message fit",
+      "Statewide official profile",
+      "Clear AG-relevant issue lane",
+    ],
+    riskOrResearchGaps: [
+      "Verify official AG campaign status",
+      "Confirm ballot/primary status",
+      "Attach official campaign copy",
+    ],
+    topCounties: [
+      "Auglaize",
+      "Mercer",
+      "Darke",
+      "Shelby",
+      "Miami",
+      "Allen",
+      "Hancock",
+      "Van Wert",
+    ],
+    topCities: [
+      "Celina",
+      "Wapakoneta",
+      "Sidney",
+      "Troy",
+      "Lima",
+      "Findlay",
+      "Van Wert",
+      "Piqua",
+    ],
     zipClusters: ["45822/45895", "45365/45373", "45801/45840", "45891/45894"],
-    routeClusters: ["Western Ohio county-seat routes", "Rural trust-building routes", "Fiscal accountability message routes"],
+    routeClusters: [
+      "Western Ohio county-seat routes",
+      "Rural trust-building routes",
+      "Fiscal accountability message routes",
+    ],
     mediaMarkets: ["Dayton", "Lima", "Toledo", "Columbus"],
-    messagePillars: ["Accountability", "Law", "Fiscal stewardship", "Public safety"],
+    messagePillars: [
+      "Accountability",
+      "Law",
+      "Fiscal stewardship",
+      "Public safety",
+    ],
     creativeTone: "Serious, accountable, rule-of-law, and trust-forward.",
-    sources: [{ label: "Keith Faber public office site", url: "https://ohioauditor.gov/", sourceType: "public_record" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://ohioauditor.gov/about/img/Auditor_KeithFaber.jpg",
+      "Keith Faber official public office portrait",
+      "Ohio Auditor public office site",
+      "https://ohioauditor.gov/about/auditor.html",
+    ),
+    sources: [
+      {
+        label: "Keith Faber public office site",
+        url: "https://ohioauditor.gov/",
+        sourceType: "public_record",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "john-kulewicz",
@@ -383,22 +683,92 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Democrat",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Attorney General profile requiring source verification before biography or platform claims. Safer first pass: legal accountability, civic trust, and public-interest mail themes.",
+    publicCampaignFrame:
+      "Attorney General profile requiring source verification before biography or platform claims. Safer first pass: legal accountability, civic trust, and public-interest mail themes.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-blue-700 to-slate-950",
     accentClass: "text-blue-100",
-    biographyBullets: ["Candidate profile needs official-source verification.", "AG race message should stay around lawful public-interest and accountability themes until source-locked.", "Do not invent endorsements, biography, or platform claims."],
-    publicPriorities: ["Legal accountability", "Consumer protection", "Civic trust", "Public integrity"],
-    strengths: ["Clear office-specific message lane", "Suburban legal/accountability story potential", "Urban coalition logistics potential"],
-    riskOrResearchGaps: ["Official campaign website/contact needed", "Candidate biography needs source lock", "Verify filing and election status"],
-    topCounties: ["Franklin", "Cuyahoga", "Hamilton", "Summit", "Lucas", "Montgomery", "Lorain", "Mahoning"],
-    topCities: ["Columbus", "Cleveland", "Cincinnati", "Akron", "Toledo", "Dayton", "Lorain", "Youngstown"],
-    zipClusters: ["43215/43219", "44113/44120", "45202/45219", "44308/44320", "43604/43608"],
-    routeClusters: ["Urban legal-accountability routes", "Suburban civic-trust routes", "County-seat office-awareness routes"],
-    mediaMarkets: ["Columbus", "Cleveland-Akron", "Cincinnati", "Toledo", "Dayton"],
-    messagePillars: ["Accountability", "Consumer protection", "Civic trust", "Legal experience"],
+    biographyBullets: [
+      "Candidate profile needs official-source verification.",
+      "AG race message should stay around lawful public-interest and accountability themes until source-locked.",
+      "Do not invent endorsements, biography, or platform claims.",
+    ],
+    publicPriorities: [
+      "Legal accountability",
+      "Consumer protection",
+      "Civic trust",
+      "Public integrity",
+    ],
+    strengths: [
+      "Clear office-specific message lane",
+      "Suburban legal/accountability story potential",
+      "Urban coalition logistics potential",
+    ],
+    riskOrResearchGaps: [
+      "Official campaign website/contact needed",
+      "Candidate biography needs source lock",
+      "Verify filing and election status",
+    ],
+    topCounties: [
+      "Franklin",
+      "Cuyahoga",
+      "Hamilton",
+      "Summit",
+      "Lucas",
+      "Montgomery",
+      "Lorain",
+      "Mahoning",
+    ],
+    topCities: [
+      "Columbus",
+      "Cleveland",
+      "Cincinnati",
+      "Akron",
+      "Toledo",
+      "Dayton",
+      "Lorain",
+      "Youngstown",
+    ],
+    zipClusters: [
+      "43215/43219",
+      "44113/44120",
+      "45202/45219",
+      "44308/44320",
+      "43604/43608",
+    ],
+    routeClusters: [
+      "Urban legal-accountability routes",
+      "Suburban civic-trust routes",
+      "County-seat office-awareness routes",
+    ],
+    mediaMarkets: [
+      "Columbus",
+      "Cleveland-Akron",
+      "Cincinnati",
+      "Toledo",
+      "Dayton",
+    ],
+    messagePillars: [
+      "Accountability",
+      "Consumer protection",
+      "Civic trust",
+      "Legal experience",
+    ],
     creativeTone: "Credible, measured, public-interest, and proof-seeking.",
-    sources: [{ label: "Ohio Secretary of State candidate records", url: "https://www.ohiosos.gov/elections/", sourceType: "election" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://upload.wikimedia.org/wikipedia/commons/d/d1/JohnKulewiczMarch2026.jpg",
+      "John Kulewicz public portrait",
+      "Wikimedia Commons public portrait",
+      "https://commons.wikimedia.org/wiki/File:JohnKulewiczMarch2026.jpg",
+    ),
+    sources: [
+      {
+        label: "Ohio Secretary of State candidate records",
+        url: "https://www.ohiosos.gov/elections/",
+        sourceType: "election",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "allison-russo",
@@ -408,22 +778,92 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Democrat",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide civic administration race with voting access, civic participation, public trust, and competent administration themes. Verify current campaign language.",
+    publicCampaignFrame:
+      "Statewide civic administration race with voting access, civic participation, public trust, and competent administration themes. Verify current campaign language.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-blue-700 to-indigo-950",
     accentClass: "text-blue-100",
-    biographyBullets: ["Ohio legislative/public-service profile.", "Secretary of State messaging should stay civic, administrative, and source-backed.", "Confirm campaign site, committee, and official priorities."],
-    publicPriorities: ["Civic participation", "Election administration", "Public trust", "Community representation"],
-    strengths: ["Civic-trust message fit", "Suburban and urban education-heavy mail fit", "Secretary-of-State-specific explainer potential"],
-    riskOrResearchGaps: ["Verify official statewide campaign site", "Confirm exact ballot status", "Attach source-backed biography"],
-    topCounties: ["Franklin", "Cuyahoga", "Hamilton", "Delaware", "Summit", "Lucas", "Montgomery", "Athens"],
-    topCities: ["Columbus", "Cleveland", "Cincinnati", "Delaware", "Akron", "Toledo", "Dayton", "Athens"],
-    zipClusters: ["43210/43214", "44106/44118", "45208/45220", "43015/43065", "45701/45780"],
-    routeClusters: ["Civic participation routes", "College-community routes", "Suburban trust-building routes"],
-    mediaMarkets: ["Columbus", "Cleveland-Akron", "Cincinnati", "Toledo", "Dayton"],
-    messagePillars: ["Civic trust", "Voting access", "Competent administration", "Community voice"],
+    biographyBullets: [
+      "Ohio legislative/public-service profile.",
+      "Secretary of State messaging should stay civic, administrative, and source-backed.",
+      "Confirm campaign site, committee, and official priorities.",
+    ],
+    publicPriorities: [
+      "Civic participation",
+      "Election administration",
+      "Public trust",
+      "Community representation",
+    ],
+    strengths: [
+      "Civic-trust message fit",
+      "Suburban and urban education-heavy mail fit",
+      "Secretary-of-State-specific explainer potential",
+    ],
+    riskOrResearchGaps: [
+      "Verify official statewide campaign site",
+      "Confirm exact ballot status",
+      "Attach source-backed biography",
+    ],
+    topCounties: [
+      "Franklin",
+      "Cuyahoga",
+      "Hamilton",
+      "Delaware",
+      "Summit",
+      "Lucas",
+      "Montgomery",
+      "Athens",
+    ],
+    topCities: [
+      "Columbus",
+      "Cleveland",
+      "Cincinnati",
+      "Delaware",
+      "Akron",
+      "Toledo",
+      "Dayton",
+      "Athens",
+    ],
+    zipClusters: [
+      "43210/43214",
+      "44106/44118",
+      "45208/45220",
+      "43015/43065",
+      "45701/45780",
+    ],
+    routeClusters: [
+      "Civic participation routes",
+      "College-community routes",
+      "Suburban trust-building routes",
+    ],
+    mediaMarkets: [
+      "Columbus",
+      "Cleveland-Akron",
+      "Cincinnati",
+      "Toledo",
+      "Dayton",
+    ],
+    messagePillars: [
+      "Civic trust",
+      "Voting access",
+      "Competent administration",
+      "Community voice",
+    ],
     creativeTone: "Clear, civic, trustworthy, and participation-focused.",
-    sources: [{ label: "Allison Russo public/campaign site", url: "https://www.allisonrusso.com/", sourceType: "campaign" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://www.ohiohouse.gov/assets/people/headshots/medium/2888.jpg",
+      "Allison Russo official Ohio House portrait",
+      "Ohio House member profile",
+      "https://www.ohiohouse.gov/members/c-allison-russo/biography",
+    ),
+    sources: [
+      {
+        label: "Allison Russo public/campaign site",
+        url: "https://www.allisonrusso.com/",
+        sourceType: "campaign",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "robert-sprague",
@@ -433,22 +873,92 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Republican",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide administrative profile with fiscal stewardship, election administration trust, and conservative statewide continuity themes. Verify campaign copy before use.",
+    publicCampaignFrame:
+      "Statewide administrative profile with fiscal stewardship, election administration trust, and conservative statewide continuity themes. Verify campaign copy before use.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-red-700 to-slate-950",
     accentClass: "text-red-100",
-    biographyBullets: ["Statewide public-office profile.", "Treasury/fiscal stewardship background is a likely source-backed lane.", "Secretary of State copy must be campaign-approved."],
-    publicPriorities: ["Election administration trust", "Fiscal stewardship", "Security", "Responsible government"],
-    strengths: ["Statewide officeholder familiarity", "Administrative trust message fit", "Rural and suburban route efficiency"],
-    riskOrResearchGaps: ["Confirm current Secretary of State campaign status", "Verify official site and issue wording", "Attach final USPS route counts"],
-    topCounties: ["Hancock", "Allen", "Warren", "Delaware", "Butler", "Clermont", "Medina", "Lake"],
-    topCities: ["Findlay", "Lima", "Mason", "Delaware", "West Chester", "Batavia", "Medina", "Mentor"],
-    zipClusters: ["45840/45801", "45040/45069", "43015/43065", "45103/45150", "44060/44256"],
-    routeClusters: ["Rural administration-trust routes", "Suburban conservative-retention routes", "County-seat civic routes"],
-    mediaMarkets: ["Toledo", "Columbus", "Cincinnati", "Cleveland-Akron", "Dayton"],
-    messagePillars: ["Trust", "Security", "Fiscal stewardship", "Election administration"],
+    biographyBullets: [
+      "Statewide public-office profile.",
+      "Treasury/fiscal stewardship background is a likely source-backed lane.",
+      "Secretary of State copy must be campaign-approved.",
+    ],
+    publicPriorities: [
+      "Election administration trust",
+      "Fiscal stewardship",
+      "Security",
+      "Responsible government",
+    ],
+    strengths: [
+      "Statewide officeholder familiarity",
+      "Administrative trust message fit",
+      "Rural and suburban route efficiency",
+    ],
+    riskOrResearchGaps: [
+      "Confirm current Secretary of State campaign status",
+      "Verify official site and issue wording",
+      "Attach final USPS route counts",
+    ],
+    topCounties: [
+      "Hancock",
+      "Allen",
+      "Warren",
+      "Delaware",
+      "Butler",
+      "Clermont",
+      "Medina",
+      "Lake",
+    ],
+    topCities: [
+      "Findlay",
+      "Lima",
+      "Mason",
+      "Delaware",
+      "West Chester",
+      "Batavia",
+      "Medina",
+      "Mentor",
+    ],
+    zipClusters: [
+      "45840/45801",
+      "45040/45069",
+      "43015/43065",
+      "45103/45150",
+      "44060/44256",
+    ],
+    routeClusters: [
+      "Rural administration-trust routes",
+      "Suburban conservative-retention routes",
+      "County-seat civic routes",
+    ],
+    mediaMarkets: [
+      "Toledo",
+      "Columbus",
+      "Cincinnati",
+      "Cleveland-Akron",
+      "Dayton",
+    ],
+    messagePillars: [
+      "Trust",
+      "Security",
+      "Fiscal stewardship",
+      "Election administration",
+    ],
     creativeTone: "Competent, secure, steady, and administrative.",
-    sources: [{ label: "Robert Sprague public/campaign site", url: "https://www.spragueforohio.com/", sourceType: "campaign" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://upload.wikimedia.org/wikipedia/commons/5/57/Rob_Portman_and_Robert_Sprague_%28cropped%29.jpg",
+      "Robert Sprague public portrait",
+      "Wikimedia Commons public portrait",
+      "https://en.wikipedia.org/wiki/Robert_Sprague",
+    ),
+    sources: [
+      {
+        label: "Robert Sprague public/campaign site",
+        url: "https://www.spragueforohio.com/",
+        sourceType: "campaign",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "ohio-democratic-party",
@@ -458,22 +968,94 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Democratic Party",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide coordinated mail program profile for candidate slate reinforcement, ballot-window education, and campaign-provided coalition messaging.",
+    publicCampaignFrame:
+      "Statewide coordinated mail program profile for candidate slate reinforcement, ballot-window education, and campaign-provided coalition messaging.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-blue-800 to-slate-950",
     accentClass: "text-blue-100",
-    biographyBullets: ["Party organization profile, not a candidate biography.", "Mail should separate slate, issue, and turnout logistics by approved program.", "All claims and candidate references require campaign/party approval."],
-    publicPriorities: ["Coordinated slate visibility", "Urban turnout logistics", "Suburban persuasion mail", "Ballot-window education"],
-    strengths: ["Can coordinate multiple races", "High-volume route efficiency", "Strong county and media-market planning fit"],
-    riskOrResearchGaps: ["Confirm party-approved slate", "Load candidate disclaimers", "Attach coordinated expenditure/legal review"],
-    topCounties: ["Franklin", "Cuyahoga", "Hamilton", "Summit", "Lucas", "Montgomery", "Lorain", "Mahoning"],
-    topCities: ["Columbus", "Cleveland", "Cincinnati", "Akron", "Toledo", "Dayton", "Lorain", "Youngstown"],
-    zipClusters: ["43215/43219", "44113/44120", "45202/45219", "44308/44320", "43604/43608"],
-    routeClusters: ["Urban turnout logistics routes", "Suburban slate-reinforcement routes", "High-density media-market corridors"],
-    mediaMarkets: ["Columbus", "Cleveland-Akron", "Cincinnati", "Toledo", "Dayton", "Youngstown"],
-    messagePillars: ["Coordinated slate", "Affordability", "Rights and civic participation", "Ballot-window clarity"],
+    biographyBullets: [
+      "Party organization profile, not a candidate biography.",
+      "Mail should separate slate, issue, and turnout logistics by approved program.",
+      "All claims and candidate references require campaign/party approval.",
+    ],
+    publicPriorities: [
+      "Coordinated slate visibility",
+      "Urban turnout logistics",
+      "Suburban persuasion mail",
+      "Ballot-window education",
+    ],
+    strengths: [
+      "Can coordinate multiple races",
+      "High-volume route efficiency",
+      "Strong county and media-market planning fit",
+    ],
+    riskOrResearchGaps: [
+      "Confirm party-approved slate",
+      "Load candidate disclaimers",
+      "Attach coordinated expenditure/legal review",
+    ],
+    topCounties: [
+      "Franklin",
+      "Cuyahoga",
+      "Hamilton",
+      "Summit",
+      "Lucas",
+      "Montgomery",
+      "Lorain",
+      "Mahoning",
+    ],
+    topCities: [
+      "Columbus",
+      "Cleveland",
+      "Cincinnati",
+      "Akron",
+      "Toledo",
+      "Dayton",
+      "Lorain",
+      "Youngstown",
+    ],
+    zipClusters: [
+      "43215/43219",
+      "44113/44120",
+      "45202/45219",
+      "44308/44320",
+      "43604/43608",
+    ],
+    routeClusters: [
+      "Urban turnout logistics routes",
+      "Suburban slate-reinforcement routes",
+      "High-density media-market corridors",
+    ],
+    mediaMarkets: [
+      "Columbus",
+      "Cleveland-Akron",
+      "Cincinnati",
+      "Toledo",
+      "Dayton",
+      "Youngstown",
+    ],
+    messagePillars: [
+      "Coordinated slate",
+      "Affordability",
+      "Rights and civic participation",
+      "Ballot-window clarity",
+    ],
     creativeTone: "Coordinated, clear, coalition-aware, and deadline-focused.",
-    sources: [{ label: "Ohio Democratic Party", url: "https://ohiodems.org/", sourceType: "party" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://ohiodems.org/wp-content/uploads/2022/08/fbshare.png",
+      "Ohio Democratic Party visual identity",
+      "Ohio Democratic Party site",
+      "https://ohiodems.org/",
+      "Party-program identity image, not a candidate headshot.",
+    ),
+    sources: [
+      {
+        label: "Ohio Democratic Party",
+        url: "https://ohiodems.org/",
+        sourceType: "party",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "ohio-republican-party",
@@ -483,22 +1065,93 @@ const PROFILES: CandidateCampaignProfile[] = [
     state: "Ohio",
     partyOrCommittee: "Republican Party",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide coordinated mail program profile for Republican slate visibility, rural/exurban route density, and ballot-window execution.",
+    publicCampaignFrame:
+      "Statewide coordinated mail program profile for Republican slate visibility, rural/exurban route density, and ballot-window execution.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-red-800 to-slate-950",
     accentClass: "text-red-100",
-    biographyBullets: ["Party organization profile, not a candidate biography.", "Mail should organize slate, county, and ballot-window programs separately.", "Claims and candidate references require party/campaign approval."],
-    publicPriorities: ["Coordinated slate visibility", "Rural route efficiency", "Exurban growth corridors", "Election reminder logistics"],
-    strengths: ["Route density in rural/exurban counties", "Strong slate program fit", "Efficient county-seat coverage"],
-    riskOrResearchGaps: ["Confirm party-approved slate", "Load disclaimers and legal review", "Attach USPS route counts"],
-    topCounties: ["Warren", "Butler", "Delaware", "Clermont", "Medina", "Hancock", "Allen", "Miami"],
-    topCities: ["Mason", "West Chester", "Delaware", "Batavia", "Medina", "Findlay", "Lima", "Troy"],
-    zipClusters: ["45040/45069", "43015/43065", "45103/45150", "44256/45840", "45373/45801"],
-    routeClusters: ["Rural route-density corridors", "Exurban growth routes", "County-seat slate routes"],
-    mediaMarkets: ["Cincinnati", "Columbus", "Cleveland-Akron", "Toledo", "Dayton"],
-    messagePillars: ["Coordinated slate", "Economy", "Public safety", "Election reminder clarity"],
+    biographyBullets: [
+      "Party organization profile, not a candidate biography.",
+      "Mail should organize slate, county, and ballot-window programs separately.",
+      "Claims and candidate references require party/campaign approval.",
+    ],
+    publicPriorities: [
+      "Coordinated slate visibility",
+      "Rural route efficiency",
+      "Exurban growth corridors",
+      "Election reminder logistics",
+    ],
+    strengths: [
+      "Route density in rural/exurban counties",
+      "Strong slate program fit",
+      "Efficient county-seat coverage",
+    ],
+    riskOrResearchGaps: [
+      "Confirm party-approved slate",
+      "Load disclaimers and legal review",
+      "Attach USPS route counts",
+    ],
+    topCounties: [
+      "Warren",
+      "Butler",
+      "Delaware",
+      "Clermont",
+      "Medina",
+      "Hancock",
+      "Allen",
+      "Miami",
+    ],
+    topCities: [
+      "Mason",
+      "West Chester",
+      "Delaware",
+      "Batavia",
+      "Medina",
+      "Findlay",
+      "Lima",
+      "Troy",
+    ],
+    zipClusters: [
+      "45040/45069",
+      "43015/43065",
+      "45103/45150",
+      "44256/45840",
+      "45373/45801",
+    ],
+    routeClusters: [
+      "Rural route-density corridors",
+      "Exurban growth routes",
+      "County-seat slate routes",
+    ],
+    mediaMarkets: [
+      "Cincinnati",
+      "Columbus",
+      "Cleveland-Akron",
+      "Toledo",
+      "Dayton",
+    ],
+    messagePillars: [
+      "Coordinated slate",
+      "Economy",
+      "Public safety",
+      "Election reminder clarity",
+    ],
     creativeTone: "Strong, direct, slate-focused, and logistics-ready.",
-    sources: [{ label: "Ohio Republican Party", url: "https://ohiogop.org/", sourceType: "party" }, ...COMMON_SOURCES],
+    portrait: portrait(
+      "https://ohiogop.org/wp-content/uploads/2025/06/Untitled-design-2025-06-20T114635.211.png",
+      "Ohio Republican Party visual identity",
+      "Ohio Republican Party site",
+      "https://ohiogop.org/",
+      "Party-program identity image, not a candidate headshot.",
+    ),
+    sources: [
+      {
+        label: "Ohio Republican Party",
+        url: "https://ohiogop.org/",
+        sourceType: "party",
+      },
+      ...COMMON_SOURCES,
+    ],
   },
   {
     id: "amy-acton",
@@ -509,24 +1162,95 @@ const PROFILES: CandidateCampaignProfile[] = [
     partyOrCommittee: "Democrat",
     runningMate: "David Pepper",
     electionDate: "2026-11-03",
-    publicCampaignFrame: "Statewide executive campaign with public-service, doctor, affordability, health care, and Ohio-family themes visible on the campaign site.",
+    publicCampaignFrame:
+      "Statewide executive campaign with public-service, doctor, affordability, health care, and Ohio-family themes visible on the campaign site.",
     complianceMode: COMPLIANCE_MODE,
     colorClass: "from-blue-800 to-red-950",
     accentClass: "text-blue-100",
-    biographyBullets: ["Doctor and public-health leader.", "Official site frames the campaign around giving power back to Ohioans.", "Affordability and families are source-backed campaign themes."],
-    publicPriorities: ["Affordability", "Health care", "Public service", "Community-centered leadership"],
-    strengths: ["Human story mail fit", "Health care credibility", "Suburban trust-building opportunity"],
-    riskOrResearchGaps: ["Verify current endorsements", "Attach official contact", "Replace estimated route counts with USPS data"],
-    topCounties: ["Franklin", "Cuyahoga", "Hamilton", "Summit", "Lucas", "Montgomery", "Delaware", "Lorain"],
-    topCities: ["Columbus", "Cleveland", "Cincinnati", "Akron", "Toledo", "Dayton", "Delaware", "Lorain"],
-    zipClusters: ["43210/43214", "44106/44118", "45208/45220", "44308/44320", "43604/43608"],
-    routeClusters: ["Suburban trust-building routes", "Urban turnout logistics routes", "Health-care message corridors"],
-    mediaMarkets: ["Columbus", "Cleveland-Akron", "Cincinnati", "Toledo", "Dayton"],
-    messagePillars: ["Health care", "Affordability", "Public service", "Ohio families"],
+    biographyBullets: [
+      "Doctor and public-health leader.",
+      "Official site frames the campaign around giving power back to Ohioans.",
+      "Affordability and families are source-backed campaign themes.",
+    ],
+    publicPriorities: [
+      "Affordability",
+      "Health care",
+      "Public service",
+      "Community-centered leadership",
+    ],
+    strengths: [
+      "Human story mail fit",
+      "Health care credibility",
+      "Suburban trust-building opportunity",
+    ],
+    riskOrResearchGaps: [
+      "Verify current endorsements",
+      "Attach official contact",
+      "Replace estimated route counts with USPS data",
+    ],
+    topCounties: [
+      "Franklin",
+      "Cuyahoga",
+      "Hamilton",
+      "Summit",
+      "Lucas",
+      "Montgomery",
+      "Delaware",
+      "Lorain",
+    ],
+    topCities: [
+      "Columbus",
+      "Cleveland",
+      "Cincinnati",
+      "Akron",
+      "Toledo",
+      "Dayton",
+      "Delaware",
+      "Lorain",
+    ],
+    zipClusters: [
+      "43210/43214",
+      "44106/44118",
+      "45208/45220",
+      "44308/44320",
+      "43604/43608",
+    ],
+    routeClusters: [
+      "Suburban trust-building routes",
+      "Urban turnout logistics routes",
+      "Health-care message corridors",
+    ],
+    mediaMarkets: [
+      "Columbus",
+      "Cleveland-Akron",
+      "Cincinnati",
+      "Toledo",
+      "Dayton",
+    ],
+    messagePillars: [
+      "Health care",
+      "Affordability",
+      "Public service",
+      "Ohio families",
+    ],
     creativeTone: "Empathetic, human, steady, and family-centered.",
+    portrait: portrait(
+      "https://upload.wikimedia.org/wikipedia/commons/7/7b/Amy_Acton_2025.jpg",
+      "Dr. Amy Acton public campaign portrait",
+      "Wikimedia Commons public portrait",
+      "https://en.wikipedia.org/wiki/Amy_Acton",
+    ),
     sources: [
-      { label: "Dr. Amy Acton for Governor campaign site", url: "https://actonforgovernor.com/", sourceType: "campaign" },
-      { label: "Acton affordability agenda", url: "https://actonforgovernor.com/issue/acton-lowering-costs-affordability-agenda/", sourceType: "campaign" },
+      {
+        label: "Dr. Amy Acton for Governor campaign site",
+        url: "https://actonforgovernor.com/",
+        sourceType: "campaign",
+      },
+      {
+        label: "Acton affordability agenda",
+        url: "https://actonforgovernor.com/issue/acton-lowering-costs-affordability-agenda/",
+        sourceType: "campaign",
+      },
       ...COMMON_SOURCES,
     ],
   },
@@ -537,8 +1261,10 @@ const STRATEGY_SEEDS = [
     id: "statewide-foundation",
     title: "Statewide Name-ID Foundation",
     theme: "Introduce, repeat, and make the campaign easy to understand.",
-    overview: "A broad multi-wave program built around statewide identity, campaign-approved priorities, and repeated in-home visibility across major Ohio media markets.",
-    audience: "Aggregate households in major counties, county seats, and high-density delivery routes.",
+    overview:
+      "A broad multi-wave program built around statewide identity, campaign-approved priorities, and repeated in-home visibility across major Ohio media markets.",
+    audience:
+      "Aggregate households in major counties, county seats, and high-density delivery routes.",
     drops: 5,
     householdsFactor: 1,
     confidence: 84,
@@ -546,9 +1272,12 @@ const STRATEGY_SEEDS = [
   {
     id: "metro-corridor",
     title: "Metro and County-Seat Corridor",
-    theme: "Concentrate mail where delivery density and media-market overlap are strongest.",
-    overview: "A route-efficient plan that starts in Ohio's largest metros, then expands through county seats and nearby suburban clusters.",
-    audience: "Aggregate households in dense metro, county-seat, and first-ring route clusters.",
+    theme:
+      "Concentrate mail where delivery density and media-market overlap are strongest.",
+    overview:
+      "A route-efficient plan that starts in Ohio's largest metros, then expands through county seats and nearby suburban clusters.",
+    audience:
+      "Aggregate households in dense metro, county-seat, and first-ring route clusters.",
     drops: 4,
     householdsFactor: 0.64,
     confidence: 82,
@@ -556,9 +1285,12 @@ const STRATEGY_SEEDS = [
   {
     id: "suburban-rural-balance",
     title: "Suburban/Rural Balance",
-    theme: "Use separate creative lanes for suburban, exurban, and rural trust-building routes.",
-    overview: "A balanced plan that prevents the campaign from looking city-only or rural-only while preserving route efficiency.",
-    audience: "Aggregate households across suburban belts, exurban growth corridors, and practical rural carrier routes.",
+    theme:
+      "Use separate creative lanes for suburban, exurban, and rural trust-building routes.",
+    overview:
+      "A balanced plan that prevents the campaign from looking city-only or rural-only while preserving route efficiency.",
+    audience:
+      "Aggregate households across suburban belts, exurban growth corridors, and practical rural carrier routes.",
     drops: 4,
     householdsFactor: 0.48,
     confidence: 78,
@@ -566,9 +1298,12 @@ const STRATEGY_SEEDS = [
   {
     id: "ballot-window-accelerator",
     title: "Ballot-Window Accelerator",
-    theme: "Compress the mail arc around absentee, early vote, and final election reminder windows.",
-    overview: "A late-cycle plan for campaigns that need speed, clean deadlines, and a shorter proof-to-mail path.",
-    audience: "Aggregate households in deadline-sensitive route clusters with high production feasibility.",
+    theme:
+      "Compress the mail arc around absentee, early vote, and final election reminder windows.",
+    overview:
+      "A late-cycle plan for campaigns that need speed, clean deadlines, and a shorter proof-to-mail path.",
+    audience:
+      "Aggregate households in deadline-sensitive route clusters with high production feasibility.",
     drops: 3,
     householdsFactor: 0.38,
     confidence: 80,
@@ -592,6 +1327,12 @@ function moneyRange(volume: number, drops = 1): [number, number] {
   return [low, Math.round(low * 1.18)];
 }
 
+function daysUntilElection(electionDate: string): number | null {
+  const election = new Date(`${electionDate}T12:00:00Z`);
+  if (Number.isNaN(election.getTime())) return null;
+  return Math.ceil((election.getTime() - Date.now()) / 86_400_000);
+}
+
 function buildPostcardConcept(
   profile: CandidateCampaignProfile,
   strategyId: string,
@@ -599,19 +1340,51 @@ function buildPostcardConcept(
   phaseObjective: string,
   category: CreativeCategory,
 ): PostcardConcept {
-  const pillar = profile.messagePillars[Math.abs(phaseKey.length + category.length) % profile.messagePillars.length] ?? "Ohio communities";
+  const pillar =
+    profile.messagePillars[
+      Math.abs(phaseKey.length + category.length) %
+        profile.messagePillars.length
+    ] ?? "Ohio communities";
   const geography = profile.topCounties.slice(0, 3).join(", ");
-  const officeLabel = profile.office.includes("Party") ? "Ohio campaign program" : profile.office;
+  const officeLabel = profile.office.includes("Party")
+    ? "Ohio campaign program"
+    : profile.office;
   const title = `${profile.shortName} ${phaseKey.replaceAll("-", " ")} - ${category}`;
+  const politicalReach = buildPoliticalReachCreativeStrategy({
+    candidateName: profile.candidateName,
+    shortName: profile.shortName,
+    office: profile.office,
+    state: profile.state,
+    partyOrCommittee: profile.partyOrCommittee,
+    campaignFrame: profile.publicCampaignFrame,
+    phaseKey,
+    phaseObjective,
+    geography,
+    daysUntilElection: daysUntilElection(profile.electionDate),
+    issueFocus: pillar,
+    category,
+  });
 
-  const copyByCategory: Record<CreativeCategory, { headline: string; subheadline: string; body: string; back: string; cta: string; imagery: string }> = {
+  const copyByCategory: Record<
+    CreativeCategory,
+    {
+      headline: string;
+      subheadline: string;
+      body: string;
+      back: string;
+      cta: string;
+      imagery: string;
+    }
+  > = {
     "Emotional/Human": {
       headline: `${profile.shortName}: ${pillar} for Ohio families`,
-      subheadline: "A mail piece built around trust, public identity, and local Ohio context.",
+      subheadline:
+        "A mail piece built around trust, public identity, and local Ohio context.",
       body: `${profile.candidateName} needs a human, locally grounded introduction that voters can understand quickly at the mailbox.`,
       back: `This concept uses a warm story arc, one clear proof point, and a simple next step. Final biography and quotes must come from campaign-approved source material.`,
       cta: "Learn the story and make your plan to vote.",
-      imagery: "Candidate portrait or community scene with Ohio neighborhood context.",
+      imagery:
+        "Candidate portrait or community scene with Ohio neighborhood context.",
     },
     "Policy/Issue Focused": {
       headline: `${pillar} deserves a serious Ohio plan`,
@@ -619,23 +1392,28 @@ function buildPostcardConcept(
       body: `Lead with the campaign-approved ${pillar.toLowerCase()} message, then connect it to household-level concerns without making individual voter predictions.`,
       back: `Use three concise bullets, a QR code to the approved issue page, and a county-specific line for ${geography}.`,
       cta: "Read the plan before Election Day.",
-      imagery: "Ohio workers, small business corridor, classroom, clinic, courthouse, or main-street scene depending on approved issue.",
+      imagery:
+        "Ohio workers, small business corridor, classroom, clinic, courthouse, or main-street scene depending on approved issue.",
     },
     "Testimonial/Social Proof": {
       headline: `Ohioans are looking for leadership they can trust`,
-      subheadline: "Social proof space reserved for campaign-approved validators only.",
+      subheadline:
+        "Social proof space reserved for campaign-approved validators only.",
       body: `This version gives staff a clean quote slot, county validator slot, and endorsement/legal review path. No testimonial is invented here.`,
       back: `Add approved quote, validator attribution, and source date. Keep the rest of the card centered on public record, geography, and timing.`,
       cta: "See why Ohio leaders are paying attention.",
-      imagery: "Validator photo, community event, union hall, local business, or campaign-approved coalition image.",
+      imagery:
+        "Validator photo, community event, union hall, local business, or campaign-approved coalition image.",
     },
     "Contrast/Urgency": {
       headline: `Ohio has a clear choice this year`,
-      subheadline: "A factual contrast card designed for legal review before release.",
+      subheadline:
+        "A factual contrast card designed for legal review before release.",
       body: `Frame the stakes around ${pillar.toLowerCase()}, timing, and public record. Avoid unsourced attacks, personal claims, or deceptive content.`,
       back: `Use a side-by-side issue contrast only after staff supplies source citations. Add ballot-window dates and QR to campaign-approved facts.`,
       cta: "Compare the choice and vote by the deadline.",
-      imagery: "Split-color Ohio map, mailbox deadline visual, or campaign-approved contrast photography.",
+      imagery:
+        "Split-color Ohio map, mailbox deadline visual, or campaign-approved contrast photography.",
     },
   };
 
@@ -652,62 +1430,116 @@ function buildPostcardConcept(
     frontBody: copy.body,
     backBody: copy.back,
     cta: copy.cta,
-    suggestedImagery: copy.imagery,
-    visualDirection: `${profile.creativeTone} Full-bleed Ohio visual, bold headline, restrained patriotic palette, and clear hierarchy.`,
-    colorStyle: `Campaign-safe palette using ${profile.partyOrCommittee.includes("Republican") ? "red, navy, white, and slate" : profile.partyOrCommittee.includes("Democrat") ? "blue, navy, white, and soft red" : "navy, white, red, and neutral gray"}.`,
+    suggestedImagery: `${copy.imagery} ${politicalReach.imageStrategy}`,
+    visualDirection: `${politicalReach.layoutModel} ${politicalReach.variationDirection}`,
+    colorStyle: politicalReach.colorSystem.join(", "),
     audienceFit: `Aggregate ${profile.office} mail audience; campaign-provided audience notes may be layered after legal review.`,
     geographicFit: `${geography}; route clusters: ${profile.routeClusters.slice(0, 2).join(", ")}.`,
-    emotionalStrategy: category === "Emotional/Human" ? "Humanize the public profile and reduce friction." : `Support the ${pillar} message with a simple mailbox story.`,
-    persuasionIntent: "Campaign-approved message reinforcement at aggregate geography level only; no individual persuasion scoring.",
-    turnoutIntent: "Election timing and voting-plan reminder at aggregate geography level only; no turnout suppression or individual behavior prediction.",
-    complianceDisclaimer: "Paid for by [COMMITTEE NAME]. Not authorized by any candidate or candidate committee unless applicable. Final disclaimer required before print.",
-    editableCopyZones: ["Headline", "Subheadline", "Front body", "Back body", "Proof bullets", "Disclaimer"],
+    emotionalStrategy: politicalReach.emotionalJob,
+    persuasionIntent:
+      "Campaign-approved message reinforcement at aggregate geography level only; no individual persuasion scoring.",
+    turnoutIntent:
+      "Election timing and voting-plan reminder at aggregate geography level only; no turnout suppression or individual behavior prediction.",
+    complianceDisclaimer:
+      "Paid for by [COMMITTEE NAME]. Not authorized by any candidate or candidate committee unless applicable. Final disclaimer required before print.",
+    editableCopyZones: [
+      "Headline",
+      "Subheadline",
+      "Front body",
+      "Back body",
+      "Proof bullets",
+      "Disclaimer",
+    ],
     editableCtaZone: "CTA and QR/landing page label",
-    editableImageZone: "Hero image, validator image, Ohio/map image, and iconography",
-    internalStrategyNotes: `${phaseObjective} Keep all facts source-backed and mark route counts as estimates until USPS data is loaded.`,
-    staffCommentPrompt: "Leave a revision note such as: make this more local, more urgent, more positive, or more focused on working families.",
+    editableImageZone:
+      "Hero image, validator image, Ohio/map image, and iconography",
+    internalStrategyNotes: `${phaseObjective} ${politicalReach.voterMemoryDevice} Keep all facts source-backed and mark route counts as estimates until USPS data is loaded.`,
+    staffCommentPrompt:
+      "Leave a revision note such as: make this more local, more urgent, more positive, or more focused on working families.",
+    politicalReachBrandMode: politicalReach.brandMode,
+    politicalReachPostcardType: politicalReach.postcardType,
+    typographySystem: politicalReach.typographySystem,
+    hierarchySystem: politicalReach.hierarchy,
+    mailboxImpactRules: politicalReach.printAndMailRules,
   };
 }
 
-function buildPhases(profile: CandidateCampaignProfile, strategyId: string, households: number): CandidateCampaignPhase[] {
+function buildPhases(
+  profile: CandidateCampaignProfile,
+  strategyId: string,
+  households: number,
+): CandidateCampaignPhase[] {
   return PHASE_BLUEPRINTS.map((blueprint, index) => {
-    const phaseHouseholds = Math.max(2_500, Math.round(households * (index < 3 ? 0.22 : 0.16)));
+    const phaseHouseholds = Math.max(
+      2_500,
+      Math.round(households * (index < 3 ? 0.22 : 0.16)),
+    );
     const routeStart = index % Math.max(1, profile.routeClusters.length);
     const recommendedRoutes = [
       profile.routeClusters[routeStart] ?? "Route cluster pending USPS data",
-      profile.zipClusters[index % profile.zipClusters.length] ?? "ZIP cluster pending",
-      profile.mediaMarkets[index % profile.mediaMarkets.length] ?? "Media market pending",
+      profile.zipClusters[index % profile.zipClusters.length] ??
+        "ZIP cluster pending",
+      profile.mediaMarkets[index % profile.mediaMarkets.length] ??
+        "Media market pending",
     ];
 
     return {
       phaseNumber: index + 1,
       phaseKey: blueprint.key,
       objective: blueprint.objective,
-      targetAudience: "Aggregate household/mail-route audience, with campaign-provided segments only after legal review.",
-      targetGeography: `${profile.topCounties.slice(index % 3, index % 3 + 3).join(", ")} plus ${profile.topCities[index % profile.topCities.length] ?? profile.state} route clusters`,
+      targetAudience:
+        "Aggregate household/mail-route audience, with campaign-provided segments only after legal review.",
+      targetGeography: `${profile.topCounties.slice(index % 3, (index % 3) + 3).join(", ")} plus ${profile.topCities[index % profile.topCities.length] ?? profile.state} route clusters`,
       recommendedRoutes,
-      emotionalTone: index < 2 ? profile.creativeTone : index === 4 ? "Clear, factual, source-backed, and urgent." : "Direct, deadline-aware, and easy to act on.",
-      cta: index === 5 ? "Make your voting plan before Election Day." : "Scan to learn more from the campaign.",
+      emotionalTone:
+        index < 2
+          ? profile.creativeTone
+          : index === 4
+            ? "Clear, factual, source-backed, and urgent."
+            : "Direct, deadline-aware, and easy to act on.",
+      cta:
+        index === 5
+          ? "Make your voting plan before Election Day."
+          : "Scan to learn more from the campaign.",
       mailQuantity: phaseHouseholds,
       timing: blueprint.timing,
-      issueFocus: profile.messagePillars[index % profile.messagePillars.length] ?? "Campaign-approved priority",
-      expectedOutcome: "Increase campaign message repetition and operational visibility in selected aggregate geographies.",
+      issueFocus:
+        profile.messagePillars[index % profile.messagePillars.length] ??
+        "Campaign-approved priority",
+      expectedOutcome:
+        "Increase campaign message repetition and operational visibility in selected aggregate geographies.",
       postcardConcepts: CREATIVE_CATEGORIES.map((category) =>
-        buildPostcardConcept(profile, strategyId, blueprint.key, blueprint.objective, category),
+        buildPostcardConcept(
+          profile,
+          strategyId,
+          blueprint.key,
+          blueprint.objective,
+          category,
+        ),
       ),
     };
   });
 }
 
-function buildStrategies(profile: CandidateCampaignProfile): CandidateCampaignStrategy[] {
+function buildStrategies(
+  profile: CandidateCampaignProfile,
+): CandidateCampaignStrategy[] {
   const baseHouseholds = baseHouseholdsFor(profile);
 
   return STRATEGY_SEEDS.map((seed) => {
-    const households = Math.max(2_500, Math.round(baseHouseholds * seed.householdsFactor));
+    const households = Math.max(
+      2_500,
+      Math.round(baseHouseholds * seed.householdsFactor),
+    );
     const totalPieces = households * seed.drops;
-    const pricePerPostcardCents = resolvePoliticalPostcardPriceCents(districtTypeForOffice(profile.office), totalPieces);
+    const pricePerPostcardCents = resolvePoliticalPostcardPriceCents(
+      districtTypeForOffice(profile.office),
+      totalPieces,
+    );
     const estimatedTotalCents = totalPieces * pricePerPostcardCents;
-    const estimatedReach = Math.round(households * ESTIMATED_REACH_PER_HOUSEHOLD);
+    const estimatedReach = Math.round(
+      households * ESTIMATED_REACH_PER_HOUSEHOLD,
+    );
 
     return {
       id: seed.id,
@@ -716,39 +1548,63 @@ function buildStrategies(profile: CandidateCampaignProfile): CandidateCampaignSt
       campaignTheme: seed.theme,
       strategyOverview: `${seed.overview} Tailored to ${profile.candidateName} with ${profile.messagePillars.slice(0, 3).join(", ")} creative lanes.`,
       aggregateAudience: seed.audience,
-      targetGeographies: [...profile.topCounties.slice(0, 6), ...profile.mediaMarkets.slice(0, 2)],
+      targetGeographies: [
+        ...profile.topCounties.slice(0, 6),
+        ...profile.mediaMarkets.slice(0, 2),
+      ],
       emotionalPositioning: profile.creativeTone,
-      persuasionGoal: "Reinforce campaign-approved messages in aggregate geographies; no individual voter persuasion scores are created.",
-      turnoutGoal: "Provide election deadline and voting-plan reminders at aggregate geography level only.",
+      persuasionGoal:
+        "Reinforce campaign-approved messages in aggregate geographies; no individual voter persuasion scores are created.",
+      turnoutGoal:
+        "Provide election deadline and voting-plan reminders at aggregate geography level only.",
       messagingHierarchy: profile.messagePillars,
       issueHierarchy: profile.publicPriorities,
       timingCadence: `${seed.drops} drops across the campaign calendar with USPS and artwork approvals verified before quote lock.`,
       budgetAssumptions: `${households.toLocaleString()} households per major wave, ${seed.drops} drops, price capped at $0.70 per postcard by HomeReach pricing guardrail.`,
       rolloutStrategy: `Start with ${profile.topCounties.slice(0, 4).join(", ")}, then expand into ${profile.mediaMarkets.slice(0, 3).join(", ")} media-market route clusters.`,
       phaseSequencing: PHASE_BLUEPRINTS.map((phase) => phase.key).join(" -> "),
-      recommendedCountiesRoutes: [...profile.topCounties.slice(0, 5), ...profile.routeClusters.slice(0, 3)],
-      mailQuantityAssumptions: "Mail quantities are planning estimates until USPS EDDM/carrier-route counts are imported and timestamped.",
-      expectedOutcome: "Campaign staff can compare message lanes, route clusters, estimated pieces, budget range, and creative direction before human approval.",
+      recommendedCountiesRoutes: [
+        ...profile.topCounties.slice(0, 5),
+        ...profile.routeClusters.slice(0, 3),
+      ],
+      mailQuantityAssumptions:
+        "Mail quantities are planning estimates until USPS EDDM/carrier-route counts are imported and timestamped.",
+      expectedOutcome:
+        "Campaign staff can compare message lanes, route clusters, estimated pieces, budget range, and creative direction before human approval.",
       drops: seed.drops,
       households,
       estimatedReach,
       pricePerPostcardCents,
       totalPieces,
       estimatedTotalCents,
-      costPerReachCents: Math.round(estimatedTotalCents / Math.max(1, estimatedReach)),
+      costPerReachCents: Math.round(
+        estimatedTotalCents / Math.max(1, estimatedReach),
+      ),
       confidenceScore: seed.confidence,
       phases: buildPhases(profile, seed.id, households),
     };
   });
 }
 
-function buildGeoRecommendations(profile: CandidateCampaignProfile): GeoRecommendation[] {
+function buildGeoRecommendations(
+  profile: CandidateCampaignProfile,
+): GeoRecommendation[] {
   const raw = [
-    ...profile.topCounties.slice(0, 4).map((label) => ({ label, type: "county" as const })),
-    ...profile.topCities.slice(0, 3).map((label) => ({ label, type: "city" as const })),
-    ...profile.zipClusters.slice(0, 2).map((label) => ({ label, type: "zip_cluster" as const })),
-    ...profile.routeClusters.slice(0, 3).map((label) => ({ label, type: "route_cluster" as const })),
-    ...profile.mediaMarkets.slice(0, 2).map((label) => ({ label, type: "media_market" as const })),
+    ...profile.topCounties
+      .slice(0, 4)
+      .map((label) => ({ label, type: "county" as const })),
+    ...profile.topCities
+      .slice(0, 3)
+      .map((label) => ({ label, type: "city" as const })),
+    ...profile.zipClusters
+      .slice(0, 2)
+      .map((label) => ({ label, type: "zip_cluster" as const })),
+    ...profile.routeClusters
+      .slice(0, 3)
+      .map((label) => ({ label, type: "route_cluster" as const })),
+    ...profile.mediaMarkets
+      .slice(0, 2)
+      .map((label) => ({ label, type: "media_market" as const })),
   ];
 
   return raw.map((item, index) => {
@@ -756,9 +1612,16 @@ function buildGeoRecommendations(profile: CandidateCampaignProfile): GeoRecommen
     return {
       label: item.label,
       type: item.type,
-      objective: index % 3 === 0 ? "Message foundation" : index % 3 === 1 ? "Route-efficient repetition" : "Ballot-window reinforcement",
+      objective:
+        index % 3 === 0
+          ? "Message foundation"
+          : index % 3 === 1
+            ? "Route-efficient repetition"
+            : "Ballot-window reinforcement",
       rationale: `${item.label} fits ${profile.shortName}'s ${profile.messagePillars[index % profile.messagePillars.length] ?? "campaign"} lane and gives operators a concrete aggregate geography to verify against USPS counts.`,
-      messageFit: profile.messagePillars[index % profile.messagePillars.length] ?? "Campaign-approved issue",
+      messageFit:
+        profile.messagePillars[index % profile.messagePillars.length] ??
+        "Campaign-approved issue",
       postcardStyle: CREATIVE_CATEGORIES[index % CREATIVE_CATEGORIES.length]!,
       phaseFit: PHASE_BLUEPRINTS[index % PHASE_BLUEPRINTS.length]!.key,
       operationalComplexity: index % 4 === 0 ? "medium" : "low",
@@ -771,18 +1634,21 @@ function buildGeoRecommendations(profile: CandidateCampaignProfile): GeoRecommen
   });
 }
 
-export const MULTI_CANDIDATE_CAMPAIGN_AGENTS: CandidateCampaignAgent[] = PROFILES.map((profile) => ({
-  profile,
-  geographicRecommendations: buildGeoRecommendations(profile),
-  strategies: buildStrategies(profile),
-}));
+export const MULTI_CANDIDATE_CAMPAIGN_AGENTS: CandidateCampaignAgent[] =
+  PROFILES.map((profile) => ({
+    profile,
+    geographicRecommendations: buildGeoRecommendations(profile),
+    strategies: buildStrategies(profile),
+  }));
 
 export const AMY_ACTON_CAMPAIGN_PROFILE = MULTI_CANDIDATE_CAMPAIGN_AGENTS.find(
   (agent) => agent.profile.id === "amy-acton",
 )!.profile;
 
 export const AMY_ACTON_CAMPAIGN_RECOMMENDATIONS: CandidateCampaignRecommendation[] =
-  MULTI_CANDIDATE_CAMPAIGN_AGENTS.find((agent) => agent.profile.id === "amy-acton")!.strategies.map((strategy) => ({
+  MULTI_CANDIDATE_CAMPAIGN_AGENTS.find(
+    (agent) => agent.profile.id === "amy-acton",
+  )!.strategies.map((strategy) => ({
     id: strategy.id,
     title: strategy.title,
     planType: strategy.campaignTheme,
@@ -797,8 +1663,11 @@ export const AMY_ACTON_CAMPAIGN_RECOMMENDATIONS: CandidateCampaignRecommendation
     totalPieces: strategy.totalPieces,
     estimatedTotalCents: strategy.estimatedTotalCents,
     costPerVoterCents: strategy.costPerReachCents,
-    phaseCadence: strategy.phases.map((phase) => `${phase.timing}: ${phase.objective}`),
-    nextAction: "Validate USPS route counts and move selected draft to admin review.",
+    phaseCadence: strategy.phases.map(
+      (phase) => `${phase.timing}: ${phase.objective}`,
+    ),
+    nextAction:
+      "Validate USPS route counts and move selected draft to admin review.",
     confidenceScore: strategy.confidenceScore,
   }));
 
@@ -808,9 +1677,18 @@ export function summarizeAmyActonRecommendations() {
 
 export function summarizeCandidateAgent(candidateId: CandidateTargetId) {
   const agent = getCandidateCampaignAgent(candidateId);
-  const households = agent.strategies.reduce((sum, plan) => sum + plan.households, 0);
-  const estimatedReach = agent.strategies.reduce((sum, plan) => sum + plan.estimatedReach, 0);
-  const investmentCents = agent.strategies.reduce((sum, plan) => sum + plan.estimatedTotalCents, 0);
+  const households = agent.strategies.reduce(
+    (sum, plan) => sum + plan.households,
+    0,
+  );
+  const estimatedReach = agent.strategies.reduce(
+    (sum, plan) => sum + plan.estimatedReach,
+    0,
+  );
+  const investmentCents = agent.strategies.reduce(
+    (sum, plan) => sum + plan.estimatedTotalCents,
+    0,
+  );
 
   return {
     plans: agent.strategies.length,
@@ -821,8 +1699,14 @@ export function summarizeCandidateAgent(candidateId: CandidateTargetId) {
   };
 }
 
-export function getCandidateCampaignAgent(candidateId: CandidateTargetId): CandidateCampaignAgent {
-  return MULTI_CANDIDATE_CAMPAIGN_AGENTS.find((agent) => agent.profile.id === candidateId) ?? MULTI_CANDIDATE_CAMPAIGN_AGENTS[0]!;
+export function getCandidateCampaignAgent(
+  candidateId: CandidateTargetId,
+): CandidateCampaignAgent {
+  return (
+    MULTI_CANDIDATE_CAMPAIGN_AGENTS.find(
+      (agent) => agent.profile.id === candidateId,
+    ) ?? MULTI_CANDIDATE_CAMPAIGN_AGENTS[0]!
+  );
 }
 
 export function getDefaultCandidateId(): CandidateTargetId {

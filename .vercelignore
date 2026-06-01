@@ -1,6 +1,13 @@
 .env
 .env.*
 !.env.example
+.codex
+.codex-logs
+.codex-next
+.codex-next-smoke
+.codex-previews
+_codex_checkpoints
+_codex_runtime
 .next
 apps/web/.next
 node_modules
@@ -9,6 +16,7 @@ node_modules
 /coverage
 .tmp-chrome-*
 tmp_*.png
+tmp_*.log
 build-cache-backups
 outputs
 ai-workforce/logs

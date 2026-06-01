@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { searchAndStoreCampaignManagerEmails } from "@/lib/political/campaign-manager-email-search";
 import { buildCandidateLaunchReadiness } from "@/lib/political/candidate-readiness";
 import { isCandidateLaunchAgentEnabled, isPoliticalEnabled } from "@/lib/political/env";
+import { createServiceClient } from "@/lib/supabase/service";
 import {
   approveCandidateLaunchPlan,
   generateCandidateLaunchPlan,
@@ -41,6 +43,29 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+function isAdminUser(user: unknown) {
+  const metadata = (user as { app_metadata?: Record<string, unknown> } | null | undefined)?.app_metadata;
+  return metadata?.user_role === "admin";
+}
+
+function requireLatestPlanId(
+  workspace: Awaited<ReturnType<typeof loadCandidateAgentWorkspace>>,
+  requestedPlanId: string | undefined,
+) {
+  const latestPlanId = workspace.latestPlan?.id ?? null;
+  const planId = requestedPlanId ?? latestPlanId;
+  if (!planId) {
+    return { error: "No launch plan is available.", status: 400 };
+  }
+  if (planId !== latestPlanId) {
+    return {
+      error: "Plan mutation blocked because the requested plan is not the latest plan for this candidate.",
+      status: 409,
+    };
+  }
+  return { planId };
+}
+
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const access = await requirePoliticalAgentAccess();
@@ -71,6 +96,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const result = await runCandidateResearch(candidateId, access.user.id);
         return NextResponse.json({ ok: true, action: body.action, result });
       }
+      case "manager_email_search": {
+        const result = await searchAndStoreCampaignManagerEmails(createServiceClient(), {
+          candidateId,
+          limit: 1,
+          force: true,
+          includeSearchEngine: true,
+          actorUserId: access.user.id,
+        });
+        return NextResponse.json({ ok: true, action: body.action, result });
+      }
       case "plan": {
         const result = await generateCandidateLaunchPlan(candidateId, access.user.id);
         return NextResponse.json({ ok: true, action: body.action, result });
@@ -96,10 +131,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
       }
       case "sales_follow_up": {
-        const draft = await generateSalesFollowUpDraft(candidateId);
+        const draft = await generateSalesFollowUpDraft(candidateId, access.user.id);
         return NextResponse.json({ ok: true, action: body.action, draft });
       }
       case "approve_plan": {
+        if (!isAdminUser(access.user)) {
+          return NextResponse.json({ ok: false, error: "Admin approval is required to mark political plans reviewed." }, { status: 403 });
+        }
         const workspace = await loadCandidateAgentWorkspace(candidateId);
         if (!workspace.candidate) {
           return NextResponse.json({ ok: false, error: "Candidate not found." }, { status: 404 });
@@ -115,22 +153,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
             { status: 400 },
           );
         }
-        const planId = body.planId ?? workspace.latestPlan?.id;
-        if (!planId) {
-          return NextResponse.json({ ok: false, error: "No launch plan to approve." }, { status: 400 });
+        const planResolution = requireLatestPlanId(workspace, body.planId);
+        if ("error" in planResolution) {
+          return NextResponse.json({ ok: false, error: planResolution.error }, { status: planResolution.status });
         }
-        const plan = await approveCandidateLaunchPlan(planId, access.user.id, body.notes);
+        const plan = await approveCandidateLaunchPlan(planResolution.planId, access.user.id, body.notes);
         return NextResponse.json({ ok: true, action: body.action, plan });
       }
       case "save_plan_edits": {
         const workspace = await loadCandidateAgentWorkspace(candidateId);
-        const planId = body.planId ?? workspace.latestPlan?.id;
-        if (!planId) {
-          return NextResponse.json({ ok: false, error: "No launch plan to edit." }, { status: 400 });
+        const planResolution = requireLatestPlanId(workspace, body.planId);
+        if ("error" in planResolution) {
+          return NextResponse.json({ ok: false, error: planResolution.error }, { status: planResolution.status });
         }
         const plan = await updateCandidateLaunchPlanDraft(
           {
-            planId,
+            planId: planResolution.planId,
             recommendedStrategy: body.recommendedStrategy,
             operatorNotes: body.operatorNotes,
           },
@@ -139,6 +177,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return NextResponse.json({ ok: true, action: body.action, plan });
       }
       case "production_queue": {
+        if (!isAdminUser(access.user)) {
+          return NextResponse.json({ ok: false, error: "Admin approval is required to stage political plans for production review." }, { status: 403 });
+        }
         const workspace = await loadCandidateAgentWorkspace(candidateId);
         if (!workspace.candidate) {
           return NextResponse.json({ ok: false, error: "Candidate not found." }, { status: 404 });
@@ -154,16 +195,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
             { status: 400 },
           );
         }
-        const planId = body.planId ?? workspace.latestPlan?.id;
-        if (!planId) {
-          return NextResponse.json({ ok: false, error: "No launch plan to stage." }, { status: 400 });
+        const planResolution = requireLatestPlanId(workspace, body.planId);
+        if ("error" in planResolution) {
+          return NextResponse.json({ ok: false, error: planResolution.error }, { status: planResolution.status });
         }
-        const plan = await markCandidatePlanProductionReady(planId, access.user.id);
+        const plan = await markCandidatePlanProductionReady(planResolution.planId, access.user.id);
         return NextResponse.json({ ok: true, action: body.action, plan });
       }
       default:
         return NextResponse.json(
-          { ok: false, error: "action must be one of: research, plan, proposal_draft, creative_briefs, sales_follow_up, approve_plan, save_plan_edits, production_queue" },
+          { ok: false, error: "action must be one of: research, manager_email_search, plan, proposal_draft, creative_briefs, sales_follow_up, approve_plan, save_plan_edits, production_queue" },
           { status: 400 },
         );
     }

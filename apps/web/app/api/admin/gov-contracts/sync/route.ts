@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
 import { createServiceClient } from "@/lib/supabase/service";
+import { contractOSFeatureFlags } from "@/lib/contractos/config";
 import { searchSamGovOpportunities } from "@/lib/gov-contracts/sam-gov";
 import { logGovContractAuditEvent } from "@/lib/gov-contracts/data";
 
@@ -11,12 +12,17 @@ function hasSupabaseServiceEnv() {
 export async function GET(req: Request) {
   const guard = await requireAdminOrCron(req);
   if (!guard.ok) return guard.response;
+  const flags = contractOSFeatureFlags();
 
   return NextResponse.json({
     ok: true,
+    enabled: flags.enabled,
+    samSyncEnabled: flags.samSync,
     samConfigured: Boolean(process.env.SAM_GOV_API_KEY),
     databaseConfigured: hasSupabaseServiceEnv(),
-    message: process.env.SAM_GOV_API_KEY
+    message: !flags.enabled || !flags.samSync
+      ? "ContractOS SAM.gov sync is disabled by feature flag."
+      : process.env.SAM_GOV_API_KEY
       ? "SAM.gov sync is configured."
       : "SAM_GOV_API_KEY is required before live opportunity sync can run.",
   });
@@ -25,6 +31,16 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const guard = await requireAdminOrCron(req);
   if (!guard.ok) return guard.response;
+  const flags = contractOSFeatureFlags();
+  if (!flags.enabled || !flags.samSync) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ContractOS SAM.gov sync is not enabled.",
+      },
+      { status: 404 }
+    );
+  }
 
   if (!process.env.SAM_GOV_API_KEY) {
     return NextResponse.json(
@@ -111,6 +127,9 @@ export async function POST(req: Request) {
         solicitation_number: opportunity.solicitationNumber,
         notice_type: opportunity.noticeType,
         base_notice_type: opportunity.baseNoticeType,
+        contract_type: opportunity.contractType,
+        response_method: opportunity.responseMethod,
+        incumbent_vendor: opportunity.incumbentVendor,
         posted_date: opportunity.postedDate,
         response_deadline: opportunity.dueDate,
         questions_deadline: opportunity.questionsDeadline,
@@ -135,6 +154,8 @@ export async function POST(req: Request) {
           missing_items: opportunity.missingItems,
         },
         attachments: opportunity.attachments,
+        required_documents: opportunity.requiredDocuments,
+        submission_instructions: opportunity.submissionInstructions,
         raw_source: opportunity,
         sync_status: "synced",
         last_synced_at: new Date().toISOString(),

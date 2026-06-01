@@ -33,19 +33,19 @@ const TEMPLATES: Record<AIResponseIntent, TemplateSet> = {
   initial_outreach: {
     intent: "initial_outreach",
     variants: [
-      "Hey! HomeReach here — we work with {{category}} businesses in {{city}} to fill their schedule with local homeowners. Got an open spot. Want me to check if your area's still available?",
-      "Hi {{firstName}}! Quick heads up — we have an exclusive marketing spot for {{category}} businesses in {{city}}. Only one per category. Still available if you're interested?",
-      "Hey, I'm with HomeReach — we do direct mail postcard campaigns for local {{category}} companies. Have a spot open in {{city}} right now. Worth a quick look?",
-      "Hi! We run local postcard campaigns for {{category}} businesses in {{city}} — one exclusive spot per category. Want to see what it looks like for your area?",
+      "Hi {{firstName}}, HomeReach helps {{category}} businesses in {{city}} stay visible with local homeowners without taking on a huge ad budget. Want me to check if your category is still protected?",
+      "Hi {{firstName}}, quick note from HomeReach. We are opening category-protected local visibility for {{category}} businesses in {{city}}. Want a quick look?",
+      "Hi, I am with HomeReach. We help local {{category}} companies stay remembered in the neighborhoods they already serve. Want me to send what {{city}} coverage looks like?",
+      "Hi {{firstName}}, HomeReach gives one {{category}} business in {{city}} a clean postcard presence alongside other strong local businesses. Want me to check availability?",
     ],
   },
 
   acknowledge_reply: {
     intent: "acknowledge_reply",
     variants: [
-      "Great to hear from you! So HomeReach sends direct mail to homeowners in your area — and it's exclusive, meaning only your {{category}} business gets the spot.",
-      "Hey! Thanks for getting back. We basically put {{businessName}} in front of every homeowner in {{city}} through targeted postcards. Super simple. Want me to walk you through it?",
-      "Glad you replied! Real quick — we cover {{city}} with direct mail campaigns, one business per category. Your {{category}} spot would be exclusive to you.",
+      "Thanks for getting back. HomeReach makes this simple: one {{category}} business gets protected visibility in {{city}}, and we handle the mail execution around it.",
+      "Appreciate the reply. The idea is straightforward: keep {{businessName}} visible with nearby homeowners, without making you manage another complicated marketing channel.",
+      "Glad you replied. We build local postcard visibility around {{city}} with one business per category, so your {{category}} message has room to be remembered.",
     ],
   },
 
@@ -61,19 +61,19 @@ const TEMPLATES: Record<AIResponseIntent, TemplateSet> = {
   surface_value: {
     intent: "surface_value",
     variants: [
-      "Most {{category}} businesses we work with see 2–5 new homeowner calls per postcard run. Exclusive coverage means no competitors on the card.",
-      "It's really straightforward — we mail to every homeowner in your route, your name and number front and center. No sharing the card.",
-      "Basically — we flood your service area with your business every 30 days. Homeowners keep postcards. You stay top of mind.",
+      "The value is consistency: homeowners see a real local {{category}} option before they need one, and your category is not crowded by direct competitors on the card.",
+      "It is built to feel low-lift for you. HomeReach handles the campaign structure, postcard path, and follow-up details so you can stay focused on the business.",
+      "The goal is simple local recognition. Your business shows up in the homes you want to serve, with a clear offer and a clean next step.",
     ],
   },
 
   progress_forward: {
     intent: "progress_forward",
     variants: [
-      "Want me to check if {{city}} is still open for {{category}}? I can have an answer in a few minutes.",
-      "I can show you exactly what this would look like for {{businessName}} — takes 2 minutes. Want me to pull it up?",
-      "Most businesses start with a 2,500-home run to test the market. Want me to walk you through what that looks like in {{city}}?",
-      "If you're open to it, I can send over a quick example of what your postcard would look like. No commitment — just so you can see it.",
+      "Want me to check whether {{city}} is still open for {{category}} and send the simple breakdown?",
+      "I can show what this would look like for {{businessName}} in plain terms: coverage, cost, and next step. Want me to pull it together?",
+      "A lot of owners start by reviewing one clean local coverage option first. Want me to send the {{city}} version?",
+      "If you are open to it, I can send a quick example so you can see the visibility plan before making any decision.",
     ],
   },
 
@@ -90,36 +90,36 @@ const TEMPLATES: Record<AIResponseIntent, TemplateSet> = {
   objection_surface: {
     intent: "objection_surface",
     variants: [
-      "Totally fair — what's the main concern? Happy to address it.",
-      "That makes sense. What would make this feel like the right fit for you?",
-      "No worries at all. Is it more about timing, budget, or something else?",
-      "Understood. What would you need to see to feel comfortable moving forward?",
+      "Totally fair. Is the concern more timing, budget, or whether it will feel simple enough to manage?",
+      "That makes sense. What would you need to see for this to feel like a confident local visibility decision?",
+      "No worries at all. I can keep this simple: is the hesitation timing, budget, or fit?",
+      "Understood. The goal is not pressure. What would make the next step feel clear and low-risk?",
     ],
   },
 
   follow_up_1: {
     intent: "follow_up_1",
     variants: [
-      "Hey {{firstName}}, just circling back — the {{city}} spot is still open. Worth 2 minutes to take a look?",
-      "Hi! Checking in on the {{city}} {{category}} spot — still available right now. Want me to hold it while you decide?",
-      "Hey, wanted to follow up. The spot's still there — no pressure, just didn't want you to miss it if timing's right.",
+      "Hi {{firstName}}, quick follow-up on the {{city}} {{category}} visibility option. Want me to send the simple breakdown before you decide?",
+      "Hi {{firstName}}, checking back on {{city}}. If local visibility is still on your mind, I can send the coverage and pricing in one clean note.",
+      "Hi {{firstName}}, no pressure here. I just wanted to make sure you had the {{city}} option before the category is reviewed with another business.",
     ],
   },
 
   follow_up_2: {
     intent: "follow_up_2",
     variants: [
-      "One more quick touch — if {{city}} timing isn't right, no worries at all. Just wanted to make sure you had the info.",
-      "{{firstName}}, last check-in on this. Happy to answer any questions if you have them — otherwise no stress.",
-      "Hey — still here if you want to revisit the {{city}} spot. If the timing's off, totally get it. Just let me know either way.",
+      "One more quick touch. If {{city}} is not the right timing, no problem. I can still send the details so you have them for later.",
+      "{{firstName}}, happy to answer questions if this is still on your list. If not, no stress - I do not want to add noise to your day.",
+      "Still here if you want to revisit the {{city}} option. If the timing is off, just tell me and I will close the loop.",
     ],
   },
 
   follow_up_3: {
     intent: "follow_up_3",
     variants: [
-      "Last one, promise. If the timing's not right right now, I'll check back in a few months. Just say the word if things change.",
-      "Totally okay if it's not the right time. I'll keep {{businessName}} in mind and reach back out when we have new availability in {{city}}.",
+      "Last note from me. If timing is not right, I will close the loop for now. If visibility in {{city}} becomes a priority, just reply.",
+      "Totally okay if this is not the right time. I will keep {{businessName}} in mind and reach back out only when there is a clear {{city}} reason.",
     ],
   },
 };

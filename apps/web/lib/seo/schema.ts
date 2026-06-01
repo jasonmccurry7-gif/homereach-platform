@@ -22,9 +22,38 @@ export function buildOrganizationLd(): JsonLd {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "HomeReach",
+    legalName: "HomeReach",
     url: base,
     logo: `${base}/icons/icon-512.png`,
-    sameAs: [],
+    description:
+      "AI-powered local growth, direct mail, political mail, purchasing intelligence, and campaign execution platform for local businesses, campaigns, and organizations.",
+    areaServed: [
+      {
+        "@type": "State",
+        name: "Ohio",
+      },
+      {
+        "@type": "Country",
+        name: "United States",
+      },
+    ],
+    knowsAbout: [
+      "Direct mail marketing",
+      "Shared postcard advertising",
+      "Targeted neighborhood campaigns",
+      "Political mail",
+      "Local SEO",
+      "Review and reputation management",
+      "Procurement savings intelligence",
+      "Government contract opportunity tracking",
+    ],
+    contactPoint: {
+      "@type": "ContactPoint",
+      contactType: "sales",
+      areaServed: "US",
+      availableLanguage: "English",
+    },
+    sameAs: buildSameAsLinks(),
   };
 }
 
@@ -36,6 +65,89 @@ export function buildWebsiteLd(): JsonLd {
     "@type": "WebSite",
     name: "HomeReach",
     url: base,
+    inLanguage: "en-US",
+    publisher: {
+      "@type": "Organization",
+      name: "HomeReach",
+      url: base,
+    },
+  };
+}
+
+export function buildWebPageLd(args: {
+  name: string;
+  description: string;
+  url: string;
+  primaryImage?: string;
+  dateModified?: string;
+  about?: string[];
+}): JsonLd {
+  const base = getBaseUrl();
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: args.name,
+    description: args.description,
+    url: args.url,
+    inLanguage: "en-US",
+    isPartOf: {
+      "@type": "WebSite",
+      name: "HomeReach",
+      url: base,
+    },
+    about: args.about,
+    primaryImageOfPage: args.primaryImage
+      ? {
+          "@type": "ImageObject",
+          url: args.primaryImage,
+        }
+      : undefined,
+    dateModified: args.dateModified,
+  };
+}
+
+export function buildServiceCatalogLd(args: {
+  name: string;
+  description: string;
+  url: string;
+  services: Array<{ name: string; description: string; url: string; category?: string }>;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "OfferCatalog",
+    name: args.name,
+    description: args.description,
+    url: args.url,
+    itemListElement: args.services.map((service, index) => ({
+      "@type": "Offer",
+      position: index + 1,
+      itemOffered: {
+        "@type": "Service",
+        name: service.name,
+        description: service.description,
+        serviceType: service.category,
+        url: service.url,
+        provider: {
+          "@type": "Organization",
+          name: "HomeReach",
+          url: getBaseUrl(),
+        },
+      },
+    })),
+  };
+}
+
+export function buildSiteNavigationLd(items: Array<{ name: string; url: string }>): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "HomeReach site navigation",
+    itemListElement: items.map((item, index) => ({
+      "@type": "SiteNavigationElement",
+      position: index + 1,
+      name: item.name,
+      url: item.url,
+    })),
   };
 }
 
@@ -226,4 +338,14 @@ export function buildDatasetLd(args: {
       url: getBaseUrl(),
     },
   };
+}
+
+function buildSameAsLinks() {
+  return [
+    process.env.NEXT_PUBLIC_FACEBOOK_URL,
+    process.env.NEXT_PUBLIC_LINKEDIN_URL,
+    process.env.NEXT_PUBLIC_INSTAGRAM_URL,
+    process.env.NEXT_PUBLIC_TIKTOK_URL,
+    process.env.NEXT_PUBLIC_YOUTUBE_URL,
+  ].filter((value): value is string => Boolean(value));
 }

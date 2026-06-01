@@ -781,10 +781,17 @@ export async function recordPaymentCompleted(
   }
   const cur = rowToOrder(existing as unknown as OrderDbRow);
 
-  // Accumulated total paid. If this is the same session (idempotent retry),
-  // do not double-count.
-  const sameSession = cur.stripeCheckoutSessionId === input.sessionId;
-  const newAmountPaid = sameSession
+  // Accumulated total paid. If this is the same completed Stripe payment
+  // (webhook retry or success-page refresh), do not double-count. A new
+  // balance-due checkout may have already replaced stripe_checkout_session_id
+  // before payment completes, so the payment intent is the stronger idempotency
+  // signal after the first successful write.
+  const sameCompletedPayment =
+    Boolean(input.paymentIntentId && cur.stripePaymentIntentId === input.paymentIntentId) ||
+    (cur.stripeCheckoutSessionId === input.sessionId &&
+      cur.amountPaidCents >= input.amountPaidCents &&
+      cur.amountPaidCents > 0);
+  const newAmountPaid = sameCompletedPayment
     ? Math.max(cur.amountPaidCents, input.amountPaidCents)
     : cur.amountPaidCents + input.amountPaidCents;
 

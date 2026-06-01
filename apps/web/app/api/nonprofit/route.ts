@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db, publicNonprofitApplications } from "@homereach/db";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 const NonprofitSchema = z.object({
   orgName:     z.string().min(1, "Organization name is required"),
@@ -20,6 +21,13 @@ const NonprofitSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const limited = checkRateLimit(req, {
+      key: "nonprofit-application",
+      limit: 6,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (limited) return limited;
+
     const body   = await req.json();
     const parsed = NonprofitSchema.safeParse(body);
 

@@ -56,7 +56,7 @@ export function BusinessDesignForm({
           <input
             type="file"
             name="designFile"
-            accept="image/jpeg,image/png,image/webp,image/svg+xml"
+            accept="image/jpeg,image/png,image/webp"
             className="block w-full text-xs text-gray-500 file:mr-2 file:rounded-md file:border-0 file:bg-blue-50 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
           />
           <input

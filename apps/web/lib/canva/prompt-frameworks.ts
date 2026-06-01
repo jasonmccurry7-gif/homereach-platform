@@ -19,7 +19,7 @@ export const HOMEREACH_CANVA_PROMPT_FRAMEWORKS: CanvaPromptFramework[] = [
       "Mark route counts and pricing as estimates until HomeReach quote lock.",
     ],
     prompt:
-      "Create a premium statewide campaign presentation in the HomeReach brand. Make it feel presidential-level, operational, and logistics-driven. Use deep navy, white, muted red, silver UI accents, precise map/route visuals, and complete slide copy. Center the narrative on geographic saturation, multi-wave postcard timing, cost predictability, and execution visibility.",
+      "Create a premium statewide campaign presentation in the HomeReach brand. Make it feel presidential-level, calm, confident, and operationally superior. Use deep navy, white, muted red, silver UI accents, precise map/route visuals, and complete slide copy. Center the narrative on campaign confidence: geographic clarity, multi-wave postcard timing, cost predictability, approval checkpoints, and execution visibility.",
   },
   {
     key: "political_postcard",
@@ -32,7 +32,7 @@ export const HOMEREACH_CANVA_PROMPT_FRAMEWORKS: CanvaPromptFramework[] = [
       "No deceptive synthetic content or unsupported claims.",
     ],
     prompt:
-      "Design a complete front/back political postcard that feels gubernatorial, premium, modern, and emotionally intelligent. Use a clear headline, human visual direction, concise back-copy hierarchy, QR zone, mailing panel, CTA, and compliance space. Avoid cheap print-shop styling.",
+      "Design a complete front/back PoliticalReach political postcard that feels like it came from a top national campaign consulting operation, not a local print template. Build the card as an emotional persuasion asset and voter memory device: one dominant emotional attention point, unmistakable candidate identity, one core message, one key differentiator, trust reinforcement, and one voter action. Use presidential navy, restrained liberty red, matte white, steel gray, and only subtle premium patriotic accents. Prioritize bold modern typography, strong portrait or authentic community imagery, generous spacing, fast mailbox readability, QR zone, mailing panel, CTA, and compliance space. Avoid clutter, generic flags, repetitive issue lists, weak hierarchy, cheesy patriotism, and unsupported claims.",
   },
   {
     key: "shared_postcard_business",
@@ -45,7 +45,7 @@ export const HOMEREACH_CANVA_PROMPT_FRAMEWORKS: CanvaPromptFramework[] = [
       "Keep design inside print safe areas.",
     ],
     prompt:
-      "Create a clean, premium local-business postcard spot using HomeReach shared postcard rules. Prioritize instant category recognition, strong offer, trustworthy proof, phone/URL clarity, and city-local relevance. Output copy and visual direction suitable for Canva template autofill.",
+      "Create a clean, premium local-business postcard spot using HomeReach shared postcard rules. Prioritize instant category recognition, a clear offer, trustworthy proof, phone/URL clarity, city-local relevance, and the emotional outcome of helping a serious local business stay remembered without carrying the full advertising cost alone. Output copy and visual direction suitable for Canva template autofill.",
   },
   {
     key: "route_saturation_visual",
@@ -58,6 +58,6 @@ export const HOMEREACH_CANVA_PROMPT_FRAMEWORKS: CanvaPromptFramework[] = [
       "Keep data aggregate and operational.",
     ],
     prompt:
-      "Create a premium operational map visual that shows route saturation, coverage, delivery confidence, and campaign readiness. Use dark-map styling, glowing route highlights, compact labels, and executive dashboard clarity.",
+      "Create a premium operational map visual that shows route saturation, coverage, delivery confidence, and campaign readiness. The visual should create clarity and control at a glance, not clutter. Use dark-map styling, glowing route highlights, compact labels, and executive dashboard clarity.",
   },
 ] as const;

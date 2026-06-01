@@ -10,7 +10,7 @@ import {
   AMY_ACTON_TARGETING_AREAS,
 } from "@/lib/political/amy-acton-presentation";
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Amy Acton Campaign Presentation - HomeReach Political",

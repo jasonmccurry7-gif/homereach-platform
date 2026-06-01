@@ -5,7 +5,7 @@ import { CtaButton } from "@/components/marketing/cta-button";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { IntelligenceVisual, RouteMapPanel } from "@/components/marketing/homepage-visuals";
-import { accountStartHref, PRODUCT_START_PATHS } from "@/lib/marketing/product-routes";
+import { PRODUCT_START_PATHS } from "@/lib/marketing/product-routes";
 
 export const metadata: Metadata = {
   title: "Property Intelligence Overview | HomeReach",
@@ -37,7 +37,7 @@ const layers = [
 ];
 
 export default function PropertyIntelligenceOverviewPage() {
-  const startHref = accountStartHref(PRODUCT_START_PATHS.propertyIntelligence);
+  const startHref = PRODUCT_START_PATHS.propertyIntelligence;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -57,11 +57,11 @@ export default function PropertyIntelligenceOverviewPage() {
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300">
                 Property intelligence turns household and neighborhood context into clearer targeting decisions.
-                Review the overview first, then create an account before selecting a market and intelligence tier.
+                Review the overview first, then start the intelligence request before creating an account later.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <CtaButton href={startHref} variant="light">
-                  Create Account to Continue
+                  Start Intelligence Request
                 </CtaButton>
                 <CtaButton href="/#property-intelligence" variant="secondary">
                   View Platform Context

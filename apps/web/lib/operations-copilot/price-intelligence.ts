@@ -2,11 +2,26 @@ import type {
   IndustryPriceCatalog,
   IndustryPriceItem,
 } from "@/lib/operations-copilot/industry-catalog";
+import {
+  formatFreshnessLabel,
+  formatLastUpdatedLabel,
+  formatPriceSourceQuality,
+  resolvePriceFreshness,
+  resolvePriceSourceQuality,
+  type PriceFreshness,
+  type PriceSourceQuality,
+} from "@/lib/operations-copilot/price-confidence";
 
 export type SupplierSourceReadiness = {
   supplierName: string;
   itemCount: number;
-  sourceMode: "public_web" | "supplier_portal" | "quote_request" | "invoice_upload";
+  sourceMode:
+    | "public_web"
+    | "supplier_portal"
+    | "quote_request"
+    | "invoice_upload"
+    | "supplier_api"
+    | "edi_cxml";
   priority: "high" | "medium" | "low";
 };
 
@@ -29,6 +44,11 @@ export type SupplierPriceSnapshot = {
   confidence: string;
   priceBasis: string;
   notes: string | null;
+  sourceQuality: PriceSourceQuality;
+  sourceQualityLabel: string;
+  freshness: PriceFreshness;
+  freshnessLabel: string;
+  lastUpdatedLabel: string;
 };
 
 export type SupplierPriceRow = {
@@ -41,7 +61,11 @@ export type SupplierPriceRow = {
   sourceCount: number;
   bestPriceCents: number | null;
   bestSupplierName: string | null;
+  bestSourceQuality: PriceSourceQuality | null;
+  bestSourceQualityLabel: string;
+  bestFreshnessLabel: string;
   latestCapturedAt: Date | null;
+  latestUpdatedLabel: string;
   status: "priced" | "ready" | "needs_source";
 };
 
@@ -52,6 +76,12 @@ export type SupplierPriceIntelligence = {
   itemCount: number;
   sourceCount: number;
   capturedPriceCount: number;
+  verifiedPriceCount: number;
+  observedPriceCount: number;
+  estimatedPriceCount: number;
+  freshPriceCount: number;
+  agingPriceCount: number;
+  stalePriceCount: number;
   pricedItemCount: number;
   sourceReadiness: SupplierSourceReadiness[];
   rows: SupplierPriceRow[];
@@ -82,6 +112,12 @@ export async function buildSupplierPriceIntelligence({
   const capturedPriceCount = snapshots.filter(
     (snapshot) => snapshot.observedPriceCents !== null
   ).length;
+  const verifiedPriceCount = snapshots.filter((snapshot) => snapshot.sourceQuality === "verified").length;
+  const observedPriceCount = snapshots.filter((snapshot) => snapshot.sourceQuality === "observed").length;
+  const estimatedPriceCount = snapshots.filter((snapshot) => snapshot.sourceQuality === "estimated").length;
+  const freshPriceCount = snapshots.filter((snapshot) => snapshot.freshness === "fresh").length;
+  const agingPriceCount = snapshots.filter((snapshot) => snapshot.freshness === "aging").length;
+  const stalePriceCount = snapshots.filter((snapshot) => snapshot.freshness === "stale").length;
 
   return {
     industryId: catalog.id,
@@ -90,14 +126,20 @@ export async function buildSupplierPriceIntelligence({
     itemCount: catalog.items.length,
     sourceCount: rows.reduce((sum, row) => sum + row.sourceCount, 0),
     capturedPriceCount,
+    verifiedPriceCount,
+    observedPriceCount,
+    estimatedPriceCount,
+    freshPriceCount,
+    agingPriceCount,
+    stalePriceCount,
     pricedItemCount: rows.filter((row) => row.status === "priced").length,
     sourceReadiness,
     rows,
     latestSnapshots: snapshots.slice(0, 12),
     dataNotice:
       capturedPriceCount > 0
-        ? "Showing captured benchmark/account snapshots plus the full source matrix."
-        : "No captured price snapshots yet. The table is ready for public web, portal, quote, and invoice ingestion.",
+        ? "Showing captured supplier snapshots. Verified means client invoices, receipts, supplier account quotes, API, EDI, cXML, or approved portal data. Observed means public web/search benchmark only. Estimated means planning data."
+        : "No captured price snapshots yet. Have the client drop in inventory sheets, receipts, or invoices and HomeReach will standardize them before public/API benchmark search.",
   };
 }
 
@@ -124,26 +166,39 @@ async function loadPriceSnapshots({
       .orderBy(desc(opcopilotPriceSnapshots.capturedAt))
       .limit(300);
 
-    return rows.map((row): SupplierPriceSnapshot => ({
-      id: row.id,
-      sku: row.sku,
-      itemName: row.itemName,
-      category: row.category,
-      supplierName: row.supplierName,
-      sourceType: row.sourceType,
-      sourceLabel: row.sourceLabel,
-      sourceUrl: row.sourceUrl,
-      unit: row.unit,
-      observedPriceCents: row.observedPriceCents,
-      normalizedUnitPriceCents: row.normalizedUnitPriceCents,
-      landedPriceCents: row.landedPriceCents,
-      inStock: row.inStock,
-      leadTimeDays: row.leadTimeDays,
-      capturedAt: row.capturedAt,
-      confidence: row.confidence,
-      priceBasis: row.priceBasis,
-      notes: row.notes,
-    }));
+    return rows.map((row): SupplierPriceSnapshot => {
+      const sourceQuality = resolvePriceSourceQuality(row.sourceType);
+      const freshness = resolvePriceFreshness({
+        capturedAt: row.capturedAt,
+        sourceQuality,
+      });
+
+      return {
+        id: row.id,
+        sku: row.sku,
+        itemName: row.itemName,
+        category: row.category,
+        supplierName: row.supplierName,
+        sourceType: row.sourceType,
+        sourceLabel: row.sourceLabel,
+        sourceUrl: row.sourceUrl,
+        unit: row.unit,
+        observedPriceCents: row.observedPriceCents,
+        normalizedUnitPriceCents: row.normalizedUnitPriceCents,
+        landedPriceCents: row.landedPriceCents,
+        inStock: row.inStock,
+        leadTimeDays: row.leadTimeDays,
+        capturedAt: row.capturedAt,
+        confidence: row.confidence,
+        priceBasis: row.priceBasis,
+        notes: row.notes,
+        sourceQuality,
+        sourceQualityLabel: formatPriceSourceQuality(sourceQuality),
+        freshness,
+        freshnessLabel: formatFreshnessLabel(freshness),
+        lastUpdatedLabel: formatLastUpdatedLabel(row.capturedAt),
+      };
+    });
   } catch (error) {
     const code =
       typeof error === "object" && error && "code" in error
@@ -178,7 +233,11 @@ function buildPriceRow(
     sourceCount: item.suppliers.length,
     bestPriceCents: best?.landedPriceCents ?? best?.observedPriceCents ?? null,
     bestSupplierName: best?.supplierName ?? null,
+    bestSourceQuality: best?.sourceQuality ?? null,
+    bestSourceQualityLabel: best?.sourceQualityLabel ?? "Not verified",
+    bestFreshnessLabel: best?.freshnessLabel ?? "No snapshot",
     latestCapturedAt: snapshots[0]?.capturedAt ?? null,
+    latestUpdatedLabel: formatLastUpdatedLabel(snapshots[0]?.capturedAt),
     status: best ? "priced" : item.suppliers.length > 0 ? "ready" : "needs_source",
   };
 }
@@ -214,6 +273,12 @@ function resolveSourceMode(
   supplierName: string
 ): SupplierSourceReadiness["sourceMode"] {
   const normalized = supplierName.toLowerCase();
+  if (normalized.includes("amazon") || normalized.includes("grainger") || normalized.includes("walmart")) {
+    return "supplier_api";
+  }
+  if (normalized.includes("sysco") || normalized.includes("us foods") || normalized.includes("gordon")) {
+    return "edi_cxml";
+  }
   if (normalized.includes("home depot") || normalized.includes("lowe") || normalized.includes("menards")) {
     return "public_web";
   }

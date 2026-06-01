@@ -7,16 +7,33 @@ import { db, leads } from "@homereach/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth/api-guards";
 import { sendIntakeLinkToLead } from "@homereach/services/targeted";
+import { z } from "zod";
+
+const SendIntakeSchema = z.object({
+  leadId: z.string().uuid(),
+  confirmSend: z.literal(true),
+}).strict();
 
 export async function POST(req: Request) {
   try {
     const guard = await requireAdmin();
     if (!guard.ok) return guard.response;
 
-    const { leadId } = await req.json() as { leadId: string };
-    if (!leadId) {
-      return NextResponse.json({ error: "leadId required" }, { status: 400 });
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
+
+    const parsed = SendIntakeSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "leadId and explicit send confirmation are required" },
+        { status: 400 },
+      );
+    }
+    const { leadId } = parsed.data;
 
     const [lead] = await db
       .select()
@@ -28,7 +45,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    if (!lead.email) {
+    const email = lead.email?.trim();
+    if (!email) {
       return NextResponse.json({ error: "Lead has no email address" }, { status: 400 });
     }
 
@@ -39,10 +57,20 @@ export async function POST(req: Request) {
     // Send intake link
     const result = await sendIntakeLinkToLead({
       name:        lead.name,
-      email:       lead.email,
+      email,
       phone:       lead.phone,
       intakeToken: lead.intakeToken,
     });
+
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          error: result.error ?? "Intake link could not be sent",
+          emailResult: result,
+        },
+        { status: 502 },
+      );
+    }
 
     // Update lead status
     await db

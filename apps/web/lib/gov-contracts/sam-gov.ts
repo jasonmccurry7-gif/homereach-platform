@@ -21,6 +21,8 @@ interface SamGovOpportunityRecord {
   postedDate?: string | null;
   type?: string | null;
   baseType?: string | null;
+  responseMethod?: string | null;
+  contractType?: string | null;
   archiveDate?: string | null;
   typeOfSetAside?: string | null;
   typeOfSetAsideDescription?: string | null;
@@ -144,6 +146,9 @@ export function mapSamGovRecord(record: SamGovOpportunityRecord): GovContractOpp
     solicitationNumber: record.solicitationNumber?.trim() || null,
     noticeType: record.type ?? "Notice",
     baseNoticeType: record.baseType ?? null,
+    contractType: record.contractType ?? null,
+    responseMethod: record.responseMethod ?? null,
+    incumbentVendor: null,
     postedDate: record.postedDate ?? null,
     dueDate,
     questionsDeadline: null,
@@ -174,6 +179,11 @@ export function mapSamGovRecord(record: SamGovOpportunityRecord): GovContractOpp
         type: "resource",
       })),
     ],
+    requiredDocuments: [],
+    submissionInstructions: {
+      method: record.responseMethod ?? "Verify official SAM.gov notice and attachments.",
+      timezone: "Verify solicitation time zone",
+    },
     amendmentCount: 0,
     missingItems: scored.missingItems,
     lastSyncedAt: new Date().toISOString(),

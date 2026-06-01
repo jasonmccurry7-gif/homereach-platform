@@ -2,47 +2,69 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCampaignsForUser, getCampaignMetrics, buildImpressionsChartData } from "@/lib/dashboard/queries";
+import {
+  getCampaignsForUser,
+  getCampaignMetrics,
+  buildImpressionsChartData,
+} from "@/lib/dashboard/queries";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { ImpressionsChart } from "@/components/dashboard/impressions-chart";
 import { EngagementBreakdown } from "@/components/dashboard/engagement-breakdown";
 
-export const metadata: Metadata = { title: "My Campaign — HomeReach" };
+export const metadata: Metadata = { title: "Campaigns - HomeReach" };
 
 export default async function CampaignPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const campaigns = await getCampaignsForUser(user.id);
 
   if (campaigns.length === 0) {
     return (
-      <div className="max-w-2xl">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">My Campaign</h1>
-        <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center">
-          <p className="text-gray-500">No campaigns found.</p>
+      <div className="max-w-3xl space-y-6">
+        <PageIntro
+          title="Campaigns"
+          body="This is where your active visibility work will live once your first campaign is started."
+        />
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center shadow-sm">
+          <h2 className="text-xl font-bold text-gray-900">
+            No campaign is active yet.
+          </h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
+            Start with one city and HomeReach will keep the schedule, reach,
+            proof, and next steps organized here.
+          </p>
           <Link
             href="/get-started"
-            className="mt-4 inline-block rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+            className="mt-5 inline-flex rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
           >
-            Start your first campaign →
+            Start first campaign
           </Link>
         </div>
       </div>
     );
   }
 
+  const activeCount = campaigns.filter((row) =>
+    ["active", "upcoming"].includes(row.campaign.status),
+  ).length;
+
   return (
-    <div className="max-w-4xl space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">My Campaign{campaigns.length > 1 ? "s" : ""}</h1>
+    <div className="max-w-4xl space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <PageIntro
+          title={`Campaign${campaigns.length > 1 ? "s" : ""}`}
+          body={`${activeCount} active or upcoming campaign${activeCount !== 1 ? "s" : ""}. HomeReach keeps the work, timing, and response proof visible here.`}
+        />
         <Link
           href="/get-started"
           className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
         >
-          + Add city
+          Add city
         </Link>
       </div>
 
@@ -53,16 +75,23 @@ export default async function CampaignPage() {
   );
 }
 
-// ─── Campaign Panel ───────────────────────────────────────────────────────────
-
 async function CampaignPanel({
   row,
 }: {
   row: Awaited<ReturnType<typeof getCampaignsForUser>>[0];
 }) {
   const camp = row.campaign;
-  const status = camp.status as "upcoming" | "active" | "completed" | "paused" | "cancelled";
-  const { rows: metricRows, totals, hasRealData } = await getCampaignMetrics(camp.id);
+  const status = camp.status as
+    | "upcoming"
+    | "active"
+    | "completed"
+    | "paused"
+    | "cancelled";
+  const {
+    rows: metricRows,
+    totals,
+    hasRealData,
+  } = await getCampaignMetrics(camp.id);
   const chartData = buildImpressionsChartData(camp, metricRows);
 
   const fmt = (d: Date | null) =>
@@ -76,58 +105,81 @@ async function CampaignPanel({
 
   const totalActualReach = camp.dropsCompleted * camp.homesPerDrop;
   const totalProjectedReach = camp.totalDrops * camp.homesPerDrop;
+  const nextCustomerStep =
+    status === "upcoming"
+      ? "HomeReach is preparing the campaign for launch."
+      : hasRealData && totals.totalEngagements > 0
+        ? "Review replies and follow up with interested customers."
+        : status === "active"
+          ? "HomeReach is monitoring scans, calls, and form fills."
+          : status === "completed"
+            ? "Review results and decide whether to renew or expand."
+            : "Check with HomeReach before making changes.";
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-
-      {/* Panel header */}
-      <div className="flex flex-col gap-3 border-b border-gray-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-gray-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-bold text-gray-900">
               {row.business?.name ?? "Your Business"}
             </h2>
             <StatusBadge status={status} size="sm" />
           </div>
-          <p className="mt-0.5 text-sm text-gray-500">
-            {row.city?.name}, {row.city?.state} · {row.category?.name} · {row.bundle?.name}
+          <p className="mt-1 text-sm text-gray-500">
+            {row.city?.name}, {row.city?.state} | {row.category?.name} |{" "}
+            {row.bundle?.name}
           </p>
         </div>
+        <Link
+          href="/replies"
+          className="text-sm font-semibold text-blue-600 hover:underline"
+        >
+          View replies
+        </Link>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 p-6">
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">
+            Next customer step
+          </p>
+          <p className="mt-2 text-sm font-bold text-blue-950">
+            {nextCustomerStep}
+          </p>
+        </div>
 
-        {/* Metrics strip */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <MetricCard
-            label="Homes Reached"
-            value={totalActualReach > 0 ? totalActualReach.toLocaleString() : "Pending"}
-            subtext={totalActualReach > 0 ? "to date" : "campaign upcoming"}
-            icon="📬"
+            label="Homes reached"
+            value={
+              totalActualReach > 0
+                ? totalActualReach.toLocaleString()
+                : "Pending"
+            }
+            subtext={
+              totalActualReach > 0 ? "delivered to date" : "campaign upcoming"
+            }
           />
           <MetricCard
-            label="Total Projected"
+            label="Planned reach"
             value={totalProjectedReach.toLocaleString()}
             subtext={`across ${camp.totalDrops} drop${camp.totalDrops !== 1 ? "s" : ""}`}
-            icon="📈"
           />
           <MetricCard
-            label="Engagements"
+            label="Customer actions"
             value={totals.totalEngagements}
-            icon="⚡"
             isMock={!hasRealData}
-            subtext="scans + calls + forms"
+            subtext="scans, calls, forms"
           />
           <MetricCard
             label="Conversion"
-            value={hasRealData ? `${totals.conversionRate}%` : "—"}
-            icon="📊"
+            value={hasRealData ? `${totals.conversionRate}%` : "0%"}
             isMock={!hasRealData}
             subtext="of homes reached"
           />
         </div>
 
-        {/* Engagement breakdown — only when real data exists */}
         {hasRealData && (
           <EngagementBreakdown
             impressions={totals.impressions}
@@ -139,74 +191,102 @@ async function CampaignPanel({
           />
         )}
 
-        {/* Chart */}
         <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-          <p className="mb-3 text-sm font-semibold text-gray-700">Homes reached per drop</p>
-          <ImpressionsChart drops={chartData} homesPerDrop={camp.homesPerDrop} />
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <p className="text-sm font-semibold text-gray-800">
+              Homes reached by drop
+            </p>
+            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-gray-500">
+              {camp.dropsCompleted}/{camp.totalDrops} complete
+            </span>
+          </div>
+          <ImpressionsChart
+            drops={chartData}
+            homesPerDrop={camp.homesPerDrop}
+          />
         </div>
 
-        {/* Campaign timeline */}
-        <div>
-          <p className="mb-3 text-sm font-semibold text-gray-700">Campaign timeline</p>
-          <ol className="relative border-l border-gray-200 pl-6 space-y-4">
-            {[
-              {
-                label: "Campaign purchased",
-                date: camp.createdAt,
-                done: true,
-                icon: "✅",
-              },
-              {
-                label: "Design & approval",
-                date: null,
-                done: camp.status !== "upcoming",
-                icon: "🎨",
-                note: "Our team creates your ad",
-              },
-              {
-                label: "First mailer drop",
-                date: camp.nextDropDate,
-                done: camp.dropsCompleted >= 1,
-                icon: "📬",
-              },
-              {
-                label: "Campaign renewal",
-                date: camp.renewalDate,
-                done: false,
-                icon: "🔄",
-              },
-            ].map((item, i) => (
-              <li key={i} className="relative">
-                <span className="absolute -left-[1.65rem] flex h-6 w-6 items-center justify-center rounded-full bg-white border border-gray-200 text-xs">
-                  {item.done ? "✓" : item.icon}
-                </span>
-                <div>
-                  <p className={`text-sm font-semibold ${item.done ? "text-gray-900" : "text-gray-400"}`}>
+        <div className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+          <div>
+            <p className="mb-3 text-sm font-semibold text-gray-800">
+              What HomeReach is handling
+            </p>
+            <ol className="relative space-y-4 border-l border-gray-200 pl-6">
+              {[
+                {
+                  label: "Campaign purchased",
+                  date: camp.createdAt,
+                  done: true,
+                  note: "Payment and campaign record are connected.",
+                },
+                {
+                  label: "Creative and launch prep",
+                  date: null,
+                  done: camp.status !== "upcoming",
+                  note: "Ad setup, schedule checks, and campaign readiness.",
+                },
+                {
+                  label: "Mailer drop",
+                  date: camp.nextDropDate,
+                  done: camp.dropsCompleted >= 1,
+                  note: `${camp.homesPerDrop.toLocaleString()} homes per drop.`,
+                },
+                {
+                  label: "Renewal review",
+                  date: camp.renewalDate,
+                  done: false,
+                  note: "Keep, adjust, or expand when the window arrives.",
+                },
+              ].map((item) => (
+                <li key={item.label} className="relative">
+                  <span className="absolute -left-[1.65rem] flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-xs font-bold text-gray-500">
+                    {item.done ? "OK" : ""}
+                  </span>
+                  <p
+                    className={`text-sm font-semibold ${
+                      item.done ? "text-gray-900" : "text-gray-500"
+                    }`}
+                  >
                     {item.label}
                   </p>
                   {item.date && (
-                    <p className="text-xs text-gray-400">{fmt(new Date(item.date))}</p>
+                    <p className="text-xs text-gray-400">
+                      {fmt(new Date(item.date))}
+                    </p>
                   )}
-                  {item.note && (
-                    <p className="text-xs text-gray-400">{item.note}</p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
+                  <p className="text-xs leading-5 text-gray-400">{item.note}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
 
-        {/* Exclusivity bar */}
-        <div className="flex items-center gap-3 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
-          <span className="text-lg">🔒</span>
-          <p className="text-sm text-green-800">
-            <span className="font-semibold">Category exclusive</span> — you are the only{" "}
-            {row.category?.name?.toLowerCase() ?? "business"} on this mailer in{" "}
-            {row.city?.name ?? "your city"}.
-          </p>
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-green-700">
+              Category protection
+            </p>
+            <p className="mt-2 text-sm font-bold leading-6 text-green-950">
+              You are the only {row.category?.name?.toLowerCase() ?? "business"}{" "}
+              on this mailer in {row.city?.name ?? "your city"}.
+            </p>
+            <p className="mt-2 text-xs leading-5 text-green-700">
+              That keeps your offer from sitting next to a direct local
+              competitor on the same shared mailer.
+            </p>
+          </div>
         </div>
-
       </div>
+    </div>
+  );
+}
+
+function PageIntro({ title, body }: { title: string; body: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+        Customer campaign center
+      </p>
+      <h1 className="mt-2 text-2xl font-bold text-gray-900">{title}</h1>
+      <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500">{body}</p>
     </div>
   );
 }

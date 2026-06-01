@@ -160,8 +160,8 @@ export async function POST(req: Request) {
           currency: "usd", unit_amount: finalPrice,
           recurring: { interval: "month" },
           product_data: {
-            name: `HomeReach ${SPOT_LABEL[spotType] ?? "Ad Spot"} — ${city.name}`,
-            description: `Monthly exclusive ad spot · ${city.name}, ${city.state}`,
+            name: `HomeReach ${SPOT_LABEL[spotType] ?? "Ad Spot"} - ${city.name}`,
+            description: `Monthly exclusive ad spot for ${city.name}, ${city.state}`,
           },
         },
         quantity: 1,
@@ -171,19 +171,19 @@ export async function POST(req: Request) {
     // ── Print products (one-time) ─────────────────────────────────────────────
     if (addons.includes("door_hangers")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 40000,
-        product_data: { name: "Door Hangers (500) — 3.5\" × 8.5\"", description: "500 door hangers, 3.5\" × 8.5\", professionally designed and printed" } }, quantity: 1 });
+        product_data: { name: "Door Hangers (500) - 3.5\" x 8.5\"", description: "500 door hangers, 3.5\" x 8.5\", professionally designed and printed" } }, quantity: 1 });
     }
     if (addons.includes("fliers")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 22500,
-        product_data: { name: "Fliers (500) — 8.5\" × 11\"", description: "500 full-color fliers, 8.5\" × 11\", for events and local distribution" } }, quantity: 1 });
+        product_data: { name: "Fliers (500) - 8.5\" x 11\"", description: "500 full-color fliers, 8.5\" x 11\", for events and local distribution" } }, quantity: 1 });
     }
     if (addons.includes("yard_signs")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 30000,
-        product_data: { name: "Yard Signs (10) — 18\" × 24\"", description: "10 branded yard signs with stakes, 18\" × 24\"" } }, quantity: 1 });
+        product_data: { name: "Yard Signs (10) - 18\" x 24\"", description: "10 branded yard signs with stakes, 18\" x 24\"" } }, quantity: 1 });
     }
     if (addons.includes("business_cards")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 10500,
-        product_data: { name: "Business Cards (500) — 3.5\" × 2\"", description: "500 premium business cards, standard 3.5\" × 2\" size" } }, quantity: 1 });
+        product_data: { name: "Business Cards (500) - 3.5\" x 2\"", description: "500 premium business cards, standard 3.5\" x 2\" size" } }, quantity: 1 });
     }
 
     // ── Digital ───────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ export async function POST(req: Request) {
     }
     if (addons.includes("website_maintenance")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 9700, recurring: { interval: "month" },
-        product_data: { name: "Website Hosting & Maintenance", description: "Ongoing hosting, updates, and support — $97/mo" } }, quantity: 1 });
+        product_data: { name: "Website Hosting & Maintenance", description: "Ongoing hosting, updates, and support - $97/mo" } }, quantity: 1 });
     }
 
     // ── Automation (recurring) ────────────────────────────────────────────────
@@ -214,7 +214,7 @@ export async function POST(req: Request) {
     // ── Nonprofit (recurring) ─────────────────────────────────────────────────
     if (addons.includes("nonprofit")) {
       lineItems.push({ price_data: { currency: "usd", unit_amount: 2500, recurring: { interval: "month" },
-        product_data: { name: "Local Nonprofit Sponsorship", description: "Feature a local nonprofit on your ad — $25/mo donated to the cause" } }, quantity: 1 });
+        product_data: { name: "Local Nonprofit Sponsorship", description: "Feature a local nonprofit on your ad - $25/mo donated to the cause" } }, quantity: 1 });
     }
 
     // 8. Create Stripe session
@@ -222,17 +222,25 @@ export async function POST(req: Request) {
       mode: "subscription",
       customer: stripeCustomerId,
       line_items: lineItems,
-      metadata: { businessId, cityId, categoryId, bundleId,
+      metadata: { type: "shared_postcard_spot", businessId, cityId, categoryId, bundleId,
                   orderId: assignment.id, addons: addons.join(","),
                   nonprofitId: nonprofitId ?? "", pricingType: resolvedPricingType, lockedPrice: finalPrice.toString() },
       subscription_data: {
-        metadata: { orderId: assignment.id, businessId, cityId, bundleId, pricingType: resolvedPricingType, lockedPrice: finalPrice.toString() },
+        metadata: { type: "shared_postcard_spot", orderId: assignment.id, businessId, cityId, bundleId, pricingType: resolvedPricingType, lockedPrice: finalPrice.toString() },
       },
       success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/get-started/${citySlug}/${categorySlug}?bundle=${bundleId}`,
       billing_address_collection: "auto",
       allow_promotion_codes: true,
     });
+
+    const { error: checkoutStoreError } = await db
+      .from("orders")
+      .update({ stripe_checkout_session_id: session.id })
+      .eq("id", assignment.id);
+    if (checkoutStoreError) {
+      return NextResponse.json({ error: "Failed to store checkout session" }, { status: 500 });
+    }
 
     return NextResponse.json({ checkoutUrl: session.url, orderId: assignment.id });
 
