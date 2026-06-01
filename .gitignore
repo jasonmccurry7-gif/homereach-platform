@@ -40,6 +40,7 @@ drizzle/meta
 # Supabase
 supabase/.branches
 supabase/.temp
+supabase/migrations_pending_review_*/
 
 # Editor
 .vscode
