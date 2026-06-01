@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  hasGrowthIntelligencePersistence,
+  isGrowthIntelligenceEnabled,
+} from "@/lib/growth-intelligence/config";
 import { recordGrowthIntelligenceAction } from "@/lib/growth-intelligence/engine";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -28,11 +32,22 @@ export async function POST(
   { params }: { params: RouteParams },
 ) {
   const { opportunityId } = await params;
+  if (!isGrowthIntelligenceEnabled()) {
+    return NextResponse.json({ error: "Growth Intelligence is disabled." }, { status: 404 });
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!hasGrowthIntelligencePersistence()) {
+    return NextResponse.json(
+      { error: "Growth Intelligence persistence is not configured.", safeMode: true },
+      { status: 503 },
+    );
+  }
 
   const body = await request.json().catch(() => ({}));
   const actionType = String(body.actionType ?? "");

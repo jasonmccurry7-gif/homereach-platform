@@ -1799,7 +1799,16 @@ export async function recordGrowthIntelligenceAction({
   if (error) throw new Error(`Growth Intelligence action failed: ${error.message}`);
 
   if (draftId && actionType === "copy_draft") {
-    const draft = await safeSingle("Growth Intelligence draft", db.from("growth_intelligence_drafts").select("copy_count").eq("id", draftId).maybeSingle());
+    const draft = await safeSingle(
+      "Growth Intelligence draft",
+      db
+        .from("growth_intelligence_drafts")
+        .select("copy_count")
+        .eq("id", draftId)
+        .eq("opportunity_id", opportunityId)
+        .maybeSingle(),
+    );
+    if (!draft) throw new Error("Growth Intelligence draft does not belong to this opportunity.");
     await db.from("growth_intelligence_drafts").update({ copy_count: numberValue(draft?.copy_count) + 1, last_copied_at: now }).eq("id", draftId);
   }
 

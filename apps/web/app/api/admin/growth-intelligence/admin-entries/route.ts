@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import {
+  hasGrowthIntelligencePersistence,
+  isAdminIntelligenceEntriesEnabled,
+  isGrowthIntelligenceEnabled,
+} from "@/lib/growth-intelligence/config";
 import { createAdminIntelligenceEntry } from "@/lib/growth-intelligence/engine";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -7,6 +12,17 @@ import { createServiceClient } from "@/lib/supabase/service";
 export async function POST(request: Request) {
   const guard = await requireAdminOrSalesAgent();
   if (!guard.ok) return guard.response;
+
+  if (!isGrowthIntelligenceEnabled() || !isAdminIntelligenceEntriesEnabled()) {
+    return NextResponse.json({ error: "Admin intelligence entries are disabled." }, { status: 404 });
+  }
+
+  if (!hasGrowthIntelligencePersistence()) {
+    return NextResponse.json(
+      { error: "Growth Intelligence persistence is not configured.", safeMode: true },
+      { status: 503 },
+    );
+  }
 
   const body = await request.json().catch(() => ({}));
   const supabase = await createClient();

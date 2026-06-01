@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncFacebookMessageLedger } from "@/lib/approvals/facebook-ledger";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { logPlatformAuditEvent } from "@/lib/audit/platform-audit";
@@ -474,6 +475,27 @@ export async function PUT(req: Request) {
 
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+        const ledgerResult = await syncFacebookMessageLedger({
+          id: String(draft_message_id),
+          leadId: typeof draft.lead_id === "string" ? draft.lead_id : null,
+          message: String(draft.message ?? ""),
+          deliveryStatus: String(draft.delivery_status ?? "draft"),
+          approvalStatus: String(reviewed.approval_status ?? "approved"),
+          source: typeof draft.source === "string" ? draft.source : null,
+          proposedAction: typeof draft.proposed_action === "string" ? draft.proposed_action : null,
+          requiresApproval: false,
+          approvedAt: typeof reviewed.approved_at === "string" ? reviewed.approved_at : now,
+          approvedBy: user.id,
+          metadata: existingMetadata,
+        }, {
+          actorId: user.id,
+          actorLabel: "facebook_admin_review",
+          eventType: "facebook_draft_approved",
+        });
+        if (!ledgerResult.ok) {
+          console.warn("[approval-ledger] facebook draft approve sync skipped:", ledgerResult.error);
+        }
+
         await logPlatformAuditEvent({
           actorType: "human",
           actorId: user.id,
@@ -524,6 +546,28 @@ export async function PUT(req: Request) {
         .single();
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+      const ledgerResult = await syncFacebookMessageLedger({
+        id: String(draft_message_id),
+        leadId: typeof draft.lead_id === "string" ? draft.lead_id : null,
+        message: String(draft.message ?? ""),
+        deliveryStatus: String(draft.delivery_status ?? "draft"),
+        approvalStatus: String(reviewed.approval_status ?? "rejected"),
+        source: typeof draft.source === "string" ? draft.source : null,
+        proposedAction: typeof draft.proposed_action === "string" ? draft.proposed_action : null,
+        requiresApproval: true,
+        approvedAt: null,
+        approvedBy: null,
+        errorDetail: typeof reviewed.error_detail === "string" ? reviewed.error_detail : reason,
+        metadata: existingMetadata,
+      }, {
+        actorId: user.id,
+        actorLabel: "facebook_admin_review",
+        eventType: "facebook_draft_rejected",
+      });
+      if (!ledgerResult.ok) {
+        console.warn("[approval-ledger] facebook draft reject sync skipped:", ledgerResult.error);
+      }
 
       await logPlatformAuditEvent({
         actorType: "human",
@@ -598,11 +642,40 @@ export async function PUT(req: Request) {
       const sentAt = new Date().toISOString();
       const sendResult = await sendFacebookMessage(lead.fb_psid, draft.message);
       if (!sendResult.ok) {
-        await db.from("facebook_messages").update({
+        const { data: failedDraft } = await db.from("facebook_messages").update({
           delivery_status: "failed",
           sent_by_user_id: user.id,
           error_detail: sendResult.error ?? "Facebook send failed.",
-        }).eq("id", draft_message_id);
+        }).eq("id", draft_message_id)
+          .select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, approved_at, error_detail, metadata, created_at, updated_at")
+          .single();
+        if (failedDraft) {
+          const ledgerResult = await syncFacebookMessageLedger({
+            id: String(failedDraft.id),
+            leadId: typeof failedDraft.lead_id === "string" ? failedDraft.lead_id : null,
+            message: String(failedDraft.message ?? draft.message),
+            deliveryStatus: String(failedDraft.delivery_status ?? "failed"),
+            approvalStatus: String(failedDraft.approval_status ?? draft.approval_status ?? "approved"),
+            source: typeof failedDraft.source === "string" ? failedDraft.source : null,
+            proposedAction: typeof failedDraft.proposed_action === "string" ? failedDraft.proposed_action : null,
+            requiresApproval: Boolean(failedDraft.requires_approval ?? false),
+            approvedAt: typeof failedDraft.approved_at === "string" ? failedDraft.approved_at : draft.approved_at,
+            approvedBy: user.id,
+            errorDetail: typeof failedDraft.error_detail === "string" ? failedDraft.error_detail : sendResult.error ?? "Facebook send failed.",
+            metadata: failedDraft.metadata && typeof failedDraft.metadata === "object" && !Array.isArray(failedDraft.metadata)
+              ? (failedDraft.metadata as Record<string, unknown>)
+              : {},
+            createdAt: typeof failedDraft.created_at === "string" ? failedDraft.created_at : null,
+            updatedAt: typeof failedDraft.updated_at === "string" ? failedDraft.updated_at : null,
+          }, {
+            actorId: user.id,
+            actorLabel: "facebook_admin_send",
+            eventType: "facebook_draft_send_failed",
+          });
+          if (!ledgerResult.ok) {
+            console.warn("[approval-ledger] facebook draft failed-send sync skipped:", ledgerResult.error);
+          }
+        }
         await logPlatformAuditEvent({
           actorType: "human",
           actorId: user.id,
@@ -624,7 +697,7 @@ export async function PUT(req: Request) {
         return NextResponse.json({ error: sendResult.error ?? "Facebook send failed." }, { status: 502 });
       }
 
-      await db.from("facebook_messages").update({
+      const { data: sentDraft } = await db.from("facebook_messages").update({
         delivery_status: "sent",
         requires_approval: false,
         sent_by_user_id: user.id,
@@ -632,12 +705,48 @@ export async function PUT(req: Request) {
         sent_at: sentAt,
         mid: sendResult.messageId ?? null,
         error_detail: null,
-      }).eq("id", draft_message_id);
+      }).eq("id", draft_message_id)
+        .select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, approved_at, actual_sent_at, sent_at, mid, metadata, created_at, updated_at")
+        .single();
 
       await db.from("facebook_leads").update({
         messages_sent: (lead.messages_sent ?? 0) + 1,
         updated_at: sentAt,
       }).eq("id", draft.lead_id);
+
+      if (sentDraft) {
+        const ledgerResult = await syncFacebookMessageLedger({
+          id: String(sentDraft.id),
+          leadId: typeof sentDraft.lead_id === "string" ? sentDraft.lead_id : null,
+          message: String(sentDraft.message ?? draft.message),
+          deliveryStatus: String(sentDraft.delivery_status ?? "sent"),
+          approvalStatus: String(sentDraft.approval_status ?? draft.approval_status ?? "approved"),
+          source: typeof sentDraft.source === "string" ? sentDraft.source : null,
+          proposedAction: typeof sentDraft.proposed_action === "string" ? sentDraft.proposed_action : null,
+          requiresApproval: Boolean(sentDraft.requires_approval ?? false),
+          approvedAt: typeof sentDraft.approved_at === "string" ? sentDraft.approved_at : draft.approved_at,
+          approvedBy: user.id,
+          sentAt:
+            typeof sentDraft.actual_sent_at === "string"
+              ? sentDraft.actual_sent_at
+              : typeof sentDraft.sent_at === "string"
+                ? sentDraft.sent_at
+                : sentAt,
+          mid: typeof sentDraft.mid === "string" ? sentDraft.mid : sendResult.messageId ?? null,
+          metadata: sentDraft.metadata && typeof sentDraft.metadata === "object" && !Array.isArray(sentDraft.metadata)
+            ? (sentDraft.metadata as Record<string, unknown>)
+            : {},
+          createdAt: typeof sentDraft.created_at === "string" ? sentDraft.created_at : null,
+          updatedAt: typeof sentDraft.updated_at === "string" ? sentDraft.updated_at : null,
+        }, {
+          actorId: user.id,
+          actorLabel: "facebook_admin_send",
+          eventType: "facebook_draft_sent",
+        });
+        if (!ledgerResult.ok) {
+          console.warn("[approval-ledger] facebook draft sent sync skipped:", ledgerResult.error);
+        }
+      }
 
       await logPlatformAuditEvent({
         actorType: "human",

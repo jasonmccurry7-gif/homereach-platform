@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncFacebookMessageLedger } from "@/lib/approvals/facebook-ledger";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireCron } from "@/lib/auth/api-guards";
 import {
@@ -83,10 +84,33 @@ async function queueFacebookFollowupDraft({
         automation_mode: "approval_guard_required",
       },
     })
-    .select("id")
+    .select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, metadata, created_at, updated_at")
     .single();
 
   if (error) return { queued: false, skipped: false, error: error.message };
+  if (data) {
+    const ledgerResult = await syncFacebookMessageLedger({
+      id: String(data.id),
+      leadId: typeof data.lead_id === "string" ? data.lead_id : String(lead.id),
+      message: String(data.message ?? message),
+      deliveryStatus: String(data.delivery_status ?? "draft"),
+      approvalStatus: String(data.approval_status ?? "pending"),
+      source: typeof data.source === "string" ? data.source : "facebook_followup_cron",
+      proposedAction: typeof data.proposed_action === "string" ? data.proposed_action : proposedAction,
+      requiresApproval: Boolean(data.requires_approval ?? true),
+      metadata: data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+        ? (data.metadata as Record<string, unknown>)
+        : metadata,
+      createdAt: typeof data.created_at === "string" ? data.created_at : null,
+      updatedAt: typeof data.updated_at === "string" ? data.updated_at : null,
+    }, {
+      actorLabel: "facebook_followup_cron",
+      eventType: "facebook_followup_draft_created",
+    });
+    if (!ledgerResult.ok) {
+      console.warn("[approval-ledger] facebook followup draft sync skipped:", ledgerResult.error);
+    }
+  }
   return { queued: true, skipped: false, id: data?.id as string | undefined };
 }
 
