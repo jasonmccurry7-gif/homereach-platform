@@ -322,6 +322,10 @@ function buildFilterOptions(miniApps: AgentMiniApp[]) {
 }
 
 function matchesFilters(app: AgentMiniApp, query: string, filters: Filters) {
+  if (filters.status === "all" && (app.status === "archived" || app.status === "rejected")) {
+    return false;
+  }
+
   const payload = app.editedPayloadJson ?? app.payloadJson;
   const haystack = [
     app.title,

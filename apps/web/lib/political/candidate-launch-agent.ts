@@ -43,6 +43,7 @@ import {
   selectPoliticalSenderPersona,
   type HomeReachPersona,
 } from "@/lib/revenue-messaging/personas";
+import { syncPoliticalPlanLedger } from "@/lib/approvals/political-ledger";
 import { syncRevenueApprovalLedger } from "@/lib/approvals/revenue-approval-ledger";
 import { getOwnerIdentity } from "@homereach/services/outreach";
 
@@ -1696,6 +1697,15 @@ export async function generateCandidateLaunchPlan(
     actorUserId,
   });
 
+  const planLedgerResult = await syncPoliticalPlanLedger(plan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_generate",
+    eventType: "political_plan_generated",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan generate sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political");
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${candidate.id}`);
@@ -1764,9 +1774,20 @@ export async function approveCandidateLaunchPlan(
     payload: checklist,
     actorUserId,
   });
+
+  const updatedPlan = rowToPlan(updated.data);
+  const planLedgerResult = await syncPoliticalPlanLedger(updatedPlan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_approve",
+    eventType: "political_plan_approved",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan approve sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${plan.candidateId}`);
-  return rowToPlan(updated.data);
+  return updatedPlan;
 }
 
 export async function updateCandidateLaunchPlanDraft(
@@ -1856,10 +1877,20 @@ export async function updateCandidateLaunchPlanDraft(
     actorUserId,
   });
 
+  const updatedPlan = rowToPlan(updated.data);
+  const planLedgerResult = await syncPoliticalPlanLedger(updatedPlan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_edit",
+    eventType: "political_plan_updated",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan edit sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political");
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${plan.candidateId}`);
-  return rowToPlan(updated.data);
+  return updatedPlan;
 }
 
 export async function markCandidatePlanProductionReady(
@@ -1898,9 +1929,20 @@ export async function markCandidatePlanProductionReady(
     payload: { planId },
     actorUserId,
   });
+
+  const updatedPlan = rowToPlan(updated.data);
+  const planLedgerResult = await syncPoliticalPlanLedger(updatedPlan, {
+    actorId: actorUserId ?? null,
+    actorLabel: "political_plan_production_ready",
+    eventType: "political_plan_production_ready",
+  });
+  if (!planLedgerResult.ok) {
+    console.warn("[approval-ledger] political plan production-ready sync skipped:", planLedgerResult.error);
+  }
+
   revalidatePath("/admin/political/candidate-agent");
   revalidatePath(`/admin/political/${plan.candidateId}`);
-  return rowToPlan(updated.data);
+  return updatedPlan;
 }
 
 export async function loadCandidateAgentDashboard(limit = 80): Promise<CandidateAgentDashboard> {

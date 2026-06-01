@@ -16,6 +16,17 @@ const REQUEST_TIMEOUT_MS = Number(
 );
 const PRODUCT_INTENT = "social-content";
 const RELATED_OPPORTUNITY = "social-content-drafting";
+const SOCIAL_CONTENT_TABLES = [
+  "waitlist_entries",
+  "ai_workforce_tasks",
+  "ai_workforce_activity_logs",
+  "content_assets",
+  "content_asset_versions",
+  "content_asset_sources",
+  "social_publication_records",
+  "social_post_metrics_daily",
+  "content_learning_events",
+];
 const args = new Set(process.argv.slice(2));
 const skipDbChecks = args.has("--skip-db-checks");
 const skipIntakeWrite = args.has("--skip-intake-write");
@@ -309,6 +320,18 @@ async function runDbChecks({ env, intake }) {
     },
   );
 
+  const tableCounts = {};
+  for (const table of SOCIAL_CONTENT_TABLES) {
+    const { count, error } = await withTimeout(
+      supabase.from(table).select("id", { count: "exact", head: true }),
+      `social content ${table} table check`,
+    );
+    if (error) {
+      throw new Error(`social content ${table} table check failed: ${error.message}`);
+    }
+    tableCounts[table] = count ?? 0;
+  }
+
   const { data: entry, error: entryError } = await withTimeout(
     supabase
       .from("waitlist_entries")
@@ -425,6 +448,7 @@ async function runDbChecks({ env, intake }) {
     waitlistEntryId: entry.id,
     aiTaskId: task.id,
     taskPublicId: task.task_id,
+    tableCounts,
     archived,
   };
 }

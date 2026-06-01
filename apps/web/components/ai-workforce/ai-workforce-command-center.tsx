@@ -1254,7 +1254,7 @@ function OutputList({ outputs }: { outputs: AiOutput[] }) {
               <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-300">{output.content}</p>
             </div>
             <div className="flex flex-wrap gap-2 lg:max-w-xs lg:justify-end">
-              <ApiButton small label="Approve artifact" variant="success" action={{ action: "update_output_status", id: output.id, status: "approved", reviewNotes: "Owner approved the artifact for review state only. Separate workflow approval is required before outbound, public, financial, purchasing, political, or SAM.gov use." }} />
+              <ApiButton small label="Approve artifact" variant="success" action={{ action: "approve_output_artifact", id: output.id, reviewNotes: "Owner approved the artifact for review state only. Separate workflow approval is required before outbound, public, financial, purchasing, political, or SAM.gov use." }} />
               <ApiButton small label="Reject artifact" variant="danger" action={{ action: "update_output_status", id: output.id, status: "rejected", reviewNotes: "Rejected from AI Workforce Command Center." }} />
               <ApiButton small label="Request revision" variant="secondary" action={{ action: "update_output_status", id: output.id, status: "revision_needed", reviewNotes: "Revision requested from AI Workforce Command Center." }} />
               <ApiButton small label="Mark winning" action={{ action: "mark_winning_output", id: output.id }} />

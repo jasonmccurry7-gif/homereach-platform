@@ -10,6 +10,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
+import { syncSeoPageLedger } from "@/lib/approvals/seo-ledger";
 import { seoFlagGate, requireAdmin } from "@/lib/seo/guards";
 import { runFullQualityCheck } from "@/lib/seo/quality";
 import { isInventoryAvailable } from "@/lib/seo/inventory-rules";
@@ -92,11 +93,36 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     .from("seo_pages")
     .update({ status: "published", published_at: nowIso })
     .eq("id", id)
-    .select("id, slug, published_at")
+    .select("*")
     .maybeSingle();
 
   if (updErr || !updated) {
     return NextResponse.json({ ok: false, error: updErr?.message ?? "publish_failed" }, { status: 500 });
+  }
+
+  const ledgerResult = await syncSeoPageLedger({
+    id: String(updated.id),
+    slug: String(updated.slug),
+    pageType: String(updated.page_type),
+    status: "published",
+    titleTag: typeof updated.title_tag === "string" ? updated.title_tag : null,
+    metaDescription: typeof updated.meta_description === "string" ? updated.meta_description : null,
+    h1: typeof updated.h1 === "string" ? updated.h1 : null,
+    cityId: typeof updated.city_id === "string" ? updated.city_id : null,
+    categoryId: typeof updated.category_id === "string" ? updated.category_id : null,
+    approvedBy: typeof updated.approved_by === "string" ? updated.approved_by : p.approved_by,
+    approvedAt: typeof updated.approved_at === "string" ? updated.approved_at : p.approved_at,
+    approvalNotes: typeof updated.approval_notes === "string" ? updated.approval_notes : null,
+    publishedAt: typeof updated.published_at === "string" ? updated.published_at : nowIso,
+    createdAt: typeof updated.created_at === "string" ? updated.created_at : null,
+    updatedAt: typeof updated.updated_at === "string" ? updated.updated_at : null,
+  }, {
+    actorId: admin.adminId,
+    actorLabel: "seo_page_publish",
+    eventType: "seo_page_published",
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] seo page publish sync skipped:", ledgerResult.error);
   }
 
   // Revalidate the route cache so public render reflects new state

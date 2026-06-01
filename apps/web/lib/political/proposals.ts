@@ -23,6 +23,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { createClient as createUserClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@homereach/services/auth";
+import { syncPoliticalProposalLedger } from "@/lib/approvals/political-proposal-ledger";
 import type {
   PoliticalQuoteResult,
 } from "./quote";
@@ -492,7 +493,16 @@ export async function createProposalFromQuote(
   if (error || !data) {
     throw new Error(`createProposalFromQuote: ${error?.message ?? "no row returned"}`);
   }
-  return rowToProposal(data as unknown as ProposalDbRow);
+  const proposal = rowToProposal(data as unknown as ProposalDbRow);
+  const ledgerResult = await syncPoliticalProposalLedger(proposal, {
+    actorId: input.createdBy,
+    actorLabel: "political_proposal_create_quote",
+    eventType: "political_proposal_created",
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] political proposal create-from-quote sync skipped:", ledgerResult.error);
+  }
+  return proposal;
 }
 
 export interface StrategyProposalScenarioInput {
@@ -599,7 +609,17 @@ export async function createProposalFromStrategySnapshot(
     throw new Error(`createProposalFromStrategySnapshot: ${error?.message ?? "no row returned"}`);
   }
 
-  return rowToProposal(data as unknown as ProposalDbRow);
+  const proposal = rowToProposal(data as unknown as ProposalDbRow);
+  const ledgerResult = await syncPoliticalProposalLedger(proposal, {
+    actorId: input.createdBy,
+    actorLabel: "political_proposal_create_strategy",
+    eventType: "political_proposal_created",
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] political proposal create-from-strategy sync skipped:", ledgerResult.error);
+  }
+
+  return proposal;
 }
 
 /**
@@ -619,14 +639,25 @@ export async function markProposalViewed(token: string): Promise<void> {
   if (row.viewed_at) return; // idempotent
   if (row.status !== "sent") return;
 
-  const { error: updErr } = await admin
+  const { data: updated, error: updErr } = await admin
     .from("political_proposals")
     .update({
       status: "viewed",
       viewed_at: new Date().toISOString(),
     })
-    .eq("id", row.id);
-  if (updErr) throw new Error(`markProposalViewed update: ${updErr.message}`);
+    .eq("id", row.id)
+    .select(PROPOSAL_COLUMNS)
+    .single();
+  if (updErr || !updated) throw new Error(`markProposalViewed update: ${updErr?.message ?? "no row"}`);
+
+  const proposal = rowToProposal(updated as unknown as ProposalDbRow);
+  const ledgerResult = await syncPoliticalProposalLedger(proposal, {
+    actorLabel: "political_proposal_view",
+    eventType: "political_proposal_viewed",
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] political proposal view sync skipped:", ledgerResult.error);
+  }
 }
 
 /** Approves the proposal + creates a pending political_order. Idempotent. */
@@ -692,6 +723,19 @@ export async function approveProposalByToken(
     order = rowToOrder(insData as unknown as OrderDbRow);
   }
 
+  const ledgerResult = await syncPoliticalProposalLedger(approvedProposal, {
+    actorLabel: "political_proposal_approve",
+    eventType: "political_proposal_approved",
+    eventMetadata: {
+      order_id: order.id,
+      payment_status: order.paymentStatus,
+      fulfillment_status: order.fulfillmentStatus,
+    },
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] political proposal approve sync skipped:", ledgerResult.error);
+  }
+
   return { proposal: approvedProposal, order };
 }
 
@@ -722,7 +766,15 @@ export async function declineProposalByToken(token: string): Promise<ProposalRow
     .select(PROPOSAL_COLUMNS)
     .single();
   if (updErr || !data) throw new Error(`declineProposal update: ${updErr?.message ?? "no row"}`);
-  return rowToProposal(data as unknown as ProposalDbRow);
+  const declinedProposal = rowToProposal(data as unknown as ProposalDbRow);
+  const ledgerResult = await syncPoliticalProposalLedger(declinedProposal, {
+    actorLabel: "political_proposal_decline",
+    eventType: "political_proposal_declined",
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] political proposal decline sync skipped:", ledgerResult.error);
+  }
+  return declinedProposal;
 }
 
 // ── Payment tracking (service role) ─────────────────────────────────────────

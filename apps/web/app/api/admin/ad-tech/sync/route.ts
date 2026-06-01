@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
+import { hasAdTechPersistence } from "@/lib/ad-tech/config";
 import { ensureAdTechForAll } from "@/lib/ad-tech/engine";
 import { createGuardedServiceRoleClient } from "@/lib/security/guarded-service-role";
 
 export async function POST() {
   const guard = await requireAdminOrSalesAgent();
   if (!guard.ok) return guard.response;
+
+  if (!hasAdTechPersistence()) {
+    return NextResponse.json(
+      { error: "Ad-Tech persistence is not configured.", safeMode: true },
+      { status: 503 },
+    );
+  }
+
   const privileged = createGuardedServiceRoleClient({
     allowedRoles: ["admin", "sales_agent"],
     guard,

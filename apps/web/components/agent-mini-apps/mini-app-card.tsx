@@ -98,7 +98,13 @@ export function MiniAppCard({
   }
 
   return (
-    <article className="rounded-lg border border-white/10 bg-[#0b1424] p-4 shadow-2xl shadow-black/20">
+    <article
+      data-testid="mini-app-card"
+      data-mini-app-id={miniApp.id}
+      data-mini-app-status={miniApp.status}
+      data-mini-app-type={miniApp.miniAppType}
+      className="rounded-lg border border-white/10 bg-[#0b1424] p-4 shadow-2xl shadow-black/20"
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -148,6 +154,7 @@ export function MiniAppCard({
         <div className="flex flex-wrap gap-2">
           {primaryAction ? (
             <ActionButton
+              action={primaryAction.action}
               label={primaryAction.label}
               icon={primaryAction.icon}
               variant="primary"
@@ -155,12 +162,12 @@ export function MiniAppCard({
               onClick={() => run(primaryAction.action, primaryAction.body, primaryAction.success)}
             />
           ) : null}
-          <ActionButton label="Edit" icon={Edit3} variant="secondary" disabled={isClosed(miniApp)} onClick={() => setEditOpen((value) => !value)} />
-          <ActionButton label="Reject" icon={X} variant="danger" disabled={isClosed(miniApp)} loading={workingAction === "reject"} onClick={() => run("reject", { reason: "Rejected from Today's Agent Stack." }, "Mini app rejected")} />
-          <ActionButton label="Archive" icon={Archive} variant="secondary" disabled={isClosed(miniApp)} loading={workingAction === "archive"} onClick={() => run("archive", { reason: "Archived from Today's Agent Stack." }, "Mini app archived")} />
-          <ActionButton label="Schedule" icon={CalendarClock} variant="secondary" disabled={miniApp.status !== "approved"} onClick={() => setScheduleOpen((value) => !value)} />
-          <ActionButton label="Assign" icon={UserPlus} variant="secondary" disabled={isClosed(miniApp)} onClick={() => setAssignOpen((value) => !value)} />
-          <ActionButton label="Queue" icon={Send} variant="secondary" disabled={miniApp.status !== "approved"} loading={workingAction === "send_to_execution_queue"} onClick={() => run("send_to_execution_queue", {}, "Sent to execution queue")} />
+          <ActionButton action="edit_payload" label="Edit" icon={Edit3} variant="secondary" disabled={isClosed(miniApp)} onClick={() => setEditOpen((value) => !value)} />
+          <ActionButton action="reject" label="Reject" icon={X} variant="danger" disabled={isClosed(miniApp)} loading={workingAction === "reject"} onClick={() => run("reject", { reason: "Rejected from Today's Agent Stack." }, "Mini app rejected")} />
+          <ActionButton action="archive" label="Archive" icon={Archive} variant="secondary" disabled={isClosed(miniApp)} loading={workingAction === "archive"} onClick={() => run("archive", { reason: "Archived from Today's Agent Stack." }, "Mini app archived")} />
+          <ActionButton action="schedule" label="Schedule" icon={CalendarClock} variant="secondary" disabled={miniApp.status !== "approved"} onClick={() => setScheduleOpen((value) => !value)} />
+          <ActionButton action="assign" label="Assign" icon={UserPlus} variant="secondary" disabled={isClosed(miniApp)} onClick={() => setAssignOpen((value) => !value)} />
+          <ActionButton action="send_to_execution_queue" label="Queue" icon={Send} variant="secondary" disabled={miniApp.status !== "approved"} loading={workingAction === "send_to_execution_queue"} onClick={() => run("send_to_execution_queue", {}, "Sent to execution queue")} />
           <TypeActionButtons miniApp={miniApp} run={run} workingAction={workingAction} />
         </div>
         <div className="min-w-0 lg:w-64">
@@ -179,7 +186,7 @@ export function MiniAppCard({
             />
           </label>
           <div className="mt-2 flex gap-2">
-            <button type="button" onClick={savePayloadEdit} className="rounded-md bg-white px-3 py-2 text-xs font-black text-slate-950">Save edit</button>
+            <button type="button" data-testid="mini-app-save-payload-edit" onClick={savePayloadEdit} className="rounded-md bg-white px-3 py-2 text-xs font-black text-slate-950">Save edit</button>
             <button type="button" onClick={() => setEditOpen(false)} className="rounded-md border border-white/10 px-3 py-2 text-xs font-black text-slate-300">Cancel</button>
           </div>
         </div>
@@ -197,7 +204,7 @@ export function MiniAppCard({
             />
           </label>
           <div className="mt-2 flex gap-2">
-            <button type="button" onClick={schedule} className="rounded-md bg-white px-3 py-2 text-xs font-black text-slate-950">Schedule</button>
+            <button type="button" data-testid="mini-app-confirm-schedule" onClick={schedule} className="rounded-md bg-white px-3 py-2 text-xs font-black text-slate-950">Schedule</button>
             <button type="button" onClick={() => setScheduleOpen(false)} className="rounded-md border border-white/10 px-3 py-2 text-xs font-black text-slate-300">Cancel</button>
           </div>
         </div>
@@ -215,7 +222,7 @@ export function MiniAppCard({
             />
           </label>
           <div className="mt-2 flex gap-2">
-            <button type="button" onClick={assign} className="rounded-md bg-white px-3 py-2 text-xs font-black text-slate-950">Assign</button>
+            <button type="button" data-testid="mini-app-confirm-assign" onClick={assign} className="rounded-md bg-white px-3 py-2 text-xs font-black text-slate-950">Assign</button>
             <button type="button" onClick={() => setAssignOpen(false)} className="rounded-md border border-white/10 px-3 py-2 text-xs font-black text-slate-300">Cancel</button>
           </div>
         </div>
@@ -258,29 +265,29 @@ function TypeActionButtons({
   if (miniApp.miniAppType === "route_density") {
     return (
       <>
-        <ActionButton label="Generate Quote" icon={FileText} variant="secondary" disabled={!approved} loading={workingAction === "send_to_execution_queue"} onClick={() => run("send_to_execution_queue", { taskType: "generate_quote", permissionScope: "prepare_only" }, "Quote task queued")} />
-        <ActionButton label="Generate Creative" icon={ClipboardList} variant="secondary" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: "generate_creative", permissionScope: "prepare_only" }, "Creative task queued")} />
+        <ActionButton action="send_to_execution_queue" label="Generate Quote" icon={FileText} variant="secondary" disabled={!approved} loading={workingAction === "send_to_execution_queue"} onClick={() => run("send_to_execution_queue", { taskType: "generate_quote", permissionScope: "prepare_only" }, "Quote task queued")} />
+        <ActionButton action="send_to_execution_queue" label="Generate Creative" icon={ClipboardList} variant="secondary" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: "generate_creative", permissionScope: "prepare_only" }, "Creative task queued")} />
       </>
     );
   }
   if (miniApp.miniAppType === "political_plan" || miniApp.miniAppType === "samgov_bid") {
     return (
-      <ActionButton label="Generate Proposal" icon={FileText} variant="secondary" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: miniApp.miniAppType === "samgov_bid" ? "generate_bid_draft" : "generate_proposal", permissionScope: "prepare_only" }, "Proposal task queued")} />
+      <ActionButton action="send_to_execution_queue" label="Generate Proposal" icon={FileText} variant="secondary" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: miniApp.miniAppType === "samgov_bid" ? "generate_bid_draft" : "generate_proposal", permissionScope: "prepare_only" }, "Proposal task queued")} />
     );
   }
   if (miniApp.miniAppType === "outreach_approval") {
     return (
-      <ActionButton label="Queue Send" icon={Send} variant="success" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: "approved_outreach_send_review", permissionScope: "send_after_approval" }, "Approved send review queued")} />
+      <ActionButton action="send_to_execution_queue" label="Queue Send" icon={Send} variant="success" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: "approved_outreach_send_review", permissionScope: "send_after_approval" }, "Approved send review queued")} />
     );
   }
   if (miniApp.miniAppType === "procurement_savings") {
     return (
-      <ActionButton label="More Options" icon={ClipboardList} variant="secondary" disabled={isClosed(miniApp)} onClick={() => run("manual_takeover_requested", { reason: "Ask agent for more supplier options before any reorder decision." }, "More-options request logged")} />
+      <ActionButton action="manual_takeover_requested" label="More Options" icon={ClipboardList} variant="secondary" disabled={isClosed(miniApp)} onClick={() => run("manual_takeover_requested", { reason: "Ask agent for more supplier options before any reorder decision." }, "More-options request logged")} />
     );
   }
   if (miniApp.miniAppType === "website_build") {
     return (
-      <ActionButton label="Codex Prompt" icon={FileText} variant="secondary" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: "generate_codex_build_prompt", permissionScope: "prepare_only" }, "Codex prompt task queued")} />
+      <ActionButton action="send_to_execution_queue" label="Codex Prompt" icon={FileText} variant="secondary" disabled={!approved} onClick={() => run("send_to_execution_queue", { taskType: "generate_codex_build_prompt", permissionScope: "prepare_only" }, "Codex prompt task queued")} />
     );
   }
   return null;
@@ -368,6 +375,7 @@ function WebsiteBuildDetail({ payload }: { payload: Record<string, unknown> }) {
 }
 
 function ActionButton({
+  action,
   disabled = false,
   icon: Icon,
   label,
@@ -375,6 +383,7 @@ function ActionButton({
   onClick,
   variant,
 }: {
+  action: MiniAppAction;
   disabled?: boolean;
   icon: typeof Check;
   label: string;
@@ -391,6 +400,8 @@ function ActionButton({
   return (
     <button
       type="button"
+      data-testid={`mini-app-action-${slugifyForTestId(label)}`}
+      data-mini-app-action={action}
       disabled={disabled || loading}
       onClick={onClick}
       className={cn(
@@ -402,6 +413,10 @@ function ActionButton({
       {loading ? "Working" : label}
     </button>
   );
+}
+
+function slugifyForTestId(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
 function getPrimaryAction(miniApp: AgentMiniApp): { label: string; action: MiniAppAction; body?: Record<string, unknown>; success: string; icon: typeof Check } | null {

@@ -17,6 +17,7 @@ const DEFAULT_VERIFICATION_CHECKS = [
   ["Brand tone reviewed", "brand"],
   ["Human approval completed", "approval"],
 ] as const;
+const DEFAULT_OUTPUT_SOURCES = ["AGENTS.md", "AI Assets Command Center"];
 
 type ActionPayload = Record<string, unknown> & {
   action?: string;
@@ -149,6 +150,8 @@ export async function POST(req: Request) {
       }
 
       case "create_ai_output": {
+        const dataSources = toArray(body.dataSources);
+        const outputSources = dataSources.length > 0 ? dataSources : DEFAULT_OUTPUT_SOURCES;
         const { data, error } = await db
           .from("ai_outputs")
           .insert({
@@ -157,13 +160,20 @@ export async function POST(req: Request) {
             workflow: asString(body.workflow) || null,
             output_type: asString(body.outputType) || "draft",
             content: requiredString(body.content, "Output content"),
-            data_sources: toArray(body.dataSources),
+            data_sources: outputSources,
             prompt_sop_name: asString(body.promptSopName) || null,
             chain_name: asString(body.chainName) || null,
             approval_status: "needs_review",
             verification_status: "pending",
             notes: asString(body.notes) || null,
             owner_user_id: guard.user?.id ?? null,
+            metadata: {
+              source: "ai_assets_command_center",
+              inputsUsed: outputSources,
+              humanApprovalRequired: true,
+              approvalBoundary:
+                "Reusable artifact review only. Separate human approval is required before sending, publishing, submitting, charging, changing pricing, changing campaign settings, committing spend, or using political/procurement/SAM outputs externally.",
+            },
           })
           .select("id,title,agent_name,workflow,output_type,approval_status,verification_status,winning_output,metadata,owner_user_id,created_at,updated_at")
           .single();

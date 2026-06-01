@@ -53,6 +53,7 @@ export type AgentExecutionTask = {
   dryRunEnabled: boolean;
   dryRunChecklist: AgentDryRunChecklistItem[];
   sensitiveActionFlags: string[];
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 };

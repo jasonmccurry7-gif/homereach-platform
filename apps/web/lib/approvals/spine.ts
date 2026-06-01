@@ -125,6 +125,18 @@ function sourceMetadata(item: ApprovalSpineDraft) {
       domain: "political",
       approvalKind: "political_plan_review",
     },
+    SEO: {
+      sourceSystem: "seo_engine",
+      sourceTable: "seo_pages",
+      domain: "seo",
+      approvalKind: "seo_page_review",
+    },
+    "Agent Execution": {
+      sourceSystem: "agent_execution",
+      sourceTable: "agent_execution_queue",
+      domain: "operations",
+      approvalKind: "agent_execution_task",
+    },
   };
   const metadata = bySource[item.source] ?? {
     sourceSystem: "unknown",
@@ -231,6 +243,9 @@ export async function loadApprovalSpine(
     govBidRooms,
     govSubmissionPackages,
     politicalPlans,
+    seoPages,
+    politicalProposals,
+    agentExecutionTasks,
   ] = await Promise.all([
     queryMaybe("daily videos", () =>
       db
@@ -358,6 +373,30 @@ export async function loadApprovalSpine(
         .from("political_mail_launch_plans")
         .select("id,plan_name,status,candidate_summary,recommended_strategy,total_estimated_cost_cents,confidence_score,created_at,updated_at")
         .in("status", ["draft", "needs_review", "proposal_ready", "production_ready"])
+        .order("updated_at", { ascending: false })
+        .limit(sourceLimit ?? 20),
+    ),
+    queryMaybe("seo pages", () =>
+      db
+        .from("seo_pages")
+        .select("id,slug,page_type,status,title_tag,h1,meta_description,created_at,updated_at")
+        .in("status", ["draft", "review", "approved"])
+        .order("updated_at", { ascending: false })
+        .limit(sourceLimit ?? 20),
+    ),
+    queryMaybe("political proposals", () =>
+      db
+        .from("political_proposals")
+        .select("id,status,households,drops,total_pieces,total_investment_cents,delivery_window_text,expires_at,created_at,updated_at")
+        .in("status", ["sent", "viewed"])
+        .order("updated_at", { ascending: false })
+        .limit(sourceLimit ?? 20),
+    ),
+    queryMaybe("agent execution tasks", () =>
+      db
+        .from("agent_execution_queue")
+        .select("id,task_id,mini_app_id,source_agent,task_type,target_system,target_url,permission_scope,status,human_approval_required,approved_at,manual_takeover_required,dry_run_enabled,failure_reason,retry_allowed,sensitive_action_flags,created_at,updated_at")
+        .in("status", ["pending_approval", "approved", "dry_run_ready", "failed", "manual_takeover_required", "manual_takeover_needed"])
         .order("updated_at", { ascending: false })
         .limit(sourceLimit ?? 20),
     ),
@@ -858,6 +897,117 @@ export async function loadApprovalSpine(
     });
   });
 
+  seoPages.data.forEach((row) => {
+    const status = String(row.status ?? "draft");
+    pushQueueItem(queue, {
+      id: String(row.id),
+      sourceKey: buildSourceKey("seo_pages", row.id, "seo_page_review"),
+      sourceSystem: "seo_engine",
+      sourceTable: "seo_pages",
+      sourceId: String(row.id),
+      domain: "seo",
+      approvalKind: "seo_page_review",
+      source: "SEO",
+      title: String(row.h1 ?? row.title_tag ?? `SEO page /${String(row.slug ?? "")}`),
+      detail: `${String(row.page_type ?? "seo_page").replaceAll("_", " ")} page at /${String(row.slug ?? "")}`,
+      status,
+      href: "/admin/seo-engine",
+      priority: status === "approved" || status === "review" ? "high" : "normal",
+      lane: status === "approved" ? "ready_to_publish" : "needs_approval",
+      nextAction:
+        status === "approved"
+          ? "Publish only after the approved SEO page passes the final quality, inventory, cap, and rate-limit checks."
+          : "Review the SEO page and approve it before any publish action.",
+      guardrail: "SEO review never publishes automatically, changes redirects, or bypasses human approval for public-facing claims.",
+      createdAt: asString(row.updated_at ?? row.created_at),
+      dueAt: null,
+      actionTarget: {
+        kind: "link_only",
+        id: String(row.id),
+        status,
+      },
+    });
+  });
+
+  politicalProposals.data.forEach((row) => {
+    const status = String(row.status ?? "sent");
+    pushQueueItem(queue, {
+      id: String(row.id),
+      sourceKey: buildSourceKey("political_proposals", row.id, "political_proposal"),
+      sourceSystem: "political",
+      sourceTable: "political_proposals",
+      sourceId: String(row.id),
+      domain: "political",
+      approvalKind: "political_proposal",
+      source: "Political",
+      title: `Political proposal ${String(row.id).slice(0, 8)}`,
+      detail: `${Number(row.households ?? 0).toLocaleString()} households / ${String(row.drops ?? 0)} drops / ${Number(row.total_pieces ?? 0).toLocaleString()} pieces / ${formatCents(row.total_investment_cents)}`,
+      status,
+      href: "/admin/political",
+      priority: status === "viewed" ? "high" : "normal",
+      lane: "needs_approval",
+      nextAction:
+        status === "viewed"
+          ? "Follow up on the viewed proposal without changing pricing, terms, or production assumptions outside review."
+          : "Wait for the campaign to review the proposal before contract, payment, or production steps advance.",
+      guardrail: "Political proposal approval does not authorize production, pricing changes, payment capture outside approved checkout, or prohibited voter targeting.",
+      createdAt: asString(row.updated_at ?? row.created_at),
+      dueAt: asString(row.expires_at),
+      actionTarget: {
+        kind: "link_only",
+        id: String(row.id),
+        status,
+      },
+    });
+  });
+
+  agentExecutionTasks.data.forEach((row) => {
+    const status = String(row.status ?? "pending_approval");
+    const sensitiveFlags = Array.isArray(row.sensitive_action_flags)
+      ? row.sensitive_action_flags.map(String).filter(Boolean)
+      : [];
+    pushQueueItem(queue, {
+      id: String(row.id),
+      sourceKey: buildSourceKey("agent_execution_queue", row.id, "agent_execution_task"),
+      sourceSystem: "agent_execution",
+      sourceTable: "agent_execution_queue",
+      sourceId: String(row.id),
+      domain: "operations",
+      approvalKind: "agent_execution_task",
+      source: "Agent Execution",
+      title: `${String(row.target_system ?? "External system")} ${String(row.task_type ?? "execution task").replaceAll("_", " ")}`,
+      detail: `${String(row.source_agent ?? "agent")} / ${String(row.mini_app_id ?? "mini app")} / ${String(row.permission_scope ?? "read_only")}${typeof row.target_url === "string" && row.target_url ? ` / ${row.target_url}` : ""}`,
+      status,
+      href: "/admin/agent-execution",
+      priority:
+        status === "failed" || status === "manual_takeover_required" || status === "manual_takeover_needed"
+          ? "critical"
+          : sensitiveFlags.length > 0 || String(row.permission_scope ?? "").includes("approval")
+            ? "high"
+            : "normal",
+      lane:
+        status === "failed" || status === "manual_takeover_required" || status === "manual_takeover_needed"
+          ? "blocked"
+          : "needs_approval",
+      nextAction:
+        status === "pending_approval"
+          ? "Review the execution task scope, dry-run checklist, and sensitive-action flags before approving any browser or operator handoff."
+          : status === "approved" || status === "dry_run_ready"
+            ? "Keep execution in dry-run, draft-only, or manual-takeover mode until the operator confirms the next step."
+            : status === "failed"
+              ? "Resolve the failure reason and approval scope before retrying the execution task."
+              : "An operator needs to take over manually; do not let the task proceed autonomously.",
+      guardrail: "Agent Execution prepares dry runs, approval checkpoints, screenshots, and audit logs only. It must not directly automate sensitive external actions without manual governance.",
+      createdAt: asString(row.updated_at ?? row.created_at),
+      dueAt: asString(row.approved_at),
+      actionTarget: {
+        kind: "link_only",
+        id: String(row.id),
+        status,
+      },
+    });
+  });
+
   const sortedQueue = queue
     .sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority) || Date.parse(b.createdAt ?? "") - Date.parse(a.createdAt ?? ""));
   const selectedQueue =
@@ -893,6 +1043,9 @@ export async function loadApprovalSpine(
       govBidRooms.error,
       govSubmissionPackages.error,
       politicalPlans.error,
+      seoPages.error,
+      politicalProposals.error,
+      agentExecutionTasks.error,
       ledgerStatus.error,
       ledgerQueue.error,
     ].filter(Boolean) as string[],

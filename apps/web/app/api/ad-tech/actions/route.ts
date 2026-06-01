@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuthenticated, userHasRole } from "@/lib/auth/api-guards";
 import { createGuardedServiceRoleClient } from "@/lib/security/guarded-service-role";
+import { hasAdTechPersistence, isLaunchPackagesEnabled } from "@/lib/ad-tech/config";
 import { recordAdTechAction } from "@/lib/ad-tech/engine";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,18 @@ const ALLOWED_ACTIONS = new Set([
 export async function POST(request: Request) {
   const guard = await requireAuthenticated();
   if (!guard.ok) return guard.response;
+
+  if (!isLaunchPackagesEnabled()) {
+    return NextResponse.json({ error: "Ad-Tech launch packages are disabled." }, { status: 404 });
+  }
+
+  if (!hasAdTechPersistence()) {
+    return NextResponse.json(
+      { error: "Ad-Tech persistence is not configured.", safeMode: true },
+      { status: 503 },
+    );
+  }
+
   const privileged = createGuardedServiceRoleClient({
     allowedRoles: ["admin", "sales_agent", "client"],
     guard,

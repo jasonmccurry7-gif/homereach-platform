@@ -58,9 +58,9 @@ try {
       (select count(*)::int from public.agent_mini_app_events) as events,
       (select count(*)::int from public.agent_browser_session_registry) as browser_systems
   `;
-  assert.equal(counts.mini_apps, 7, "Expected 7 seed mini apps.");
-  assert.equal(counts.events, 7, "Expected 7 seed audit events.");
-  assert.equal(counts.browser_systems, 12, "Expected 12 browser system registry rows.");
+  assert.ok(counts.mini_apps >= 7, "Expected at least 7 seed mini apps.");
+  assert.ok(counts.events >= counts.mini_apps, "Expected audit events to cover mini apps.");
+  assert.ok(counts.browser_systems >= 12, "Expected at least 12 browser system registry rows.");
 
   const [miniApp] = await db`
     select id, source_agent

@@ -23,6 +23,15 @@ const VALID_TASK_STATUSES = new Set([
 
 const VALID_PRIORITIES = new Set(["low", "medium", "high", "critical"]);
 const VALID_OUTPUT_STATUSES = new Set(["draft", "needs_review", "approved", "rejected", "revision_needed", "archived"]);
+const DEFAULT_OUTPUT_SOURCES = ["AGENTS.md", "AI Assets Command Center"];
+const DEFAULT_VERIFICATION_CHECKS = [
+  ["Inputs used are documented", "source"],
+  ["Sources referenced are documented", "source"],
+  ["Approval status is explicit", "approval"],
+  ["Human execution approval boundary is clear", "approval"],
+  ["No sending, publishing, submitting, charging, pricing, campaign, vendor, political, procurement, or SAM.gov action is implied", "compliance"],
+  ["No unsupported guarantees or sensitive targeting claims are present", "compliance"],
+] as const;
 
 export async function POST(request: Request) {
   const guard = await requireAdmin();
@@ -129,13 +138,15 @@ export async function POST(request: Request) {
         const taskId = stringValue(body.taskId);
         const title = requireString(body.title, "Output title is required.");
         const content = requireString(body.content, "Output content is required.");
+        const dataSources = asStringArray(body.dataSources);
+        const outputSources = dataSources.length > 0 ? dataSources : DEFAULT_OUTPUT_SOURCES;
         const outputRow = {
           title,
           agent_name: stringValue(body.agentName) ?? "Orchestrator Agent",
           workflow: stringValue(body.workflow) ?? "AI Workforce",
           output_type: stringValue(body.outputType) ?? "draft",
           content,
-          data_sources: asStringArray(body.dataSources),
+          data_sources: outputSources,
           prompt_sop_name: stringValue(body.promptSopName),
           chain_name: stringValue(body.chainName),
           approval_status: "needs_review",
@@ -143,7 +154,14 @@ export async function POST(request: Request) {
           status: "active",
           owner_user_id: userId,
           notes: stringValue(body.notes),
-          metadata: { taskId, source: "ai_workforce_command_center" },
+          metadata: {
+            taskId,
+            source: "ai_workforce_command_center",
+            inputsUsed: outputSources,
+            humanApprovalRequired: true,
+            approvalBoundary:
+              "Reusable artifact review only. Separate human approval is required before sending, publishing, submitting, charging, changing pricing, changing campaign settings, committing spend, or using political/procurement/SAM outputs externally.",
+          },
         };
         const { data: output, error } = await db
           .from("ai_outputs")
@@ -151,6 +169,16 @@ export async function POST(request: Request) {
           .select("id,title,agent_name,workflow,output_type,approval_status,verification_status,winning_output,metadata,owner_user_id,created_at,updated_at")
           .single();
         if (error) throw error;
+
+        await db.from("ai_verification_checks").insert(
+          DEFAULT_VERIFICATION_CHECKS.map(([label, category]) => ({
+            output_id: output.id,
+            label,
+            category,
+            required: true,
+            notes: "Required AI Workforce artifact verification check.",
+          })),
+        );
 
         let taskPublicId: string | null = taskId;
         let taskDbId: string | null = null;
@@ -210,9 +238,25 @@ export async function POST(request: Request) {
         const id = requireUuid(body.id, "Output id is required.");
         const status = normalizeOutputStatus(body.status);
         const notes = stringValue(body.reviewNotes) ?? `Marked ${status} from AI Workforce Command Center.`;
+        if (status === "approved") {
+          const checksVerified = await requiredChecksVerified(db, id);
+          if (!checksVerified) {
+            return NextResponse.json(
+              {
+                error:
+                  "Required verification checks must be completed before approval. Use Approve artifact to record verification and approval together.",
+              },
+              { status: 409 },
+            );
+          }
+        }
         const { data: output, error } = await db
           .from("ai_outputs")
-          .update({ approval_status: status, updated_at: new Date().toISOString() })
+          .update({
+            approval_status: status,
+            verification_status: status === "approved" ? "verified" : "needs_review",
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", id)
           .select("id,title,agent_name,workflow,output_type,approval_status,verification_status,winning_output,metadata,owner_user_id,created_at,updated_at")
           .single();
@@ -260,6 +304,94 @@ export async function POST(request: Request) {
         );
         if (!ledgerResult.ok && ledgerResult.error) {
           console.warn("[approval-ledger] ai workforce output status sync skipped:", ledgerResult.error);
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      case "approve_output_artifact": {
+        const id = requireUuid(body.id, "Output id is required.");
+        const now = new Date().toISOString();
+        const checks = await ensureOutputVerificationChecks(db, id);
+        const requiredChecks = checks.filter((check) => check.required);
+        const verificationNote =
+          stringValue(body.verificationNotes) ||
+          "Human reviewer approved this AI Workforce artifact record. Separate workflow approval is still required before public, outbound, financial, political, procurement, SAM.gov, payment, campaign-setting, vendor, or spend use.";
+
+        const { error: checksError } = await db
+          .from("ai_verification_checks")
+          .update({
+            status: "verified",
+            notes: verificationNote,
+            completed_by: userId,
+            completed_at: now,
+            updated_at: now,
+          })
+          .eq("output_id", id)
+          .eq("required", true);
+        if (checksError) throw checksError;
+
+        const { data: output, error: outputError } = await db
+          .from("ai_outputs")
+          .update({
+            approval_status: "approved",
+            verification_status: "verified",
+            updated_at: now,
+          })
+          .eq("id", id)
+          .select("id,title,agent_name,workflow,output_type,approval_status,verification_status,winning_output,metadata,owner_user_id,created_at,updated_at")
+          .single();
+        if (outputError) throw outputError;
+
+        await db.from("ai_output_reviews").insert({
+          output_id: id,
+          reviewer_user_id: userId,
+          review_status: "approved",
+          review_notes:
+            stringValue(body.reviewNotes) ||
+            "Artifact approved inside AI Workforce. This does not approve sending, publishing, submitting, charging, pricing changes, campaign changes, vendor changes, or spend commitments.",
+          checklist: {
+            artifactApproval: true,
+            verifiedAt: now,
+            verifiedRequiredChecks: requiredChecks.map((check) => check.label),
+            safetyBoundary:
+              "Reusable artifact approval only. Execution approval remains required in the owning workflow.",
+          },
+        });
+
+        await logActivity(db, {
+          agentName: String(output.agent_name ?? "Orchestrator Agent"),
+          eventType: "output_artifact_approved",
+          status: "approved",
+          summary: `AI output "${output.title}" approved after verification checks.`,
+          details: { workflow: output.workflow, outputId: id, verifiedRequiredChecks: requiredChecks.length },
+          approvalStatus: "approved",
+          relatedOutputId: id,
+          createdBy: userId,
+        });
+
+        const ledgerResult = await syncAiOutputLedger(
+          {
+            id: output.id,
+            title: String(output.title ?? "AI output"),
+            agentName: output.agent_name,
+            workflow: output.workflow,
+            outputType: output.output_type,
+            approvalStatus: String(output.approval_status ?? "approved"),
+            verificationStatus: output.verification_status,
+            winningOutput: Boolean(output.winning_output),
+            metadata: asRecord(output.metadata),
+            ownerUserId: output.owner_user_id,
+            createdAt: output.created_at,
+            updatedAt: output.updated_at,
+          },
+          {
+            actorId: userId,
+            actorLabel: guard.user?.email ?? "admin",
+            eventType: "ai_output_artifact_approved",
+          },
+        );
+        if (!ledgerResult.ok && ledgerResult.error) {
+          console.warn("[approval-ledger] ai workforce artifact approval sync skipped:", ledgerResult.error);
         }
         return NextResponse.json({ ok: true });
       }
@@ -475,6 +607,45 @@ function asStringArray(value: unknown): string[] {
 
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
+}
+
+async function requiredChecksVerified(db: ReturnType<typeof createServiceClient>, outputId: string) {
+  const checks = await ensureOutputVerificationChecks(db, outputId);
+  const requiredChecks = checks.filter((check) => check.required);
+  return Boolean(requiredChecks.length) && requiredChecks.every((check) => check.status === "verified");
+}
+
+async function ensureOutputVerificationChecks(db: ReturnType<typeof createServiceClient>, outputId: string) {
+  const existing = await fetchOutputVerificationChecks(db, outputId);
+  if (existing.length > 0) return existing;
+
+  const { error } = await db.from("ai_verification_checks").insert(
+    DEFAULT_VERIFICATION_CHECKS.map(([label, category]) => ({
+      output_id: outputId,
+      label,
+      category,
+      required: true,
+      notes: "Required AI Workforce artifact verification check.",
+    })),
+  );
+  if (error) throw error;
+
+  return fetchOutputVerificationChecks(db, outputId);
+}
+
+async function fetchOutputVerificationChecks(db: ReturnType<typeof createServiceClient>, outputId: string) {
+  const { data, error } = await db
+    .from("ai_verification_checks")
+    .select("id,label,status,required")
+    .eq("output_id", outputId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Array<{
+    id: string;
+    label: string;
+    status: string | null;
+    required: boolean;
+  }>;
 }
 
 function normalizePriority(value: unknown) {

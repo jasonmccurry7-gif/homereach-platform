@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/api-guards";
 import { buildDryRunChecklist, isSensitiveScope, PERMISSION_SCOPES } from "@/lib/agent-execution/repository";
-import type { AgentExecutionStatus, AgentPermissionScope } from "@/lib/agent-execution/types";
+import type {
+  AgentDryRunChecklistItem,
+  AgentExecutionStatus,
+  AgentExecutionTask,
+  AgentPermissionScope,
+} from "@/lib/agent-execution/types";
+import { syncAgentExecutionLedger } from "@/lib/approvals/agent-execution-ledger";
 import { createServiceClient } from "@/lib/supabase/service";
 
 type JsonRecord = Record<string, unknown>;
@@ -134,6 +140,23 @@ export async function POST(request: Request) {
             "No browser/computer-use execution occurred. Task is approval-gated and dry-run enabled.",
         });
 
+        const taskResult = await db
+          .from("agent_execution_queue")
+          .select("*")
+          .eq("id", data.id)
+          .single();
+        if (taskResult.error) throw taskResult.error;
+
+        const task = mapAgentExecutionTask(taskResult.data);
+        const ledgerResult = await syncAgentExecutionLedger(task, {
+          actorId: userId,
+          actorLabel: "agent_execution_queue",
+          eventType: "agent_execution_task_created",
+        });
+        if (!ledgerResult.ok) {
+          console.warn("[approval-ledger] agent execution create sync skipped:", ledgerResult.error);
+        }
+
         return NextResponse.json({ ok: true, id: data.id, taskId: data.task_id });
       }
 
@@ -215,6 +238,23 @@ export async function POST(request: Request) {
           result: "updated",
           notes,
         });
+
+        const taskResult = await db
+          .from("agent_execution_queue")
+          .select("*")
+          .eq("id", data.id)
+          .single();
+        if (taskResult.error) throw taskResult.error;
+
+        const task = mapAgentExecutionTask(taskResult.data);
+        const ledgerResult = await syncAgentExecutionLedger(task, {
+          actorId: userId,
+          actorLabel: "agent_execution_update",
+          eventType: "agent_execution_task_updated",
+        });
+        if (!ledgerResult.ok) {
+          console.warn("[approval-ledger] agent execution update sync skipped:", ledgerResult.error);
+        }
 
         return NextResponse.json({ ok: true });
       }
@@ -398,6 +438,58 @@ function asStringArray(value: unknown): string[] {
 function asExecutionLog(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.filter((item) => item !== null && typeof item === "object" && !Array.isArray(item));
+}
+
+function mapAgentExecutionTask(row: JsonRecord): AgentExecutionTask {
+  const dryRunChecklist: AgentDryRunChecklistItem[] = Array.isArray(row.dry_run_checklist)
+    ? row.dry_run_checklist
+        .filter((item) => item !== null && typeof item === "object" && !Array.isArray(item))
+        .map((item) => {
+          const record = item as JsonRecord;
+          const rawStatus = String(record.status ?? "pending");
+          const status: AgentDryRunChecklistItem["status"] =
+            rawStatus === "ready" ? "ready" : rawStatus === "blocked" ? "blocked" : "pending";
+          return {
+            label: String(record.label ?? "Checklist item"),
+            status,
+            detail: String(record.detail ?? ""),
+          };
+        })
+    : [];
+
+  return {
+    id: String(row.id),
+    taskId: String(row.task_id ?? ""),
+    miniAppId: String(row.mini_app_id ?? ""),
+    sourceAgent: String(row.source_agent ?? ""),
+    taskType: String(row.task_type ?? ""),
+    targetSystem: String(row.target_system ?? ""),
+    targetUrl: stringValue(row.target_url),
+    permissionScope: normalizePermissionScope(row.permission_scope),
+    status: normalizeExecutionStatus(row.status),
+    humanApprovalRequired: Boolean(row.human_approval_required ?? true),
+    approvedBy: stringValue(row.approved_by),
+    approvedAt: stringValue(row.approved_at),
+    executionStartedAt: stringValue(row.execution_started_at),
+    executionCompletedAt: stringValue(row.execution_completed_at),
+    screenshotBeforeUrl: stringValue(row.screenshot_before_url),
+    screenshotAfterUrl: stringValue(row.screenshot_after_url),
+    executionLog: asExecutionLog(row.execution_log).map((item) => ({
+      at: String((item as JsonRecord).at ?? new Date().toISOString()),
+      actor: String((item as JsonRecord).actor ?? "HomeReach Admin"),
+      event: String((item as JsonRecord).event ?? "activity"),
+      note: String((item as JsonRecord).note ?? ""),
+    })),
+    failureReason: stringValue(row.failure_reason),
+    retryAllowed: Boolean(row.retry_allowed ?? false),
+    manualTakeoverRequired: Boolean(row.manual_takeover_required ?? false),
+    dryRunEnabled: Boolean(row.dry_run_enabled ?? true),
+    dryRunChecklist,
+    sensitiveActionFlags: asStringArray(row.sensitive_action_flags),
+    createdBy: stringValue(row.created_by),
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    updatedAt: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
+  };
 }
 
 function errorMessage(error: unknown): string {

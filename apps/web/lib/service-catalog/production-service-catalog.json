@@ -885,6 +885,7 @@
     "adminPath": "/admin/content-intel",
     "customerPath": "/dashboard",
     "docs": [
+      "docs/SOCIAL_CONTENT_DRAFTING_SERVICE_KIT.md",
       "docs/SOCIAL_CONTENT_DRAFTING_PRODUCTION_SOP.md",
       "docs/HOMEREACH_AUTONOMOUS_CONTENT_ENGINE_2026-05-25.md",
       "docs/HOMEREACH_AI_CREATIVE_PRODUCTION_STUDIO.md"
@@ -926,6 +927,7 @@
       "/admin/content-intel",
       "/admin/content-review",
       "/api/admin/social-content/metrics",
+      "/api/admin/social-content/metrics/sync",
       "pnpm smoke:social-content"
     ],
     "issueHandling": [
@@ -935,7 +937,7 @@
       "If native publishing fails, use manual copy/export"
     ],
     "renewalMotion": "Monthly content performance review and next calendar.",
-    "readinessNotes": "Production-ready manual service: public request form, Content Strategy Agent handoff task, content review queue, Social Content production SOP, and live smoke coverage. Sell as draft-and-approve content support, not auto-posting."
+    "readinessNotes": "Production-ready manual service: public request form, Content Strategy Agent handoff task, content review queue, Social Content service kit/SOP, metrics import guardrails, publication ledger tables, and live smoke coverage. Sell as draft-and-approve content support, not auto-posting."
   },
   {
     "id": "ai-website-assistant",
@@ -1269,7 +1271,10 @@
     "startPath": "/dashboard/campaign-launch",
     "adminPath": "/admin/ad-tech",
     "customerPath": "/dashboard/campaign-launch",
-    "docs": ["docs/DIGITAL_TARGETING_RELEASE_CHECKLIST.md"],
+    "docs": [
+      "docs/AD_TECH_INTEGRATION_LAYER_SERVICE_KIT.md",
+      "docs/DIGITAL_TARGETING_RELEASE_CHECKLIST.md"
+    ],
     "deliverables": [
       "Meta/Google draft package",
       "Target validation",
@@ -1301,7 +1306,8 @@
     "smokeTests": [
       "/dashboard/campaign-launch",
       "/admin/ad-tech",
-      "/api/ad-tech/launch-packages"
+      "/api/ad-tech/launch-packages",
+      "pnpm smoke:ad-tech"
     ],
     "issueHandling": [
       "If credentials are missing, continue manual launch mode",
@@ -1309,7 +1315,7 @@
       "If reporting import fails, allow manual metric entry"
     ],
     "renewalMotion": "Use reporting notes to recommend optimization or direct mail add-on.",
-    "readinessNotes": "Manual launch is the production-safe mode. API launch should stay future and approval-gated."
+    "readinessNotes": "Production-hardened as an internal operations layer with guarded launch-package feed, admin sync/reporting controls, RLS-backed schema, service kit, and live smoke coverage. Manual launch is the production-safe mode. API launch should stay future and approval-gated."
   },
   {
     "id": "ai-workforce-ai-assets",
@@ -1329,6 +1335,7 @@
     "customerPath": "/dashboard",
     "docs": [
       "AGENTS.md",
+      "docs/AI_WORKFORCE_AI_ASSETS_SERVICE_KIT.md",
       "docs/HOMEREACH_AI_OPERATIONAL_EXECUTION_HARDENING_2026-05-25.md"
     ],
     "deliverables": [
@@ -1360,7 +1367,9 @@
     "smokeTests": [
       "/admin/agents",
       "/admin/ai-assets",
-      "/api/admin/ai-workforce/actions"
+      "/api/admin/ai-workforce/actions",
+      "/api/admin/ai-assets/actions",
+      "pnpm smoke:ai-workforce-assets"
     ],
     "issueHandling": [
       "If output lacks sources, return to draft",
@@ -1368,6 +1377,6 @@
       "If task has no owner, return to orchestrator"
     ],
     "renewalMotion": "Internal operating leverage, not a customer renewal product.",
-    "readinessNotes": "Keep internal. Enforce the ledger consistently across modules."
+    "readinessNotes": "Production-hardened as internal infrastructure with guarded admin APIs, default output sources, verification-gated artifact approval, approval-ledger sync, service kit, and live smoke coverage. Keep internal and enforce the ledger consistently across modules."
   }
 ]

@@ -92,6 +92,7 @@ const SEED_TASKS: AgentExecutionTask[] = [
     dryRunEnabled: true,
     dryRunChecklist: buildDryRunChecklist("HomeReach Admin", "read_only"),
     sensitiveActionFlags: ["political_review"],
+    createdBy: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -253,6 +254,7 @@ function mapTask(row: GenericRow): AgentExecutionTask {
     dryRunEnabled: Boolean(row.dry_run_enabled ?? true),
     dryRunChecklist: asDryRunChecklist(row.dry_run_checklist),
     sensitiveActionFlags: asStringArray(row.sensitive_action_flags),
+    createdBy: nullableString(row.created_by),
     createdAt: String(row.created_at ?? new Date().toISOString()),
     updatedAt: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
   };
