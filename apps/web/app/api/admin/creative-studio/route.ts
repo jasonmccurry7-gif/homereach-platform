@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/api-guards";
+import { syncCreativeAssetLedger } from "@/lib/approvals/creative-ledger";
 import { logPlatformAuditEvent } from "@/lib/audit/platform-audit";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit } from "@/lib/security/rate-limit";
@@ -249,7 +250,8 @@ async function handleGenerate(body: z.infer<typeof generateSchema>, userId: stri
       .single();
 
     if (error) throw new Error(error.message);
-    inserted.push(mapAsset(data as Record<string, unknown>));
+    const mappedAsset = mapAsset(data as Record<string, unknown>);
+    inserted.push(mappedAsset);
 
     await db.from("creative_generation_logs").insert({
       asset_id: data.id,
@@ -276,6 +278,15 @@ async function handleGenerate(body: z.infer<typeof generateSchema>, userId: stri
       message: `${draft.title} generated and queued for review.`,
       metadata: { offerKey: input.offerKey, platform: input.platform, assetType: input.assetType },
     });
+
+    const ledgerResult = await syncCreativeAssetLedger(mappedAsset, {
+      actorId: userId,
+      actorLabel: "creative_studio_generate",
+      eventType: "creative_asset_generated",
+    });
+    if (!ledgerResult.ok) {
+      console.warn("[approval-ledger] creative asset generate sync skipped:", ledgerResult.error);
+    }
   }
 
   return NextResponse.json({
@@ -337,12 +348,21 @@ async function handleAssetAction(body: z.infer<typeof assetActionSchema>, userId
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+    const mappedAsset = mapAsset(data as Record<string, unknown>);
 
     await logReview(body.assetId, userId, "approved", Number(data.quality_score ?? 0), {
       winner: true,
       notes: body.notes ?? null,
     });
-    return NextResponse.json({ ok: true, message: "Creative marked as winner.", asset: mapAsset(data) });
+    const ledgerResult = await syncCreativeAssetLedger(mappedAsset, {
+      actorId: userId,
+      actorLabel: "creative_studio_review",
+      eventType: "creative_asset_marked_winner",
+    });
+    if (!ledgerResult.ok) {
+      console.warn("[approval-ledger] creative asset winner sync skipped:", ledgerResult.error);
+    }
+    return NextResponse.json({ ok: true, message: "Creative marked as winner.", asset: mappedAsset });
   }
 
   if (body.action === "save_to_campaign") {
@@ -359,12 +379,21 @@ async function handleAssetAction(body: z.infer<typeof assetActionSchema>, userId
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+    const mappedAsset = mapAsset(data as Record<string, unknown>);
 
     await logReview(body.assetId, userId, String(data.approval_status ?? "needs_review"), Number(data.quality_score ?? 0), {
       savedToCampaign: true,
       notes: body.notes ?? null,
     });
-    return NextResponse.json({ ok: true, message: "Creative saved as a draft campaign asset.", asset: mapAsset(data) });
+    const ledgerResult = await syncCreativeAssetLedger(mappedAsset, {
+      actorId: userId,
+      actorLabel: "creative_studio_review",
+      eventType: "creative_asset_saved_to_campaign",
+    });
+    if (!ledgerResult.ok) {
+      console.warn("[approval-ledger] creative asset save sync skipped:", ledgerResult.error);
+    }
+    return NextResponse.json({ ok: true, message: "Creative saved as a draft campaign asset.", asset: mappedAsset });
   }
 
   const statusMap = {
@@ -390,6 +419,7 @@ async function handleAssetAction(body: z.infer<typeof assetActionSchema>, userId
     .single();
 
   if (error) throw new Error(error.message);
+  const mappedAsset = mapAsset(data as Record<string, unknown>);
   await logReview(body.assetId, userId, next.approvalStatus, Number(data.quality_score ?? 0), {
     notes: body.notes ?? null,
     complianceReviewStatus: next.complianceStatus,
@@ -407,11 +437,19 @@ async function handleAssetAction(body: z.infer<typeof assetActionSchema>, userId
     severity: "low",
     message: `Creative asset marked ${next.approvalStatus}.`,
   });
+  const ledgerResult = await syncCreativeAssetLedger(mappedAsset, {
+    actorId: userId,
+    actorLabel: "creative_studio_review",
+    eventType: `creative_asset_${body.action}`,
+  });
+  if (!ledgerResult.ok) {
+    console.warn("[approval-ledger] creative asset review sync skipped:", ledgerResult.error);
+  }
 
   return NextResponse.json({
     ok: true,
     message: `Creative asset marked ${next.approvalStatus.replaceAll("_", " ")}.`,
-    asset: mapAsset(data),
+    asset: mappedAsset,
   });
 }
 
@@ -436,4 +474,3 @@ async function logReview(
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
-
