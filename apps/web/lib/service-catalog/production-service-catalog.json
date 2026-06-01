@@ -1208,7 +1208,10 @@
     "startPath": "/dashboard/growth-intelligence",
     "adminPath": "/admin/growth-intelligence",
     "customerPath": "/dashboard/growth-intelligence",
-    "docs": ["docs/HOMEREACH_GROWTH_ENGINE_BLUEPRINT.md"],
+    "docs": [
+      "docs/GROWTH_INTELLIGENCE_SERVICE_KIT.md",
+      "docs/HOMEREACH_GROWTH_ENGINE_BLUEPRINT.md"
+    ],
     "deliverables": [
       "Growth opportunity cards",
       "Admin-entered intelligence entries",
@@ -1239,7 +1242,8 @@
     "smokeTests": [
       "/dashboard/growth-intelligence",
       "/admin/growth-intelligence",
-      "/api/growth-intelligence/opportunities"
+      "/api/growth-intelligence/opportunities",
+      "pnpm smoke:growth-intelligence"
     ],
     "issueHandling": [
       "If source is admin-entered, label source accordingly",
@@ -1247,7 +1251,7 @@
       "If conversion path is missing, create manual task"
     ],
     "renewalMotion": "Monthly next-market and upsell recommendation.",
-    "readinessNotes": "Good internal intelligence layer. Needs source input discipline and campaign conversion workflow."
+    "readinessNotes": "Production-hardened as an internal-to-client advisory layer with guarded opportunity feed, explicit admin sync/admin-entry controls, RLS-backed schema, service kit, and live smoke coverage. Keep standalone selling gated until source-quality discipline and campaign conversion linkage mature."
   },
   {
     "id": "ad-tech-integration-layer",

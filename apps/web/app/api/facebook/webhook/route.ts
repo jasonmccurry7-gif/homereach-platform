@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncFacebookMessageLedger } from "@/lib/approvals/facebook-ledger";
 import { createServiceClient } from "@/lib/supabase/service";
 import { assertSocialPublishAllowed, SocialPublishBlockedError } from "@/lib/social-content/publish-guard";
 import {
@@ -352,8 +353,32 @@ async function handleMessage(event: Record<string, unknown>) {
         automation_mode: shouldAutoReply ? "approval_guard_required" : "draft_for_approval",
       },
     })
-    .select("id")
+    .select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, metadata, created_at, updated_at")
     .single();
+
+  if (outboundDraft?.id) {
+    const ledgerResult = await syncFacebookMessageLedger({
+      id: String(outboundDraft.id),
+      leadId: typeof outboundDraft.lead_id === "string" ? outboundDraft.lead_id : String(lead.id),
+      message: String(outboundDraft.message ?? response),
+      deliveryStatus: String(outboundDraft.delivery_status ?? "draft"),
+      approvalStatus: String(outboundDraft.approval_status ?? "pending"),
+      source: typeof outboundDraft.source === "string" ? outboundDraft.source : "facebook_webhook",
+      proposedAction: typeof outboundDraft.proposed_action === "string" ? outboundDraft.proposed_action : "reply",
+      requiresApproval: Boolean(outboundDraft.requires_approval ?? true),
+      metadata: outboundDraft.metadata && typeof outboundDraft.metadata === "object" && !Array.isArray(outboundDraft.metadata)
+        ? (outboundDraft.metadata as Record<string, unknown>)
+        : {},
+      createdAt: typeof outboundDraft.created_at === "string" ? outboundDraft.created_at : null,
+      updatedAt: typeof outboundDraft.updated_at === "string" ? outboundDraft.updated_at : null,
+    }, {
+      actorLabel: "facebook_webhook",
+      eventType: "facebook_webhook_draft_created",
+    });
+    if (!ledgerResult.ok) {
+      console.warn("[approval-ledger] facebook webhook draft sync skipped:", ledgerResult.error);
+    }
+  }
 
   let sentOk = false;
 
@@ -368,23 +393,77 @@ async function handleMessage(event: Record<string, unknown>) {
       });
       const mid = await fbSend(sender, response);
       sentOk = Boolean(mid);
-      await db.from("facebook_messages").update({
+      const { data: sentDraft } = await db.from("facebook_messages").update({
         mid: mid ?? null,
         delivery_status: sentOk ? "sent" : "failed",
         requires_approval: false,
         actual_sent_at: sentOk ? new Date().toISOString() : null,
         error_detail: sentOk ? null : "Facebook Graph API send returned no message id.",
-      }).eq("id", outboundDraft.id);
+      }).eq("id", outboundDraft.id)
+        .select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, actual_sent_at, mid, error_detail, metadata, created_at, updated_at")
+        .single();
+      if (sentDraft) {
+        const ledgerResult = await syncFacebookMessageLedger({
+          id: String(sentDraft.id),
+          leadId: typeof sentDraft.lead_id === "string" ? sentDraft.lead_id : String(lead.id),
+          message: String(sentDraft.message ?? response),
+          deliveryStatus: String(sentDraft.delivery_status ?? (sentOk ? "sent" : "failed")),
+          approvalStatus: String(sentDraft.approval_status ?? "pending"),
+          source: typeof sentDraft.source === "string" ? sentDraft.source : "facebook_webhook",
+          proposedAction: typeof sentDraft.proposed_action === "string" ? sentDraft.proposed_action : "reply",
+          requiresApproval: Boolean(sentDraft.requires_approval ?? false),
+          sentAt: typeof sentDraft.actual_sent_at === "string" ? sentDraft.actual_sent_at : null,
+          errorDetail: typeof sentDraft.error_detail === "string" ? sentDraft.error_detail : null,
+          mid: typeof sentDraft.mid === "string" ? sentDraft.mid : mid ?? null,
+          metadata: sentDraft.metadata && typeof sentDraft.metadata === "object" && !Array.isArray(sentDraft.metadata)
+            ? (sentDraft.metadata as Record<string, unknown>)
+            : {},
+          createdAt: typeof sentDraft.created_at === "string" ? sentDraft.created_at : null,
+          updatedAt: typeof sentDraft.updated_at === "string" ? sentDraft.updated_at : null,
+        }, {
+          actorLabel: "facebook_webhook",
+          eventType: sentOk ? "facebook_webhook_auto_sent" : "facebook_webhook_auto_send_failed",
+        });
+        if (!ledgerResult.ok) {
+          console.warn("[approval-ledger] facebook webhook send sync skipped:", ledgerResult.error);
+        }
+      }
     } catch (error) {
-      await db.from("facebook_messages").update({
-        metadata: {
-          intent_score: intentScore,
-          generated_by: agentName,
-          automation_mode: "draft_for_approval",
-          auto_send_blocked: true,
-          block_reason: error instanceof SocialPublishBlockedError ? error.message : "Facebook approval guard blocked auto-send.",
-        },
-      }).eq("id", outboundDraft.id);
+      const blockedMetadata = {
+        intent_score: intentScore,
+        generated_by: agentName,
+        automation_mode: "draft_for_approval",
+        auto_send_blocked: true,
+        block_reason: error instanceof SocialPublishBlockedError ? error.message : "Facebook approval guard blocked auto-send.",
+      };
+      const { data: blockedDraft } = await db.from("facebook_messages").update({
+        metadata: blockedMetadata,
+      }).eq("id", outboundDraft.id)
+        .select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, metadata, created_at, updated_at")
+        .single();
+      if (blockedDraft) {
+        const ledgerResult = await syncFacebookMessageLedger({
+          id: String(blockedDraft.id),
+          leadId: typeof blockedDraft.lead_id === "string" ? blockedDraft.lead_id : String(lead.id),
+          message: String(blockedDraft.message ?? response),
+          deliveryStatus: String(blockedDraft.delivery_status ?? "draft"),
+          approvalStatus: String(blockedDraft.approval_status ?? "pending"),
+          source: typeof blockedDraft.source === "string" ? blockedDraft.source : "facebook_webhook",
+          proposedAction: typeof blockedDraft.proposed_action === "string" ? blockedDraft.proposed_action : "reply",
+          requiresApproval: Boolean(blockedDraft.requires_approval ?? true),
+          metadata: blockedDraft.metadata && typeof blockedDraft.metadata === "object" && !Array.isArray(blockedDraft.metadata)
+            ? (blockedDraft.metadata as Record<string, unknown>)
+            : blockedMetadata,
+          createdAt: typeof blockedDraft.created_at === "string" ? blockedDraft.created_at : null,
+          updatedAt: typeof blockedDraft.updated_at === "string" ? blockedDraft.updated_at : null,
+        }, {
+          actorLabel: "facebook_webhook",
+          eventType: "facebook_webhook_auto_send_blocked",
+        });
+        if (!ledgerResult.ok) {
+          console.warn("[approval-ledger] facebook webhook blocked sync skipped:", ledgerResult.error);
+        }
+      }
     }
   }
 
@@ -452,7 +531,7 @@ async function handleComment(value: Record<string, unknown>) {
   if (!lead?.id) return;
 
   if (await facebookCommentAutoReplyAllowed(db)) {
-    await db.from("facebook_messages").insert({
+    const { data: commentReplyDraft } = await db.from("facebook_messages").insert({
       lead_id: lead.id,
       direction: "outbound",
       message: "Thanks for engaging. I can send a quick DM with more info about HomeReach after review.",
@@ -466,11 +545,34 @@ async function handleComment(value: Record<string, unknown>) {
         comment_id: commentId,
         automation_mode: "approval_guard_required",
       },
-    });
+    }).select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, metadata, created_at, updated_at").single();
+    if (commentReplyDraft) {
+      const ledgerResult = await syncFacebookMessageLedger({
+        id: String(commentReplyDraft.id),
+        leadId: typeof commentReplyDraft.lead_id === "string" ? commentReplyDraft.lead_id : String(lead.id),
+        message: String(commentReplyDraft.message ?? ""),
+        deliveryStatus: String(commentReplyDraft.delivery_status ?? "draft"),
+        approvalStatus: String(commentReplyDraft.approval_status ?? "pending"),
+        source: typeof commentReplyDraft.source === "string" ? commentReplyDraft.source : "facebook_webhook_comment",
+        proposedAction: typeof commentReplyDraft.proposed_action === "string" ? commentReplyDraft.proposed_action : "comment_reply",
+        requiresApproval: Boolean(commentReplyDraft.requires_approval ?? true),
+        metadata: commentReplyDraft.metadata && typeof commentReplyDraft.metadata === "object" && !Array.isArray(commentReplyDraft.metadata)
+          ? (commentReplyDraft.metadata as Record<string, unknown>)
+          : {},
+        createdAt: typeof commentReplyDraft.created_at === "string" ? commentReplyDraft.created_at : null,
+        updatedAt: typeof commentReplyDraft.updated_at === "string" ? commentReplyDraft.updated_at : null,
+      }, {
+        actorLabel: "facebook_webhook_comment",
+        eventType: "facebook_comment_reply_draft_created",
+      });
+      if (!ledgerResult.ok) {
+        console.warn("[approval-ledger] facebook comment reply draft sync skipped:", ledgerResult.error);
+      }
+    }
   }
 
   if (await facebookCommentAutoDmAllowed(db)) {
-    await db.from("facebook_messages").insert({
+    const { data: commentDmDraft } = await db.from("facebook_messages").insert({
       lead_id: lead.id,
       direction: "outbound",
       message: `Hey ${firstName}, saw your comment and wanted to reach out directly.\n\nI'm with HomeReach. We help local businesses stay visible with nearby homeowners through reviewed postcard campaigns.\n\nAre you currently doing any local advertising?`,
@@ -484,7 +586,30 @@ async function handleComment(value: Record<string, unknown>) {
         comment_id: commentId,
         automation_mode: "approval_guard_required",
       },
-    });
+    }).select("id, lead_id, message, delivery_status, approval_status, source, proposed_action, requires_approval, metadata, created_at, updated_at").single();
+    if (commentDmDraft) {
+      const ledgerResult = await syncFacebookMessageLedger({
+        id: String(commentDmDraft.id),
+        leadId: typeof commentDmDraft.lead_id === "string" ? commentDmDraft.lead_id : String(lead.id),
+        message: String(commentDmDraft.message ?? ""),
+        deliveryStatus: String(commentDmDraft.delivery_status ?? "draft"),
+        approvalStatus: String(commentDmDraft.approval_status ?? "pending"),
+        source: typeof commentDmDraft.source === "string" ? commentDmDraft.source : "facebook_webhook_comment",
+        proposedAction: typeof commentDmDraft.proposed_action === "string" ? commentDmDraft.proposed_action : "dm_from_comment",
+        requiresApproval: Boolean(commentDmDraft.requires_approval ?? true),
+        metadata: commentDmDraft.metadata && typeof commentDmDraft.metadata === "object" && !Array.isArray(commentDmDraft.metadata)
+          ? (commentDmDraft.metadata as Record<string, unknown>)
+          : {},
+        createdAt: typeof commentDmDraft.created_at === "string" ? commentDmDraft.created_at : null,
+        updatedAt: typeof commentDmDraft.updated_at === "string" ? commentDmDraft.updated_at : null,
+      }, {
+        actorLabel: "facebook_webhook_comment",
+        eventType: "facebook_comment_dm_draft_created",
+      });
+      if (!ledgerResult.ok) {
+        console.warn("[approval-ledger] facebook comment DM draft sync skipped:", ledgerResult.error);
+      }
+    }
   }
 }
 

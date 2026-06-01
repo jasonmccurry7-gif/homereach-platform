@@ -31,6 +31,7 @@
     "smoke:contractos": "node scripts/contractos-live-funnel-smoke.mjs",
     "smoke:ai-coo": "node scripts/ai-coo-live-smoke.mjs",
     "smoke:business-memory": "node scripts/business-memory-live-smoke.mjs",
+    "smoke:growth-intelligence": "node scripts/growth-intelligence-live-smoke.mjs",
     "smoke:agent-mini-apps": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/agent-mini-apps-lifecycle-smoke.mjs",
     "preflight:agent-mini-apps-db": "node scripts/agent-mini-apps-db-preflight.mjs",
     "dry-run:agent-mini-apps-migration": "node scripts/agent-mini-apps-migration-dry-run.mjs",
