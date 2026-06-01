@@ -1,4 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { createExternalActionIntent } from "@/lib/agent-integrations/repository";
+import { validateExternalActionIntent } from "@/lib/agent-integrations/rules";
 import {
   canMutateMiniApp,
   mapMiniAppRow,
@@ -402,6 +404,17 @@ async function sendToExecutionQueue(
   const targetSystem = stringValue(body.targetSystem) ?? defaultTargetSystem(current);
   const targetUrl = stringValue(body.targetUrl) ?? defaultTargetUrl(current);
   const taskType = stringValue(body.taskType) ?? `${current.miniAppType}_execution_review`;
+  const approvedPayloadJson = current.editedPayloadJson ?? current.payloadJson;
+  const approvalEventId = await fetchLatestMiniAppEventId(db, current.id, "approved");
+  const intentPreflight = validateExternalActionIntent({
+    intentType: taskType,
+    targetSystem,
+    permissionScope,
+    approvalEventId,
+    payload: approvedPayloadJson,
+  });
+  if (!intentPreflight.ok) return failure(intentPreflight.error, 409);
+
   const now = new Date().toISOString();
   const taskId = `AMQ-${current.id.slice(0, 8).toUpperCase()}-${Date.now()}`;
   const executionLog = [
@@ -448,6 +461,20 @@ async function sendToExecutionQueue(
   );
   if (!statusResult.ok) return statusResult;
 
+  const externalIntentResult = await createExternalActionIntent({
+    db,
+    miniAppId: current.id,
+    executionQueueId: String(queueRow.id),
+    tenantId: current.tenantId,
+    intentType: taskType,
+    targetSystem,
+    targetIdentifier: targetUrl,
+    permissionScope,
+    approvedPayloadJson,
+    approvalEventId,
+    createdBy: actorUserId,
+  });
+
   const { error: auditError } = await db.from("agent_execution_audit_log").insert({
     execution_task_id: queueRow.id,
     task_public_id: queueRow.task_id,
@@ -462,6 +489,8 @@ async function sendToExecutionQueue(
       permissionScope,
       humanApprovalRequired: true,
       storesSecrets: false,
+      externalActionIntentId: externalIntentResult.ok ? externalIntentResult.id : null,
+      externalActionIntentWarning: externalIntentResult.ok ? null : externalIntentResult.error,
     },
     allowed_scope: permissionScope,
     attempted_action: "queue future browser/computer-use task",
@@ -471,6 +500,19 @@ async function sendToExecutionQueue(
   if (auditError) return failure(errorMessage(auditError), 500);
 
   return { ok: true, id: current.id, taskId: String(queueRow.task_id), status: "sent_to_execution_queue" };
+}
+
+async function fetchLatestMiniAppEventId(db: Db, miniAppId: string, eventType: MiniAppEventType) {
+  const { data, error } = await db
+    .from("agent_mini_app_events")
+    .select("id")
+    .eq("mini_app_id", miniAppId)
+    .eq("event_type", eventType)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.id) return null;
+  return String(data.id);
 }
 
 export async function createMiniAppEvent(

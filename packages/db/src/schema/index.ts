@@ -104,6 +104,9 @@ export * from "./aiWorkforce.js";
 // Agent Execution Readiness
 export * from "./agentExecution.js";
 
+// Agent connector policy layer
+export * from "./agentIntegrations.js";
+
 // Agent-Native Mini Apps
 export * from "./agentMiniApps.js";
 

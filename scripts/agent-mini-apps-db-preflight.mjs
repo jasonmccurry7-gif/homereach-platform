@@ -66,7 +66,11 @@ try {
         (select count(*)::int from public.agent_mini_apps) as mini_apps,
         (select count(*)::int from public.agent_mini_app_events) as mini_app_events,
         (select count(*)::int from public.agent_browser_session_registry) as browser_session_registry,
-        (select count(*)::int from public.agent_execution_queue) as execution_queue
+        (select count(*)::int from public.agent_execution_queue) as execution_queue,
+        (select count(*)::int from public.integration_connections) as integration_connections,
+        (select count(*)::int from public.agent_tool_permissions) as agent_tool_permissions,
+        (select count(*)::int from public.external_action_intents) as external_action_intents,
+        (select count(*)::int from public.agent_execution_attempts) as agent_execution_attempts
     `;
     report.exact_counts = counts;
   }
@@ -76,9 +80,14 @@ try {
     (report.missing_columns?.length ?? 0) === 0 &&
     report.rls?.agent_mini_apps === true &&
     report.rls?.agent_mini_app_events === true &&
+    report.rls?.integration_connections === true &&
+    report.rls?.agent_tool_permissions === true &&
+    report.rls?.external_action_intents === true &&
+    report.rls?.agent_execution_attempts === true &&
     report.immutable_event_trigger_enabled === true &&
     report.browser_session_registry_security_invoker === true &&
-    (report.secret_like_registry_columns?.length ?? 0) === 0;
+    (report.secret_like_registry_columns?.length ?? 0) === 0 &&
+    (report.secret_like_connector_columns?.length ?? 0) === 0;
 
   console.log(JSON.stringify(report, null, 2));
 } finally {

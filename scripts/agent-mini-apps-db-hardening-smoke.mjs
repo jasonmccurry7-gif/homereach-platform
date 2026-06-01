@@ -56,11 +56,15 @@ try {
     select
       (select count(*)::int from public.agent_mini_apps) as mini_apps,
       (select count(*)::int from public.agent_mini_app_events) as events,
-      (select count(*)::int from public.agent_browser_session_registry) as browser_systems
+      (select count(*)::int from public.agent_browser_session_registry) as browser_systems,
+      (select count(*)::int from public.integration_connections) as integration_connections,
+      (select count(*)::int from public.agent_tool_permissions) as agent_tool_permissions
   `;
   assert.ok(counts.mini_apps >= 7, "Expected at least 7 seed mini apps.");
   assert.ok(counts.events >= counts.mini_apps, "Expected audit events to cover mini apps.");
   assert.ok(counts.browser_systems >= 12, "Expected at least 12 browser system registry rows.");
+  assert.ok(counts.integration_connections >= 10, "Expected at least 10 integration connection registry rows.");
+  assert.ok(counts.agent_tool_permissions >= 7, "Expected at least 7 agent tool permission rows.");
 
   const [miniApp] = await db`
     select id, source_agent
@@ -121,6 +125,64 @@ try {
     immutableBlocked = String(error instanceof Error ? error.message : error).includes("immutable");
   }
   assert.equal(immutableBlocked, true, "Expected immutable audit event update to be blocked.");
+
+  let sensitiveToolPermissionBlocked = false;
+  try {
+    await db.begin(async (tx) => {
+      await tx`
+        insert into public.agent_tool_permissions (
+          agent_key,
+          tool_key,
+          target_system,
+          permission_scope,
+          requires_human_approval
+        )
+        values (
+          'smoke_agent',
+          'unsafe_purchase_tool',
+          'Stripe',
+          'purchase_after_approval',
+          false
+        )
+      `;
+    });
+  } catch (error) {
+    sensitiveToolPermissionBlocked = String(error instanceof Error ? error.message : error).includes("agent_tool_permissions_sensitive_requires_approval");
+  }
+  assert.equal(
+    sensitiveToolPermissionBlocked,
+    true,
+    "Expected sensitive tool permissions without human approval to be blocked.",
+  );
+
+  let sensitiveIntentBlocked = false;
+  try {
+    await db.begin(async (tx) => {
+      await tx`
+        insert into public.external_action_intents (
+          mini_app_id,
+          intent_type,
+          target_system,
+          permission_scope,
+          approved_payload_json
+        )
+        values (
+          ${miniApp.id},
+          'send_email',
+          'Gmail',
+          'send_after_approval',
+          '{"subject":"smoke"}'::jsonb
+        )
+      `;
+    });
+  } catch (error) {
+    sensitiveIntentBlocked = String(error instanceof Error ? error.message : error).includes("external_action_intents_sensitive_scope_has_approval");
+  }
+  assert.equal(
+    sensitiveIntentBlocked,
+    true,
+    "Expected sensitive external action intents without an approval event to be blocked.",
+  );
 
   console.log("Agent Mini Apps DB hardening smoke passed.");
 } finally {

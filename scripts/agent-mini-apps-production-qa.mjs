@@ -149,6 +149,16 @@ await runCheck("admin API rejects unauthenticated requests", async () => {
     [401, 403].includes(response.status),
     `Expected unauthenticated API request to return 401/403, received ${response.status}.`,
   );
+
+  const integrationsResponse = await fetch(`${baseUrl}/api/admin/agent-integrations`, {
+    headers: { accept: "application/json" },
+    redirect: "manual",
+  });
+  qaReport.http.integrations_api_unauth_status = integrationsResponse.status;
+  assertCheck(
+    [401, 403].includes(integrationsResponse.status),
+    `Expected unauthenticated Agent Integrations API request to return 401/403, received ${integrationsResponse.status}.`,
+  );
 });
 
 await runCheck("database schema, RLS, immutable audit log, and registry safety are ready", async () => {
@@ -179,18 +189,36 @@ await runCheck("database schema, RLS, immutable audit log, and registry safety a
             (select count(*)::int from public.agent_mini_apps) as mini_apps,
             (select count(*)::int from public.agent_mini_app_events) as mini_app_events,
             (select count(*)::int from public.agent_browser_session_registry) as browser_systems,
-            (select count(*)::int from public.agent_execution_queue) as execution_queue
+            (select count(*)::int from public.agent_execution_queue) as execution_queue,
+            (select count(*)::int from public.integration_connections) as integration_connections,
+            (select count(*)::int from public.agent_tool_permissions) as agent_tool_permissions,
+            (select count(*)::int from public.external_action_intents) as external_action_intents,
+            (select count(*)::int from public.agent_execution_attempts) as agent_execution_attempts
         `
-      : [{ mini_apps: 0, mini_app_events: 0, browser_systems: 0, execution_queue: 0 }];
+      : [{
+          mini_apps: 0,
+          mini_app_events: 0,
+          browser_systems: 0,
+          execution_queue: 0,
+          integration_connections: 0,
+          agent_tool_permissions: 0,
+          external_action_intents: 0,
+          agent_execution_attempts: 0,
+        }];
 
     const ready =
       (preflight.missing_relations?.length ?? 0) === 0 &&
       (preflight.missing_columns?.length ?? 0) === 0 &&
       preflight.rls?.agent_mini_apps === true &&
       preflight.rls?.agent_mini_app_events === true &&
+      preflight.rls?.integration_connections === true &&
+      preflight.rls?.agent_tool_permissions === true &&
+      preflight.rls?.external_action_intents === true &&
+      preflight.rls?.agent_execution_attempts === true &&
       preflight.immutable_event_trigger_enabled === true &&
       preflight.browser_session_registry_security_invoker === true &&
-      (preflight.secret_like_registry_columns?.length ?? 0) === 0;
+      (preflight.secret_like_registry_columns?.length ?? 0) === 0 &&
+      (preflight.secret_like_connector_columns?.length ?? 0) === 0;
 
     qaReport.database.preflight_ready = ready;
     qaReport.database.counts = counts;
@@ -203,6 +231,14 @@ await runCheck("database schema, RLS, immutable audit log, and registry safety a
     assertCheck(
       counts.browser_systems >= 12,
       `Expected at least 12 browser registry rows, found ${counts.browser_systems}.`,
+    );
+    assertCheck(
+      counts.integration_connections >= 10,
+      `Expected at least 10 integration connection registry rows, found ${counts.integration_connections}.`,
+    );
+    assertCheck(
+      counts.agent_tool_permissions >= 7,
+      `Expected at least 7 agent tool permission rows, found ${counts.agent_tool_permissions}.`,
     );
   } finally {
     await db.end({ timeout: 2 });
