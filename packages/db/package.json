@@ -19,7 +19,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",
     "csv-parse": "^6.2.1",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.5"
   },
   "devDependencies": {

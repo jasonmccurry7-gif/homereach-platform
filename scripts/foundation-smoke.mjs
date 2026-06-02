@@ -1,4 +1,8 @@
-const baseUrl = process.env.SMOKE_BASE_URL ?? "http://localhost:3061";
+const baseUrl =
+  process.env.SMOKE_BASE_URL ||
+  process.env.HOMEREACH_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "http://localhost:3061";
 
 const htmlChecks = [
   {

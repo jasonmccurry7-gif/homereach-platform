@@ -8,7 +8,12 @@ const args = new Set(process.argv.slice(2));
 
 const checkRoutes = args.has("--check-routes") || process.env.SERVICE_CATALOG_CHECK_ROUTES === "1";
 const includeProtectedRoutes = args.has("--include-protected-routes");
-const baseUrl = process.env.SERVICE_CATALOG_BASE_URL || "http://localhost:3061";
+const baseUrl =
+  process.env.SERVICE_CATALOG_BASE_URL ||
+  process.env.SMOKE_BASE_URL ||
+  process.env.HOMEREACH_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "http://localhost:3061";
 
 const requiredStringFields = [
   "id",

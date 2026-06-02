@@ -8,7 +8,13 @@ import postgres from "postgres";
 const root = process.cwd();
 const requireFromWeb = createRequire(path.join(root, "apps/web/package.json"));
 const { createClient } = requireFromWeb("@supabase/supabase-js");
-const baseUrl = (process.env.AGENT_MINI_APPS_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
+const DEFAULT_PRODUCTION_BASE_URL = "https://www.home-reach.com";
+const baseUrl = (
+  process.env.AGENT_MINI_APPS_BASE_URL ||
+  process.env.HOMEREACH_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  DEFAULT_PRODUCTION_BASE_URL
+).replace(/\/$/, "");
 const allowedPermissionScopes = new Set([
   "read_only",
   "draft_only",
@@ -61,11 +67,13 @@ function parseEnvFile(filePath) {
 
 function connectionUrl() {
   const rootEnv = parseEnvFile(path.join(root, ".env"));
+  const rootLocalEnv = parseEnvFile(path.join(root, ".env.local"));
   const webEnv = parseEnvFile(path.join(root, "apps", "web", ".env.local"));
   return (
     process.env.AGENT_MINI_APPS_DB_URL ||
     process.env.DATABASE_URL ||
     webEnv.DATABASE_URL ||
+    rootLocalEnv.DATABASE_URL ||
     rootEnv.DATABASE_URL ||
     null
   );
@@ -74,6 +82,7 @@ function connectionUrl() {
 function loadedEnv() {
   return {
     ...parseEnvFile(path.join(root, ".env")),
+    ...parseEnvFile(path.join(root, ".env.local")),
     ...parseEnvFile(path.join(root, "apps", "web", ".env.local")),
     ...process.env,
   };

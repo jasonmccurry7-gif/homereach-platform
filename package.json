@@ -46,6 +46,7 @@
     "e2e:agent-mini-apps": "node scripts/agent-mini-apps-authenticated-e2e.mjs",
     "smoke:service-catalog": "node scripts/service-catalog-smoke.mjs",
     "audit:system": "node scripts/full-system-audit.mjs",
+    "agents:hardening:sweep": "node scripts/deploy-hardening-agent-sweep.mjs",
     "type-check": "turbo type-check",
     "db:generate": "turbo db:generate",
     "db:migrate": "turbo db:migrate",
@@ -62,6 +63,18 @@
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@xmldom/xmldom": "0.8.13",
+      "axios": "1.16.0",
+      "fast-uri": "3.1.2",
+      "postcss": "8.5.10",
+      "qs": "6.15.2",
+      "tar": "7.5.11",
+      "uuid": "11.1.1",
+      "ws": "8.20.1"
+    }
   },
   "packageManager": "pnpm@9.15.0"
 }

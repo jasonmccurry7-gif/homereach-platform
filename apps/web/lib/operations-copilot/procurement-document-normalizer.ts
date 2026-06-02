@@ -187,20 +187,41 @@ async function extractFileContent(
 }
 
 async function extractSpreadsheet(file: UploadedProcurementFile): Promise<ExtractedContent> {
-  const xlsx = await import("xlsx");
-  const workbook = xlsx.read(file.buffer, { type: "buffer", cellDates: true });
+  const lowerName = file.fileName.toLowerCase();
+  if (!/\.(xlsx|xlsm)$/i.test(lowerName) && !file.mediaType.toLowerCase().includes("openxmlformats-officedocument")) {
+    return {
+      fileName: file.fileName,
+      extractionMode: "unsupported_spreadsheet",
+      text: "",
+      rows: [],
+      warnings: [`${file.fileName} is a legacy spreadsheet format. Convert it to .xlsx or CSV before importing.`],
+    };
+  }
+
+  const ExcelJS = await import("exceljs");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file.buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
   const rows: Array<Record<string, unknown>> = [];
   const textParts: string[] = [];
 
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
-    const sheetRows = xlsx.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      defval: "",
-      raw: false,
+  for (const worksheet of workbook.worksheets) {
+    const headerRow = worksheet.getRow(1);
+    const headers = cellValues(headerRow.values).map(normalizeHeader);
+    if (headers.filter(Boolean).length < 2) continue;
+
+    const sheetText = [worksheet.name, headers.join(",")];
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const values = cellValues(row.values).map(spreadsheetCellToString);
+      const record = headers.reduce<Record<string, unknown>>((current, header, index) => {
+        if (header) current[header] = values[index] ?? "";
+        return current;
+      }, {});
+      if (Object.values(record).some((value) => String(value).trim())) rows.push(record);
+      sheetText.push(values.map(escapeCsvCell).join(","));
     });
-    rows.push(...sheetRows);
-    textParts.push(`${sheetName}\n${xlsx.utils.sheet_to_csv(sheet)}`);
+
+    textParts.push(sheetText.join("\n"));
   }
 
   return {
@@ -210,6 +231,36 @@ async function extractSpreadsheet(file: UploadedProcurementFile): Promise<Extrac
     rows,
     warnings: [],
   };
+}
+
+function cellValues(values: unknown) {
+  return Array.isArray(values) ? values.slice(1) : [];
+}
+
+function spreadsheetCellToString(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    const record = value as {
+      text?: unknown;
+      result?: unknown;
+      formula?: unknown;
+      hyperlink?: unknown;
+      richText?: Array<{ text?: unknown }>;
+    };
+    if (record.text !== undefined) return spreadsheetCellToString(record.text);
+    if (record.result !== undefined) return spreadsheetCellToString(record.result);
+    if (Array.isArray(record.richText)) return record.richText.map((part) => spreadsheetCellToString(part.text)).join("");
+    if (record.hyperlink !== undefined) return spreadsheetCellToString(record.hyperlink);
+    if (record.formula !== undefined) return spreadsheetCellToString(record.formula);
+  }
+  return "";
+}
+
+function escapeCsvCell(value: unknown) {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 async function extractBinaryWithAnthropic(

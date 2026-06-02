@@ -24,6 +24,10 @@ export interface GenerateTextResult {
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 
+function cleanEnvValue(value: string | undefined): string {
+  return (value ?? "").replace(/^\uFEFF/, "").trim();
+}
+
 function isAnthropicModel(model: string): boolean {
   return model.toLowerCase().startsWith("claude");
 }
@@ -33,8 +37,8 @@ function isCompatibleModel(provider: AiProvider, model: string): boolean {
 }
 
 function resolveProvider(feature: string): AiProvider {
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (cleanEnvValue(process.env.OPENAI_API_KEY)) return "openai";
+  if (cleanEnvValue(process.env.ANTHROPIC_API_KEY)) return "anthropic";
   throw new Error(
     `[ai:${feature}] OPENAI_API_KEY is not set. ANTHROPIC_API_KEY is also missing, so no fallback provider is available.`,
   );
@@ -51,7 +55,7 @@ function resolveModel(args: GenerateTextArgs, provider: AiProvider): string {
   }
 
   if (provider === "openai") {
-    return process.env.OPENAI_DEFAULT_MODEL || DEFAULT_OPENAI_MODEL;
+    return cleanEnvValue(process.env.OPENAI_DEFAULT_MODEL) || DEFAULT_OPENAI_MODEL;
   }
   return args.anthropicDefaultModel || DEFAULT_ANTHROPIC_MODEL;
 }
@@ -73,7 +77,7 @@ async function generateOpenAiText(
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      "authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      "authorization": `Bearer ${cleanEnvValue(process.env.OPENAI_API_KEY)}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({
@@ -118,7 +122,7 @@ async function generateAnthropicText(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY ?? "",
+      "x-api-key": cleanEnvValue(process.env.ANTHROPIC_API_KEY),
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({

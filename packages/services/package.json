@@ -18,10 +18,10 @@
   "dependencies": {
     "@homereach/db": "workspace:*",
     "@homereach/types": "workspace:*",
-    "stripe": "^17.0.0",
-    "twilio": "^5.0.0",
+    "@supabase/supabase-js": "^2.47.0",
     "resend": "^4.0.0",
-    "@supabase/supabase-js": "^2.47.0"
+    "stripe": "^17.7.0",
+    "twilio": "^5.13.1"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
