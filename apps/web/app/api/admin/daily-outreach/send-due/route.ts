@@ -108,6 +108,26 @@ async function handleSendDue(req: NextRequest, allowMutation: boolean) {
   if (campaignControlsError) return NextResponse.json({ ok: false, error: campaignControlsError.message }, { status: 503 });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
+  const taskRows = ((tasks ?? []) as DailyOutreachTask[]).slice(0, limit);
+  const linkedApprovalIds = Array.from(
+    new Set(
+      taskRows
+        .map((task) => task.approval_queue_id)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+    ),
+  );
+  const approvalStatusById = new Map<string, string | null>();
+  if (linkedApprovalIds.length > 0) {
+    const { data: linkedApprovals, error: linkedApprovalError } = await supabase
+      .from("revenue_message_approval_queue")
+      .select("id,status")
+      .in("id", linkedApprovalIds);
+    if (linkedApprovalError) return NextResponse.json({ ok: false, error: linkedApprovalError.message }, { status: 503 });
+    for (const approval of linkedApprovals ?? []) {
+      approvalStatusById.set(String(approval.id), typeof approval.status === "string" ? approval.status : null);
+    }
+  }
+
   const verified =
     controls?.email_domain_authentication_verified === true &&
     controls?.postmark_sender_signatures_verified === true &&
@@ -124,20 +144,58 @@ async function handleSendDue(req: NextRequest, allowMutation: boolean) {
   let queuedForReview = 0;
   let approvedForSend = 0;
   let failedToQueue = 0;
+  let approvalMismatches = 0;
   const considered: string[] = [];
 
-  for (const task of ((tasks ?? []) as DailyOutreachTask[]).slice(0, limit)) {
+  for (const task of taskRows) {
     if ((task.send_attempts ?? 0) > 1) continue;
     const campaign = campaigns.get(String(task.campaign_type ?? ""));
     if (paused || campaign?.paused) continue;
     considered.push(task.id);
+
+    const sendStatus = String(task.send_status ?? "draft").toLowerCase();
+    if (sendStatus === "approved_pending_send") {
+      const linkedApprovalStatus = task.approval_queue_id ? approvalStatusById.get(task.approval_queue_id) ?? null : null;
+      const taskApprovalStatus = String(task.approval_status ?? "").toLowerCase();
+      if (taskApprovalStatus !== "approved" || linkedApprovalStatus !== "approved") {
+        approvalMismatches += 1;
+        if (!dryRun) {
+          await logOutreachActivity(supabase, {
+            actorId: guard.user?.id ?? null,
+            outreachDate: date,
+            taskId: task.id,
+            prospectId: task.prospect_id,
+            category: task.category,
+            activityType: "daily_outreach_approval_mismatch_blocked",
+            channel: "email",
+            status: "blocked",
+            summary: "Skipped an approved-pending-send task because its approval queue row is not approved.",
+            metadata: {
+              sender_email: task.sender_email,
+              campaign_type: task.campaign_type,
+              send_status: task.send_status,
+              approval_status: task.approval_status,
+              approval_queue_id: task.approval_queue_id,
+              linked_approval_status: linkedApprovalStatus,
+            },
+          });
+        }
+        continue;
+      }
+      approvedForSend += 1;
+      continue;
+    }
 
     const mustReview =
       !verified ||
       task.manual_approval_required !== false ||
       campaign?.manual_approval_required !== false;
 
-    if (dryRun) continue;
+    if (dryRun) {
+      if (mustReview) queuedForReview += 1;
+      else approvedForSend += 1;
+      continue;
+    }
 
     try {
       await queueDailyOutreachEmail(
@@ -190,12 +248,13 @@ async function handleSendDue(req: NextRequest, allowMutation: boolean) {
     status: failedToQueue > 0 ? "partial" : "logged",
     summary: dryRun
       ? `Previewed ${considered.length} due outreach email items.`
-      : `Processed due outreach: ${queuedForReview} queued for review, ${approvedForSend} approved, ${failedToQueue} blocked.`,
+      : `Processed due outreach: ${queuedForReview} queued for review, ${approvedForSend} approved, ${failedToQueue} blocked, ${approvalMismatches} approval mismatches skipped.`,
     metadata: {
       considered,
       queued_for_review: queuedForReview,
       approved_for_send: approvedForSend,
       failed_to_queue: failedToQueue,
+      approval_mismatches: approvalMismatches,
       verified,
       paused: Boolean(paused),
       dry_run: dryRun,
@@ -213,6 +272,7 @@ async function handleSendDue(req: NextRequest, allowMutation: boolean) {
     queuedForReview,
     approvedForSend,
     failedToQueue,
+    approvalMismatches,
     sendResult,
   });
 }
