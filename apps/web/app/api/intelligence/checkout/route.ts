@@ -11,7 +11,7 @@ const CheckoutSchema = z.object({
   market_size: z.union([z.string().trim().max(80), z.number()]).optional().nullable(),
   businessName: z.string().trim().min(1).max(160),
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
-  phone: z.string().trim().min(7).max(40),
+  phone: z.string().trim().max(40).optional().default(""),
 });
 
 function getStripe() {

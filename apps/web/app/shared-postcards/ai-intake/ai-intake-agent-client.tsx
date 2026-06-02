@@ -219,8 +219,8 @@ export function AiIntakeAgentClient() {
 
   async function saveDetails() {
     if (!session) return;
-    if (!details.phone.trim() || !details.smsConsent) {
-      setError("Please enter a phone number and confirm SMS consent before saving details.");
+    if (!details.businessName.trim() || !details.contactName.trim() || !details.email.trim()) {
+      setError("Please enter your business name, contact name, and email before saving details.");
       return;
     }
     await callAgent(
@@ -228,6 +228,7 @@ export function AiIntakeAgentClient() {
         action: "save_details",
         sessionId: session.id,
         ...details,
+        phone: details.smsConsent ? details.phone : "",
         militaryEligible,
       },
       "save_details",
@@ -457,7 +458,7 @@ export function AiIntakeAgentClient() {
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <TextField label="Business name" value={details.businessName} onChange={(v) => setDetails({ ...details, businessName: v })} />
             <TextField label="Contact name" value={details.contactName} onChange={(v) => setDetails({ ...details, contactName: v })} />
-            <TextField label="Phone" value={details.phone} onChange={(v) => setDetails({ ...details, phone: v })} />
+            <TextField label="Phone (optional)" value={details.phone} onChange={(v) => setDetails({ ...details, phone: v })} />
             <TextField label="Email" value={details.email} onChange={(v) => setDetails({ ...details, email: v })} />
             <label className="md:col-span-2 flex gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold leading-5 text-slate-600">
               <input

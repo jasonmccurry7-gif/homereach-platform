@@ -464,8 +464,7 @@ function IntakeFormInner() {
                   loading ||
                   !form.businessName.trim() ||
                   !form.email.trim() ||
-                  !form.targetAreaNotes.trim() ||
-                  (!!form.phone.trim() && !form.smsConsent)
+                  !form.targetAreaNotes.trim()
                 }
                 className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-blue-950/20 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
