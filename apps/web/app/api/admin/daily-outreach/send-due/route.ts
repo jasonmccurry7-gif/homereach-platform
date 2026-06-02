@@ -240,27 +240,29 @@ async function handleSendDue(req: NextRequest, allowMutation: boolean) {
     sendResult = await response.json().catch(() => ({ ok: false, error: "Unable to parse send result" }));
   }
 
-  await logOutreachActivity(supabase, {
-    actorId: guard.user?.id ?? null,
-    outreachDate: date,
-    activityType: dryRun ? "daily_outreach_send_due_previewed" : "daily_outreach_send_due_processed",
-    channel: "email",
-    status: failedToQueue > 0 ? "partial" : "logged",
-    summary: dryRun
-      ? `Previewed ${considered.length} due outreach email items.`
-      : `Processed due outreach: ${queuedForReview} queued for review, ${approvedForSend} approved, ${failedToQueue} blocked, ${approvalMismatches} approval mismatches skipped.`,
-    metadata: {
-      considered,
-      queued_for_review: queuedForReview,
-      approved_for_send: approvedForSend,
-      failed_to_queue: failedToQueue,
-      approval_mismatches: approvalMismatches,
-      verified,
-      paused: Boolean(paused),
-      dry_run: dryRun,
-      window,
-    },
-  });
+  if (!dryRun || url.searchParams.get("logPreview") === "1") {
+    await logOutreachActivity(supabase, {
+      actorId: guard.user?.id ?? null,
+      outreachDate: date,
+      activityType: dryRun ? "daily_outreach_send_due_previewed" : "daily_outreach_send_due_processed",
+      channel: "email",
+      status: failedToQueue > 0 ? "partial" : "logged",
+      summary: dryRun
+        ? `Previewed ${considered.length} due outreach email items.`
+        : `Processed due outreach: ${queuedForReview} queued for review, ${approvedForSend} approved, ${failedToQueue} blocked, ${approvalMismatches} approval mismatches skipped.`,
+      metadata: {
+        considered,
+        queued_for_review: queuedForReview,
+        approved_for_send: approvedForSend,
+        failed_to_queue: failedToQueue,
+        approval_mismatches: approvalMismatches,
+        verified,
+        paused: Boolean(paused),
+        dry_run: dryRun,
+        window,
+      },
+    });
+  }
 
   return NextResponse.json({
     ok: true,
