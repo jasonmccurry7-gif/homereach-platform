@@ -45,6 +45,7 @@
     "bootstrap:e2e-agent-mini-apps": "node scripts/agent-mini-apps-e2e-admin-bootstrap.mjs",
     "e2e:agent-mini-apps": "node scripts/agent-mini-apps-authenticated-e2e.mjs",
     "smoke:service-catalog": "node scripts/service-catalog-smoke.mjs",
+    "audit:system": "node scripts/full-system-audit.mjs",
     "type-check": "turbo type-check",
     "db:generate": "turbo db:generate",
     "db:migrate": "turbo db:migrate",

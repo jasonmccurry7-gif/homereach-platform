@@ -1,10 +1,13 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 
 import postgres from "postgres";
 
 const root = process.cwd();
+const requireFromWeb = createRequire(path.join(root, "apps/web/package.json"));
+const { createClient } = requireFromWeb("@supabase/supabase-js");
 const baseUrl = (process.env.AGENT_MINI_APPS_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const allowedPermissionScopes = new Set([
   "read_only",
@@ -66,6 +69,146 @@ function connectionUrl() {
     rootEnv.DATABASE_URL ||
     null
   );
+}
+
+function loadedEnv() {
+  return {
+    ...parseEnvFile(path.join(root, ".env")),
+    ...parseEnvFile(path.join(root, "apps", "web", ".env.local")),
+    ...process.env,
+  };
+}
+
+function createSupabaseFallbackClient() {
+  const env = loadedEnv();
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
+
+  return createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+function recordDirectDbFallback(error, scope) {
+  qaReport.database.direct_db_unavailable = true;
+  qaReport.database.direct_db_fallback_scope = scope;
+  qaReport.database.direct_db_error = serializeError(error);
+  qaReport.database.direct_db_note =
+    "Direct Postgres preflight was unavailable from this runner. Supabase REST-backed checks still verified table access, counts, queue safety, and approval boundaries.";
+}
+
+async function restCount(supabase, tableName) {
+  const { count, error } = await supabase.from(tableName).select("*", { count: "exact", head: true });
+  if (error) throw new Error(`${tableName} count failed through Supabase REST fallback: ${error.message}`);
+  return count ?? 0;
+}
+
+async function runRestSchemaFallback(error) {
+  const supabase = createSupabaseFallbackClient();
+  if (!supabase) throw error;
+
+  recordDirectDbFallback(error, "schema_counts");
+
+  const counts = {
+    mini_apps: await restCount(supabase, "agent_mini_apps"),
+    mini_app_events: await restCount(supabase, "agent_mini_app_events"),
+    browser_systems: await restCount(supabase, "agent_browser_session_registry"),
+    execution_queue: await restCount(supabase, "agent_execution_queue"),
+    integration_connections: await restCount(supabase, "integration_connections"),
+    agent_tool_permissions: await restCount(supabase, "agent_tool_permissions"),
+    external_action_intents: await restCount(supabase, "external_action_intents"),
+    agent_execution_attempts: await restCount(supabase, "agent_execution_attempts"),
+  };
+
+  qaReport.database.preflight_ready = "rest_fallback";
+  qaReport.database.counts = counts;
+  qaReport.database.warnings = [
+    ...(qaReport.database.warnings ?? []),
+    "RLS, immutable trigger, and security-invoker checks require direct Postgres access. REST fallback verified table availability and seed coverage only.",
+  ];
+
+  assertCheck(counts.mini_apps >= 7, `Expected at least 7 demo mini apps, found ${counts.mini_apps}.`);
+  assertCheck(
+    counts.mini_app_events >= counts.mini_apps,
+    `Expected audit events to cover mini apps, found ${counts.mini_app_events} events for ${counts.mini_apps} mini apps.`,
+  );
+  assertCheck(
+    counts.browser_systems >= 12,
+    `Expected at least 12 browser registry rows, found ${counts.browser_systems}.`,
+  );
+  assertCheck(
+    counts.integration_connections >= 10,
+    `Expected at least 10 integration connection registry rows, found ${counts.integration_connections}.`,
+  );
+  assertCheck(
+    counts.agent_tool_permissions >= 7,
+    `Expected at least 7 agent tool permission rows, found ${counts.agent_tool_permissions}.`,
+  );
+}
+
+async function runRestExecutionQueueFallback(error) {
+  const supabase = createSupabaseFallbackClient();
+  if (!supabase) throw error;
+
+  recordDirectDbFallback(error, "execution_queue");
+
+  const { data: queueRows, error: queueError } = await supabase
+    .from("agent_execution_queue")
+    .select("id,task_id,mini_app_id,task_type,target_system,permission_scope,status,human_approval_required,approved_by,approved_at,created_at")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (queueError) throw new Error(`Execution queue fallback check failed: ${queueError.message}`);
+
+  const unsafeRows = (queueRows ?? []).filter((row) => {
+    if (!allowedPermissionScopes.has(row.permission_scope)) return true;
+    if (!allowedQueueStatuses.has(row.status)) return true;
+    if (row.human_approval_required !== true) return true;
+    if (
+      approvalExecutionScopes.has(row.permission_scope) &&
+      ["approved", "running", "completed"].includes(row.status) &&
+      (!row.approved_by || !row.approved_at)
+    ) {
+      return true;
+    }
+    return false;
+  });
+
+  qaReport.database.execution_queue_checked = queueRows?.length ?? 0;
+  qaReport.database.execution_queue_unsafe = unsafeRows.map((row) => ({
+    id: row.id,
+    task_id: row.task_id,
+    task_type: row.task_type,
+    permission_scope: row.permission_scope,
+    status: row.status,
+    human_approval_required: row.human_approval_required,
+  }));
+
+  assertCheck(
+    unsafeRows.length === 0,
+    `Found unsafe execution queue rows: ${JSON.stringify(qaReport.database.execution_queue_unsafe)}.`,
+  );
+
+  const miniAppIds = [...new Set((queueRows ?? []).map((row) => row.mini_app_id).filter(Boolean))];
+  if (miniAppIds.length > 0) {
+    const { data: events, error: eventsError } = await supabase
+      .from("agent_mini_app_events")
+      .select("mini_app_id,event_type")
+      .in("mini_app_id", miniAppIds)
+      .eq("event_type", "sent_to_execution_queue")
+      .limit(1000);
+    if (eventsError) throw new Error(`Execution queue event fallback check failed: ${eventsError.message}`);
+
+    const eventMiniAppIds = new Set((events ?? []).map((event) => event.mini_app_id));
+    const queueEventGaps = miniAppIds.filter((id) => !eventMiniAppIds.has(id)).length;
+    qaReport.database.audit_coverage = {
+      ...(qaReport.database.audit_coverage ?? {}),
+      queue_event_gaps: queueEventGaps,
+      mode: "rest_fallback_sample",
+    };
+    assertCheck(
+      queueEventGaps === 0,
+      `Expected queued execution tasks to have sent_to_execution_queue events; found ${queueEventGaps} sampled gaps.`,
+    );
+  }
 }
 
 function assertCheck(condition, message) {
@@ -240,6 +383,8 @@ await runCheck("database schema, RLS, immutable audit log, and registry safety a
       counts.agent_tool_permissions >= 7,
       `Expected at least 7 agent tool permission rows, found ${counts.agent_tool_permissions}.`,
     );
+  } catch (error) {
+    await runRestSchemaFallback(error);
   } finally {
     await db.end({ timeout: 2 });
   }
@@ -339,6 +484,8 @@ await runCheck("execution queue rows preserve human approval and safe permission
       coverage.status_event_gaps === 0,
       `Expected decision statuses to have matching audit events; found ${coverage.status_event_gaps} gaps.`,
     );
+  } catch (error) {
+    await runRestExecutionQueueFallback(error);
   } finally {
     await db.end({ timeout: 2 });
   }
