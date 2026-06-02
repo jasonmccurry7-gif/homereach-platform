@@ -134,7 +134,14 @@ export function MarketCaptureIntakeClient({ initialPlan = "starter" }: { initial
                 <Input name="businessName" label="Business Name" required placeholder="Peak Roofing Co." />
                 <Input name="contactName" label="Contact Name" required placeholder="Jane Smith" />
                 <Input name="email" label="Email" required type="email" placeholder="jane@peakroofing.com" />
-                <Input name="phone" label="Phone" required type="tel" placeholder="(330) 555-0100" />
+                <Input
+                  name="phone"
+                  label="Phone"
+                  required
+                  type="tel"
+                  placeholder="(330) 555-0100"
+                  helper="Used for sales review and call coordination. SMS updates are optional below."
+                />
                 <Input name="website" label="Website" type="url" placeholder="https://peakroofing.com" />
                 <Input name="industry" label="Industry" required placeholder="Roofing, HVAC, med spa..." />
               </div>
@@ -439,6 +446,9 @@ export function MarketCaptureIntakeClient({ initialPlan = "starter" }: { initial
             </FormSection>
 
             <div className="grid gap-3">
+              <OptionalConsent name="smsConsent">
+                I agree to receive optional SMS updates from HomeReach about this Market Capture request. Msg and data rates may apply. Reply STOP to opt out or HELP for help.
+              </OptionalConsent>
               <Consent name="consent">
                 I understand HomeReach management starts at {formatUsd(MARKET_CAPTURE_MANAGEMENT_FEE_CENTS)}/month, the selected plan may change the monthly management fee, and ad spend is separate and client-funded.
               </Consent>
@@ -589,6 +599,15 @@ function Consent({ name, children }: { name: string; children: React.ReactNode }
   return (
     <label className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
       <input name={name} type="checkbox" value="true" required className="mt-1 h-4 w-4 shrink-0 rounded border-amber-300" />
+      <span>{children}</span>
+    </label>
+  );
+}
+
+function OptionalConsent({ name, children }: { name: string; children: React.ReactNode }) {
+  return (
+    <label className="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+      <input name={name} type="checkbox" value="true" className="mt-1 h-4 w-4 shrink-0 rounded border-blue-300" />
       <span>{children}</span>
     </label>
   );

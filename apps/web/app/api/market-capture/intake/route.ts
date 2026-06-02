@@ -65,6 +65,7 @@ const IntakeSchema = z.object({
   postcardAddon: z.boolean(),
   landingPageNeeded: z.boolean(),
   creativePackageNeeded: z.boolean(),
+  smsConsent: z.boolean().default(false),
   consent: z.literal(true),
   compliance: z.literal(true),
 });
@@ -157,6 +158,7 @@ function formDataToInput(form: FormData): IntakeData {
     postcardAddon: boolValue(form, "postcardAddon"),
     landingPageNeeded: boolValue(form, "landingPageNeeded"),
     creativePackageNeeded: boolValue(form, "creativePackageNeeded"),
+    smsConsent: boolValue(form, "smsConsent"),
     consent: boolValue(form, "consent"),
     compliance: boolValue(form, "compliance"),
   });
@@ -348,6 +350,8 @@ export async function POST(req: Request) {
             requested_plan: requestedTier.id,
             requested_plan_name: requestedTier.name,
             recommended_ad_spend_cents: requestedTier.recommendedAdSpendCents,
+            sms_consent: data.smsConsent,
+            sms_opt_in_source: data.smsConsent ? "market_capture_intake" : null,
             jobsite_halo: jobsiteHalo,
             neighborhood_saturation: neighborhoodSaturation,
             competitor_area: competitorArea,
@@ -437,6 +441,7 @@ export async function POST(req: Request) {
                 campaignOffer: data.campaignOffer,
                 postcardAddon: data.postcardAddon,
                 landingPageNeeded: data.landingPageNeeded,
+                smsConsent: data.smsConsent,
               }),
             ),
           )
@@ -456,6 +461,7 @@ export async function POST(req: Request) {
             competitor_area: competitorArea,
             event_area: eventArea,
             digital_direct_mail_bundle: digitalDirectMailBundle,
+            sms_consent: data.smsConsent,
           },
         }),
       ),

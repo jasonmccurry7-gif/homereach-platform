@@ -116,6 +116,7 @@ type DraftInput = {
   campaignOffer?: string | null;
   postcardAddon: boolean;
   landingPageNeeded: boolean;
+  smsConsent?: boolean;
 };
 
 function labelList(value: string, labels: Record<string, string>) {
@@ -154,11 +155,6 @@ export function buildMarketCaptureDraftRows(input: DraftInput) {
       content: `Subject: Your Market Capture request from HomeReach\n\nHi ${input.contactName},\n\nThanks for sending over the details for ${input.businessName}. Based on what you shared, the first opportunity is a ${targeting} plan built around ${objective} in ${input.targetArea}.\n\nThe HomeReach management fee is ${managementFee}/month, and your ad spend budget is separate and controlled by you. ${directMailLine}\n\nThe next step is a quick review of your target area, budget, and offer: ${offer}.\n\nBest,\nHomeReach`,
     },
     {
-      draft_type: "sms",
-      label: `${example} SMS Draft`,
-      content: `Hi ${input.contactName}, this is HomeReach. We received the Market Capture request for ${input.businessName}. I'm reviewing the target area and ${budget}/mo ad budget now. Want me to send the next-step plan? Reply STOP to opt out.`,
-    },
-    {
       draft_type: "dm",
       label: `${example} DM Draft`,
       content: `Thanks for reaching out. We can build this as a Market Capture plan around ${targeting.toLowerCase()} so ${input.businessName} stays visible in ${input.targetArea}. The next step is confirming the offer, budget, and best start date.`,
@@ -181,6 +177,14 @@ export function buildMarketCaptureDraftRows(input: DraftInput) {
       ].join("\n"),
     },
   ];
+
+  if (input.smsConsent) {
+    drafts.splice(1, 0, {
+      draft_type: "sms",
+      label: `${example} SMS Draft`,
+      content: `Hi ${input.contactName}, this is HomeReach. We received the Market Capture request for ${input.businessName}. I'm reviewing the target area and ${budget}/mo ad budget now. Want me to send the next-step plan? Reply STOP to opt out.`,
+    });
+  }
 
   return drafts.map((draft) => ({
     market_capture_lead_id: input.leadId,
