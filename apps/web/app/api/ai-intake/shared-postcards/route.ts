@@ -47,7 +47,7 @@ const BodySchema = z.discriminatedUnion("action", [
     sessionId: z.string().uuid(),
     businessName: z.string().trim().min(1).max(160),
     contactName: z.string().trim().min(1).max(160),
-    phone: z.string().trim().min(7).max(40),
+    phone: z.string().trim().max(40).optional().default(""),
     email: z.string().trim().email(),
     websiteUrl: z.string().trim().max(300).optional().default(""),
     facebookUrl: z.string().trim().max(300).optional().default(""),

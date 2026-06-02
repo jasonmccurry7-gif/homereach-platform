@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrSalesAgent } from "@/lib/auth/api-guards";
 import { NextResponse } from "next/server";
+import { sendSms } from "@homereach/services/outreach";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/sales/facebook/alert
@@ -27,40 +28,6 @@ const ALERT_TYPES: Record<string, { label: string; emoji: string; priority: "hig
   streak_milestone:    { label: "Facebook engagement streak milestone!",       emoji: "🔥", priority: "low"    },
 };
 
-async function sendTwilioSms(to: string, from: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken  = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken) return { ok: false, error: "Twilio not configured" };
-
-  try {
-    const form = new URLSearchParams();
-    form.append("To",   to);
-    form.append("From", from);
-    form.append("Body", body);
-
-    const resp = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      }
-    );
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      return { ok: false, error: `Twilio ${resp.status}: ${detail}` };
-    }
-    const data = await resp.json() as { sid?: string };
-    return { ok: true, sid: data.sid };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "SMS error" };
-  }
-}
-
 export async function POST(req: Request) {
   try {
     const guard = await requireAdminOrSalesAgent();
@@ -70,7 +37,8 @@ export async function POST(req: Request) {
     const isSalesAgent = user.app_metadata?.user_role === "sales_agent";
 
     const body = await req.json();
-    let { agent_id, alert_type, message, context } = body;
+    const { alert_type, message, context } = body;
+    let { agent_id } = body;
 
     if (isSalesAgent) {
       agent_id = user.id;
@@ -106,8 +74,18 @@ export async function POST(req: Request) {
 
     // ── Attempt Twilio send ──────────────────────────────────────────────────
     let smsResult: { ok: boolean; sid?: string; error?: string } = { ok: false, error: "No phone" };
-    if (agentPhone && systemPhone) {
-      smsResult = await sendTwilioSms(agentPhone, systemPhone, alertBody);
+    if (agentPhone) {
+      const result = await sendSms({
+        to: agentPhone,
+        body: alertBody,
+        fromNumber: systemPhone ?? undefined,
+        intent: "internal",
+      });
+      smsResult = {
+        ok: result.success,
+        sid: result.externalId,
+        error: result.error,
+      };
     } else if (!agentPhone) {
       smsResult = { ok: false, error: "Agent has no Twilio phone configured in agent_identities" };
     }

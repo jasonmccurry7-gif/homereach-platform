@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminOrCron } from "@/lib/auth/api-guards";
+import { sendSms } from "@homereach/services/outreach";
 
 interface AgentNudgeData {
   agentId: string;
@@ -21,7 +22,7 @@ const AGENT_PHONES: Record<string, string> = {
 const NUDGE_MESSAGES = [
   (texts: number, emails: number, calls: number) =>
     `⚡ You're behind pace — ${texts}/20 texts, ${emails}/20 emails, ${calls}/15 calls. Let's go!`,
-  (texts: number, emails: number, calls: number) =>
+  (texts: number, emails: number) =>
     `🔥 The leaderboard is moving — you have ${20 - texts} texts and ${20 - emails} emails left to hit minimum. Get after it.`,
   (texts: number, emails: number, calls: number) => {
     const missed = [texts < 10 ? "texts" : "", emails < 10 ? "emails" : "", calls < 5 ? "calls" : ""]
@@ -164,39 +165,32 @@ export async function POST(req: NextRequest) {
             nudge.callsMade
           );
 
-          // Send SMS via Twilio (using fetch to call Twilio API)
-          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`;
-          const twilioAuth = Buffer.from(
-            `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
-          ).toString("base64");
-
-          const res = await fetch(twilioUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${twilioAuth}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              From: process.env.TWILIO_PHONE_NUMBER || "+1234567890",
-              To: nudge.phone,
-              Body: message,
-            }).toString(),
+          const smsResult = await sendSms({
+            to: nudge.phone,
+            body: message,
+            intent: "internal",
           });
 
-          if (res.ok) {
+          if (smsResult.success) {
             // Log nudge as event
             await db.from("sales_events").insert({
               agent_id: nudge.agentId,
               action_type: "message_sent",
               channel: "sms",
               message: message,
-              metadata: { alert_type: "nudge", nudge_time: new Date().toISOString() },
+              metadata: {
+                alert_type: "nudge",
+                nudge_time: new Date().toISOString(),
+                provider: smsResult.provider ?? null,
+                provider_message_id: smsResult.externalId ?? null,
+                test_mode: smsResult.testMode ?? false,
+              },
             });
 
             return { success: true, agent: nudge.fullName };
           } else {
-            console.error(`Failed to send nudge to ${nudge.fullName}`);
-            return { success: false, agent: nudge.fullName, error: "Twilio API failed" };
+            console.error(`Failed to send nudge to ${nudge.fullName}: ${smsResult.error}`);
+            return { success: false, agent: nudge.fullName, error: smsResult.error ?? "SMS send failed" };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

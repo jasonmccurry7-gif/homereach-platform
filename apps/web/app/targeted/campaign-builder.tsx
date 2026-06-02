@@ -508,7 +508,7 @@ function StepContactDetails({
   submitting: boolean;
   error?: string | null;
 }) {
-  const canSubmit = !!form.businessName && !!form.email && !!form.phone && form.smsConsent;
+  const canSubmit = !!form.businessName && !!form.email;
 
   function FormField({ label, name, type = "text", placeholder, required }: {
     label: string; name: Exclude<keyof ContactForm, "smsConsent">; type?: string; placeholder: string; required?: boolean;
@@ -543,7 +543,7 @@ function StepContactDetails({
             <FormField label="Business Name" name="businessName" placeholder="Harrington Plumbing" required />
           </div>
           <FormField label="Your Name" name="contactName" placeholder="Mike Harrington" required />
-          <FormField label="Phone" name="phone" type="tel" placeholder="+1 (330) 555-0100" required />
+          <FormField label="Phone (optional)" name="phone" type="tel" placeholder="+1 (330) 555-0100" />
           <label className="col-span-2 flex gap-2 rounded-2xl border border-gray-800 bg-gray-900/60 px-4 py-3 text-xs leading-5 text-gray-400">
             <input
               type="checkbox"
@@ -707,7 +707,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
     if (step === 2) return selectedCityId !== null;
     if (step === 3) return !summary.isBelowMinimum && summary.totalHouseholds > 0;
     if (step === 4) return true;
-    if (step === 5) return !!contact.businessName && !!contact.email && !!contact.phone && contact.smsConsent;
+    if (step === 5) return !!contact.businessName && !!contact.email;
     return false;
   }
 
@@ -721,7 +721,7 @@ export function CampaignBuilder({ cities, allRoutes, pricingTiers }: Props) {
         body:    JSON.stringify({
           businessName: contact.businessName,
           contactName:  contact.contactName,
-          phone:        contact.phone,
+          phone:        contact.smsConsent ? contact.phone : "",
           email:        contact.email,
           notes:        contact.notes,
           cityId:       selectedCity?.id,

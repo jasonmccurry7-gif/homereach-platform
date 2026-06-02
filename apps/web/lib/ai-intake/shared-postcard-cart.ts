@@ -631,7 +631,6 @@ export function missingRequiredDetails(session: AiSessionView): string[] {
   const missing: string[] = [];
   if (!session.businessName.trim()) missing.push("business name");
   if (!session.contactName.trim()) missing.push("contact name");
-  if (!session.phone.trim()) missing.push("phone");
   if (!session.email.trim()) missing.push("email");
   if (!session.websiteUrl.trim() && !session.facebookUrl.trim()) {
     missing.push("website or Facebook page");

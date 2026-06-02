@@ -41,13 +41,8 @@ export function IntelligenceCheckoutClient({
     setLoading(true);
     setError(null);
 
-    if (!businessName.trim() || !email.trim() || !phone.trim()) {
-      setError("Please fill in all fields");
-      setLoading(false);
-      return;
-    }
-    if (!smsConsent) {
-      setError("Please confirm SMS consent or leave checkout and contact us by email.");
+    if (!businessName.trim() || !email.trim()) {
+      setError("Please enter your business name and email address.");
       setLoading(false);
       return;
     }
@@ -63,9 +58,9 @@ export function IntelligenceCheckoutClient({
           market_size,
           businessName,
           email,
-          phone,
+          phone: smsConsent ? phone : "",
           smsConsent,
-          optInSource: "intelligence_checkout_sms_checkbox",
+          optInSource: smsConsent ? "intelligence_checkout_sms_checkbox" : undefined,
         }),
       });
 
@@ -186,7 +181,7 @@ export function IntelligenceCheckoutClient({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number
+                    Phone Number <span className="text-xs font-normal text-gray-400">(optional)</span>
                   </label>
                   <input
                     type="tel"

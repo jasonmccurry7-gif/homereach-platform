@@ -13,7 +13,7 @@ import { checkRateLimit } from "@/lib/security/rate-limit";
 const Schema = z.object({
   businessName: z.string().min(1),
   contactName:  z.string().optional(),
-  phone:        z.string().min(7),
+  phone:        z.string().optional().default(""),
   email:        z.string().email(),
   notes:        z.string().optional(),
   cityId:       z.string().uuid().optional(),
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         `${data.businessName}${city ? ` – ${city}` : ""}`,
         [homes, routes].filter(Boolean).join(", ") + tier,
         `Est: ${price}`,
-        `📞 ${data.phone} | ${data.email}`,
+        `Contact: ${data.phone ? `${data.phone} | ` : ""}${data.email}`,
         data.notes ? `Note: "${data.notes}"` : null,
       ].filter(Boolean).join("\n");
 
