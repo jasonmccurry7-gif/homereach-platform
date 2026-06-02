@@ -12,6 +12,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const ROUTE_VERSION = "daily-outreach-reconciliation-v2";
+
 function easternBusinessWindow(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -59,10 +61,12 @@ async function handleSendDue(req: NextRequest, allowMutation: boolean) {
   if (!window.allowed && process.env.AUTO_SEND_REQUIRE_BUSINESS_HOURS !== "false") {
     return NextResponse.json({
       ok: true,
+      routeVersion: ROUTE_VERSION,
       mode: "outside_window",
       date,
       queuedForReview: 0,
       approvedForSend: 0,
+      approvalMismatches: 0,
       sendResult: null,
       window,
       message: "Daily outreach send-due is inside weekday 8:30 AM-4:30 PM ET only.",
@@ -266,6 +270,7 @@ async function handleSendDue(req: NextRequest, allowMutation: boolean) {
 
   return NextResponse.json({
     ok: true,
+    routeVersion: ROUTE_VERSION,
     mode: dryRun ? "preview" : "processed",
     date,
     verified,
