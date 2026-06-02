@@ -36,6 +36,30 @@ async function runCheck(
   }
 }
 
+function hasEnv(name: string) {
+  return Boolean(process.env[name]?.trim());
+}
+
+function missingEnv(names: string[]) {
+  return names.filter((name) => !hasEnv(name));
+}
+
+function readinessCheck(
+  name: string,
+  required: string[],
+  readyMessage: string,
+  blockedMessage: (missing: string[]) => string
+): CheckResult {
+  const start = Date.now();
+  const missing = missingEnv(required);
+  return {
+    name,
+    status: missing.length === 0 ? "pass" : "warn",
+    message: missing.length === 0 ? readyMessage : blockedMessage(missing),
+    ms: Date.now() - start,
+  };
+}
+
 export async function GET() {
   const supabase = createServiceClient();
 
@@ -110,6 +134,56 @@ export async function GET() {
       if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY missing");
       return "Supabase env vars present";
     }),
+
+    runCheck("env_postmark", async () => {
+      if (!process.env.POSTMARK_API_TOKEN) throw new Error("POSTMARK_API_TOKEN missing");
+      if (!process.env.POSTMARK_FROM_EMAIL) throw new Error("POSTMARK_FROM_EMAIL missing");
+      if (process.env.ENABLE_POSTMARK_WEBHOOK !== "false") {
+        if (!process.env.POSTMARK_WEBHOOK_USER) throw new Error("POSTMARK_WEBHOOK_USER missing");
+        if (!process.env.POSTMARK_WEBHOOK_PASSWORD) throw new Error("POSTMARK_WEBHOOK_PASSWORD missing");
+      }
+      return "Postmark sending and webhook env vars present";
+    }),
+
+    readinessCheck(
+      "env_openai",
+      ["OPENAI_API_KEY"],
+      "OpenAI API key present for live AI drafting.",
+      (missing) => `AI drafting can use deterministic fallbacks until ${missing.join(", ")} is configured.`
+    ),
+
+    readinessCheck(
+      "env_sam_gov",
+      ["SAM_GOV_API_KEY"],
+      "SAM.gov API key present for government contract opportunity sync.",
+      (missing) => `SAM.gov sync remains disabled until ${missing.join(", ")} is configured.`
+    ),
+
+    readinessCheck(
+      "env_canva",
+      ["CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "CANVA_TOKEN_ENCRYPTION_KEY"],
+      "Canva OAuth env vars present for connected creative workflows.",
+      (missing) => `Canva stays in manual/template mode until ${missing.join(", ")} is configured.`
+    ),
+
+    readinessCheck(
+      "env_google_business_profile",
+      [
+        "GOOGLE_BUSINESS_PROFILE_CLIENT_ID",
+        "GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET",
+        "GOOGLE_BUSINESS_PROFILE_REDIRECT_URI",
+        "GOOGLE_BUSINESS_PROFILE_TOKEN_ENCRYPTION_KEY",
+      ],
+      "Google Business Profile OAuth env vars present for connected local visibility sync.",
+      (missing) => `Google Business Profile remains draft/manual until ${missing.join(", ")} is configured.`
+    ),
+
+    readinessCheck(
+      "env_meta_connected_publishing",
+      ["META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "META_TOKEN_ENCRYPTION_KEY"],
+      "Meta OAuth env vars present for approval-gated connected publishing.",
+      (missing) => `Meta connected publishing stays disabled or manual until ${missing.join(", ")} is configured.`
+    ),
   ]);
 
   // ── Determine overall status ─────────────────────────────────────────────
