@@ -28,6 +28,7 @@ import {
   Menu,
   Megaphone,
   MessagesSquare,
+  Mic,
   Package,
   Palette,
   Radar,
@@ -50,20 +51,22 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   {
-    label: "Executive Layer",
+    label: "Outcome Command",
     items: [
-      { label: "Daily Revenue", href: "/admin", icon: Gauge },
+      { label: "Revenue Today", href: "/admin", icon: Gauge },
       { label: "AI COO Queue", href: "/admin/ai-coo-queue", icon: Bot },
       { label: "Business Memory", href: "/admin/business-memory", icon: Brain },
-      { label: "Cost Control Queue", href: "/admin/cost-control", icon: DollarSign },
+      { label: "Savings Queue", href: "/admin/cost-control", icon: DollarSign },
       { label: "Reputation Queue", href: "/admin/reputation", icon: Star },
-      { label: "Growth Intelligence", href: "/admin/growth-intelligence", icon: Compass },
-      { label: "AI Growth Module", href: "/admin/ai-growth-os", icon: Sparkles },
+      { label: "Growth Opportunities", href: "/admin/growth-intelligence", icon: Compass },
+      { label: "Growth OS", href: "/admin/ai-growth-os", icon: Sparkles },
       { label: "Growth Execution", href: "/admin/growth-execution", icon: Workflow },
-      { label: "Sales Intelligence", href: "/admin/sales-dashboard", icon: BarChart3 },
-      { label: "Communications", href: "/admin/inbox", icon: Inbox },
+      { label: "Sales Signals", href: "/admin/sales-dashboard", icon: BarChart3 },
+      { label: "Client Messages", href: "/admin/inbox", icon: Inbox },
       { label: "AI Workforce", href: "/admin/agents", icon: Bot },
-      { label: "Agent Mini Apps", href: "/admin/agent-mini-apps", icon: Workflow },
+      { label: "Executive Leadership Team", href: "/admin/executive-chat", icon: Users },
+      { label: "Voice Command", href: "/admin/voice-command-center", icon: Mic },
+      { label: "Mini Apps", href: "/admin/agent-mini-apps", icon: Workflow },
       { label: "Agent Control", href: "/admin/agent-execution", icon: ShieldCheck },
       { label: "AI Assets", href: "/admin/ai-assets", icon: Sparkles },
       { label: "Executive Review", href: "/admin/content-review", icon: ShieldCheck },
@@ -73,7 +76,7 @@ const NAV = [
     ],
   },
   {
-    label: "Revenue Ops",
+    label: "Revenue Growth",
     items: [
       { label: "CRM", href: "/admin/crm", icon: BriefcaseBusiness },
       { label: "Market Capture Sales", href: "/admin/market-capture-sales", icon: Target },
@@ -84,7 +87,7 @@ const NAV = [
       { label: "AI Web Assistant", href: "/admin/ai-web-assistant", icon: Bot },
       { label: "Email Infrastructure", href: "/admin/email-infrastructure", icon: Mail },
       { label: "Deliverability", href: "/admin/deliverability", icon: ShieldCheck },
-      { label: "Procurement", href: "/admin/procurement", icon: Package },
+      { label: "Supplier Savings", href: "/admin/procurement", icon: Package },
       { label: "ContractOS Packaging", href: "/admin/contractos", icon: Landmark },
       { label: "Gov Contracts Approvals", href: "/admin/gov-contracts", icon: Landmark },
       { label: "Businesses", href: "/admin/businesses", icon: Building2 },
@@ -95,13 +98,13 @@ const NAV = [
     ],
   },
   {
-    label: "Campaign Ops",
+    label: "Campaign Fulfillment",
     items: [
       { label: "Shared Postcards", href: "/admin/spots", icon: Layers3 },
       { label: "AI Intake Carts", href: "/admin/ai-intake", icon: Bot },
       { label: "Targeted Campaigns", href: "/admin/targeted-campaigns", icon: Target },
       { label: "Market Capture Fulfillment", href: "/admin/market-capture-fulfillment", icon: Radar },
-      { label: "Digital Targeting", href: "/admin/digital-targeting", icon: Radar },
+      { label: "Market Capture Campaigns", href: "/admin/digital-targeting", icon: Radar },
       { label: "Ad-Tech Health", href: "/admin/ad-tech", icon: RadioTower },
       { label: "Political", href: "/admin/political", icon: Landmark },
       { label: "Political Outreach", href: "/admin/political/outreach-strategy", icon: Megaphone },
@@ -113,7 +116,7 @@ const NAV = [
     ],
   },
   {
-    label: "Marketing",
+    label: "Visibility & Authority",
     items: [
       { label: "SEO Command Center", href: "/admin/marketing/seo-command-center", icon: Search },
       { label: "Local Visibility", href: "/admin/local-visibility", icon: Star },
@@ -121,7 +124,7 @@ const NAV = [
     ],
   },
   {
-    label: "Intelligence",
+    label: "Operating Intelligence",
     items: [
       { label: "Lead Intel", href: "/admin/leads", icon: Sparkles },
       { label: "Sales Engine", href: "/admin/sales-engine", icon: Wand2 },
@@ -136,7 +139,7 @@ const NAV = [
     ],
   },
   {
-    label: "Catalog & Admin",
+    label: "Platform Controls",
     items: [
       { label: "Service Catalog", href: "/admin/service-catalog", icon: ClipboardList },
       { label: "Products", href: "/admin/products", icon: Package },

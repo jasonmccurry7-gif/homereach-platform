@@ -101,6 +101,9 @@ export * from "./aiAssets.js";
 // AI Workforce Operating System
 export * from "./aiWorkforce.js";
 
+// AI Executive Daily Meeting System
+export * from "./executiveMeetings.js";
+
 // Agent Execution Readiness
 export * from "./agentExecution.js";
 
@@ -146,3 +149,6 @@ export * from "./adTech.js";
 // Provider observability
 export * from "./twilioObservability.js";
 export * from "./emailObservability.js";
+
+// Voice Approval Command Center
+export * from "./voiceCommandCenter.js";
