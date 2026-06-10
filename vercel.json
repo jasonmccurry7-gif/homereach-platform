@@ -19,6 +19,14 @@
       "schedule": "0 14 * * 1-5"
     },
     {
+      "path": "/api/admin/executive-chat/cron/morning",
+      "schedule": "0 12 * * 1-5"
+    },
+    {
+      "path": "/api/admin/executive-chat/cron/afternoon",
+      "schedule": "30 20 * * 1-5"
+    },
+    {
       "path": "/api/admin/agents/echo",
       "schedule": "0 8 * * 1-5"
     },

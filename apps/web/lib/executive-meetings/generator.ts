@@ -159,14 +159,17 @@ export async function generateExecutiveMeeting(input: {
     activationStatus: "joined",
     error: null,
   });
-  const activatedMeeting = { ...meeting, voiceReadyJson: finalVoiceReady };
+  const activatedMeetingForOutput = { ...meeting, voiceReadyJson: finalVoiceReady };
 
-  const outputId = await mirrorMeetingToAiAssets(db, activatedMeeting, reports, aggregate, sourceSnapshot, input.actorUserId ?? null);
-  const taskId = await mirrorMeetingToAiWorkforce(db, activatedMeeting, outputId, input.actorUserId ?? null);
+  const outputId = await mirrorMeetingToAiAssets(db, activatedMeetingForOutput, reports, aggregate, sourceSnapshot, input.actorUserId ?? null);
+  const taskId = await mirrorMeetingToAiWorkforce(db, activatedMeetingForOutput, outputId, input.actorUserId ?? null);
+  const agentTaskIds = await mirrorAgentReportsToAiWorkforce(db, activatedMeetingForOutput, reports, outputId, input.actorUserId ?? null);
+  const voiceReadyWithTasks = withDailyAgentTaskTelemetry(finalVoiceReady, agentTaskIds);
+  const activatedMeeting = { ...activatedMeetingForOutput, voiceReadyJson: voiceReadyWithTasks };
   await db
     .from("executive_meetings")
     .update({
-      voice_ready_json: finalVoiceReady,
+      voice_ready_json: voiceReadyWithTasks,
       ai_output_id: outputId,
       ai_workforce_task_id: taskId,
       updated_at: new Date().toISOString(),
@@ -293,14 +296,28 @@ async function ensureExistingMeetingActivation(
   }
 
   const activatedMeeting = { ...meeting, voiceReadyJson: voiceReady };
+  const agentTaskIds = await mirrorAgentReportsToAiWorkforce(db, activatedMeeting, reports, meeting.aiOutputId, input.actorUserId ?? null);
+  const activatedMeetingWithTasks = {
+    ...activatedMeeting,
+    voiceReadyJson: withDailyAgentTaskTelemetry(voiceReady, agentTaskIds),
+  };
+  if (agentTaskIds.length > 0) {
+    await db
+      .from("executive_meetings")
+      .update({
+        voice_ready_json: activatedMeetingWithTasks.voiceReadyJson,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", meeting.id);
+  }
   await auditAgentActivations(
-    voiceReady.activationComplete === true ? "success" : "failure",
+    activatedMeetingWithTasks.voiceReadyJson.activationComplete === true ? "success" : "failure",
     input,
-    activatedMeeting,
-    voiceReady,
+    activatedMeetingWithTasks,
+    activatedMeetingWithTasks.voiceReadyJson,
     activationError,
   );
-  return activatedMeeting;
+  return activatedMeetingWithTasks;
 }
 
 function buildAgentReport(input: {
@@ -1297,6 +1314,146 @@ async function mirrorMeetingToAiWorkforce(
   return null;
 }
 
+async function mirrorAgentReportsToAiWorkforce(
+  db: Db,
+  meeting: ExecutiveMeeting,
+  reports: Array<Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">>,
+  outputId: string | null,
+  actorUserId: string | null,
+) {
+  if (reports.length === 0) return [];
+
+  const dueDate = nextDayIso(meeting.generatedAt);
+  const updatedAt = new Date().toISOString();
+  const rows = reports.map((report) => {
+    const needsApproval = agentTaskNeedsApproval(report);
+    const primaryWork = primaryAgentWork(report);
+    return {
+      task_id: `EXEC-AGENT-${meeting.meetingDate}-${meeting.meetingType}-${safeTaskKey(report.agentKey)}`,
+      workflow_name: "Executive Daily Agent Autonomy",
+      requestor: "Executive Meeting System",
+      assigned_agent: report.agentName || report.role,
+      priority: agentTaskPriority(report),
+      status: needsApproval ? "awaiting_approval" : "assigned",
+      input_path: `/admin/executive-chat?meetingId=${meeting.id}`,
+      input_data: {
+        source: "executive_meetings",
+        meetingId: meeting.id,
+        meetingType: meeting.meetingType,
+        agentKey: report.agentKey,
+        role: report.role,
+        summary: report.summary,
+        primaryWork,
+        plannedWork: report.plannedWorkJson,
+        priorities: report.prioritiesJson,
+        blockers: report.blockersJson,
+        decisionsNeeded: report.decisionsNeededJson,
+        kpis: report.kpiSnapshotJson,
+        autonomousScope: [
+          "analyze internal data",
+          "draft recommendations",
+          "prepare approval-gated outputs",
+          "log findings",
+          "surface blockers",
+        ],
+        approvalBoundary:
+          "Autonomous work may prepare, score, summarize, draft, and log. It may not send, publish, submit, charge, change pricing, change live campaigns, place orders, or alter customer commitments.",
+        externalActionAuthorized: false,
+      },
+      expected_output: expectedAgentTaskOutput(report, primaryWork),
+      dependencies: [
+        "AGENTS.md approval gates",
+        "Executive daily meeting report",
+        "AI Assets Command Center",
+        "AI Workforce activity ledger",
+      ],
+      due_date: dueDate,
+      approval_required: needsApproval,
+      completion_notes: null,
+      error_notes: null,
+      related_campaign: primaryWork?.domain ?? meeting.meetingType,
+      related_client: null,
+      related_opportunity: report.role,
+      output_id: outputId,
+      owner_user_id: actorUserId,
+      updated_at: updatedAt,
+    };
+  });
+
+  const { data, error } = await db
+    .from("ai_workforce_tasks")
+    .upsert(rows, { onConflict: "task_id" })
+    .select("id,task_id,assigned_agent,status");
+
+  if (error) {
+    await logPlatformAuditEvent({
+      actorType: "system",
+      actorId: actorUserId,
+      module: "executive_meetings",
+      actionType: "executive_agent_daily_tasks_failed",
+      entityType: "executive_meeting",
+      entityId: meeting.id,
+      resultStatus: "failure",
+      approvalState: "needs_review",
+      severity: "high",
+      message: "Executive meeting generated, but daily agent task materialization failed.",
+      errorMessage: error.message,
+      metadata: {
+        meetingId: meeting.id,
+        meetingType: meeting.meetingType,
+        externalActionAuthorized: false,
+      },
+    });
+    return [];
+  }
+
+  const taskRows = ((data ?? []) as GenericRow[]).filter((row) => typeof row.id === "string");
+  if (taskRows.length > 0) {
+    const logRows = taskRows.map((row) => ({
+      task_id: String(row.id),
+      task_public_id: String(row.task_id ?? ""),
+      agent_name: String(row.assigned_agent ?? "Executive Agent"),
+      event_type: "executive_agent_daily_task_assigned",
+      status: String(row.status ?? "assigned"),
+      summary: `${String(row.assigned_agent ?? "Executive Agent")} received a daily autonomous work package for ${meeting.title}.`,
+      details: {
+        source: "executive_meetings",
+        meetingId: meeting.id,
+        meetingType: meeting.meetingType,
+        autonomousScope: "review-gated internal execution",
+        externalActionAuthorized: false,
+      },
+      approval_status: String(row.status) === "awaiting_approval" ? "needs_review" : "not_required",
+      related_output_id: outputId,
+      created_by: actorUserId,
+    }));
+    const { error: logError } = await db.from("ai_workforce_activity_logs").insert(logRows);
+    if (logError) {
+      await logPlatformAuditEvent({
+        actorType: "system",
+        actorId: actorUserId,
+        module: "executive_meetings",
+        actionType: "executive_agent_daily_task_log_failed",
+        entityType: "executive_meeting",
+        entityId: meeting.id,
+        resultStatus: "failure",
+        approvalState: "needs_review",
+        severity: "medium",
+        message: "Executive agent tasks were created, but activity log insertion failed.",
+        errorMessage: logError.message,
+        metadata: {
+          meetingId: meeting.id,
+          meetingType: meeting.meetingType,
+          taskCount: taskRows.length,
+          externalActionAuthorized: false,
+        },
+      });
+    }
+  }
+
+  return taskRows.map((row) => String(row.id));
+}
+
 function buildMeetingMarkdown(
   meeting: ExecutiveMeeting,
   aggregate: ReturnType<typeof buildMeetingAggregate>,
@@ -1404,6 +1561,74 @@ async function auditMeeting(
       externalActionAuthorized: false,
     },
   });
+}
+
+function withDailyAgentTaskTelemetry<T extends Record<string, unknown>>(voiceReady: T, agentTaskIds: string[]) {
+  return {
+    ...voiceReady,
+    dailyAgentTaskCount: agentTaskIds.length,
+    dailyAgentTaskIds: agentTaskIds.slice(0, 100),
+    agentAutonomyMode: "review_gated_daily_execution",
+    externalActionAuthorized: false,
+  };
+}
+
+function agentTaskNeedsApproval(
+  report: Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">,
+) {
+  return (
+    report.approvalRequired ||
+    report.decisionsNeededJson.some((decisionItem) => decisionItem.approvalRequired) ||
+    report.blockersJson.some((blocker) => blocker.needsHuman === true) ||
+    report.risksJson.some((risk) => risk.severity === "critical" || risk.severity === "high")
+  );
+}
+
+function agentTaskPriority(
+  report: Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">,
+) {
+  if (report.blockersJson.some((blocker) => blocker.severity === "critical")) return "critical";
+  if (report.decisionsNeededJson.some((decisionItem) => decisionItem.riskLevel === "critical")) return "critical";
+  if (report.blockersJson.some((blocker) => blocker.severity === "high")) return "high";
+  if (report.decisionsNeededJson.some((decisionItem) => decisionItem.riskLevel === "high")) return "high";
+  if (report.prioritiesJson.some((priorityItem) => priorityItem.priority === "urgent" || priorityItem.priority === "high")) return "high";
+  return "medium";
+}
+
+function primaryAgentWork(
+  report: Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">,
+) {
+  const planned = report.plannedWorkJson[0];
+  if (planned) return planned;
+  const priorityItem = report.prioritiesJson[0];
+  if (!priorityItem) return null;
+  return {
+    title: priorityItem.title,
+    detail: priorityItem.detail,
+    domain: priorityItem.domain,
+    expectedOutcome: "Agent prepares a review-ready recommendation and logs blockers.",
+  };
+}
+
+function expectedAgentTaskOutput(
+  report: Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">,
+  primaryWork: ExecutiveWorkItem | null,
+) {
+  const base = primaryWork
+    ? `${primaryWork.title}: ${primaryWork.detail}`
+    : `${report.role} reviews its assigned lane and logs the next recommended action.`;
+  return `${base} Output must include status, evidence used, blockers, approval need, and next action. No external action is authorized.`;
+}
+
+function safeTaskKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
+}
+
+function nextDayIso(value: string) {
+  const baseMs = Date.parse(value);
+  const base = Number.isFinite(baseMs) ? new Date(baseMs) : new Date();
+  base.setUTCDate(base.getUTCDate() + 1);
+  return base.toISOString();
 }
 
 function priority(title: string, detail: string, domain: string, priorityValue: ExecutivePriority["priority"]): ExecutivePriority {
