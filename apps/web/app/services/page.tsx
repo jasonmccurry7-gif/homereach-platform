@@ -19,11 +19,21 @@ import { SiteHeader } from "@/components/marketing/site-header";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { listGrowthServiceModules, type GrowthServiceCategory } from "@/lib/growth-execution/services";
 import { buildBreadcrumbLd, buildItemListLd, buildServiceCatalogLd, type JsonLd as JsonLdShape } from "@/lib/seo/schema";
+import { listMainProductSeoTargets } from "@/lib/seo/product-seo";
 
 export const metadata: Metadata = {
-  title: "HomeReach Services | Multi-Channel Local Growth Execution",
+  title: "HomeReach Services | Local SEO, AI Assistant, Reputation, Postcards, Procurement",
   description:
-    "Explore HomeReach services for direct mail, AI website lead capture, local SEO, reputation, procurement, government contracts, and follow-up.",
+    "Explore HomeReach services for local SEO, AI website lead capture, reputation management, direct mail postcards, procurement savings, social content, and government contracts.",
+  keywords: [
+    "local business growth services",
+    "AI website assistant",
+    "local SEO for small businesses",
+    "reputation management",
+    "direct mail postcards",
+    "procurement savings",
+    "government contract support",
+  ],
   alternates: { canonical: "/services" },
 };
 
@@ -42,6 +52,7 @@ const categoryIcons: Record<GrowthServiceCategory, typeof Mail> = {
 export default function ServicesPage() {
   const services = listGrowthServiceModules();
   const publicServices = services.filter((service) => service.publicExposure !== "admin_only");
+  const seoTargets = listMainProductSeoTargets(publicServices);
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
   const schemas: JsonLdShape[] = [
     buildBreadcrumbLd([
@@ -104,6 +115,35 @@ export default function ServicesPage() {
                   Request Growth Plan
                 </Link>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-slate-200 bg-white px-4 py-12 lg:px-6">
+          <div className="mx-auto max-w-7xl">
+            <div className="max-w-3xl">
+              <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-700">Main ranking targets</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950">
+                The core HomeReach products search engines should understand.
+              </h2>
+              <p className="mt-4 text-base leading-8 text-slate-600">
+                Each product has a crawlable page, a clear buyer intent, internal links, and a next action. This keeps
+                the site focused on revenue pages instead of scattered feature pages.
+              </p>
+            </div>
+            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {seoTargets.map((target) => (
+                <Link
+                  key={target.slug}
+                  href={target.path}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-5 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:bg-white hover:shadow-xl hover:shadow-slate-950/10"
+                >
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">{target.searchIntent}</p>
+                  <h2 className="mt-3 text-xl font-black tracking-tight text-slate-950">{target.title}</h2>
+                  <p className="mt-2 text-sm font-semibold text-slate-700">{target.primaryKeyword}</p>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{target.answerSummary}</p>
+                </Link>
+              ))}
             </div>
           </div>
         </section>

@@ -769,7 +769,9 @@ export function getPublicServiceSlug(service: GrowthServiceModule) {
 }
 
 export function listPublicGrowthServiceSlugs() {
-  return growthServiceModules.map((service) => ({ serviceSlug: getPublicServiceSlug(service) }));
+  return growthServiceModules
+    .filter((service) => service.publicExposure !== "admin_only")
+    .map((service) => ({ serviceSlug: getPublicServiceSlug(service) }));
 }
 
 export function getGrowthExecutionSnapshot(): GrowthExecutionSnapshot {

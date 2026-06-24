@@ -26,6 +26,7 @@ import {
   listVisualGalleries,
 } from "@/lib/seo/authority";
 import type { SeoConnectorKey, SeoConnectorStatusValue } from "@/lib/seo/connectors";
+import { getAutonomousSeoStrategy } from "@/lib/seo/autonomous-strategy";
 import { getSeoSuccessSnapshot, type SeoSuccessSnapshot, type SeoSuccessStatus } from "@/lib/seo/success";
 import { SeoConnectorActions } from "./seo-connector-actions";
 
@@ -45,6 +46,7 @@ export default async function SeoCommandCenterPage() {
   const galleries = listVisualGalleries();
   const datasets = listAuthorityDatasets();
   const success = await getSeoSuccessSnapshot();
+  const autonomousStrategy = getAutonomousSeoStrategy();
   const connectorRows = buildConnectorRows(success);
   const readinessTone = getReadinessTone(success.readinessScore, success.missingDataSources.length);
   const connectorBlockedMetrics = success.metrics.filter((metric) => metric.status === "needs_connector").length;
@@ -71,6 +73,9 @@ export default async function SeoCommandCenterPage() {
               <div className="mt-6 flex flex-wrap gap-3">
                 <ActionLink href="/ohio" label="Open Ohio hub" />
                 <ActionLink href="/political-mail" label="Political mail hub" />
+                <ActionLink href="/answers" label="Answers hub" />
+                <ActionLink href="/llms.txt" label="LLMs.txt" />
+                <ActionLink href="/robots.txt" label="Robots" />
                 <ActionLink href="/image-sitemap.xml" label="Image sitemap" />
                 <ActionLink href="/admin/os" label="HomeReach OS" />
               </div>
@@ -89,12 +94,63 @@ export default async function SeoCommandCenterPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
           <MetricCard label="Authority routes" value={snapshot.totals.publicAuthorityRoutes} note="Crawlable public authority paths" />
           <MetricCard label="Political pages" value={snapshot.totals.politicalPages} note="Political mail and campaign cluster" />
           <MetricCard label="Visual assets" value={snapshot.totals.visualAssets} note="Image metadata and sitemap coverage" />
           <MetricCard label="Interactive tools" value={snapshot.totals.interactiveTools} note="Dwell-time and lead assets" />
           <MetricCard label="Keyword targets" value={snapshot.totals.keywordTargets} note="Tracked opportunity list" />
+          <MetricCard label="Legacy local pages" value={success.legacyLocalRouteCount} note="Indexed city-category routes under the legacy slug handler" />
+          <MetricCard label="AEO surfaces" value={success.answerEngineSurfaceCount} note="Public answer, service, tool, and crawler guidance pages" />
+          <MetricCard label="Rank targets" value={autonomousStrategy.rankTargets.length} note="Core product pages with mapped intent and next actions" />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+          <Panel title="Autonomous Ranking Strategy" icon={<Sparkles className="h-5 w-5" />}>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">Objective</p>
+              <p className="mt-2 text-sm leading-7 text-blue-950">{autonomousStrategy.objective}</p>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {autonomousStrategy.rankTargets.slice(0, 8).map((target) => (
+                <Link
+                  key={`${target.product}-${target.path}`}
+                  href={target.path}
+                  className="rounded-lg border border-slate-200 bg-white p-4 transition hover:border-blue-200 hover:shadow-lg"
+                >
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{target.intent}</p>
+                  <h2 className="mt-2 text-base font-black text-slate-950">{target.product}</h2>
+                  <p className="mt-2 text-sm font-semibold text-blue-700">{target.primaryKeyword}</p>
+                  <p className="mt-3 text-xs leading-5 text-slate-600">{target.autonomousNextMove}</p>
+                </Link>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel title="Twice-Daily SEO Agent Loop" icon={<Clock3 className="h-5 w-5" />}>
+            <div className="grid gap-3">
+              {autonomousStrategy.operatingLanes.slice(0, 2).map((lane) => (
+                <div key={lane.lane} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-base font-black text-slate-950">{lane.lane}</p>
+                      <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-blue-700">{lane.cadence}</p>
+                    </div>
+                    <StatusBadge status="ready" />
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">{lane.mission}</p>
+                  <div className="mt-3 grid gap-2">
+                    {lane.autonomousWork.slice(0, 3).map((item) => (
+                      <div key={item} className="flex gap-2 text-xs leading-5 text-slate-700">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">

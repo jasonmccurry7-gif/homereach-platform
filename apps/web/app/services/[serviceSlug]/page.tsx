@@ -26,10 +26,12 @@ import {
 } from "@/lib/growth-execution/services";
 import {
   buildBreadcrumbLd,
+  buildFaqPageLd,
   buildServiceLd,
   buildSoftwareApplicationLd,
   type JsonLd as JsonLdShape,
 } from "@/lib/seo/schema";
+import { getProductSeoProfile } from "@/lib/seo/product-seo";
 
 type ServicePageParams = Promise<{ serviceSlug: string }>;
 
@@ -61,14 +63,16 @@ export async function generateMetadata({ params }: { params: ServicePageParams }
   const canonical = service.publicPath.startsWith("/services/")
     ? service.publicPath
     : `/services/${getPublicServiceSlug(service)}`;
+  const seoProfile = getProductSeoProfile(service);
 
   return {
-    title: `${service.shortTitle} | HomeReach`,
-    description: service.outcome,
+    title: seoProfile.seoTitle,
+    description: seoProfile.seoDescription,
+    keywords: [seoProfile.primaryKeyword, ...seoProfile.secondaryKeywords],
     alternates: { canonical },
     openGraph: {
-      title: `${service.shortTitle} | HomeReach`,
-      description: service.outcome,
+      title: seoProfile.seoTitle,
+      description: seoProfile.seoDescription,
     },
   };
 }
@@ -84,10 +88,11 @@ export default async function ServiceDetailPage({ params }: { params: ServicePag
   const canonical = service.publicPath.startsWith("/services/")
     ? service.publicPath
     : `/services/${getPublicServiceSlug(service)}`;
+  const seoProfile = getProductSeoProfile(service);
   const schemas: JsonLdShape[] = [
     buildServiceLd({
       name: service.title,
-      description: service.outcome,
+      description: seoProfile.seoDescription,
       category: service.category,
       url: `${base}${canonical}`,
     }),
@@ -102,6 +107,7 @@ export default async function ServiceDetailPage({ params }: { params: ServicePag
       { name: "Services", url: `${base}/services` },
       { name: service.shortTitle, url: `${base}${canonical}` },
     ]),
+    buildFaqPageLd(seoProfile.faqs),
   ];
 
   return (
@@ -123,7 +129,17 @@ export default async function ServiceDetailPage({ params }: { params: ServicePag
                 {service.shortTitle}
               </p>
               <h1 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl">{service.headline}</h1>
-              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300">{service.outcome}</p>
+              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300">{seoProfile.answerSummary}</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {[seoProfile.primaryKeyword, ...seoProfile.secondaryKeywords.slice(0, 3)].map((keyword) => (
+                  <span
+                    key={keyword}
+                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-bold text-slate-200"
+                  >
+                    {keyword}
+                  </span>
+                ))}
+              </div>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href={service.primaryCtaHref}
@@ -163,6 +179,29 @@ export default async function ServiceDetailPage({ params }: { params: ServicePag
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="px-4 py-14 lg:px-6">
+          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.72fr_1.28fr]">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-700">Search Intent</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950">
+                Built for the way buyers search before they contact you.
+              </h2>
+              <p className="mt-4 text-base leading-8 text-slate-600">
+                This page targets <strong>{seoProfile.primaryKeyword}</strong> and related commercial searches with
+                plain-language answers, service context, approval boundaries, and a clear next action.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {seoProfile.faqs.map((faq) => (
+                <article key={faq.question} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                  <h2 className="text-lg font-black tracking-tight text-slate-950">{faq.question}</h2>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{faq.answer}</p>
+                </article>
+              ))}
             </div>
           </div>
         </section>

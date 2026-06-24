@@ -70,6 +70,8 @@ export const metadata: Metadata = {
 
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
 const siteNavigation = [
+  { name: "HomeReach Answers", url: `${baseUrl}/answers` },
+  { name: "Learn", url: `${baseUrl}/learn` },
   { name: "AI Growth OS", url: `${baseUrl}/local-growth-os` },
   { name: "Shared Campaigns", url: `${baseUrl}/shared-postcards` },
   { name: "Targeted Campaigns", url: `${baseUrl}/targeted` },

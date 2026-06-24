@@ -2,6 +2,7 @@ import { PRODUCT_OVERVIEW_PATHS } from "@/lib/marketing/product-routes";
 
 export const platformNavItems = [
   { label: "AI Growth OS", href: PRODUCT_OVERVIEW_PATHS.aiGrowthOs },
+  { label: "Answers", href: "/answers" },
   { label: "Market Capture", href: "/#market-capture" },
   { label: "How It Works", href: "/#how-it-works" },
   { label: "Targeting", href: "/#targeting-options" },
@@ -66,6 +67,7 @@ export const footerLinkGroups = [
     title: "Company",
     links: [
       { label: "How It Works", href: "/how-it-works" },
+      { label: "Answers", href: "/answers" },
       { label: "Login", href: "/login" },
       { label: "Privacy", href: "/privacy" },
       { label: "Terms", href: "/terms" },

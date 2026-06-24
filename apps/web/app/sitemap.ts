@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { createServiceClient } from "@/lib/supabase/service";
-import { listGrowthServiceModules } from "@/lib/growth-execution/services";
+import { getPublicServiceSlug, listGrowthServiceModules } from "@/lib/growth-execution/services";
+import { legacyLocalCategorySlugs, legacyLocalCitySlugs } from "@/lib/seo/legacy-local-pages";
 import { listPublishedPages } from "@/lib/seo/registry";
 import { listAllAuthorityRoutes } from "@/lib/seo/authority";
 
@@ -24,16 +25,8 @@ import { listAllAuthorityRoutes } from "@/lib/seo/authority";
 // sitemap can list URLs that the /[slug] route will 404 for.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SLUG_CITIES = new Set([
-  "wooster", "medina", "ashland", "mansfield", "mount-vernon",
-  "coshocton", "millersburg", "loudonville", "orrville", "rittman", "dover",
-]);
-
-const SLUG_CATEGORIES = new Set([
-  "roofing", "hvac", "plumbing", "landscaping", "pressure-washing",
-  "painting", "electrical", "concrete-masonry", "junk-removal",
-  "windows-doors", "garage-doors", "home-remodeling",
-]);
+const SLUG_CITIES = new Set(legacyLocalCitySlugs);
+const SLUG_CATEGORIES = new Set(legacyLocalCategorySlugs);
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.home-reach.com";
@@ -41,6 +34,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`,              lastModified: now, changeFrequency: "monthly", priority: 1.0 },
+    { url: `${base}/answers`,       lastModified: now, changeFrequency: "weekly", priority: 0.92 },
+    { url: `${base}/learn`,         lastModified: now, changeFrequency: "weekly", priority: 0.78 },
     { url: `${base}/how-it-works`,  lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/shared-postcards`, lastModified: now, changeFrequency: "monthly", priority: 0.84 },
     { url: `${base}/targeted`,      lastModified: now, changeFrequency: "monthly", priority: 0.8 },
@@ -67,12 +62,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const serviceRoutes: MetadataRoute.Sitemap = listGrowthServiceModules()
     .filter((service) => service.publicExposure !== "admin_only")
-    .map((service) => ({
-      url: `${base}${service.publicPath}`,
-      lastModified: now,
-      changeFrequency: "monthly" as const,
-      priority: service.publicExposure === "core_public" ? 0.84 : 0.72,
-    }));
+    .flatMap((service) => {
+      const canonicalServicePath = `/services/${getPublicServiceSlug(service)}`;
+      const paths = new Set([service.publicPath, canonicalServicePath]);
+      return Array.from(paths).map((path) => ({
+        url: `${base}${path}`,
+        lastModified: now,
+        changeFrequency: "monthly" as const,
+        priority: path === canonicalServicePath ? 0.82 : service.publicExposure === "core_public" ? 0.84 : 0.72,
+      }));
+    });
 
   let slugRoutes: MetadataRoute.Sitemap = [];
   try {

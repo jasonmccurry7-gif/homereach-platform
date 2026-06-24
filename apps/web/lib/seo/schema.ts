@@ -18,15 +18,24 @@ function getBaseUrl(): string {
 /** Organization JSON-LD for the site identity. Emitted from root layout. */
 export function buildOrganizationLd(): JsonLd {
   const base = getBaseUrl();
+  const sameAs = buildSameAsLinks();
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${base}/#organization`,
     name: "HomeReach",
     legalName: "HomeReach",
+    alternateName: ["Home Reach", "HomeReach OS", "HomeReach AI Growth OS"],
     url: base,
     logo: `${base}/icons/icon-512.png`,
+    image: `${base}/icons/icon-512.png`,
+    slogan: "AI-powered local growth and execution for local businesses and campaigns.",
     description:
       "AI-powered local growth, direct mail, political mail, purchasing intelligence, and campaign execution platform for local businesses, campaigns, and organizations.",
+    founder: {
+      "@type": "Person",
+      name: "Jason McCurry",
+    },
     areaServed: [
       {
         "@type": "State",
@@ -53,7 +62,7 @@ export function buildOrganizationLd(): JsonLd {
       areaServed: "US",
       availableLanguage: "English",
     },
-    sameAs: buildSameAsLinks(),
+    ...(sameAs.length ? { sameAs } : {}),
   };
 }
 
@@ -63,11 +72,13 @@ export function buildWebsiteLd(): JsonLd {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": `${base}/#website`,
     name: "HomeReach",
     url: base,
     inLanguage: "en-US",
     publisher: {
       "@type": "Organization",
+      "@id": `${base}/#organization`,
       name: "HomeReach",
       url: base,
     },
@@ -92,6 +103,7 @@ export function buildWebPageLd(args: {
     inLanguage: "en-US",
     isPartOf: {
       "@type": "WebSite",
+      "@id": `${base}/#website`,
       name: "HomeReach",
       url: base,
     },
@@ -198,18 +210,35 @@ export function buildLocalBusinessLd(args: {
   city?: string;
   region?: string | null;
   areaServed?: string;
+  streetAddress?: string;
+  postalCode?: string;
 }): JsonLd {
+  const base = getBaseUrl();
+  const servedArea = args.areaServed ?? [args.city, args.region].filter(Boolean).join(", ");
   return {
     "@context": "https://schema.org",
-    "@type": "LocalBusiness",
+    "@type": "ProfessionalService",
+    "@id": `${base}/#local-growth-service`,
     name: args.name,
-    url: args.url,
-    areaServed: args.areaServed,
-    address: args.city
+    url: base,
+    mainEntityOfPage: args.url,
+    image: `${base}/icons/icon-512.png`,
+    description:
+      "HomeReach provides AI-powered local growth, direct mail, local visibility, reputation, procurement, and campaign execution services.",
+    areaServed: servedArea || undefined,
+    parentOrganization: {
+      "@type": "Organization",
+      "@id": `${base}/#organization`,
+      name: "HomeReach",
+      url: base,
+    },
+    address: args.streetAddress
       ? {
           "@type": "PostalAddress",
+          streetAddress: args.streetAddress,
           addressLocality: args.city,
           addressRegion: args.region ?? undefined,
+          postalCode: args.postalCode,
           addressCountry: "US",
         }
       : undefined,

@@ -5,7 +5,10 @@ import {
   listSeoKeywordTargets,
   listSeoVisualAssets,
 } from "@/lib/seo/authority";
+import { isSeoLegacyRedirectEnabled } from "@/lib/seo/env";
+import { listLegacyCityCategoryPages } from "@/lib/seo/legacy-local-pages";
 import { getSeoConnectorSnapshot, type SeoConnectorSnapshot, type SeoConnectorStatusValue } from "@/lib/seo/connectors";
+import { listMainProductSeoTargets } from "@/lib/seo/product-seo";
 
 export type SeoSuccessStatus = "live" | "ready" | "needs_connector" | "needs_review";
 
@@ -39,6 +42,8 @@ export type SeoSuccessSnapshot = {
   servicePageCount: number;
   authorityRouteCount: number;
   imageAssetCount: number;
+  legacyLocalRouteCount: number;
+  answerEngineSurfaceCount: number;
   connectedDataSources: string[];
   missingDataSources: string[];
   metrics: SeoSuccessMetric[];
@@ -50,6 +55,8 @@ export type SeoSuccessSnapshot = {
 
 const CORE_PUBLIC_ROUTES = [
   "/",
+  "/answers",
+  "/llms.txt",
   "/shared-postcards",
   "/targeted",
   "/political",
@@ -62,6 +69,18 @@ const CORE_PUBLIC_ROUTES = [
   "/ohio",
   "/case-studies",
   "/tools",
+  "/learn",
+  "/insights",
+  "/visuals",
+  "/benchmarks",
+] as const;
+
+const ANSWER_ENGINE_SURFACES = [
+  "/answers",
+  "/llms.txt",
+  "/services",
+  "/learn",
+  "/tools",
   "/insights",
   "/visuals",
   "/benchmarks",
@@ -70,9 +89,12 @@ const CORE_PUBLIC_ROUTES = [
 export async function getSeoSuccessSnapshot(): Promise<SeoSuccessSnapshot> {
   const authorityRoutes = listAllAuthorityRoutes();
   const serviceRoutes = listGrowthServiceModules().filter((service) => service.publicExposure !== "admin_only");
+  const mainProductTargets = listMainProductSeoTargets(serviceRoutes);
   const imageAssets = listSeoVisualAssets();
   const keywordTargets = listSeoKeywordTargets();
   const clusters = getAuthorityClusters();
+  const legacyLocalRouteCount = listLegacyCityCategoryPages().length;
+  const answerEngineSurfaceCount = ANSWER_ENGINE_SURFACES.length;
   const connectorSnapshot = await getSeoConnectorSnapshot();
   const connectedDataSources = getConnectedDataSources(connectorSnapshot);
   const missingDataSources = getMissingDataSources(connectorSnapshot);
@@ -104,6 +126,8 @@ export async function getSeoSuccessSnapshot(): Promise<SeoSuccessSnapshot> {
     servicePageCount: serviceRoutes.length,
     authorityRouteCount: authorityRoutes.length,
     imageAssetCount: imageAssets.length,
+    legacyLocalRouteCount,
+    answerEngineSurfaceCount,
     connectedDataSources,
     missingDataSources,
     metrics: [
@@ -124,6 +148,24 @@ export async function getSeoSuccessSnapshot(): Promise<SeoSuccessSnapshot> {
         value: imageAssets.length,
         status: "live",
         detail: "Visual assets exposed through image sitemap metadata.",
+      },
+      {
+        label: "Legacy local routes",
+        value: legacyLocalRouteCount,
+        status: "live",
+        detail: "Indexed city-category pages now share schema, FAQ answers, and internal links while redirect consolidation stays approval-gated.",
+      },
+      {
+        label: "Answer-engine surfaces",
+        value: answerEngineSurfaceCount,
+        status: "live",
+        detail: "Answers, llms.txt, services, tools, insights, visuals, and benchmarks give LLMs crawlable public summaries.",
+      },
+      {
+        label: "Main product targets",
+        value: mainProductTargets.length,
+        status: "live",
+        detail: "Primary product keywords and answer summaries are mapped to public HomeReach offer pages.",
       },
       {
         label: "Search Console performance",
@@ -166,6 +208,21 @@ export async function getSeoSuccessSnapshot(): Promise<SeoSuccessSnapshot> {
         detail: "Organization, WebSite, navigation, service catalog, service pages, FAQ, image, article, and dataset schema are available where relevant.",
       },
       {
+        label: "LLM guidance",
+        status: "live",
+        detail: "llms.txt points answer engines to public HomeReach pages, service pages, and crawl-safe summaries.",
+      },
+      {
+        label: "Legacy route consolidation",
+        status: isSeoLegacyRedirectEnabled() ? "ready" : "needs_review",
+        detail: isSeoLegacyRedirectEnabled()
+          ? "Legacy city-category pages now precheck and redirect to published /advertise/* pages when a canonical SEO page exists."
+          : "Legacy city-category pages now emit schema, FAQ answers, and internal links. Redirect consolidation to /advertise/* still needs human approval before the env flag is enabled.",
+        ownerAction: isSeoLegacyRedirectEnabled()
+          ? undefined
+          : "Review published /advertise/* coverage, approve consolidation, then enable ENABLE_SEO_LEGACY_REDIRECT.",
+      },
+      {
         label: "Ranking data",
         status: searchConsoleStatus,
         detail:
@@ -184,20 +241,35 @@ export async function getSeoSuccessSnapshot(): Promise<SeoSuccessSnapshot> {
         ownerAction: analytics?.status === "connected" ? undefined : analytics?.needs.join("; "),
       },
     ],
-    topPages: keywordTargets.slice(0, 12).map((target) => ({
-      path: target.targetPath,
-      keyword: target.keyword,
-      cluster: target.cluster,
-      priority: target.priority,
-      status: target.priority === "critical" ? "needs_review" : "ready",
-      nextAction: target.nextAction,
-    })),
+    topPages: [
+      ...mainProductTargets.map((target) => ({
+        path: target.path,
+        keyword: target.primaryKeyword,
+        cluster: "Main product",
+        priority: "critical",
+        status: "ready" as const,
+        nextAction: "Connect Search Console and conversion attribution, then test title, FAQ, CTA, and internal links from this product page.",
+      })),
+      ...keywordTargets.slice(0, 12).map((target) => ({
+        path: target.targetPath,
+        keyword: target.keyword,
+        cluster: target.cluster,
+        priority: target.priority,
+        status: (target.priority === "critical" ? "needs_review" : "ready") as SeoSuccessStatus,
+        nextAction: target.nextAction,
+      })),
+    ].slice(0, 16),
     connectorSnapshot,
     nextActions: [
       {
         title: "Submit verified sitemaps",
         impact: "critical",
         detail: "Submit /sitemap.xml and /image-sitemap.xml in Google Search Console after deploy.",
+      },
+      {
+        title: "Review legacy route consolidation",
+        impact: "high",
+        detail: "Approve the optional /[slug] to /advertise/* redirect after checking published page coverage and canonical intent.",
       },
       {
         title: "Connect organic conversion attribution",
