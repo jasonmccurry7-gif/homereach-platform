@@ -162,9 +162,9 @@ export async function generateExecutiveMeeting(input: {
   const activatedMeetingForOutput = { ...meeting, voiceReadyJson: finalVoiceReady };
 
   const outputId = await mirrorMeetingToAiAssets(db, activatedMeetingForOutput, reports, aggregate, sourceSnapshot, input.actorUserId ?? null);
-  const taskId = await mirrorMeetingToAiWorkforce(db, activatedMeetingForOutput, outputId, input.actorUserId ?? null);
   const agentTaskIds = await mirrorAgentReportsToAiWorkforce(db, activatedMeetingForOutput, reports, outputId, input.actorUserId ?? null);
-  const voiceReadyWithTasks = withDailyAgentTaskTelemetry(finalVoiceReady, agentTaskIds);
+  const taskId = await mirrorMeetingToAiWorkforce(db, activatedMeetingForOutput, outputId, input.actorUserId ?? null, reports, agentTaskIds);
+  const voiceReadyWithTasks = withDailyAgentTaskTelemetry(finalVoiceReady, agentTaskIds, taskId, reports);
   const activatedMeeting = { ...activatedMeetingForOutput, voiceReadyJson: voiceReadyWithTasks };
   await db
     .from("executive_meetings")
@@ -297,15 +297,17 @@ async function ensureExistingMeetingActivation(
 
   const activatedMeeting = { ...meeting, voiceReadyJson: voiceReady };
   const agentTaskIds = await mirrorAgentReportsToAiWorkforce(db, activatedMeeting, reports, meeting.aiOutputId, input.actorUserId ?? null);
+  const ceoTaskId = await mirrorMeetingToAiWorkforce(db, activatedMeeting, meeting.aiOutputId, input.actorUserId ?? null, reports, agentTaskIds);
   const activatedMeetingWithTasks = {
     ...activatedMeeting,
-    voiceReadyJson: withDailyAgentTaskTelemetry(voiceReady, agentTaskIds),
+    voiceReadyJson: withDailyAgentTaskTelemetry(voiceReady, agentTaskIds, ceoTaskId ?? meeting.aiWorkforceTaskId, reports),
   };
-  if (agentTaskIds.length > 0) {
+  if (agentTaskIds.length > 0 || ceoTaskId) {
     await db
       .from("executive_meetings")
       .update({
         voice_ready_json: activatedMeetingWithTasks.voiceReadyJson,
+        ai_workforce_task_id: ceoTaskId ?? meeting.aiWorkforceTaskId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", meeting.id);
@@ -1259,29 +1261,58 @@ async function mirrorMeetingToAiWorkforce(
   meeting: ExecutiveMeeting,
   outputId: string | null,
   actorUserId: string | null,
+  reports: Array<Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">>,
+  agentTaskIds: string[],
 ) {
   const publicTaskId = `EXEC-${meeting.id}`;
+  const verificationScope = buildCeoVerificationScope(reports, agentTaskIds);
+  const revenueCriticalCount = verificationScope.filter((item) => item.revenueCritical).length;
+  const approvalRequiredCount = verificationScope.filter((item) => item.approvalRequired).length;
+  const blockerCount = verificationScope.reduce((sum, item) => sum + item.blockerCount, 0);
   const { data, error } = await db
     .from("ai_workforce_tasks")
     .upsert(
       {
         task_id: publicTaskId,
-        workflow_name: "Executive Daily Meeting",
+        workflow_name: "CEO Executive Verification",
         requestor: "Executive Meeting System",
         assigned_agent: "CEO Agent",
-        priority: meeting.blockersJson.some((blocker) => blocker.severity === "critical" || blocker.severity === "high") ? "high" : "medium",
+        priority: blockerCount > 0 || revenueCriticalCount > 0 || approvalRequiredCount > 0 ? "high" : "medium",
         status: "awaiting_approval",
         input_path: `/admin/executive-chat?meetingId=${meeting.id}`,
         input_data: {
           source: "executive_meetings",
           meetingId: meeting.id,
           meetingType: meeting.meetingType,
-          approvalBoundary: "Review and decide only. No external execution authorized.",
+          ceoVerificationRequired: true,
+          agentTaskIds,
+          agentVerificationScope: verificationScope,
+          revenueAlignment: {
+            revenueCriticalAgentCount: revenueCriticalCount,
+            estimatedRevenueAwaitingApproval: meeting.revenueImpactJson.estimatedRevenue,
+            estimatedSavingsAwaitingApproval: meeting.revenueImpactJson.estimatedSavings,
+            mandate: "Verify every agent is moving work toward revenue, savings, risk reduction, customer momentum, or operational throughput.",
+          },
+          continuousImprovement: {
+            required: true,
+            cadence: "daily",
+            mandate: "Each agent must surface one measurable improvement, simplification, or blocker-removal action tied to its role.",
+          },
+          approvalBoundary: "CEO verifies, prioritizes, and escalates only. No external execution is authorized.",
+          externalActionAuthorized: false,
         },
-        expected_output: "Executive meeting reviewed, blockers addressed, and approval-sensitive actions decided by human.",
-        dependencies: ["AGENTS.md approval gates", "AI Assets Command Center", "AI Workforce activity ledger"],
+        expected_output:
+          "CEO verification completed across all agent work packages: confirm owner, status, revenue/savings/risk impact, continuous-improvement item, blocker, approval need, and next action. Escalate any agent not driving revenue or operational leverage. No external action is authorized.",
+        dependencies: [
+          "AGENTS.md approval gates",
+          "AI Assets Command Center",
+          "AI Workforce activity ledger",
+          "Per-agent daily autonomy tasks",
+          "Revenue and approval queues",
+        ],
         approval_required: true,
-        related_opportunity: meeting.meetingType,
+        related_campaign: "Executive autonomy governance",
+        related_opportunity: "CEO daily verification",
         output_id: outputId,
         owner_user_id: actorUserId,
       },
@@ -1295,14 +1326,20 @@ async function mirrorMeetingToAiWorkforce(
       task_id: data.id,
       task_public_id: publicTaskId,
       agent_name: "CEO Agent",
-      event_type: "executive_meeting_generated",
+      event_type: "ceo_executive_verification_assigned",
       status: "awaiting_review",
-      summary: `${meeting.title} generated and saved to executive meeting history.`,
+      summary: `CEO verification assigned for ${verificationScope.length} executive agent work package(s) from ${meeting.title}.`,
       details: {
         source: "executive_meetings",
         meetingId: meeting.id,
         meetingType: meeting.meetingType,
-        approvalBoundary: "No external action authorized.",
+        agentTaskIds,
+        verificationScope,
+        revenueCriticalAgentCount: revenueCriticalCount,
+        approvalRequiredCount,
+        blockerCount,
+        approvalBoundary: "CEO verification only. No external action authorized.",
+        externalActionAuthorized: false,
       },
       approval_status: "needs_review",
       related_output_id: outputId,
@@ -1349,6 +1386,8 @@ async function mirrorAgentReportsToAiWorkforce(
         blockers: report.blockersJson,
         decisionsNeeded: report.decisionsNeededJson,
         kpis: report.kpiSnapshotJson,
+        continuousImprovementRequirement:
+          "Identify one measurable improvement, simplification, blocker-removal action, or revenue acceleration action for this role before the next executive review.",
         autonomousScope: [
           "analyze internal data",
           "draft recommendations",
@@ -1563,14 +1602,67 @@ async function auditMeeting(
   });
 }
 
-function withDailyAgentTaskTelemetry<T extends Record<string, unknown>>(voiceReady: T, agentTaskIds: string[]) {
+function withDailyAgentTaskTelemetry<T extends Record<string, unknown>>(
+  voiceReady: T,
+  agentTaskIds: string[],
+  ceoVerificationTaskId: string | null,
+  reports: Array<Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">>,
+) {
+  const verificationScope = buildCeoVerificationScope(reports, agentTaskIds);
   return {
     ...voiceReady,
     dailyAgentTaskCount: agentTaskIds.length,
     dailyAgentTaskIds: agentTaskIds.slice(0, 100),
+    ceoVerificationRequired: true,
+    ceoVerificationTaskId,
+    ceoVerificationScopeCount: verificationScope.length,
+    revenueCriticalAgentCount: verificationScope.filter((item) => item.revenueCritical).length,
+    continuousImprovementRequired: true,
     agentAutonomyMode: "review_gated_daily_execution",
     externalActionAuthorized: false,
   };
+}
+
+function buildCeoVerificationScope(
+  reports: Array<Omit<ExecutiveAgentReport, "id" | "meetingId" | "createdAt" | "updatedAt">>,
+  agentTaskIds: string[],
+) {
+  return reports.map((report, index) => {
+    const primaryWork = primaryAgentWork(report);
+    const blockerCount = report.blockersJson.length;
+    const decisionCount = report.decisionsNeededJson.length;
+    const estimatedRevenue = report.revenueImpactJson.estimatedRevenue;
+    const estimatedSavings = report.revenueImpactJson.estimatedSavings;
+    const revenueCritical =
+      estimatedRevenue > 0 ||
+      estimatedSavings > 0 ||
+      report.agentKey === "cro" ||
+      report.agentKey === "ceo" ||
+      report.prioritiesJson.some((item) => /revenue|sales|pipeline|approval|follow-up|customer|proposal|quote|savings/i.test(`${item.title} ${item.detail}`));
+
+    return {
+      agentKey: report.agentKey,
+      agentName: report.agentName,
+      role: report.role,
+      taskId: agentTaskIds[index] ?? null,
+      primaryWorkTitle: primaryWork?.title ?? "Review assigned executive lane",
+      primaryWorkDetail: primaryWork?.detail ?? report.summary,
+      statusToVerify: agentTaskNeedsApproval(report) ? "awaiting_approval" : "assigned",
+      approvalRequired: agentTaskNeedsApproval(report),
+      blockerCount,
+      decisionCount,
+      estimatedRevenue,
+      estimatedSavings,
+      revenueCritical,
+      continuousImprovementRequired: true,
+      ceoVerificationQuestions: [
+        "Is this agent working on the highest-value task for its role?",
+        "Is the work connected to revenue, savings, retention, risk reduction, or operational throughput?",
+        "Is there a blocker, missing source, or approval dependency the owner must clear?",
+        "What improvement should this agent make before the next executive review?",
+      ],
+    };
+  });
 }
 
 function agentTaskNeedsApproval(
@@ -1617,7 +1709,7 @@ function expectedAgentTaskOutput(
   const base = primaryWork
     ? `${primaryWork.title}: ${primaryWork.detail}`
     : `${report.role} reviews its assigned lane and logs the next recommended action.`;
-  return `${base} Output must include status, evidence used, blockers, approval need, and next action. No external action is authorized.`;
+  return `${base} Output must include status, evidence used, blockers, approval need, revenue or operational impact, one continuous-improvement action, and next action. No external action is authorized.`;
 }
 
 function safeTaskKey(value: string) {
