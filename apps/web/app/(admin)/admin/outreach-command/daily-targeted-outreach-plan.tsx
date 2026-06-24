@@ -9,9 +9,11 @@ import {
   Loader2,
   Mail,
   MessageCircle,
+  MousePointer2,
   Phone,
   RefreshCw,
   Send,
+  ShieldCheck,
   Target,
 } from "lucide-react";
 import type { DailyOutreachTask } from "@/lib/daily-outreach/types";
@@ -28,8 +30,8 @@ const emptyPayload: TargetedPlanPayload = {
     callsCompleted: 0,
     interestedReplies: 0,
     quotesNeeded: 0,
-    dailyGoal: 20,
-    followUpGoal: 5,
+    dailyGoal: 32,
+    followUpGoal: 8,
     completionPercent: 0,
   },
   tasks: [],
@@ -68,6 +70,30 @@ function statusTone(status?: string | null) {
   if (status === "Follow-Up Due" || status === "Proposal Sent") return "bg-blue-100 text-blue-800";
   if (status === "Lost" || status === "Not a Fit") return "bg-rose-100 text-rose-800";
   return "bg-slate-100 text-slate-700";
+}
+
+function emailDraftHref(task: DailyOutreachTask) {
+  if (!task.email) return null;
+  const subject = encodeURIComponent(task.email_subject ?? `${task.business_name ?? "HomeReach"} neighborhood campaign idea`);
+  const body = encodeURIComponent(task.email_body ?? "");
+  return `mailto:${encodeURIComponent(task.email)}?subject=${subject}&body=${body}`;
+}
+
+function normalizePhoneForSms(value?: string | null) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+function smsHandoffHref(task: DailyOutreachTask) {
+  const phone = normalizePhoneForSms(task.phone);
+  if (!phone || !task.sms_body) return null;
+  return `sms:${encodeURIComponent(phone)}?body=${encodeURIComponent(task.sms_body)}`;
+}
+
+function messengerHandoffHref(task: DailyOutreachTask) {
+  return task.messenger_url || task.facebook_url || null;
 }
 
 function ActionButton({
@@ -181,6 +207,85 @@ export function DailyTargetedOutreachPlan() {
     }
   }
 
+  async function openEmailDraft(task: DailyOutreachTask) {
+    const href = emailDraftHref(task);
+    if (!href) return;
+    window.location.href = href;
+    setNotice("Email draft opened. Confirm sender and content before sending.");
+    await updateTask(task, { activity_type: "email_handoff_opened", channel: "email" });
+  }
+
+  async function sendEmailNow(task: DailyOutreachTask) {
+    if (!task.email) return;
+    setBusy(task.id);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/daily-targeted-outreach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send_email",
+          date: payload.date,
+          task_id: task.id,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.result?.result?.error ?? data.error ?? "Email send failed");
+      }
+      setPayload(data.payload);
+      const testMode = data.result?.result?.testMode === true;
+      setNotice(testMode ? "Email test send recorded. Provider is in test mode." : `Email sent to ${task.email}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Email send failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendTextFromPhone(task: DailyOutreachTask) {
+    const href = smsHandoffHref(task);
+    if (!href) return;
+    if (task.sms_body) {
+      await navigator.clipboard.writeText(task.sms_body).catch(() => undefined);
+    }
+    window.location.href = href;
+    setNotice("Text opened on your computer/phone. Review it and tap send to complete.");
+    await updateTask(task, { activity_type: "sms_handoff_opened", channel: "sms" });
+  }
+
+  async function copyDmAndOpenMessenger(task: DailyOutreachTask) {
+    const href = messengerHandoffHref(task);
+    if (href) window.open(href, "_blank", "noopener,noreferrer");
+    if (task.dm_body) await navigator.clipboard.writeText(task.dm_body);
+    setNotice(href ? "Facebook DM copied and Messenger handoff opened." : "Facebook DM copied.");
+    await updateTask(task, { activity_type: "messenger_handoff_opened", channel: "facebook_dm" });
+  }
+
+  async function runTaskAction(task: DailyOutreachTask, action: string, success: string) {
+    setBusy(task.id);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/daily-targeted-outreach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          date: payload.date,
+          task_id: task.id,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Action failed");
+      setPayload(data.payload);
+      setNotice(success);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function updateTask(task: DailyOutreachTask, patch: Record<string, unknown>) {
     setBusy(task.id);
     setError(null);
@@ -230,7 +335,7 @@ export function DailyTargetedOutreachPlan() {
           </div>
           <h2 className="mt-3 text-3xl font-black tracking-tight">Dealership, dental, medical, and local service outreach</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-            Manual daily execution for high-value targeted postcard prospects. Copy, call, log, and schedule follow-up without auto-sending.
+            Daily prospect generation with reviewed one-click action paths: send email through HomeReach, open a prefilled text on your connected phone, open Messenger with the DM copied, and generate website-informed postcard concepts.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -240,15 +345,15 @@ export function DailyTargetedOutreachPlan() {
           </ActionButton>
           <ActionButton onClick={generate} disabled={Boolean(busy)} primary>
             {busy === "generate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            Generate Today
+            Generate Prospects Today
           </ActionButton>
         </div>
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="Today's New Prospects" value={payload.stats.newProspects} detail="Goal: 20 new outreaches" />
-        <Kpi label="Follow-Ups Due" value={payload.stats.followUpsDue} detail="Goal: 5 follow-ups" />
-        <Kpi label="Completed Actions" value={payload.stats.emailsCompleted + payload.stats.textsCompleted + payload.stats.dmsCompleted + payload.stats.callsCompleted} detail="Email, SMS, DM, call logs" />
+        <Kpi label="Today's New Prospects" value={payload.stats.newProspects} detail={`Goal: ${payload.stats.dailyGoal} new outreaches`} />
+        <Kpi label="Follow-Ups Due" value={payload.stats.followUpsDue} detail={`Goal: ${payload.stats.followUpGoal} follow-ups`} />
+        <Kpi label="Email + DM Handoffs" value={payload.stats.emailsCompleted + payload.stats.dmsCompleted} detail="Opened drafts, Messenger handoffs, and manual send logs" />
         <Kpi label="Quotes Needed" value={payload.stats.quotesNeeded} detail={`${payload.stats.interestedReplies} interested replies`} />
       </div>
 
@@ -297,6 +402,9 @@ export function DailyTargetedOutreachPlan() {
       <div className="mt-5 grid gap-4">
         {visibleTasks.map((task) => {
           const disabled = busy === task.id;
+          const emailHref = emailDraftHref(task);
+          const smsHref = smsHandoffHref(task);
+          const messengerHref = messengerHandoffHref(task);
           return (
             <article key={task.id} className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-950 shadow-sm">
               <div className="grid gap-4 xl:grid-cols-[1fr_18rem]">
@@ -346,7 +454,48 @@ export function DailyTargetedOutreachPlan() {
                 </div>
 
                 <aside className="space-y-3">
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <ShieldCheck className="mt-0.5 h-4 w-4 text-blue-700" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Agent handoff</p>
+                        <p className="mt-1 text-sm font-black text-slate-950">{task.sender_name ?? "HomeReach Outreach Agent"}</p>
+                        <p className="mt-0.5 break-all text-xs font-semibold text-slate-600">{task.sender_email ?? "Review sender before use"}</p>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-blue-900">
+                      Manual approval workflow. Email sends only when you click. Text and Messenger open a human handoff with copy prefilled.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <ActionButton onClick={() => sendEmailNow(task)} disabled={!task.email || !task.email_body || disabled} primary>
+                      <Mail className="h-3.5 w-3.5" />
+                      Send Email
+                    </ActionButton>
+                    <ActionButton onClick={() => sendTextFromPhone(task)} disabled={!smsHref || disabled} primary>
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      Send Text
+                    </ActionButton>
+                    <ActionButton onClick={() => copyDmAndOpenMessenger(task)} disabled={!task.dm_body || !messengerHref || disabled} primary>
+                      <MousePointer2 className="h-3.5 w-3.5" />
+                      Open Messenger
+                    </ActionButton>
+                    <ActionButton onClick={() => openEmailDraft(task)} disabled={!emailHref || disabled}>
+                      <Mail className="h-3.5 w-3.5" />
+                      Open Email App
+                    </ActionButton>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
+                    <ActionButton onClick={() => runTaskAction(task, "research_task", "Website researched and drafts refreshed.")} disabled={!task.website || disabled}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Research Site
+                    </ActionButton>
+                    <ActionButton onClick={() => runTaskAction(task, "generate_postcard", "Postcard design brief generated.")} disabled={disabled}>
+                      <Target className="h-3.5 w-3.5" />
+                      Postcard Design
+                    </ActionButton>
                     <ActionButton onClick={() => copyText(`${task.email_subject ?? ""}\n\n${task.email_body ?? ""}`, "Email", task, "email_copied", "email")} disabled={!task.email_body || disabled}>
                       <Clipboard className="h-3.5 w-3.5" />
                       Copy Email
@@ -371,24 +520,28 @@ export function DailyTargetedOutreachPlan() {
                       <ExternalLink className="h-3.5 w-3.5" />
                       Facebook
                     </ActionButton>
+                    <ActionButton href={task.messenger_url}>
+                      <Send className="h-3.5 w-3.5" />
+                      Messenger
+                    </ActionButton>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <ActionButton onClick={() => updateTask(task, { activity_type: "email_sent", channel: "email", outcome_status: "Contacted" })} disabled={disabled}>
                       <Mail className="h-3.5 w-3.5" />
-                      Email Sent
+                      Log Email Sent
                     </ActionButton>
                     <ActionButton onClick={() => updateTask(task, { activity_type: "sms_sent", channel: "sms", outcome_status: "Contacted" })} disabled={disabled}>
                       <MessageCircle className="h-3.5 w-3.5" />
-                      Text Sent
+                      Log Text Sent
                     </ActionButton>
                     <ActionButton onClick={() => updateTask(task, { activity_type: "dm_sent", channel: "facebook_dm", outcome_status: "Contacted" })} disabled={disabled}>
                       <Send className="h-3.5 w-3.5" />
-                      DM Sent
+                      Log DM Sent
                     </ActionButton>
                     <ActionButton onClick={() => updateTask(task, { activity_type: "called", channel: "call", outcome_status: "Contacted" })} disabled={disabled}>
                       <Phone className="h-3.5 w-3.5" />
-                      Called
+                      Log Called
                     </ActionButton>
                   </div>
 

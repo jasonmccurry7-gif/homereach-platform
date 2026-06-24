@@ -146,3 +146,6 @@ export * from "./adTech.js";
 // Provider observability
 export * from "./twilioObservability.js";
 export * from "./emailObservability.js";
+
+// StormReach Severe Weather Opportunity Engine
+export * from "./stormReach.js";

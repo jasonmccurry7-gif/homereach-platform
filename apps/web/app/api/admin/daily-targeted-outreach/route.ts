@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/api-guards";
 import {
   fetchTargetedOutreachPlan,
+  generateDailyTargetedProspects,
+  generateTargetedPostcardDesign,
   generateTargetedOutreachPlan,
+  researchTargetedOutreachTaskWebsite,
+  sendTargetedOutreachEmail,
   updateTargetedOutreachTask,
   type TargetedOutcomeStatus,
 } from "@/lib/daily-outreach/targeted-plan";
@@ -47,7 +51,37 @@ export async function POST(request: Request) {
     const date = typeof body.date === "string" ? body.date : todayKey();
 
     if (action === "generate") {
-      return NextResponse.json(await generateTargetedOutreachPlan(date, guard.user?.id ?? null));
+      return NextResponse.json(await generateTargetedOutreachPlan(date, guard.user?.id ?? null, {
+        refreshExternalProspects: body.refresh_external !== false,
+        forceTopUp: body.force_top_up !== false,
+      }));
+    }
+
+    if (action === "refresh_prospects") {
+      const result = await generateDailyTargetedProspects({
+        actorId: guard.user?.id ?? null,
+        date,
+        markets: Array.isArray(body.markets) ? body.markets.filter((item: unknown) => typeof item === "string") : undefined,
+      });
+      return NextResponse.json({ ok: true, result, payload: await fetchTargetedOutreachPlan(date) });
+    }
+
+    if (action === "research_task" && typeof body.task_id === "string") {
+      const task = await researchTargetedOutreachTaskWebsite(body.task_id, guard.user?.id ?? null);
+      if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+      return NextResponse.json({ ok: true, task, payload: await fetchTargetedOutreachPlan(date) });
+    }
+
+    if (action === "generate_postcard" && typeof body.task_id === "string") {
+      const task = await generateTargetedPostcardDesign(body.task_id, guard.user?.id ?? null);
+      if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+      return NextResponse.json({ ok: true, task, payload: await fetchTargetedOutreachPlan(date) });
+    }
+
+    if (action === "send_email" && typeof body.task_id === "string") {
+      const result = await sendTargetedOutreachEmail(body.task_id, guard.user?.id ?? null);
+      if (!result) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+      return NextResponse.json({ ok: result.ok, result, payload: await fetchTargetedOutreachPlan(date) }, { status: result.ok ? 200 : 502 });
     }
 
     if (action === "update_task" && typeof body.task_id === "string") {
