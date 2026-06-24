@@ -1,28 +1,29 @@
 import type { Metadata } from "next";
-import { DailyRevenueCommandCenter } from "@/components/revenue-os/daily-revenue-command-center";
-import { loadDailyRevenueCommandCenter } from "@/lib/revenue-os/snapshot";
+import { MainProductCommandCenter } from "@/components/admin-command-center/main-product-command-center";
+import { loadMainProductCommandCenter } from "@/lib/admin/main-product-command";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Daily Revenue Command Center | HomeReach",
-  description: "Executive revenue operating center for HomeReach pipeline, outreach, replies, follow-ups, and sender health.",
+  title: "HomeReach Primary Product Command Center",
+  description:
+    "Admin command center focused on StormReach, political campaigns, targeted local campaigns, creative automation, outreach, payment readiness, and team access.",
 };
 
 export default async function AdminDashboardPage() {
-  const [revenueCommandResult] = await Promise.allSettled([
-    loadDailyRevenueCommandCenter(),
+  const [productCommandResult] = await Promise.allSettled([
+    loadMainProductCommandCenter(),
   ]);
 
   const loadErrors = [
-    resultError("Daily Revenue Command Center", revenueCommandResult),
+    resultError("Primary Product Command Center", productCommandResult),
   ].filter((error): error is string => Boolean(error));
 
-  if (revenueCommandResult.status === "rejected") {
-    return <DailyRevenueCommandCenterError errors={loadErrors} />;
+  if (productCommandResult.status === "rejected") {
+    return <PrimaryProductCommandCenterError errors={loadErrors} />;
   }
 
-  return <DailyRevenueCommandCenter data={revenueCommandResult.value} />;
+  return <MainProductCommandCenter data={productCommandResult.value} />;
 }
 
 function resultError(label: string, result: PromiseSettledResult<unknown>) {
@@ -31,14 +32,14 @@ function resultError(label: string, result: PromiseSettledResult<unknown>) {
   return `${label}: ${message}`;
 }
 
-function DailyRevenueCommandCenterError({ errors }: { errors: string[] }) {
+function PrimaryProductCommandCenterError({ errors }: { errors: string[] }) {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-6 lg:px-8">
       <section className="mx-auto max-w-4xl rounded-xl border border-rose-300/25 bg-rose-300/10 p-6 shadow-2xl shadow-slate-950/40">
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-rose-100">Daily Revenue Command Center</p>
-        <h1 className="mt-3 text-2xl font-black tracking-tight">Revenue data could not load</h1>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-rose-100">Primary Product Command Center</p>
+        <h1 className="mt-3 text-2xl font-black tracking-tight">Dashboard data could not load</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-rose-50/80">
-          The command center is protected from showing stale or partial executive data when the loader fails.
+          The command center is protected from showing stale or partial product data when the loader fails.
         </p>
         <div className="mt-4 space-y-2">
           {(errors.length ? errors : ["Unknown loader failure"]).map((error) => (
