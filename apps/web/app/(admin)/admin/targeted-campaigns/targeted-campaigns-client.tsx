@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { DailyTargetedOutreachPlan } from "../outreach-command/daily-targeted-outreach-plan";
 import { TargetedGrowthCommandCenter } from "./targeted-growth-command-center";
 
 interface LeadRow {
@@ -629,6 +630,8 @@ export function TargetedCampaignsClient({ leads: initialLeads, campaigns: initia
       )}
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <DailyTargetedOutreachPlan />
+
         <TargetedGrowthCommandCenter
           leads={leads}
           campaigns={campaigns}

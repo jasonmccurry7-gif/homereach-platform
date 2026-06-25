@@ -1148,6 +1148,37 @@ const TARGETED_SERPAPI_SEARCHES: Array<{ vertical: string; query: string }> = [
   { vertical: "Church", query: "churches" },
 ];
 
+export const TARGETED_CAMPAIGN_CATEGORIES = TARGETED_SERPAPI_SEARCHES.map((search) => search.vertical);
+
+function normalizeTargetedCategories(categories?: string[]) {
+  const allowed = new Set(TARGETED_CAMPAIGN_CATEGORIES.map((category) => category.toLowerCase()));
+  return Array.from(new Set((categories ?? [])
+    .map((category) => category.trim())
+    .filter((category) => allowed.has(category.toLowerCase()))));
+}
+
+function normalizeTargetedMarkets(markets?: string[]) {
+  return Array.from(new Set((markets ?? [])
+    .map((market) => market.trim())
+    .filter(Boolean)))
+    .slice(0, 6);
+}
+
+function marketCityKey(market: string) {
+  return normalizeKeyPart(market.split(",")[0] ?? market);
+}
+
+function matchesSelectedMarket(prospect: Pick<SourceProspect, "city" | "state">, markets: string[]) {
+  if (!markets.length) return true;
+  const city = normalizeKeyPart(prospect.city);
+  const state = normalizeKeyPart(prospect.state);
+  return markets.some((market) => {
+    const cityKey = marketCityKey(market);
+    const stateKey = normalizeKeyPart(market.match(/\b([A-Z]{2})\b/i)?.[1] ?? "");
+    return Boolean(cityKey && city === cityKey) && (!stateKey || state === stateKey);
+  });
+}
+
 function targetedSerpApiEnabled() {
   const targetedFlag = process.env.TARGETED_CAMPAIGNS_ENABLE_SERPAPI?.trim().toLowerCase();
   const stormreachFlag = process.env.STORMREACH_ENABLE_SERPAPI?.trim().toLowerCase();
@@ -1575,11 +1606,16 @@ export async function generateDailyTargetedProspects(args: {
   actorId?: string | null;
   date?: string;
   markets?: string[];
+  categories?: string[];
   limitPerSearch?: number;
 } = {}): Promise<DailyProspectRefreshResult> {
   const apiKey = targetedSerpApiKey();
   const enabled = targetedSerpApiEnabled();
-  const markets = (args.markets?.length ? args.markets : TARGETED_DAILY_MARKETS).slice(0, 6);
+  const markets = normalizeTargetedMarkets(args.markets?.length ? args.markets : TARGETED_DAILY_MARKETS);
+  const selectedCategories = normalizeTargetedCategories(args.categories);
+  const searches = selectedCategories.length
+    ? TARGETED_SERPAPI_SEARCHES.filter((search) => selectedCategories.includes(search.vertical))
+    : TARGETED_SERPAPI_SEARCHES;
   const warnings: string[] = [];
 
   if (!apiKey || !enabled) {
@@ -1596,7 +1632,7 @@ export async function generateDailyTargetedProspects(args: {
       ],
       providerConfigured: Boolean(apiKey) && enabled,
       markets,
-      categories: TARGETED_SERPAPI_SEARCHES.map((search) => search.vertical),
+      categories: searches.map((search) => search.vertical),
     };
   }
 
@@ -1637,7 +1673,7 @@ export async function generateDailyTargetedProspects(args: {
   const limitPerSearch = Math.max(5, Math.min(args.limitPerSearch ?? 12, 25));
 
   for (const market of markets) {
-    for (const search of TARGETED_SERPAPI_SEARCHES) {
+    for (const search of searches) {
       try {
         const results = await fetchSerpApiTargetedProspects({
           apiKey,
@@ -1751,7 +1787,7 @@ export async function generateDailyTargetedProspects(args: {
       skipped,
       searched,
       markets,
-      categories: TARGETED_SERPAPI_SEARCHES.map((search) => search.vertical),
+      categories: searches.map((search) => search.vertical),
       warnings,
       existing_contact_pages_reviewed: existingEnrichment.reviewed,
       existing_hunter_queries: existingEnrichment.hunterReviewed,
@@ -1771,7 +1807,7 @@ export async function generateDailyTargetedProspects(args: {
     warnings,
     providerConfigured: Boolean(apiKey) && enabled,
     markets,
-    categories: TARGETED_SERPAPI_SEARCHES.map((search) => search.vertical),
+    categories: searches.map((search) => search.vertical),
   };
 }
 
@@ -1837,11 +1873,13 @@ export async function fetchTargetedOutreachPlan(date = todayKey()): Promise<Targ
 export async function generateTargetedOutreachPlan(
   date = todayKey(),
   actorId?: string | null,
-  options: { refreshExternalProspects?: boolean; forceTopUp?: boolean } = {},
+  options: { refreshExternalProspects?: boolean; forceTopUp?: boolean; markets?: string[]; categories?: string[] } = {},
 ) {
   const db = createServiceClient();
+  const selectedMarkets = normalizeTargetedMarkets(options.markets);
+  const selectedCategories = normalizeTargetedCategories(options.categories);
   const prospectRefresh = options.refreshExternalProspects
-    ? await generateDailyTargetedProspects({ actorId, date })
+    ? await generateDailyTargetedProspects({ actorId, date, markets: selectedMarkets, categories: selectedCategories })
     : null;
   const syncedContactTasks = await syncTargetedTaskContactsFromProspects(db, date);
   const { data: existing } = await db
@@ -1866,7 +1904,9 @@ export async function generateTargetedOutreachPlan(
   for (const row of existingPlanRows) {
     for (const key of taskDedupeKeys(row)) used.add(key);
   }
-  const sourceProspects = [...configured, ...sales];
+  const sourceProspects = [...configured, ...sales]
+    .filter((prospect) => !selectedCategories.length || selectedCategories.includes(prospect.vertical))
+    .filter((prospect) => matchesSelectedMarket(prospect, selectedMarkets));
   const auto = unique(rotate(sourceProspects.filter((item) => isAutoVertical(item.vertical)), 40), 12, used);
   const medical = unique(rotate(sourceProspects.filter((item) => isMedicalVertical(item.vertical)), 40), 12, used);
   const localService = unique(rotate(sourceProspects.filter((item) => isLocalServiceVertical(item.vertical)), 40), 8, used);
@@ -1900,6 +1940,8 @@ export async function generateTargetedOutreachPlan(
       follow_up_count: followUps.length,
       social_post_count: socialRows.length,
       existing_plan_count: existingPlanRows.length,
+      selected_markets: selectedMarkets,
+      selected_categories: selectedCategories,
       prospect_refresh: prospectRefresh,
       synced_contact_tasks: syncedContactTasks,
       manual_review_required: true,

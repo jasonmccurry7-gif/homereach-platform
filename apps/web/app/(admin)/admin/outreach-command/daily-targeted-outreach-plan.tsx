@@ -54,6 +54,9 @@ const OUTCOMES = [
 
 type Outcome = (typeof OUTCOMES)[number];
 
+const TARGETED_CATEGORIES = ["Dealership", "Doctor", "Dentist", "Church"] as const;
+const CITY_PRESETS = ["Medina, OH", "Akron, OH", "Canton, OH", "Cleveland, OH", "Columbus, OH", "Cincinnati, OH", "Dayton, OH", "Toledo, OH", "Youngstown, OH"] as const;
+
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
@@ -146,6 +149,8 @@ export function DailyTargetedOutreachPlan() {
   const [error, setError] = useState<string | null>(null);
   const [verticalFilter, setVerticalFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [cityFilter, setCityFilter] = useState("Medina, OH");
+  const [categoryFilter, setCategoryFilter] = useState<(typeof TARGETED_CATEGORIES)[number] | "all">("Dealership");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [followUpDates, setFollowUpDates] = useState<Record<string, string>>({});
 
@@ -184,12 +189,19 @@ export function DailyTargetedOutreachPlan() {
       const response = await fetch("/api/admin/daily-targeted-outreach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", date: payload.date }),
+        body: JSON.stringify({
+          action: "generate",
+          date: payload.date,
+          markets: cityFilter === "all" ? undefined : [cityFilter],
+          categories: categoryFilter === "all" ? undefined : [categoryFilter],
+          force_top_up: true,
+          refresh_external: true,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Unable to generate targeted plan");
       setPayload(data);
-      setNotice("Daily targeted outreach plan is ready.");
+      setNotice(`${categoryFilter === "all" ? "Targeted" : categoryFilter} prospects are ready${cityFilter === "all" ? "" : ` for ${cityFilter}`}.`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to generate targeted plan");
@@ -313,15 +325,32 @@ export function DailyTargetedOutreachPlan() {
   const visibleTasks = useMemo(() => {
     return payload.tasks.filter((task) => {
       const verticalOk = verticalFilter === "all" || task.vertical === verticalFilter;
+      const categoryOk = categoryFilter === "all" || task.vertical === categoryFilter;
+      const cityOk = cityFilter === "all" || [task.city, task.state].filter(Boolean).join(", ").toLowerCase() === cityFilter.toLowerCase() || String(task.city ?? "").toLowerCase() === cityFilter.split(",")[0]?.trim().toLowerCase();
       const statusOk = statusFilter === "all" || task.outcome_status === statusFilter;
-      return verticalOk && statusOk;
+      return verticalOk && categoryOk && cityOk && statusOk;
     });
-  }, [payload.tasks, statusFilter, verticalFilter]);
+  }, [categoryFilter, cityFilter, payload.tasks, statusFilter, verticalFilter]);
 
   const verticals = useMemo(
     () => Array.from(new Set(payload.tasks.map((task) => task.vertical).filter(Boolean) as string[])).sort(),
     [payload.tasks],
   );
+
+  const cities = useMemo(() => {
+    const dynamic = payload.tasks
+      .map((task) => [task.city, task.state].filter(Boolean).join(", "))
+      .filter(Boolean);
+    return Array.from(new Set([...CITY_PRESETS, ...dynamic])).sort();
+  }, [payload.tasks]);
+
+  const responseItems = useMemo(() => {
+    return payload.tasks
+      .filter((task) => ["Interested", "Needs Quote", "Proposal Sent", "Follow-Up Due"].includes(String(task.outcome_status ?? "")) || task.response_received || task.replied_at)
+      .slice(0, 8);
+  }, [payload.tasks]);
+
+  const recentActivity = useMemo(() => payload.activity.slice(0, 8), [payload.activity]);
 
   const progressWidth = `${Math.min(100, Math.max(0, payload.stats.completionPercent))}%`;
 
@@ -335,19 +364,57 @@ export function DailyTargetedOutreachPlan() {
           </div>
           <h2 className="mt-3 text-3xl font-black tracking-tight">Dealership, dental, medical, and local service outreach</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-            Daily prospect generation with reviewed one-click action paths: send email through HomeReach, open a prefilled text on your connected phone, open Messenger with the DM copied, and generate website-informed postcard concepts.
+            Select a city and category, generate real prospects, then use one-click email, connected-phone text, and Facebook Messenger handoffs. Responses and next steps stay visible below.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 xl:max-w-xl xl:justify-end">
+          <select
+            value={cityFilter}
+            onChange={(event) => setCityFilter(event.target.value)}
+            className="min-h-10 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-black text-white"
+          >
+            <option value="all">All cities</option>
+            {cities.map((city) => (
+              <option key={city} value={city}>{city}</option>
+            ))}
+          </select>
+          <select
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value as typeof categoryFilter)}
+            className="min-h-10 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-black text-white"
+          >
+            <option value="all">All categories</option>
+            {TARGETED_CATEGORIES.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
           <ActionButton onClick={load} disabled={Boolean(busy)}>
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </ActionButton>
           <ActionButton onClick={generate} disabled={Boolean(busy)} primary>
             {busy === "generate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            Generate Prospects Today
+            Generate {categoryFilter === "all" ? "Prospects" : categoryFilter}
           </ActionButton>
         </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-4">
+        {TARGETED_CATEGORIES.map((category) => (
+          <button
+            key={category}
+            type="button"
+            onClick={() => setCategoryFilter(category)}
+            className={cn(
+              "min-h-11 rounded-xl border px-3 text-sm font-black transition",
+              categoryFilter === category
+                ? "border-blue-400 bg-blue-500 text-white"
+                : "border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900",
+            )}
+          >
+            {category}
+          </button>
+        ))}
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -377,6 +444,16 @@ export function DailyTargetedOutreachPlan() {
               ))}
             </select>
             <select
+              value={cityFilter}
+              onChange={(event) => setCityFilter(event.target.value)}
+              className="min-h-10 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-bold text-white"
+            >
+              <option value="all">All cities</option>
+              {cities.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
+            <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
               className="min-h-10 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-bold text-white"
@@ -398,6 +475,62 @@ export function DailyTargetedOutreachPlan() {
           {error ?? notice ?? payload.sourceWarning}
         </div>
       )}
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-200">Responses and next steps</p>
+              <h3 className="mt-1 text-lg font-black text-white">Act on hot replies first</h3>
+            </div>
+            <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-100">{responseItems.length}</span>
+          </div>
+          <div className="mt-4 space-y-2">
+            {responseItems.length ? responseItems.map((task) => (
+              <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-black text-white">{task.business_name ?? "Prospect"}</p>
+                    <p className="text-xs font-semibold text-slate-400">{[task.city, task.vertical].filter(Boolean).join(" / ")}</p>
+                  </div>
+                  <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", statusTone(task.outcome_status))}>{task.outcome_status ?? "New"}</span>
+                </div>
+                <p className="mt-2 text-sm leading-5 text-slate-300">
+                  {task.outcome_status === "Needs Quote"
+                    ? "Next: send campaign map, postcard concept, and price path."
+                    : task.outcome_status === "Interested"
+                      ? "Next: reply with a simple route map offer and 10-minute call option."
+                      : task.outcome_status === "Proposal Sent"
+                        ? "Next: follow up on approval/payment path."
+                        : "Next: follow up with a low-pressure map preview."}
+                </p>
+              </div>
+            )) : (
+              <p className="rounded-xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">No interested replies or quote-stage prospects yet. Send a few high-score prospects and this fills up.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-200">Recent actions</p>
+              <h3 className="mt-1 text-lg font-black text-white">What happened today</h3>
+            </div>
+            <span className="rounded-full bg-blue-400/10 px-3 py-1 text-xs font-black text-blue-100">{recentActivity.length}</span>
+          </div>
+          <div className="mt-4 space-y-2">
+            {recentActivity.length ? recentActivity.map((activity) => (
+              <div key={activity.id} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                <p className="text-sm font-black text-white">{activity.activity_type.replace(/_/g, " ")}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">{activity.summary ?? activity.channel ?? "Action logged"}</p>
+              </div>
+            )) : (
+              <p className="rounded-xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">No actions logged yet for this date.</p>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div className="mt-5 grid gap-4">
         {visibleTasks.map((task) => {

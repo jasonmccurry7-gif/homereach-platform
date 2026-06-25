@@ -54,6 +54,8 @@ export async function POST(request: Request) {
       return NextResponse.json(await generateTargetedOutreachPlan(date, guard.user?.id ?? null, {
         refreshExternalProspects: body.refresh_external !== false,
         forceTopUp: body.force_top_up !== false,
+        markets: Array.isArray(body.markets) ? body.markets.filter((item: unknown) => typeof item === "string") : undefined,
+        categories: Array.isArray(body.categories) ? body.categories.filter((item: unknown) => typeof item === "string") : undefined,
       }));
     }
 
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
         actorId: guard.user?.id ?? null,
         date,
         markets: Array.isArray(body.markets) ? body.markets.filter((item: unknown) => typeof item === "string") : undefined,
+        categories: Array.isArray(body.categories) ? body.categories.filter((item: unknown) => typeof item === "string") : undefined,
       });
       return NextResponse.json({ ok: true, result, payload: await fetchTargetedOutreachPlan(date) });
     }
