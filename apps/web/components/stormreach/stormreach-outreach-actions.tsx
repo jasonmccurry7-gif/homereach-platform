@@ -26,7 +26,7 @@ export function StormReachOutreachActions({ compact, row }: Props) {
   const alreadySent = clean(row.status).toLowerCase() === "sent" || Boolean(row.sent_at);
   const messengerLink = firstUrl(metadata.messenger_link) ?? firstUrl(metadata.facebook_page);
   const phoneTextBody = buildPhoneTextBody({ body, channel, subject });
-  const phoneSmsHref = phone ? `sms:${encodeURIComponent(phone)}?&body=${encodeURIComponent(phoneTextBody)}` : "";
+  const phoneSmsHref = phone ? `sms:${phone}?&body=${encodeURIComponent(phoneTextBody)}` : "";
 
   const action = useMemo(() => {
     if (channel === "email") {
@@ -37,7 +37,7 @@ export function StormReachOutreachActions({ compact, row }: Props) {
 
     if (channel === "sms") {
       return phone
-        ? { label: "Open Text", href: `sms:${encodeURIComponent(phone)}?&body=${encodeURIComponent(body)}`, icon: MessageSquare }
+        ? { label: "Open Text", href: `sms:${phone}?&body=${encodeURIComponent(body)}`, icon: MessageSquare }
         : { label: "No Phone", href: "", icon: MessageSquare };
     }
 

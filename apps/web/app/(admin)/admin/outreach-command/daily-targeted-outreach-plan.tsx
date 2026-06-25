@@ -92,7 +92,7 @@ function normalizePhoneForSms(value?: string | null) {
 function smsHandoffHref(task: DailyOutreachTask) {
   const phone = normalizePhoneForSms(task.phone);
   if (!phone || !task.sms_body) return null;
-  return `sms:${encodeURIComponent(phone)}?body=${encodeURIComponent(task.sms_body)}`;
+  return `sms:${phone}?&body=${encodeURIComponent(task.sms_body)}`;
 }
 
 function messengerHandoffHref(task: DailyOutreachTask) {
@@ -259,10 +259,10 @@ export function DailyTargetedOutreachPlan() {
     const href = smsHandoffHref(task);
     if (!href) return;
     if (task.sms_body) {
-      await navigator.clipboard.writeText(task.sms_body).catch(() => undefined);
+      void navigator.clipboard.writeText(task.sms_body).catch(() => undefined);
     }
     window.location.href = href;
-    setNotice("Text opened on your computer/phone. Review it and tap send to complete.");
+    setNotice(`Text opened for ${normalizePhoneForSms(task.phone) ?? task.phone}. Review it and tap send to complete.`);
     await updateTask(task, { activity_type: "sms_handoff_opened", channel: "sms" });
   }
 
