@@ -50,7 +50,18 @@ export default async function AdminStormReachEventPage({ params }: Params) {
               {detail.event.source} - Confidence {detail.event.confidence_score}% - Score {detail.event.severity_score}
             </p>
           </div>
-          <StormReachActions eventId={detail.event.id} />
+          <div className="space-y-3">
+            <StormReachActions eventId={detail.event.id} />
+            {detail.outreachMessages.length ? (
+              <a
+                href={`/admin/stormreach?tab=outreach&eventId=${detail.event.id}`}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-black text-emerald-900 hover:bg-emerald-100"
+              >
+                <Mail className="h-4 w-4" aria-hidden="true" />
+                Review {detail.outreachMessages.length.toLocaleString()} email drafts
+              </a>
+            ) : null}
+          </div>
         </div>
       </section>
 

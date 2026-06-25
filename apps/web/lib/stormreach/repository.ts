@@ -120,14 +120,15 @@ export async function loadStormReachDashboard(supabase?: ServiceClient): Promise
     if (result.error && !isMissingOptionalStormReachTable(result.error)) errors.push(result.error);
   }
 
-  const activeEvents = events.data.filter((event) => !["archived", "dismissed"].includes(String(event.status))).length;
-  const last24HourEvents = events.data.filter((event) => !["archived", "dismissed"].includes(String(event.status)) && isRecentStormEvent(event)).length;
-  const highOrExtremeEvents = events.data.filter((event) => event.severity_level === "High" || event.severity_level === "Extreme").length;
+  const dashboardEvents = events.data.map(refineStoredEventEstimate);
+  const activeEvents = dashboardEvents.filter((event) => !["archived", "dismissed"].includes(String(event.status))).length;
+  const last24HourEvents = dashboardEvents.filter((event) => !["archived", "dismissed"].includes(String(event.status)) && isRecentStormEvent(event)).length;
+  const highOrExtremeEvents = dashboardEvents.filter((event) => event.severity_level === "High" || event.severity_level === "Extreme").length;
   const projectedRevenueCents = packages.data.reduce((sum, row) => sum + numberValue(row.revenue_estimate_cents), 0);
   const prospectsReady = prospects.data.filter((row) => row.suppression_status !== "suppressed");
 
   return {
-    events: events.data,
+    events: dashboardEvents,
     prospects: prospects.data,
     outreachMessages: outreachMessages.data,
     packages: packages.data,
@@ -161,7 +162,7 @@ export async function loadStormReachEventDetail(eventId: string, supabase?: Serv
     : db.from("storm_events").select("*").eq("event_id", eventId).maybeSingle();
   const eventResult = await querySingle<StormEventRow>("storm_events.detail", eventQuery);
   if (eventResult.error) errors.push(eventResult.error);
-  const event = eventResult.data;
+  const event = eventResult.data ? refineStoredEventEstimate(eventResult.data) : null;
 
   if (!event?.id) {
     return {
@@ -1089,11 +1090,13 @@ function isMissingOptionalStormReachTable(error: string) {
 function estimateHouseholds(event: NormalizedStormEvent): NormalizedStormEvent {
   const currentHouseholds = Number(event.estimatedHouseholds ?? 0);
   if (currentHouseholds > 0) return event;
-  const zipEstimate = event.impactedZipCodes.length * 3800;
-  const cityEstimate = event.impactedCities.length * 14000;
-  const countyEstimate = event.impactedCounties.length * 55000;
-  const pointEstimate = event.geographyType === "point_report" ? 5000 : 0;
-  const households = Math.max(zipEstimate, cityEstimate, countyEstimate, pointEstimate, 1500);
+  const households = estimateStormHouseholds({
+    geographyType: event.geographyType,
+    severityScore: 0,
+    impactedZipCodes: event.impactedZipCodes,
+    impactedCities: event.impactedCities,
+    impactedCounties: event.impactedCounties,
+  });
   return {
     ...event,
     estimatedHouseholds: households,
@@ -1104,6 +1107,109 @@ function estimateHouseholds(event: NormalizedStormEvent): NormalizedStormEvent {
     },
   };
 }
+
+function refineStoredEventEstimate<T extends StormDashboardEvent>(event: T): T {
+  const currentHouseholds = Number(event.estimated_households ?? 0);
+  const cityCount = event.impacted_cities?.length ?? 0;
+  const countyCount = event.impacted_counties?.length ?? 0;
+  const zipCount = event.impacted_zip_codes?.length ?? 0;
+  const looksLikeOldOneCountyFallback = currentHouseholds === 55000 && zipCount === 0 && countyCount === 1 && cityCount > 0;
+  const hasNoEstimate = currentHouseholds <= 0;
+
+  if (!hasNoEstimate && !looksLikeOldOneCountyFallback) return event;
+
+  const estimatedHouseholds = estimateStormHouseholds({
+    geographyType: event.geography_type,
+    severityScore: Number(event.severity_score ?? 0),
+    impactedZipCodes: event.impacted_zip_codes ?? [],
+    impactedCities: event.impacted_cities ?? [],
+    impactedCounties: event.impacted_counties ?? [],
+  });
+
+  return {
+    ...event,
+    estimated_households: estimatedHouseholds,
+    estimated_homeowners: Math.round(estimatedHouseholds * 0.64),
+    metadata: {
+      ...(asObject(event.metadata)),
+      household_estimate_display_method: looksLikeOldOneCountyFallback
+        ? "stormreach_city_localized_display_fix"
+        : "stormreach_runtime_display_estimate",
+    },
+  };
+}
+
+function estimateStormHouseholds(input: {
+  geographyType?: string | null;
+  severityScore?: number;
+  impactedZipCodes: string[];
+  impactedCities: string[];
+  impactedCounties: string[];
+}) {
+  const zipEstimate = input.impactedZipCodes.length * 3800;
+  const cityEstimate = input.impactedCities.reduce((sum, city) => sum + estimateCityImpactHouseholds(city, input.severityScore), 0);
+  const countyEstimate = input.impactedCounties.reduce((sum, county) => sum + estimateCountyImpactHouseholds(county), 0);
+  const isPointReport = String(input.geographyType ?? "").toLowerCase().includes("point");
+
+  if (zipEstimate > 0) return Math.max(1500, zipEstimate);
+  if (isPointReport && cityEstimate > 0) return Math.max(1500, cityEstimate);
+  if (isPointReport && countyEstimate > 0) return Math.max(1500, Math.round(countyEstimate * 0.12));
+  return Math.max(cityEstimate, countyEstimate, isPointReport ? 5000 : 0, 1500);
+}
+
+function estimateCityImpactHouseholds(city: string, severityScore = 0) {
+  const name = city
+    .replace(/^\d+\s+[NESW]{1,3}\s+/i, "")
+    .replace(/\s+(city|village|township|borough|cdp)$/i, "")
+    .trim();
+  const known = CITY_HOUSEHOLD_ESTIMATES[normalizeLocationKey(name)];
+  const base = known ?? deterministicHouseholdEstimate(name, 2200, 18000);
+  const stormRadiusFactor = severityScore >= 95 ? 1.45 : severityScore >= 85 ? 1.25 : severityScore >= 70 ? 1.1 : 1;
+  return Math.round(base * stormRadiusFactor);
+}
+
+function estimateCountyImpactHouseholds(county: string) {
+  const name = county.replace(/\s+county$/i, "").trim();
+  return COUNTY_HOUSEHOLD_ESTIMATES[normalizeLocationKey(name)] ?? deterministicHouseholdEstimate(name, 28000, 115000);
+}
+
+function deterministicHouseholdEstimate(value: string, min: number, max: number) {
+  const text = normalizeLocationKey(value) || "stormreach";
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  return min + (hash % Math.max(1, max - min));
+}
+
+function normalizeLocationKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+const CITY_HOUSEHOLD_ESTIMATES: Record<string, number> = {
+  pinconning: 650,
+  smithville: 520,
+  "mount pleasant": 36000,
+  medina: 11500,
+  columbus: 390000,
+  cleveland: 170000,
+  cincinnati: 145000,
+  toledo: 119000,
+  akron: 85000,
+  dayton: 61000,
+  canton: 32000,
+};
+
+const COUNTY_HOUSEHOLD_ESTIMATES: Record<string, number> = {
+  bay: 43000,
+  wayne: 47000,
+  cuyahoga: 575000,
+  franklin: 560000,
+  hamilton: 360000,
+  summit: 235000,
+  montgomery: 230000,
+  lucas: 185000,
+  medina: 76000,
+  stark: 160000,
+};
 
 function eventPayload(event: ScoredStormEvent, industries: string[], actor?: StormReachActor) {
   return {

@@ -6,7 +6,7 @@ import { StormReachOverdriveCommandCenter } from "@/components/stormreach/stormr
 import { StormReachOutreachActions } from "@/components/stormreach/stormreach-outreach-actions";
 import { isRecentStormEvent } from "@/lib/stormreach/geo";
 import { stormReachOverdriveState } from "@/lib/stormreach/overdrive";
-import { loadStormReachDashboard, stormReachPersistenceConfigured } from "@/lib/stormreach/repository";
+import { loadStormReachDashboard, loadStormReachEventDetail, stormReachPersistenceConfigured } from "@/lib/stormreach/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export const metadata = {
   title: "StormReach - HomeReach Admin",
 };
 
-type SearchParams = Promise<{ tab?: string }>;
+type SearchParams = Promise<{ eventId?: string; tab?: string }>;
 
 const TABS = [
   { key: "overdrive", label: "Live Storm Events", icon: RadioTower },
@@ -31,12 +31,15 @@ const TABS = [
 export default async function AdminStormReachPage({ searchParams }: { searchParams: SearchParams }) {
   const resolved = await searchParams;
   const tab = resolved.tab ?? "overdrive";
+  const eventIdFilter = resolved.eventId?.trim() || null;
 
   if (!stormReachPersistenceConfigured()) {
     return <SafeMode body="Supabase service-role persistence is not configured, so StormReach cannot load its operating tables." />;
   }
 
   const data = await loadStormReachDashboard();
+  const eventDetail = tab === "outreach" && eventIdFilter ? await loadStormReachEventDetail(eventIdFilter) : null;
+  const outreachRows = eventDetail?.event ? eventDetail.outreachMessages : data.outreachMessages;
   const highEvents = data.events.filter((event) => event.severity_level === "High" || event.severity_level === "Extreme");
 
   return (
@@ -110,7 +113,7 @@ export default async function AdminStormReachPage({ searchParams }: { searchPara
       ) : null}
 
       {tab === "prospects" ? <ProspectsTable rows={data.prospects} /> : null}
-      {tab === "outreach" ? <OutreachTable rows={data.outreachMessages} /> : null}
+      {tab === "outreach" ? <OutreachTable eventIdFilter={eventDetail?.event ? eventIdFilter : null} rows={outreachRows} /> : null}
       {tab === "assets" ? <AssetsPanel rows={data.generatedAssets} /> : null}
       {tab === "campaigns" ? <CampaignsPanel campaigns={data.campaigns} packages={data.packages} geofences={data.geofenceCampaigns} postcards={data.postcardCampaigns} /> : null}
       {tab === "agent" ? <AgentPanel rows={data.improvements} providerStatus={data.providerStatus} agentRuns={data.agentRuns} /> : null}
@@ -155,11 +158,25 @@ function ProspectsTable({ rows }: { rows: Record<string, unknown>[] }) {
   return <SimpleTable title="Business Prospects" rows={rows} columns={["business_name", "category", "email", "phone", "website", "city", "state", "suppression_status", "crm_status"]} />;
 }
 
-function OutreachTable({ rows }: { rows: Record<string, unknown>[] }) {
+function OutreachTable({ eventIdFilter, rows }: { eventIdFilter?: string | null; rows: Record<string, unknown>[] }) {
   const columns = ["channel", "subject", "recipient_email", "recipient_phone", "sender_key", "approval_status", "status", "suppression_status"];
+  const visibleRows = eventIdFilter ? rows.filter((row) => String(row.storm_event_id ?? "") === eventIdFilter) : rows;
+  const needsApproval = visibleRows.filter((row) => String(row.approval_status ?? "").toLowerCase() === "needs_review" || String(row.status ?? "").toLowerCase() === "draft").length;
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <TableHeader title="Outreach Drafts" />
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-950">{eventIdFilter ? "Event Outreach Drafts" : "Outreach Drafts"}</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">
+            {needsApproval.toLocaleString()} drafts need approval. Approve first, then send manually from the approved row.
+          </p>
+        </div>
+        {eventIdFilter ? (
+          <a href="/admin/stormreach?tab=outreach" className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-800 hover:bg-slate-50">
+            View all drafts
+          </a>
+        ) : null}
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-100 text-sm">
           <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">
@@ -169,7 +186,7 @@ function OutreachTable({ rows }: { rows: Record<string, unknown>[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((row, index) => (
+            {visibleRows.map((row, index) => (
               <tr key={String(row.id ?? index)} className="align-top">
                 <td className="sticky left-0 z-10 min-w-64 border-r border-slate-100 bg-white px-4 py-4 shadow-sm">
                   <StormReachOutreachActions row={row} compact />
@@ -180,7 +197,7 @@ function OutreachTable({ rows }: { rows: Record<string, unknown>[] }) {
                 {columns.map((column) => <td key={column} className="max-w-sm px-4 py-4 font-semibold text-slate-700">{formatCell(row[column])}</td>)}
               </tr>
             ))}
-            {!rows.length ? <tr><td className="px-4 py-6 text-sm font-semibold text-slate-500" colSpan={columns.length + 1}>No outreach drafts yet.</td></tr> : null}
+            {!visibleRows.length ? <tr><td className="px-4 py-6 text-sm font-semibold text-slate-500" colSpan={columns.length + 1}>No outreach drafts yet.</td></tr> : null}
           </tbody>
         </table>
       </div>
