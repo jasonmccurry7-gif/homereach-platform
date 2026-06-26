@@ -92,7 +92,7 @@ function normalizePhoneForSms(value?: string | null) {
 function smsHandoffHref(task: DailyOutreachTask) {
   const phone = normalizePhoneForSms(task.phone);
   if (!phone || !task.sms_body) return null;
-  return `sms:${phone}?&body=${encodeURIComponent(task.sms_body)}`;
+  return `sms:${phone}?body=${encodeURIComponent(task.sms_body)}`;
 }
 
 function messengerHandoffHref(task: DailyOutreachTask) {
@@ -249,7 +249,14 @@ export function DailyTargetedOutreachPlan() {
       const testMode = data.result?.result?.testMode === true;
       setNotice(testMode ? "Email test send recorded. Provider is in test mode." : `Email sent to ${task.email}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Email send failed");
+      const message = err instanceof Error ? err.message : "Email send failed";
+      setError(`${message}. Opening your email app as a manual fallback.`);
+      const href = emailDraftHref(task);
+      if (href) {
+        window.setTimeout(() => {
+          window.location.href = href;
+        }, 50);
+      }
     } finally {
       setBusy(null);
     }
@@ -257,21 +264,34 @@ export function DailyTargetedOutreachPlan() {
 
   async function sendTextFromPhone(task: DailyOutreachTask) {
     const href = smsHandoffHref(task);
-    if (!href) return;
+    if (!href) {
+      setError("This prospect needs a valid phone number and SMS draft before text handoff can open.");
+      return;
+    }
     if (task.sms_body) {
       void navigator.clipboard.writeText(task.sms_body).catch(() => undefined);
     }
     window.location.href = href;
     setNotice(`Text opened for ${normalizePhoneForSms(task.phone) ?? task.phone}. Review it and tap send to complete.`);
-    await updateTask(task, { activity_type: "sms_handoff_opened", channel: "sms" });
+    await updateTask(task, { activity_type: "sms_handoff_opened", channel: "sms" }).catch((err) => {
+      setError(err instanceof Error ? `Text opened, but logging failed: ${err.message}` : "Text opened, but logging failed.");
+    });
   }
 
   async function copyDmAndOpenMessenger(task: DailyOutreachTask) {
     const href = messengerHandoffHref(task);
-    if (href) window.open(href, "_blank", "noopener,noreferrer");
-    if (task.dm_body) await navigator.clipboard.writeText(task.dm_body);
+    if (!href) {
+      setError("This prospect does not have a Facebook or Messenger link yet.");
+      return;
+    }
+    window.open(href, "_blank", "noopener,noreferrer");
+    if (task.dm_body) {
+      void navigator.clipboard.writeText(task.dm_body).catch(() => undefined);
+    }
     setNotice(href ? "Facebook DM copied and Messenger handoff opened." : "Facebook DM copied.");
-    await updateTask(task, { activity_type: "messenger_handoff_opened", channel: "facebook_dm" });
+    await updateTask(task, { activity_type: "messenger_handoff_opened", channel: "facebook_dm" }).catch((err) => {
+      setError(err instanceof Error ? `Messenger opened, but logging failed: ${err.message}` : "Messenger opened, but logging failed.");
+    });
   }
 
   async function runTaskAction(task: DailyOutreachTask, action: string, success: string) {
